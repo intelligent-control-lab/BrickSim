@@ -1,0 +1,9 @@
+{
+    "python.analysis.extraPaths": [
+        "IsaacLab/source/isaaclab",
+        "IsaacLab/source/isaaclab_assets",
+        "IsaacLab/source/isaaclab_mimic",
+        "IsaacLab/source/isaaclab_rl",
+        "IsaacLab/source/isaaclab_tasks",
+    ]
+}
