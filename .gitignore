@@ -1,3 +1,6 @@
 .venv/
 logs/
 outputs/
+.thumbs
+*.egg-info/
+__pycache__/
