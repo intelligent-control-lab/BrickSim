@@ -1,7 +1,7 @@
 import os
 import omni.physx.scripts.utils as physx_utils
 from typing import Tuple
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, PhysxSchema
 from . import lego_schemes
 
 def create_brick(stage: Usd.Stage, path: str, dimensions=(4,2,3), color_name="Black", use_cache=True):
@@ -22,6 +22,8 @@ def build_brick(stage: Usd.Stage, path: str, dimensions: Tuple[int, int, int], c
     brick.GetPrim().CreateAttribute("lego_color", Sdf.ValueTypeNames.String).Set(color_name)
     Usd.ModelAPI(brick).SetKind("component")
     physx_utils.setPhysics(brick.GetPrim(), kinematic=False)
+    contactReport = PhysxSchema.PhysxContactReportAPI.Apply(brick.GetPrim())
+    contactReport.CreateThresholdAttr().Set(0.0)
 
     body: UsdGeom.Cube = UsdGeom.Cube.Define(stage, f"{path}/Body")
     body.CreateSizeAttr(1.0)
