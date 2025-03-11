@@ -9,8 +9,6 @@ from .brick_physics import contact_report_event_handler
 class LegoExtension(omni.ext.IExt):
 
     def on_startup(self, ext_id):
-        print("[lego_assemble] startup")
-
         self.contact_report_event_sub = omni.physx.get_physx_simulation_interface().subscribe_contact_report_events(contact_report_event_handler)
 
         self._window = omni.ui.Window("My Window", width=300, height=300)
@@ -18,7 +16,6 @@ class LegoExtension(omni.ext.IExt):
             omni.ui.Button("Click me", clicked_fn=self.on_button_clicked)
 
     def on_shutdown(self):
-        print("[lego_assemble] shutdown")
         self.contact_report_event_sub.unsubscribe()
 
     def on_button_clicked(self):

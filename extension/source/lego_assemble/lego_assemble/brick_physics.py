@@ -1,7 +1,10 @@
+import logging
 import omni.usd
 from pxr import Gf, Sdf, Usd
 from omni.physx.bindings._physx import ContactEventHeaderVector, ContactDataVector, ContactEventHeader, ContactEventType
 from omni.physx.scripts.physicsUtils import PhysicsSchemaTools
+
+logger = logging.getLogger(__name__)
 
 def contact_report_event_handler(contact_headers: ContactEventHeaderVector, contact_data: ContactDataVector):
     stage: Usd.Stage = omni.usd.get_context().get_stage()
@@ -23,4 +26,4 @@ def contact_report_event_handler(contact_headers: ContactEventHeaderVector, cont
         dim0: Gf.Vec3i = dim_attr0.Get()
         dim1: Gf.Vec3i = dim_attr1.Get()
 
-        print(f"[lego_assemble] Contact event {contact.type.name} between {prim0.GetPath()} ({dim0[0]}x{dim0[1]}x{dim0[2]}) and {prim1.GetPath()} ({dim1[0]}x{dim1[1]}x{dim1[2]})")
+        logger.info(f"{contact.type.name} between {prim0.GetPath()} ({dim0[0]}x{dim0[1]}x{dim0[2]}) and {prim1.GetPath()} ({dim1[0]}x{dim1[1]}x{dim1[2]})")

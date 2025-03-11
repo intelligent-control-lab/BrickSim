@@ -1,8 +1,11 @@
 import os
+import logging
 import omni.physx.scripts.utils as physx_utils
 from typing import Tuple
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, PhysxSchema
 from . import lego_schemes
+
+logger = logging.getLogger(__name__)
 
 def create_brick(stage: Usd.Stage, path: str, dimensions=(4,2,3), color_name="Black", use_cache=True):
     if use_cache:
@@ -52,7 +55,7 @@ def create_brick_from_reference(stage: Usd.Stage, path: str, filepath: str):
     return brick
 
 def build_brick_cache(dimensions: Tuple[int, int, int], color_name: str, filepath: str):
-    print(f"[lego_assemble] Writing brick USD: {filepath}")
+    logger.info(f"Writing brick USD: {filepath}")
     stage: Usd.Stage = Usd.Stage.CreateInMemory("Brick")
     brick = build_brick(stage, "/Brick", dimensions, color_name)
     brick.GetPrim().SetInstanceable(True)
