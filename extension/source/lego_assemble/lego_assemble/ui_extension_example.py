@@ -10,10 +10,10 @@ class ExampleExtension(omni.ext.IExt):
         stage: Usd.Stage = omni.usd.get_context().get_stage()
         if stage is not None:
             stage.RemovePrim("/World/Brick_01")
-            brick01 = create_brick(stage, "/World/Brick_01")
+            brick01 = create_brick(stage, "/World/Brick_01", dimensions=(4, 2, 3), color_name="Pink")
             UsdGeom.XformCommonAPI(brick01).SetTranslate((0, 0, 0.100))
             stage.RemovePrim("/World/Brick_02")
-            brick02 = create_brick(stage, "/World/Brick_02")
+            brick02 = create_brick(stage, "/World/Brick_02", dimensions=(4, 2, 3), color_name="Light Blue")
             UsdGeom.XformCommonAPI(brick02).SetTranslate((0, 0, 0.050))
 
     def on_startup(self, ext_id):
