@@ -1,4 +1,8 @@
 {
+    "files.exclude": {
+        "**/*.egg-info": true,
+        "**/.thumbs": true,
+    },
     "python.analysis.extraPaths": [
         "extension/source/lego_assemble",
 
@@ -521,6 +525,42 @@
         ".venv/lib/python3.10/site-packages/isaacsim/extscache/semantics.schema.editor-0.3.10",
         ".venv/lib/python3.10/site-packages/isaacsim/extscache/semantics.schema.property-1.0.5",
         ".venv/lib/python3.10/site-packages/isaacsim/extscache/usdrt.scenegraph-7.5.1+d02c707b.lx64.r.cp310",
+
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.convexdecomposition",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.kit.property.physx",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.kvdb",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.localcache",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physics.tensors",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physics.tensors.tests",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.bundle",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.camera",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.cct",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.commands",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.cooking",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.demos",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.fabric",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.forcefields",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.foundation",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.graph",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.internal",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.pvd",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.stageupdate",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.supportui",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.telemetry",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.tensors",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.tests",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.tests.mini",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.tests.visual",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.ui",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.vehicle",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.vehicle.tests",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.physx.zerogravity",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.usdphysics",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.usdphysics.tests",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.usdphysics.ui",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.usd.schema.forcefield",
+        ".venv/lib/python3.10/site-packages/isaacsim/extsPhysics/omni.usd.schema.physx",
 
     ]
 }
