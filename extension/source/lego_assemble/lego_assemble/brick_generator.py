@@ -1,10 +1,11 @@
 import omni.physx.scripts.utils as physx_utils
-from pxr import UsdGeom, Usd
+from pxr import Usd, UsdGeom, UsdPhysics
 
 brick_length = 0.008    # 8 mm per stud
 plate_height = 0.0032   # 3.2 mm per plate
 stud_diameter = 0.0048  # 4.8 mm stud diameter
 stud_height   = 0.0017  # 1.7 mm stud height
+density = 500           # kg/m^3
 
 def create_brick(stage: Usd.Stage, path: str, length_studs=4, width_studs=2, height_plates=3, color=(0.3, 0.3, 0.3)):
     length = length_studs * brick_length
@@ -19,6 +20,7 @@ def create_brick(stage: Usd.Stage, path: str, length_studs=4, width_studs=2, hei
     UsdGeom.XformCommonAPI(body).SetScale((length, width, height))
     UsdGeom.XformCommonAPI(body).SetTranslate((0, 0, height/2))
     physx_utils.setCollider(body.GetPrim())
+    UsdPhysics.MassAPI.Apply(body.GetPrim()).CreateDensityAttr(density)
     body.CreateDisplayColorAttr([color])
 
     for i in range(length_studs):
