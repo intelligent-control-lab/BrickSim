@@ -3,8 +3,9 @@ import logging
 import omni.usd
 import omni.physx
 import numpy as np
+import omni.physx.scripts.physicsUtils as physicsUtils
 from typing import Optional
-from pxr import Gf, Sdf, Usd, PhysxSchema, PhysicsSchemaTools
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, PhysxSchema, PhysicsSchemaTools
 from omni.physx.bindings._physx import ContactEventHeaderVector, ContactDataVector, ContactEventHeader, ContactEventType, ContactData
 from . import lego_schemes
 
@@ -110,6 +111,14 @@ def _contact_report_event_handler(contact_headers: ContactEventHeaderVector, con
         overlap_y = max(0, min(dim0[1], max(p0_snapped[1], p1_snapped[1])) - max(0, min(p0_snapped[1], p1_snapped[1])))
         overlap_area = overlap_x * overlap_y
 
+        assemble_xy = (p0_snapped + (R_snapped @ dim1[:2] - dim0[:2]) / 2) * lego_schemes.BrickLength
+        assemble_tr = Gf.Matrix4d().SetTransform(
+            Gf.Rotation().SetAxisAngle(Gf.Vec3d(0, 0, 1), snapped_yaw),
+            Gf.Vec3d(assemble_xy[0], assemble_xy[1], height0)
+        )
+        parent_pose1: Gf.Matrix4d = UsdGeom.Xformable(prim1).ComputeParentToWorldTransform(Usd.TimeCode.Default())
+        desired_tr: Gf.Matrix4d = parent_pose1.GetInverse() * pose0 * assemble_tr
+
         if rel_distance > DistanceTolerance:
             status = "exceeding distance tolerance"
         elif rel_distance < -MaxPenetration:
@@ -125,7 +134,16 @@ def _contact_report_event_handler(contact_headers: ContactEventHeaderVector, con
         elif frc_prj < RequiredForce:
             status = "insufficient force"
         else:
-            status = "assembly"
+            physicsUtils.set_or_add_translate_op(prim1, desired_tr.ExtractTranslation())
+            physicsUtils.set_or_add_orient_op(prim1, desired_tr.ExtractRotation().GetQuat())
+            joint_path = f"{prim0.GetPath()}_Conn_{prim1.GetPath().name}"
+            if stage.GetPrimAtPath(joint_path).IsValid():
+                status = "already assembled"
+            else:
+                joint = UsdPhysics.FixedJoint.Define(stage, joint_path)
+                joint.CreateBody0Rel().AddTarget(prim0.GetPath())
+                joint.CreateBody1Rel().AddTarget(prim1.GetPath())
+                status = "assembly"
 
         logger.info(
             f"Contact between {prim0.GetPath()} ({dim0[0]}x{dim0[1]}x{dim0[2]}) "
