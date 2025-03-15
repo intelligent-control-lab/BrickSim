@@ -278,7 +278,7 @@ Colors = {
 
 def parse_color(name: str):
     hex = Colors[name]
-    return (int(hex[0:2], 16)/255, int(hex[2:4], 16)/255, int(hex[4:6], 16)/255)
+    return [int(hex[0:2], 16)/255, int(hex[2:4], 16)/255, int(hex[4:6], 16)/255]
 
 def to_real_dimensions(studs: Tuple[int, int, int]):
-    return (studs[0] * BrickLength, studs[1] * BrickLength, studs[2] * PlateHeight)
+    return [studs[0] * BrickLength, studs[1] * BrickLength, studs[2] * PlateHeight]
