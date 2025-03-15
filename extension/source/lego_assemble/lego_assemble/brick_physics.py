@@ -158,3 +158,10 @@ def _contact_report_event_handler(contact_headers: ContactEventHeaderVector, con
             f"overlap={overlap_x}x{overlap_y}, "
             f"status: {status}"
         )
+
+class LegoPhysicsCallback:
+    def __init__(self):
+        self.contact_report_event_sub = omni.physx.get_physx_simulation_interface().subscribe_contact_report_events(contact_report_event_handler)
+
+    def unsubscribe(self):
+        self.contact_report_event_sub.unsubscribe()

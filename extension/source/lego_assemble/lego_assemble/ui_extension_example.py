@@ -4,19 +4,19 @@ import omni.usd
 import omni.physx
 from pxr import Usd, UsdGeom
 from .brick_generator import create_brick
-from .brick_physics import contact_report_event_handler
+from .brick_physics import LegoPhysicsCallback
 
 class LegoExtension(omni.ext.IExt):
 
     def on_startup(self, ext_id):
-        self.contact_report_event_sub = omni.physx.get_physx_simulation_interface().subscribe_contact_report_events(contact_report_event_handler)
+        self.lego_physics_callback = LegoPhysicsCallback()
 
         self._window = omni.ui.Window("My Window", width=300, height=300)
         with self._window.frame:
             omni.ui.Button("Click me", clicked_fn=self.on_button_clicked)
 
     def on_shutdown(self):
-        self.contact_report_event_sub.unsubscribe()
+        self.lego_physics_callback.unsubscribe()
 
     def on_button_clicked(self):
         stage: Usd.Stage = omni.usd.get_context().get_stage()
