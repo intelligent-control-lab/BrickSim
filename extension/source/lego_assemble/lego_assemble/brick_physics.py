@@ -1,18 +1,51 @@
+import math
 import logging
 import omni.usd
-from pxr import Gf, Sdf, Usd
-from omni.physx.bindings._physx import ContactEventHeaderVector, ContactDataVector, ContactEventHeader, ContactEventType
-from omni.physx.scripts.physicsUtils import PhysicsSchemaTools
+import omni.physx
+import numpy as np
+from typing import Optional
+from pxr import Gf, Sdf, Usd, PhysxSchema, PhysicsSchemaTools
+from omni.physx.bindings._physx import ContactEventHeaderVector, ContactDataVector, ContactEventHeader, ContactEventType, ContactData
+from . import lego_schemes
+
+DistanceTolerance = 0.001           # Maximum distance between bricks (m)
+MaxPenetration = 0.005              # Maximum penetration between bricks (m), penetration can happen due to simulation inaccuracies
+ZAngleTolerance = math.radians(5)   # Maximum angle between z-axis of bricks (rad)
+RequiredForce = 1.0                 # Minimum clutch power (N)
+YawTolerance = math.radians(5)      # Maximum yaw error (rad)
+PositionTolerance = 0.002           # Maximum position error (m)
 
 logger = logging.getLogger(__name__)
 
+def get_physics_scene(stage: Usd.Stage) -> Optional[PhysxSchema.PhysxSceneAPI]:
+    prim: Usd.Prim
+    for prim in stage.Traverse():
+        if prim.GetTypeName() == "PhysicsScene":
+            return PhysxSchema.PhysxSceneAPI(prim)
+    return None
+
 def contact_report_event_handler(contact_headers: ContactEventHeaderVector, contact_data: ContactDataVector):
+    # Prevent crashing pybind
+    try:
+        _contact_report_event_handler(contact_headers, contact_data)
+    except Exception as e:
+        logger.critical(f"Error in contact_report_event_handler: {e}")
+
+def _contact_report_event_handler(contact_headers: ContactEventHeaderVector, contact_data: ContactDataVector):
     stage: Usd.Stage = omni.usd.get_context().get_stage()
     if stage is None:
         return
 
+    physics_scene = get_physics_scene(stage)
+    if physics_scene is None:
+        logger.warning("No PhysxScene found")
+        return
+    sim_timestep = 1.0 / physics_scene.GetTimeStepsPerSecondAttr().Get()
+
     contact: ContactEventHeader
     for contact in contact_headers:
+        if contact.type == ContactEventType.CONTACT_LOST:
+            continue
         actor0: Sdf.Path = PhysicsSchemaTools.intToSdfPath(contact.actor0)
         actor1: Sdf.Path = PhysicsSchemaTools.intToSdfPath(contact.actor1)
         prim0 = stage.GetPrimAtPath(actor0.GetPrimPath())
@@ -23,7 +56,87 @@ def contact_report_event_handler(contact_headers: ContactEventHeaderVector, cont
         dim_attr1 = prim1.GetAttribute("lego_dimensions")
         if not dim_attr0 or not dim_attr1:
             continue
-        dim0: Gf.Vec3i = dim_attr0.Get()
-        dim1: Gf.Vec3i = dim_attr1.Get()
+        dim0: Gf.Vec3i = np.array(dim_attr0.Get())
+        dim1: Gf.Vec3i = np.array(dim_attr1.Get())
 
-        logger.info(f"{contact.type.name} between {prim0.GetPath()} ({dim0[0]}x{dim0[1]}x{dim0[2]}) and {prim1.GetPath()} ({dim1[0]}x{dim1[1]}x{dim1[2]})")
+        pose0 = omni.usd.get_world_transform_matrix(prim0)
+        pose1 = omni.usd.get_world_transform_matrix(prim1)
+        rel_pose: Gf.Matrix4d = pose0.GetInverse() * pose1
+        rel_z = rel_pose.ExtractTranslation()[2]
+
+        # Swap the order of the bricks, so prim0 is always the one offering studs
+        if rel_z < 0:
+            prim0, prim1 = prim1, prim0
+            dim0, dim1 = dim1, dim0
+            pose0, pose1 = pose1, pose0
+            rel_pose: Gf.Matrix4d = pose0.GetInverse() * pose1
+            rel_z = rel_pose.ExtractTranslation()[2]
+        # Delete other variables so we don't accidentally use them
+        del actor0, actor1, dim_attr0, dim_attr1
+
+        # The height of the first brick
+        height0 = dim0[2] * lego_schemes.PlateHeight
+
+        # The distance between the bricks, must be within a threshold to triger assembly
+        # Can be negative if penetration occurs
+        rel_distance = rel_z - height0
+
+        # The angle between the z-axis of the first brick and the z-axis of the second brick
+        # Must be within a threshold to triger assembly
+        rel_z_angle = math.acos(rel_pose[2,2])
+
+        impulse = np.zeros(3)
+        contact_pt: ContactData
+        for contact_pt in contact_data[contact.contact_data_offset:contact.contact_data_offset+contact.num_contact_data]:
+            impulse += contact_pt.impulse
+        # The contact force along the z-axis of the first brick
+        frc_prj = np.abs(np.dot(impulse, np.array(pose0)[:3,2])) / sim_timestep
+
+        # Angle between the x-axis of the first brick and the x-axis of the second brick
+        rel_yaw = math.atan2(rel_pose[1,0], rel_pose[0,0])
+        # Expected angle after assembly, can be -pi, -pi/2, 0, pi/2, pi
+        snapped_yaw = round(rel_yaw / (math.pi/2)) * (math.pi/2)
+        # Error withing [-pi/4, pi/4]
+        yaw_err = rel_yaw - snapped_yaw
+
+        # Relative position of the second brick in studs
+        p0 = np.array(rel_pose.ExtractTranslation()[:2]) / lego_schemes.BrickLength + (dim0[:2] - np.array(rel_pose)[:2,:2] @ dim1[:2]) / 2 
+        p0_snapped = np.round(p0).astype(int)
+        R_snapped = np.array([[np.cos(snapped_yaw), -np.sin(snapped_yaw)], [np.sin(snapped_yaw), np.cos(snapped_yaw)]])
+        p1_snapped = np.round(p0 + R_snapped @ dim1[:2]).astype(int)
+        p_err = p0 - p0_snapped
+
+        overlap_x = max(0, min(dim0[0], max(p0_snapped[0], p1_snapped[0])) - max(0, min(p0_snapped[0], p1_snapped[0])))
+        overlap_y = max(0, min(dim0[1], max(p0_snapped[1], p1_snapped[1])) - max(0, min(p0_snapped[1], p1_snapped[1])))
+        overlap_area = overlap_x * overlap_y
+
+        if rel_distance > DistanceTolerance:
+            status = "exceeding distance tolerance"
+        elif rel_distance < -MaxPenetration:
+            status = "penetrating too much"
+        elif rel_z_angle > ZAngleTolerance:
+            status = "exceeding z-angle tolerance"
+        elif abs(yaw_err) > YawTolerance:
+            status = "exceeding yaw tolerance"
+        elif np.linalg.norm(p_err) * lego_schemes.BrickLength > PositionTolerance:
+            status = "exceeding position tolerance"
+        elif overlap_area <= 0:
+            status = "no overlap"
+        elif frc_prj < RequiredForce:
+            status = "insufficient force"
+        else:
+            status = "assembly"
+
+        logger.info(
+            f"Contact between {prim0.GetPath()} ({dim0[0]}x{dim0[1]}x{dim0[2]}) "
+            f"and {prim1.GetPath()} ({dim1[0]}x{dim1[1]}x{dim1[2]}), "
+            f"distance={rel_distance:.3f} m, "
+            f"z-angle={math.degrees(rel_z_angle):.3f} deg, "
+            f"force={frc_prj:.3f} N, "
+            f"p_0=({p0_snapped[0]}, {p0_snapped[1]}), "
+            f"p_1=({p1_snapped[0]}, {p1_snapped[1]}), "
+            f"p_err=({p_err[0]:.3f}, {p_err[1]:.3f}), "
+            f"rel_yaw={math.degrees(snapped_yaw):.3f} ({math.degrees(yaw_err):.3f}) deg, "
+            f"overlap={overlap_x}x{overlap_y}, "
+            f"status: {status}"
+        )
