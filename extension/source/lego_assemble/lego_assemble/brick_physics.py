@@ -11,7 +11,7 @@ from . import lego_schemes
 DistanceTolerance = 0.001           # Maximum distance between bricks (m)
 MaxPenetration = 0.005              # Maximum penetration between bricks (m), penetration can happen due to simulation inaccuracies
 ZAngleTolerance = np.radians(5)     # Maximum angle between z-axis of bricks (rad)
-RequiredForce = 0.1                 # Minimum clutch power (N)
+RequiredForce = 1.0                 # Minimum clutch power (N)
 YawTolerance = np.radians(5)        # Maximum yaw error (rad)
 PositionTolerance = 0.002           # Maximum position error (m)
 
