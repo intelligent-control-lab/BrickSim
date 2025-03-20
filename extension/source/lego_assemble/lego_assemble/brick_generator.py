@@ -34,7 +34,7 @@ def build_brick(stage: Usd.Stage, path: str, dimensions: Tuple[int, int, int], c
     UsdGeom.XformCommonAPI(body).SetScale(real_dimensions)
     UsdGeom.XformCommonAPI(body).SetTranslate((0, 0, real_dimensions[2]/2))
     physx_utils.setCollider(body.GetPrim())
-    UsdPhysics.MassAPI.Apply(body.GetPrim()).CreateDensityAttr(lego_schemes.Density)
+    UsdPhysics.MassAPI.Apply(body.GetPrim()).CreateMassAttr(lego_schemes.compute_mass(dimensions))
 
     for i in range(dimensions[0]):
         for j in range(dimensions[1]):

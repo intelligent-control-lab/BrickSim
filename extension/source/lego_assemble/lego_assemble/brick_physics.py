@@ -2,9 +2,8 @@ import logging
 import omni.usd
 import omni.physx
 import numpy as np
-import omni.physx.scripts.physicsUtils as physicsUtils
 from typing import Optional
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, PhysxSchema, PhysicsSchemaTools
+from pxr import Gf, Sdf, Usd, UsdPhysics, PhysxSchema, PhysicsSchemaTools
 from omni.physx.bindings._physx import ContactEventHeaderVector, ContactDataVector, ContactEventHeader, ContactEventType, ContactData
 from . import lego_schemes
 
@@ -110,16 +109,6 @@ def _contact_report_event_handler(contact_headers: ContactEventHeaderVector, con
         overlap_y = max(0, min(dim0[1], max(p0_snapped[1], p1_snapped[1])) - max(0, min(p0_snapped[1], p1_snapped[1])))
         overlap_area = overlap_x * overlap_y
 
-        assemble_xy = (p0_snapped + (R_snapped @ dim1[:2] - dim0[:2]) / 2) * lego_schemes.BrickLength
-        assemble_tr = np.array([
-            [R_snapped[0,0], R_snapped[0,1], 0, assemble_xy[0]  ],
-            [R_snapped[1,0], R_snapped[1,1], 0, assemble_xy[1]  ],
-            [0,              0,              1, height0         ],
-            [0,              0,              0, 1               ],
-        ])
-        parent_pose1= np.array(UsdGeom.Xformable(prim1).ComputeParentToWorldTransform(Usd.TimeCode.Default())).T
-        desired_tr = np.linalg.inv(parent_pose1) @ pose0 @ assemble_tr
-
         if rel_distance > DistanceTolerance:
             status = "exceeding distance tolerance"
         elif rel_distance < -MaxPenetration:
@@ -135,15 +124,24 @@ def _contact_report_event_handler(contact_headers: ContactEventHeaderVector, con
         elif frc_prj < RequiredForce:
             status = "insufficient force"
         else:
-            physicsUtils.set_or_add_translate_op(prim1, desired_tr[:3,3].tolist())
-            physicsUtils.set_or_add_orient_op(prim1, Gf.Matrix3d(desired_tr[:3,:3].T).ExtractRotation().GetQuat())
             joint_path = f"{prim0.GetPath()}_Conn_{prim1.GetPath().name}"
             if stage.GetPrimAtPath(joint_path).IsValid():
                 status = "already assembled"
             else:
+                assemble_xy = (p0_snapped + (R_snapped @ dim1[:2] - dim0[:2]) / 2) * lego_schemes.BrickLength
+                assemble_tr = np.array([
+                    [R_snapped[0,0], R_snapped[0,1], 0, assemble_xy[0]  ],
+                    [R_snapped[1,0], R_snapped[1,1], 0, assemble_xy[1]  ],
+                    [0,              0,              1, height0         ],
+                    [0,              0,              0, 1               ],
+                ])
+                assemble_tr_gf = Gf.Matrix4f(assemble_tr.T)
+
                 joint = UsdPhysics.FixedJoint.Define(stage, joint_path)
                 joint.CreateBody0Rel().AddTarget(prim0.GetPath())
                 joint.CreateBody1Rel().AddTarget(prim1.GetPath())
+                joint.CreateLocalPos0Attr().Set(assemble_tr_gf.ExtractTranslation())
+                joint.CreateLocalRot0Attr().Set(assemble_tr_gf.ExtractRotationQuat())
                 status = "assembly"
 
         logger.info(

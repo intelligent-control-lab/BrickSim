@@ -282,3 +282,6 @@ def parse_color(name: str):
 
 def to_real_dimensions(studs: Tuple[int, int, int]):
     return [studs[0] * BrickLength, studs[1] * BrickLength, studs[2] * PlateHeight]
+
+def compute_mass(studs: Tuple[int, int, int]):
+    return studs[0] * studs[1] * studs[2] * BrickLength * BrickLength * PlateHeight * Density
