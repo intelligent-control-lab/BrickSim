@@ -1,0 +1,575 @@
+[
+  {
+    "children": [
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "dock_id": 9,
+                    "height": 914.0,
+                    "position_x": 0.0,
+                    "position_y": 26.0,
+                    "selected_in_dock": false,
+                    "title": "Main ToolBar",
+                    "visible": true,
+                    "width": 44.0
+                  }
+                ],
+                "dock_id": 9,
+                "position": "LEFT"
+              },
+              {
+                "children": [
+                  {
+                    "children": [
+                      {
+                        "dock_id": 7,
+                        "dock_tab_bar_enabled": true,
+                        "dock_tab_bar_visible": false,
+                        "height": 914.0,
+                        "position_x": 48.0,
+                        "position_y": 26.0,
+                        "selected_in_dock": true,
+                        "title": "Viewport",
+                        "visible": true,
+                        "width": 1689.0
+                      }
+                    ],
+                    "dock_id": 7,
+                    "position": "LEFT"
+                  },
+                  {
+                    "children": [
+                      {
+                        "dock_id": 8,
+                        "height": 914.0,
+                        "position_x": 1741.0,
+                        "position_y": 26.0,
+                        "selected_in_dock": false,
+                        "title": "Physics Authoring",
+                        "visible": true,
+                        "width": 48.0
+                      }
+                    ],
+                    "dock_id": 8,
+                    "position": "RIGHT"
+                  }
+                ],
+                "dock_id": 10,
+                "position": "RIGHT"
+              }
+            ],
+            "dock_id": 5,
+            "position": "TOP"
+          },
+          {
+            "children": [
+              {
+                "dock_id": 6,
+                "height": 393.0,
+                "position_x": 704.0,
+                "position_y": 434.0,
+                "selected_in_dock": false,
+                "title": "Isaac Sim Assets [Beta]",
+                "visible": true,
+                "width": 1789.0
+              },
+              {
+                "dock_id": 6,
+                "height": 393.0,
+                "position_x": 0.0,
+                "position_y": 944.0,
+                "selected_in_dock": false,
+                "title": "Content",
+                "visible": true,
+                "width": 1789.0
+              },
+              {
+                "dock_id": 6,
+                "height": 393.0,
+                "position_x": 0.0,
+                "position_y": 937.0,
+                "selected_in_dock": false,
+                "title": "Console",
+                "visible": true,
+                "width": 1789.0
+              },
+              {
+                "dock_id": 6,
+                "dock_tab_bar_enabled": true,
+                "dock_tab_bar_visible": true,
+                "height": 393.0,
+                "position_x": 0.0,
+                "position_y": 944.0,
+                "selected_in_dock": true,
+                "title": "Simulation Data Visualizer",
+                "visible": true,
+                "width": 1789.0
+              },
+              {
+                "dock_id": 6,
+                "height": 393.0,
+                "position_x": 0.0,
+                "position_y": 944.0,
+                "selected_in_dock": false,
+                "title": "LEGO Assemble",
+                "visible": true,
+                "width": 1789.0
+              }
+            ],
+            "dock_id": 6,
+            "position": "BOTTOM"
+          }
+        ],
+        "dock_id": 1,
+        "position": "LEFT"
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "dock_id": 3,
+                "dock_tab_bar_enabled": true,
+                "dock_tab_bar_visible": true,
+                "height": 654.0,
+                "position_x": 1793.0,
+                "position_y": 26.0,
+                "selected_in_dock": true,
+                "title": "Stage",
+                "visible": true,
+                "width": 767.0
+              },
+              {
+                "dock_id": 3,
+                "height": 654.0,
+                "position_x": 897.0,
+                "position_y": 26.0,
+                "selected_in_dock": false,
+                "title": "Layer",
+                "visible": true,
+                "width": 767.0
+              },
+              {
+                "dock_id": 3,
+                "height": 654.0,
+                "position_x": 60.0,
+                "position_y": 60.0,
+                "selected_in_dock": false,
+                "title": "Render Settings",
+                "visible": true,
+                "width": 767.0
+              }
+            ],
+            "dock_id": 3,
+            "position": "TOP"
+          },
+          {
+            "children": [
+              {
+                "dock_id": 4,
+                "dock_tab_bar_enabled": true,
+                "dock_tab_bar_visible": true,
+                "height": 653.0,
+                "position_x": 1793.0,
+                "position_y": 684.0,
+                "selected_in_dock": true,
+                "title": "Property",
+                "visible": true,
+                "width": 767.0
+              },
+              {
+                "dock_id": 4,
+                "height": 653.0,
+                "position_x": 897.0,
+                "position_y": 684.0,
+                "selected_in_dock": false,
+                "title": "Semantics Schema Editor",
+                "visible": true,
+                "width": 767.0
+              },
+              {
+                "dock_id": 4,
+                "height": 653.0,
+                "position_x": 60.0,
+                "position_y": 60.0,
+                "selected_in_dock": false,
+                "title": "Synthetic Data Recorder",
+                "visible": true,
+                "width": 767.0
+              }
+            ],
+            "dock_id": 4,
+            "position": "BOTTOM"
+          }
+        ],
+        "dock_id": 2,
+        "position": "RIGHT"
+      }
+    ],
+    "dock_id": 3358485147
+  },
+  {
+    "dock_id": 0,
+    "height": 50.0,
+    "position_x": 425.0,
+    "position_y": 874.0,
+    "selected_in_dock": false,
+    "title": "da2d32ce-05be-11f0-8000-50ebf64a61a1",
+    "visible": false,
+    "width": 400.0
+  },
+  {
+    "dock_id": 0,
+    "height": 50.0,
+    "position_x": 425.0,
+    "position_y": 874.0,
+    "selected_in_dock": false,
+    "title": "f04c526e-05bf-11f0-8000-50ebf64a61a1",
+    "visible": false,
+    "width": 400.0
+  },
+  {
+    "dock_id": 0,
+    "height": 450.0,
+    "position_x": 100.0,
+    "position_y": 460.0,
+    "selected_in_dock": false,
+    "title": "Open File",
+    "visible": false,
+    "width": 1080.0
+  },
+  {
+    "dock_id": 0,
+    "height": 50.0,
+    "position_x": 425.0,
+    "position_y": 874.0,
+    "selected_in_dock": false,
+    "title": "c0ac5cc4-05c0-11f0-8000-50ebf64a61a1",
+    "visible": false,
+    "width": 400.0
+  },
+  {
+    "dock_id": 0,
+    "height": 50.0,
+    "position_x": 425.0,
+    "position_y": 874.0,
+    "selected_in_dock": false,
+    "title": "eb477c16-05c0-11f0-8000-50ebf64a61a1",
+    "visible": false,
+    "width": 400.0
+  },
+  {
+    "dock_id": 0,
+    "height": 50.0,
+    "position_x": 425.0,
+    "position_y": 874.0,
+    "selected_in_dock": false,
+    "title": "02e2f620-05c1-11f0-8000-50ebf64a61a1",
+    "visible": false,
+    "width": 400.0
+  },
+  {
+    "dock_id": 0,
+    "height": 450.0,
+    "position_x": 100.0,
+    "position_y": 460.0,
+    "selected_in_dock": false,
+    "title": "Select Reference...",
+    "visible": false,
+    "width": 1080.0
+  },
+  {
+    "dock_id": 0,
+    "height": 290.0,
+    "position_x": 55.0,
+    "position_y": 100.0,
+    "selected_in_dock": false,
+    "title": "Simulation Settings",
+    "visible": false,
+    "width": 470.0
+  },
+  {
+    "dock_id": 0,
+    "height": 600.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Add Attribute...",
+    "visible": false,
+    "width": 400.0
+  },
+  {
+    "dock_id": 0,
+    "height": 500.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "OmniGraph Toolkit",
+    "visible": false,
+    "width": 800.0
+  },
+  {
+    "dock_id": 0,
+    "height": 500.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Lula Test Widget",
+    "visible": false,
+    "width": 600.0
+  },
+  {
+    "dock_id": 0,
+    "height": 600.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Replicator YAML",
+    "visible": false,
+    "width": 400.0
+  },
+  {
+    "dock_id": 0,
+    "height": 400.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Collision Groups Filtering Matrix",
+    "visible": false,
+    "width": 750.0
+  },
+  {
+    "dock_id": 0,
+    "height": 600.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Physics Stage Settings",
+    "visible": false,
+    "width": 400.0
+  },
+  {
+    "dock_id": 0,
+    "height": 600.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Physics Demo Scenes",
+    "visible": false,
+    "width": 960.0
+  },
+  {
+    "dock_id": 0,
+    "height": 590.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "PhysX Vehicle Wizard",
+    "visible": false,
+    "width": 630.0
+  },
+  {
+    "dock_id": 0,
+    "height": 600.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "SupportUI Settings",
+    "visible": false,
+    "width": 400.0
+  },
+  {
+    "dock_id": 0,
+    "height": 500.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "URDF Importer",
+    "visible": false,
+    "width": 400.0
+  },
+  {
+    "dock_id": 0,
+    "height": 600.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Select output Folder",
+    "visible": false,
+    "width": 1000.0
+  },
+  {
+    "dock_id": 0,
+    "height": 500.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Camera Inspector",
+    "visible": false,
+    "width": 500.0
+  },
+  {
+    "dock_id": 0,
+    "height": 500.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Lula Robot Description Editor",
+    "visible": false,
+    "width": 600.0
+  },
+  {
+    "dock_id": 0,
+    "height": 400.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Block World Generator",
+    "visible": false,
+    "width": 600.0
+  },
+  {
+    "dock_id": 0,
+    "height": 500.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Generate Extension Templates",
+    "visible": false,
+    "width": 600.0
+  },
+  {
+    "dock_id": 0,
+    "height": 500.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Gain Tuner",
+    "visible": false,
+    "width": 600.0
+  },
+  {
+    "dock_id": 0,
+    "height": 500.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Grasp Editor",
+    "visible": false,
+    "width": 600.0
+  },
+  {
+    "dock_id": 0,
+    "height": 400.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Occupancy Map",
+    "visible": false,
+    "width": 600.0
+  },
+  {
+    "dock_id": 0,
+    "height": 400.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Mesh Merge Tool",
+    "visible": false,
+    "width": 600.0
+  },
+  {
+    "dock_id": 0,
+    "height": 500.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Robot Assembler",
+    "visible": false,
+    "width": 600.0
+  },
+  {
+    "dock_id": 0,
+    "height": 0.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Image Search",
+    "visible": false,
+    "width": 400.0
+  },
+  {
+    "dock_id": 0,
+    "height": 0.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Search Options",
+    "visible": false,
+    "width": 400.0
+  },
+  {
+    "dock_id": 0,
+    "height": 0.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "BeginSearch",
+    "visible": false,
+    "width": 400.0
+  },
+  {
+    "dock_id": 0,
+    "height": 400.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Physics API Editor",
+    "visible": false,
+    "width": 600.0
+  },
+  {
+    "dock_id": 0,
+    "height": 600.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Statistics",
+    "visible": false,
+    "width": 600.0
+  },
+  {
+    "dock_id": 0,
+    "height": 600.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Viewport/Viewport0 Sensors Output ",
+    "visible": false,
+    "width": 800.0
+  },
+  {
+    "dock_id": 0,
+    "height": 400.0,
+    "position_x": 3.4028234663852886e+38,
+    "position_y": 3.4028234663852886e+38,
+    "selected_in_dock": false,
+    "title": "Select Targets",
+    "visible": false,
+    "width": 400.0
+  },
+  {
+    "dock_id": 0,
+    "height": 200.0,
+    "position_x": 770.0,
+    "position_y": 1045.0,
+    "selected_in_dock": false,
+    "title": "Checkpoint Widget Window",
+    "visible": false,
+    "width": 450.0
+  }
+]

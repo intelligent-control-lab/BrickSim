@@ -33,7 +33,7 @@ class LegoExtension(omni.ext.IExt):
                 with omni.ui.HStack(spacing=10):
                     omni.ui.Label("Color:", width=100)
                     self._color_options = list(lego_schemes.Colors.keys())
-                    self._color_combo = omni.ui.ComboBox(0, *self._color_options)
+                    self._color_combo = omni.ui.ComboBox(self._color_options.index("Pink"), *self._color_options)
                 with omni.ui.HStack(spacing=10):
                     omni.ui.Label("Base Path:", width=100)
                     self._base_path_field = omni.ui.StringField()
@@ -45,11 +45,11 @@ class LegoExtension(omni.ext.IExt):
                     self._pos_y_field = omni.ui.FloatField()
                     self._pos_y_field.model.set_value(0)
                     self._pos_z_field = omni.ui.FloatField()
-                    self._pos_z_field.model.set_value(0.5)
+                    self._pos_z_field.model.set_value(0.1)
                 with omni.ui.HStack(spacing=10):
                     omni.ui.Label("Use Cache:", width=100)
                     self._use_cache_checkbox = omni.ui.CheckBox()
-                    self._use_cache_checkbox.model.set_value(False)
+                    self._use_cache_checkbox.model.set_value(True)
                 omni.ui.Button("Add Brick", clicked_fn=self.on_add_brick)
 
     def on_shutdown(self):
@@ -75,4 +75,5 @@ class LegoExtension(omni.ext.IExt):
         path = f"{base_path}{uniquifier}"
         brick = create_brick(stage, path, dimensions=(width, length, height), color_name=color, use_cache=use_cache)
         UsdGeom.XformCommonAPI(brick).SetTranslate((pos_x, pos_y, pos_z))
-        logging.info(f"Added brick {path} ({width}x{length}x{height}) {color}")
+        omni.physx.get_physx_simulation_interface().flush_changes()
+        logger.info(f"Added brick {path} ({width}x{length}x{height}) {color}")

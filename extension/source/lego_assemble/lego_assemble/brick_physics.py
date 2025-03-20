@@ -2,8 +2,9 @@ import logging
 import omni.usd
 import omni.physx
 import numpy as np
+import omni.physx.scripts.physicsUtils as physicsUtils
 from typing import Optional
-from pxr import Gf, Sdf, Usd, UsdPhysics, PhysxSchema, PhysicsSchemaTools
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, PhysxSchema, PhysicsSchemaTools
 from omni.physx.bindings._physx import ContactEventHeaderVector, ContactDataVector, ContactEventHeader, ContactEventType, ContactData
 from . import lego_schemes
 
@@ -40,6 +41,8 @@ def _contact_report_event_handler(contact_headers: ContactEventHeaderVector, con
         logger.warning("No PhysxScene found")
         return
     sim_timestep = 1.0 / physics_scene.GetTimeStepsPerSecondAttr().Get()
+
+    scene_updated = False
 
     contact: ContactEventHeader
     for contact in contact_headers:
@@ -78,7 +81,7 @@ def _contact_report_event_handler(contact_headers: ContactEventHeaderVector, con
 
         # The distance between the bricks, must be within a threshold to triger assembly
         # Can be negative if penetration occurs
-        rel_distance = rel_z - height0
+        rel_distance = rel_z - (height0 + lego_schemes.StudHeight)
 
         # The angle between the z-axis of the first brick and the z-axis of the second brick
         # Must be within a threshold to triger assembly
@@ -137,11 +140,21 @@ def _contact_report_event_handler(contact_headers: ContactEventHeaderVector, con
                 ])
                 assemble_tr_gf = Gf.Matrix4f(assemble_tr.T)
 
+                parent_pose1 = np.array(UsdGeom.Xformable(prim1).ComputeParentToWorldTransform(Usd.TimeCode.Default())).T
+                assemble_rel_pose1 = np.linalg.inv(parent_pose1) @ pose0 @ assemble_tr
+                assemble_rel_pose1_gf = Gf.Matrix4d(assemble_rel_pose1.T)
+
+                physicsUtils.set_or_add_translate_op(prim1, assemble_rel_pose1_gf.ExtractTranslation())
+                physicsUtils.set_or_add_orient_op(prim1, assemble_rel_pose1_gf.ExtractRotationQuat())
+
                 joint = UsdPhysics.FixedJoint.Define(stage, joint_path)
                 joint.CreateBody0Rel().AddTarget(prim0.GetPath())
                 joint.CreateBody1Rel().AddTarget(prim1.GetPath())
                 joint.CreateLocalPos0Attr().Set(assemble_tr_gf.ExtractTranslation())
                 joint.CreateLocalRot0Attr().Set(assemble_tr_gf.ExtractRotationQuat())
+                UsdPhysics.FilteredPairsAPI.Apply(prim0.GetPrim()).GetFilteredPairsRel().AddTarget(prim1.GetPath())
+
+                scene_updated = True
                 status = "assembly"
 
         logger.info(
@@ -157,6 +170,9 @@ def _contact_report_event_handler(contact_headers: ContactEventHeaderVector, con
             f"overlap={overlap_x}x{overlap_y}, "
             f"status: {status}"
         )
+
+    if scene_updated:
+        omni.physx.get_physx_simulation_interface().flush_changes()
 
 class LegoPhysicsCallback:
     def __init__(self):
