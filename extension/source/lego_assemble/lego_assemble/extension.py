@@ -16,6 +16,7 @@ class LegoExtension(omni.ext.IExt):
         self.lego_physics_callback = LegoPhysicsCallback()
 
         self._window = omni.ui.Window("LEGO Assemble", width=300, height=300)
+        self._window.deferred_dock_in("Console")
         with self._window.frame:
             with omni.ui.VStack(height=0, spacing=5):
                 with omni.ui.HStack(spacing=10):
