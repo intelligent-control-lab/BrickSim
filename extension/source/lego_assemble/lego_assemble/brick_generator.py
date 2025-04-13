@@ -5,6 +5,7 @@ import omni.physx.scripts.utils as physx_utils
 from typing import Tuple
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, PhysxSchema
 from . import lego_schemes
+from .physx_utils import refresh_physx_simulation
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ def build_brick(stage: Usd.Stage, path: str, dimensions: Tuple[int, int, int], c
 def create_brick_from_reference(stage: Usd.Stage, path: str, filepath: str):
     brick: UsdGeom.Xform = UsdGeom.Xform.Define(stage, path)
     brick.GetPrim().GetReferences().AddReference(filepath, "/Brick")
-    omni.physx.get_physx_interface().release_physics_objects()
+    refresh_physx_simulation()
     return brick
 
 def build_brick_cache(dimensions: Tuple[int, int, int], color_name: str, filepath: str):

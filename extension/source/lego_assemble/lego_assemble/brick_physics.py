@@ -7,9 +7,11 @@ import omni.kit.app
 import numpy as np
 import omni.physx.scripts.physicsUtils as physicsUtils
 from typing import Optional
+from scipy.spatial.transform import Rotation
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, PhysxSchema, PhysicsSchemaTools
 from omni.physx.bindings._physx import ContactEventHeaderVector, ContactDataVector, ContactEventHeader, ContactEventType, ContactData
 from . import lego_schemes
+from .physx_utils import refresh_physx_simulation
 
 DistanceTolerance = 0.001           # Maximum distance between bricks (m)
 MaxPenetration = 0.005              # Maximum penetration between bricks (m), penetration can happen due to simulation inaccuracies
@@ -27,36 +29,42 @@ def get_physics_scene(stage: Usd.Stage) -> Optional[PhysxSchema.PhysxSceneAPI]:
             return PhysxSchema.PhysxSceneAPI(prim)
     return None
 
+def get_rigidbody_transform(path: str) -> Optional[np.ndarray]:
+    result = omni.physx.get_physx_interface().get_rigidbody_transformation(path)
+    if not result["ret_val"]:
+        return None
+    position = result["position"]
+    rotation = result["rotation"]
+    transform = np.eye(4)
+    transform[:3, 3] = position
+    transform[:3, :3] = Rotation.from_quat(rotation).as_matrix()
+    return transform
+
 class LegoPhysicsCallback:
     def __init__(self):
-        self.physx_needs_reset = False
-        self.contact_report_event_sub = omni.physx.get_physx_simulation_interface().subscribe_contact_report_events(self.contact_report_event_handler)
         update_bus: carb.events.IEventStream = omni.kit.app.get_app().get_update_event_stream()
         self.update_sub = update_bus.create_subscription_to_push(self.on_update)
 
     def on_update(self, event: carb.events.IEvent):
-        if self.physx_needs_reset:
-            omni.physx.get_physx_interface().release_physics_objects()
-            self.physx_needs_reset = False
+        contact_headers, contact_data = omni.physx.get_physx_simulation_interface().get_contact_report()
+        assembly_triggered = self.handle_contacts(contact_headers, contact_data)
+        if assembly_triggered:
+            refresh_physx_simulation()
 
-    def contact_report_event_handler(self, contact_headers: ContactEventHeaderVector, contact_data: ContactDataVector):
-        # Prevent crashing pybind
-        try:
-            self._contact_report_event_handler(contact_headers, contact_data)
-        except Exception as e:
-            logger.critical(f"Error in contact_report_event_handler: {e}")
+    def handle_contacts(self, contact_headers: ContactEventHeaderVector, contact_data: ContactDataVector) -> bool:
+        if not omni.physx.get_physx_interface().is_running():
+            return False
 
-    def _contact_report_event_handler(self, contact_headers: ContactEventHeaderVector, contact_data: ContactDataVector):
         stage: Usd.Stage = omni.usd.get_context().get_stage()
         if stage is None:
-            return
+            return False
 
         physics_scene = get_physics_scene(stage)
         if physics_scene is None:
-            logger.warning("No PhysxScene found")
-            return
+            return False
         sim_timestep = 1.0 / physics_scene.GetTimeStepsPerSecondAttr().Get()
 
+        assembly_triggered = False
         contact: ContactEventHeader
         for contact in contact_headers:
             if contact.type == ContactEventType.CONTACT_LOST:
@@ -74,8 +82,8 @@ class LegoPhysicsCallback:
             dim0 = np.array(dim_attr0.Get(), dtype=int)
             dim1 = np.array(dim_attr1.Get(), dtype=int)
 
-            pose0 = np.array(omni.usd.get_world_transform_matrix(prim0)).T
-            pose1 = np.array(omni.usd.get_world_transform_matrix(prim1)).T
+            pose0 = get_rigidbody_transform(actor0.pathString)
+            pose1 = get_rigidbody_transform(actor1.pathString)
             rel_pose = np.linalg.inv(pose0) @ pose1
             rel_z = rel_pose[2,3]
 
@@ -153,12 +161,13 @@ class LegoPhysicsCallback:
                     ])
                     assemble_tr_gf = Gf.Matrix4f(assemble_tr.T)
 
-                    parent_pose1 = np.array(UsdGeom.Xformable(prim1).ComputeParentToWorldTransform(Usd.TimeCode.Default())).T
+                    xformable1 = UsdGeom.Xformable(prim1)
+                    parent_pose1 = np.array(xformable1.ComputeParentToWorldTransform(Usd.TimeCode.Default())).T
                     assemble_rel_pose1 = np.linalg.inv(parent_pose1) @ pose0 @ assemble_tr
                     assemble_rel_pose1_gf = Gf.Matrix4d(assemble_rel_pose1.T)
 
-                    physicsUtils.set_or_add_translate_op(prim1, assemble_rel_pose1_gf.ExtractTranslation())
-                    physicsUtils.set_or_add_orient_op(prim1, assemble_rel_pose1_gf.ExtractRotationQuat())
+                    physicsUtils.set_or_add_translate_op(xformable1, assemble_rel_pose1_gf.ExtractTranslation())
+                    physicsUtils.set_or_add_orient_op(xformable1, assemble_rel_pose1_gf.ExtractRotationQuat())
 
                     joint = UsdPhysics.FixedJoint.Define(stage, joint_path)
                     joint.CreateBody0Rel().AddTarget(prim0.GetPath())
@@ -166,7 +175,7 @@ class LegoPhysicsCallback:
                     joint.CreateLocalPos0Attr().Set(assemble_tr_gf.ExtractTranslation())
                     joint.CreateLocalRot0Attr().Set(assemble_tr_gf.ExtractRotationQuat())
 
-                    self.physx_needs_reset = True
+                    assembly_triggered = True
                     status = "assembly"
 
             logger.info(
@@ -182,7 +191,7 @@ class LegoPhysicsCallback:
                 f"overlap={overlap_x}x{overlap_y}, "
                 f"status: {status}"
             )
+        return assembly_triggered
 
     def unsubscribe(self):
-        self.contact_report_event_sub.unsubscribe()
         self.update_sub.unsubscribe()

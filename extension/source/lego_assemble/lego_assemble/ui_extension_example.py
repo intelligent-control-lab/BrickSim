@@ -2,7 +2,8 @@ import logging
 import omni.ext
 import omni.ui
 import omni.usd
-from pxr import Usd, UsdGeom
+import omni.physx.scripts.physicsUtils as physicsUtils
+from pxr import Usd
 from . import lego_schemes
 from .brick_generator import create_brick
 from .brick_physics import LegoPhysicsCallback
@@ -73,5 +74,5 @@ class LegoExtension(omni.ext.IExt):
             uniquifier += 1
         path = f"{base_path}{uniquifier}"
         brick = create_brick(stage, path, dimensions=(width, length, height), color_name=color, use_cache=use_cache)
-        UsdGeom.XformCommonAPI(brick).SetTranslate((pos_x, pos_y, pos_z))
+        physicsUtils.set_or_add_translate_op(brick, (pos_x, pos_y, pos_z))
         logger.info(f"Added brick {path} ({width}x{length}x{height}) {color}")
