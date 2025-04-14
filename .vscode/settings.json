@@ -4,6 +4,9 @@
         "**/.thumbs": true,
         "isaacsim": true,
     },
+    "files.associations": {
+        "*.kit": "ini",
+    },
     "python.analysis.autoSearchPaths": false,
     "python.analysis.languageServerMode": "light",
     "python.analysis.exclude": [
@@ -19,6 +22,8 @@
         "IsaacLab/source/isaaclab_tasks",
 
         "isaacsim/kit/kernel/py",
+
+        // find isaacsim/exts isaacsim/extscache isaacsim/extsPhysics isaacsim/extsUser isaacsim/kit/extscore -mindepth 1 -maxdepth 1 -type d | sort | awk '{ print "        \"" $0  "\"," }'
         "isaacsim/extscache/carb.audio-0.1.0+d02c707b.lx64.r.cp310",
         "isaacsim/extscache/carb.imaging.python-0.1.0+d02c707b.lx64.r.cp310",
         "isaacsim/extscache/carb.windowing.plugins-1.0.0+d02c707b.lx64.r",
@@ -568,6 +573,9 @@
         "isaacsim/extsPhysics/omni.usdphysics.ui",
         "isaacsim/extsPhysics/omni.usd.schema.forcefield",
         "isaacsim/extsPhysics/omni.usd.schema.physx",
+        "isaacsim/kit/extscore/omni.client.lib",
+        "isaacsim/kit/extscore/omni.kit.async_engine",
+        "isaacsim/kit/extscore/omni.kit.registry.nucleus",
 
     ]
 }
