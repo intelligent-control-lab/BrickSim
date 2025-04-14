@@ -4,3 +4,4 @@ outputs/
 .thumbs
 *.egg-info/
 __pycache__/
+/isaacsim/

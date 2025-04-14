@@ -2,11 +2,21 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Attach IsaacSim",
+            "name": "IsaacSim: Attach",
             "type": "debugpy",
             "request": "attach",
             "processId": "${command:pickProcess}",
             "justMyCode": false,
+        },
+        {
+            "name": "IsaacSim: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "python": "${workspaceFolder}/isaacsim/python.sh",
         }
     ]
 }
