@@ -13,7 +13,6 @@ import pxr.PhysxSchema as PhysxSchema
 from pxr.PhysicsSchemaTools._physicsSchemaTools import intToSdfPath
 from omni.physx.bindings._physx import ContactEventHeader, ContactEventType, ContactData
 from . import lego_schemes
-from .physx_utils import refresh_physx_simulation
 
 DistanceTolerance = 0.001           # Maximum distance between bricks (m)
 MaxPenetration = 0.005              # Maximum penetration between bricks (m), penetration can happen due to simulation inaccuracies
@@ -164,6 +163,9 @@ def handle_assembly_contacts():
                 joint.CreateLocalPos0Attr().Set(assemble_tr_gf.ExtractTranslation())
                 joint.CreateLocalRot0Attr().Set(assemble_tr_gf.ExtractRotationQuat())
 
+                filtered_pairs1 = UsdPhysics.FilteredPairsAPI.Apply(prim1)
+                filtered_pairs1.CreateFilteredPairsRel().AddTarget(prim0.GetPath())
+
                 status = "assembly"
                 assembly_events.append({
                     "brick0": prim0.GetPath().pathString,
@@ -205,8 +207,6 @@ class LegoPhysicsCallback:
                 f"p_1=({event['p1'][0]}, {event['p1'][1]}), "
                 f"yaw={np.degrees(event['yaw'])}"
             )
-        if assembly_events:
-            refresh_physx_simulation()
 
     def unsubscribe(self):
         self.update_sub.unsubscribe()
