@@ -1,37 +1,38 @@
-import os
-import logging
-import omni.physx
 import omni.physx.scripts.utils as physx_utils
+import pxr.PhysxSchema as PhysxSchema
 from typing import Tuple
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, PhysxSchema
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 from . import lego_schemes
-from .physx_utils import refresh_physx_simulation
-
-logger = logging.getLogger(__name__)
 
 def create_brick(stage: Usd.Stage, path: str, dimensions=(4,2,3), color_name="Black", use_cache=True):
-    if use_cache:
-        filepath = os.path.join(get_cache_dir(), f"{dimensions[0]}x{dimensions[1]}x{dimensions[2]}_{color_name}.usd")
-        if not os.path.exists(filepath):
-            build_brick_cache(dimensions, color_name, filepath)
-        return create_brick_from_reference(stage, path, filepath)
-    else:
-        return build_brick(stage, path, dimensions, color_name)
+    brick: UsdGeom.Xform = UsdGeom.Xform.Define(stage, path)
 
-def build_brick(stage: Usd.Stage, path: str, dimensions: Tuple[int, int, int], color_name: str):
+    if use_cache:
+        class_brick_prim_path = f"/__CLASS__/Brick_{dimensions[0]}x{dimensions[1]}x{dimensions[2]}_{color_name}"
+        class_brick_prim = stage.GetPrimAtPath(class_brick_prim_path)
+        if not class_brick_prim.IsValid():
+            class_brick_prim = stage.CreateClassPrim(class_brick_prim_path)
+            build_brick(stage, class_brick_prim, dimensions, color_name)
+        brick.GetPrim().GetInherits().AddInherit(class_brick_prim.GetPath())
+    else:
+        build_brick(stage, brick.GetPrim(), dimensions, color_name)
+
+    return brick
+
+def build_brick(stage: Usd.Stage, brick_prim: Usd.Prim, dimensions: Tuple[int, int, int], color_name: str):
+    brick_path: Sdf.Path = brick_prim.GetPath()
     color = lego_schemes.parse_color(color_name)
     real_dimensions = lego_schemes.to_real_dimensions(dimensions)
     collider_dimensions = [real_dimensions[0], real_dimensions[1], real_dimensions[2]+lego_schemes.StudHeight]
 
-    brick: UsdGeom.Xform = UsdGeom.Xform.Define(stage, path)
-    brick.GetPrim().CreateAttribute("lego_dimensions", Sdf.ValueTypeNames.Int3).Set(Gf.Vec3i(*dimensions))
-    brick.GetPrim().CreateAttribute("lego_color", Sdf.ValueTypeNames.String).Set(color_name)
-    Usd.ModelAPI(brick).SetKind("component")
-    physx_utils.setPhysics(brick.GetPrim(), kinematic=False)
-    contactReport = PhysxSchema.PhysxContactReportAPI.Apply(brick.GetPrim())
+    brick_prim.CreateAttribute("lego_dimensions", Sdf.ValueTypeNames.Int3).Set(Gf.Vec3i(*dimensions))
+    brick_prim.CreateAttribute("lego_color", Sdf.ValueTypeNames.String).Set(color_name)
+    Usd.ModelAPI(brick_prim).SetKind("component")
+    physx_utils.setPhysics(brick_prim, kinematic=False)
+    contactReport: PhysxSchema.PhysxContactReportAPI = PhysxSchema.PhysxContactReportAPI.Apply(brick_prim)
     contactReport.CreateThresholdAttr().Set(0.0)
 
-    collider: UsdGeom.Cube = UsdGeom.Cube.Define(stage, f"{path}/BodyCollider")
+    collider: UsdGeom.Cube = UsdGeom.Cube.Define(stage, brick_path.AppendChild("BodyCollider"))
     collider.CreateSizeAttr(1.0)
     collider.GetVisibilityAttr().Set(UsdGeom.Tokens.invisible)
     UsdGeom.XformCommonAPI(collider).SetScale(collider_dimensions)
@@ -39,7 +40,7 @@ def build_brick(stage: Usd.Stage, path: str, dimensions: Tuple[int, int, int], c
     physx_utils.setCollider(collider.GetPrim())
     UsdPhysics.MassAPI.Apply(collider.GetPrim()).CreateMassAttr(lego_schemes.compute_mass(dimensions))
 
-    body: UsdGeom.Cube = UsdGeom.Cube.Define(stage, f"{path}/Body")
+    body: UsdGeom.Cube = UsdGeom.Cube.Define(stage, brick_path.AppendChild("Body"))
     body.CreateSizeAttr(1.0)
     body.CreateDisplayColorAttr([color])
     UsdGeom.XformCommonAPI(body).SetScale(real_dimensions)
@@ -47,7 +48,7 @@ def build_brick(stage: Usd.Stage, path: str, dimensions: Tuple[int, int, int], c
 
     for i in range(dimensions[0]):
         for j in range(dimensions[1]):
-            stud: UsdGeom.Cylinder = UsdGeom.Cylinder.Define(stage, f"{path}/Stud_{i}_{j}")
+            stud: UsdGeom.Cylinder = UsdGeom.Cylinder.Define(stage, brick_path.AppendChild(f"Stud_{i}_{j}"))
             stud.CreateHeightAttr(1.0)
             stud.CreateDisplayColorAttr([color])
             x_offset = (i - (dimensions[0]-1)/2) * lego_schemes.BrickLength
@@ -55,23 +56,3 @@ def build_brick(stage: Usd.Stage, path: str, dimensions: Tuple[int, int, int], c
             z_offset = real_dimensions[2] + lego_schemes.StudHeight/2
             UsdGeom.XformCommonAPI(stud).SetTranslate((x_offset, y_offset, z_offset))
             UsdGeom.XformCommonAPI(stud).SetScale((lego_schemes.StudDiameter/2, lego_schemes.StudDiameter/2, lego_schemes.StudHeight))
-
-    return brick
-
-def create_brick_from_reference(stage: Usd.Stage, path: str, filepath: str):
-    brick: UsdGeom.Xform = UsdGeom.Xform.Define(stage, path)
-    brick.GetPrim().GetReferences().AddReference(filepath, "/Brick")
-    refresh_physx_simulation()
-    return brick
-
-def build_brick_cache(dimensions: Tuple[int, int, int], color_name: str, filepath: str):
-    logger.info(f"Writing brick USD: {filepath}")
-    stage: Usd.Stage = Usd.Stage.CreateInMemory("Brick")
-    UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
-    UsdGeom.SetStageMetersPerUnit(stage, 1.0)
-    brick = build_brick(stage, "/Brick", dimensions, color_name)
-    brick.GetPrim().SetInstanceable(True)
-    stage.Export(filepath)
-
-def get_cache_dir():
-    return os.path.join(os.getcwd(), "resources", "bricks")
