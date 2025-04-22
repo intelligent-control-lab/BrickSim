@@ -9,9 +9,10 @@
         "*.kit": "ini",
     },
     "python.analysis.autoSearchPaths": false,
+    "python.analysis.indexing": false,
     "python.analysis.exclude": [
-        "isaacsim/",
-        "IsaacLab/_isaac_sim",
+        "**/isaacsim/",
+        "**/IsaacLab/_isaac_sim",
     ],
     "python.analysis.extraPaths": [
         "extension/source/lego_assemble",

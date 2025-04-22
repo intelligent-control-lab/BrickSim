@@ -6,14 +6,26 @@ import omni.physx.scripts.physicsUtils as physicsUtils
 from pxr import Usd
 from . import lego_schemes
 from .brick_generator import create_brick
-from .brick_physics import LegoPhysicsCallback
+from .brick_physics_vectorized import BrickPhysicsInterface
 
-logger = logging.getLogger(__name__)
+_loggerr = logging.getLogger(__name__)
+
+_brick_physics_interface = None
+
+def get_brick_physics_interface() -> BrickPhysicsInterface:
+    """Get the BrickPhysicsInterface instance."""
+    global _brick_physics_interface
+    if _brick_physics_interface is None:
+        raise RuntimeError("BrickPhysicsInterface is not initialized.")
+    return _brick_physics_interface
 
 class LegoExtension(omni.ext.IExt):
 
     def on_startup(self, ext_id):
-        self.lego_physics_callback = LegoPhysicsCallback()
+        global _brick_physics_interface
+        assert _brick_physics_interface is None, "_brick_physics_interface already set"
+        self.brick_physics_interface = BrickPhysicsInterface()
+        _brick_physics_interface = self.brick_physics_interface
 
         self._window = omni.ui.Window("LEGO Assemble", width=300, height=300)
         self._window.deferred_dock_in("Console")
@@ -54,7 +66,10 @@ class LegoExtension(omni.ext.IExt):
                 omni.ui.Button("Add Brick", clicked_fn=self.on_add_brick)
 
     def on_shutdown(self):
-        self.lego_physics_callback.unsubscribe()
+        global _brick_physics_interface
+        assert _brick_physics_interface is not None, "_brick_physics_interface is none"
+        self.brick_physics_interface.destroy()
+        _brick_physics_interface = None
 
     def on_add_brick(self):
         width = self._dim_x_field.model.as_int
@@ -76,4 +91,5 @@ class LegoExtension(omni.ext.IExt):
         path = f"{base_path}{uniquifier}"
         brick = create_brick(stage, path, dimensions=(width, length, height), color_name=color, use_cache=use_cache)
         physicsUtils.set_or_add_translate_op(brick, (pos_x, pos_y, pos_z))
-        logger.info(f"Added brick {path} ({width}x{length}x{height}) {color}")
+        self.brick_physics_interface.mark_dirty()
+        _loggerr.info(f"Added brick {path} ({width}x{length}x{height}) {color}")

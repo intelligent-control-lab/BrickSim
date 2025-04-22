@@ -22,16 +22,18 @@ RequiredForce = 1.0                 # Minimum clutch power (N)
 YawTolerance = np.radians(5)        # Maximum yaw error (rad)
 PositionTolerance = 0.002           # Maximum position error (m)
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
-def get_physics_scene(stage: Usd.Stage) -> Optional[PhysxSchema.PhysxSceneAPI]:
+def _get_physics_scene(stage: Usd.Stage) -> Optional[PhysxSchema.PhysxSceneAPI]:
     prim: Usd.Prim
     for prim in stage.Traverse():
         if prim.GetTypeName() == "PhysicsScene":
             return PhysxSchema.PhysxSceneAPI(prim)
     return None
 
-def get_rigidbody_transform(physx: omni.physx.PhysX, path: str) -> Optional[np.ndarray]:
+#### Below is the legacy implementation of assembly detection ####
+
+def _get_rigidbody_transform(physx: omni.physx.PhysX, path: str) -> Optional[np.ndarray]:
     result = physx.get_rigidbody_transformation(path)
     if not result["ret_val"]:
         return None
@@ -42,19 +44,21 @@ def get_rigidbody_transform(physx: omni.physx.PhysX, path: str) -> Optional[np.n
     transform[:3, :3] = Rotation.from_quat(rotation).as_matrix()
     return transform
 
-def inv_se3(mat: np.ndarray) -> np.ndarray:
+def _inv_se3(mat: np.ndarray) -> np.ndarray:
     inv_mat = np.eye(4)
     inv_mat[:3, :3] = mat[:3, :3].T
     inv_mat[:3, 3] = -inv_mat[:3, :3] @ mat[:3, 3]
     return inv_mat
 
-def handle_assembly_contacts():
+def _handle_assembly_contacts():
     physx = omni.physx.get_physx_interface()
     if not physx.is_running():
         return []
 
     stage: Usd.Stage = omni.usd.get_context().get_stage()
-    physics_scene = get_physics_scene(stage)
+    if stage is None:
+        return []
+    physics_scene = _get_physics_scene(stage)
     if physics_scene is None:
         return []
     sim_timestep = 1.0 / physics_scene.GetTimeStepsPerSecondAttr().Get()
@@ -69,7 +73,7 @@ def handle_assembly_contacts():
         if not dim_attr.IsValid():
             return None
         dim = np.array(dim_attr.Get(), dtype=int)
-        pose = get_rigidbody_transform(physx, path)
+        pose = _get_rigidbody_transform(physx, path)
         if pose is None:
             return None
         return prim, dim, pose
@@ -87,7 +91,7 @@ def handle_assembly_contacts():
         prim0, dim0, pose0 = brick_data0
         prim1, dim1, pose1 = brick_data1
 
-        rel_pose = inv_se3(pose0) @ pose1
+        rel_pose = _inv_se3(pose0) @ pose1
         rel_z = rel_pose[2,3]
 
         # Swap the order of the bricks, so prim0 is always the one offering studs
@@ -95,7 +99,7 @@ def handle_assembly_contacts():
             prim0, prim1 = prim1, prim0
             dim0, dim1 = dim1, dim0
             pose0, pose1 = pose1, pose0
-            rel_pose = inv_se3(pose0) @ pose1
+            rel_pose = _inv_se3(pose0) @ pose1
             rel_z = rel_pose[2,3]
         # Delete other variables so we don't accidentally use them
         del brick_data0, brick_data1
@@ -173,7 +177,7 @@ def handle_assembly_contacts():
 
         xformable1 = UsdGeom.Xformable(prim1)
         parent_pose1 = np.array(xformable1.ComputeParentToWorldTransform(Usd.TimeCode.Default())).T
-        assemble_rel_pose1 = inv_se3(parent_pose1) @ pose0 @ assemble_tr
+        assemble_rel_pose1 = _inv_se3(parent_pose1) @ pose0 @ assemble_tr
         assemble_rel_pose1_gf = Gf.Matrix4d(assemble_rel_pose1.T)
 
         physicsUtils.set_or_add_translate_op(xformable1, assemble_rel_pose1_gf.ExtractTranslation())
@@ -213,15 +217,18 @@ def handle_assembly_contacts():
 
     return assembly_events
 
-class LegoPhysicsCallback:
-    def __init__(self):
+class BrickPhysicsInterface:
+    def __init__(self, *args, **kwargs):
         update_bus: carb.events.IEventStream = omni.kit.app.get_app().get_update_event_stream()
-        self.update_sub = update_bus.create_subscription_to_push(self.on_update)
+        self.update_sub = update_bus.create_subscription_to_push(self._on_update)
 
-    def on_update(self, event: carb.events.IEvent):
-        assembly_events = handle_assembly_contacts()
+    def mark_dirty(self):
+        pass
+
+    def _on_update(self, event: carb.events.IEvent):
+        assembly_events = _handle_assembly_contacts()
         for event in assembly_events:
-            logger.info(
+            _logger.info(
                 f"Assembly event: {event['brick0']} and {event['brick1']}, "
                 f"joint={event['joint']}, "
                 f"p_0=({event['p0'][0]}, {event['p0'][1]}), "
@@ -229,5 +236,5 @@ class LegoPhysicsCallback:
                 f"yaw={np.degrees(event['yaw'])}"
             )
 
-    def unsubscribe(self):
+    def destroy(self):
         self.update_sub.unsubscribe()
