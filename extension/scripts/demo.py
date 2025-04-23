@@ -107,7 +107,7 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, RigidObj
         # update buffers
         cone_object.update(sim_dt)
         # print the root position
-        if count % 50 == 0:
+        if count % 10 == 0:
             if uniquifier < 200:
                 uniquifier += 1
                 path = f"/World/Brick_{uniquifier}"

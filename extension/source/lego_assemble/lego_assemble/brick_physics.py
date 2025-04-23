@@ -1,4 +1,3 @@
-import carb
 import logging
 import carb.events
 import omni.usd
@@ -13,7 +12,7 @@ from pxr import Gf, Usd, UsdGeom, UsdPhysics
 import pxr.PhysxSchema as PhysxSchema
 from pxr.PhysicsSchemaTools._physicsSchemaTools import intToSdfPath
 from omni.physx.bindings._physx import ContactEventHeader, ContactEventType, ContactData
-from . import lego_schemes
+from lego_schemes import BrickLength, PlateHeight, StudHeight
 
 DistanceTolerance = 0.001           # Maximum distance between bricks (m)
 MaxPenetration = 0.005              # Maximum penetration between bricks (m), penetration can happen due to simulation inaccuracies
@@ -105,11 +104,11 @@ def _handle_assembly_contacts():
         del brick_data0, brick_data1
 
         # The height of the first brick
-        height0 = dim0[2] * lego_schemes.PlateHeight
+        height0 = dim0[2] * PlateHeight
 
         # The distance between the bricks, must be within a threshold to triger assembly
         # Can be negative if penetration occurs
-        rel_distance = rel_z - (height0 + lego_schemes.StudHeight)
+        rel_distance = rel_z - (height0 + StudHeight)
         if rel_distance > DistanceTolerance:
             # Reason: exceeding distance tolerance
             continue
@@ -145,12 +144,12 @@ def _handle_assembly_contacts():
             continue
 
         # Relative position of the second brick in studs
-        p0 = rel_pose[:2,3] / lego_schemes.BrickLength + (dim0[:2] - rel_pose[:2,:2] @ dim1[:2]) / 2 
+        p0 = rel_pose[:2,3] / BrickLength + (dim0[:2] - rel_pose[:2,:2] @ dim1[:2]) / 2 
         p0_snapped = np.round(p0).astype(int)
         R_snapped = np.array([[np.cos(snapped_yaw), -np.sin(snapped_yaw)], [np.sin(snapped_yaw), np.cos(snapped_yaw)]])
         p1_snapped = np.round(p0 + R_snapped @ dim1[:2]).astype(int)
         p_err = p0 - p0_snapped
-        if np.linalg.norm(p_err) * lego_schemes.BrickLength > PositionTolerance:
+        if np.linalg.norm(p_err) * BrickLength > PositionTolerance:
             # Reason: exceeding position tolerance
             continue
 
@@ -166,7 +165,7 @@ def _handle_assembly_contacts():
             # Reason: already assembled
             continue
 
-        assemble_xy = (p0_snapped + (R_snapped @ dim1[:2] - dim0[:2]) / 2) * lego_schemes.BrickLength
+        assemble_xy = (p0_snapped + (R_snapped @ dim1[:2] - dim0[:2]) / 2) * BrickLength
         assemble_tr = np.array([
             [R_snapped[0,0], R_snapped[0,1], 0, assemble_xy[0]  ],
             [R_snapped[1,0], R_snapped[1,1], 0, assemble_xy[1]  ],
@@ -218,12 +217,9 @@ def _handle_assembly_contacts():
     return assembly_events
 
 class BrickPhysicsInterface:
-    def __init__(self, *args, **kwargs):
+    def __init__(self):
         update_bus: carb.events.IEventStream = omni.kit.app.get_app().get_update_event_stream()
         self.update_sub = update_bus.create_subscription_to_push(self._on_update)
-
-    def mark_dirty(self):
-        pass
 
     def _on_update(self, event: carb.events.IEvent):
         assembly_events = _handle_assembly_contacts()

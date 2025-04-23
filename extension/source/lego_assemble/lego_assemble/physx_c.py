@@ -36,12 +36,6 @@ def _vec_to_numpy(vec, dtype, size):
     byte_buf = (ctypes.c_ubyte * (len(vec)*size)).from_address(base)
     return np.frombuffer(byte_buf, dtype=dtype, count=len(vec))
 
-class _CFloat3(ctypes.Structure):
-    _pack_ = 1
-    _fields_ = [("x", ctypes.c_float),
-                ("y", ctypes.c_float),
-                ("z", ctypes.c_float)]
-
 _Float3 = ctypes.c_float * 3
 
 class _ContactEventHeader_C(ctypes.Structure):
@@ -77,7 +71,6 @@ class _ContactData_C(ctypes.Structure):
         ("material0",                   ctypes.c_uint64),
         ("material1",                   ctypes.c_uint64),
     ]
-
 _ContactData_SIZE = 64
 assert ctypes.sizeof(_ContactData_C) == _ContactData_SIZE
 _ContactData_DTYPE  = _cstruct_to_numpy_dtype(_ContactData_C)

@@ -1,4 +1,3 @@
-import carb
 import logging
 import carb.events
 import omni.usd
@@ -7,12 +6,11 @@ import omni.kit.app
 import numpy as np
 import omni.physx.scripts.physicsUtils as physicsUtils
 from typing import Optional, Union
-from functools import cache
 from pxr import Gf, Usd, UsdGeom, UsdPhysics
 from pxr.PhysicsSchemaTools._physicsSchemaTools import sdfPathToInt
 from omni.physx.bindings._physx import ContactEventType
 from omni.physics.tensors.impl.api import create_simulation_view, RigidBodyView
-from . import lego_schemes
+from .lego_schemes import BrickLength, PlateHeight, StudHeight
 from .physx_c import buffer_from_ContactDataVector, buffer_from_ContactEventHeaderVector
 from .brick_physics import DistanceTolerance, MaxPenetration, ZAngleTolerance, RequiredForce, YawTolerance, PositionTolerance, _get_physics_scene
 
@@ -107,7 +105,6 @@ class AssemblyDetector:
         out[valid] = self.table_id[idx[valid]]
         return out
 
-    @cache
     def _get_lego_dimensions(self, path: str) -> Optional[Gf.Vec3i]:
         prim = self.stage.GetPrimAtPath(path)
         if not prim.IsValid():
@@ -159,8 +156,8 @@ class AssemblyDetector:
             dim0[swap_mask], dim1[swap_mask] = dim1_sw, dim0_sw
             rel_pose[swap_mask] = np.matmul(_inv_se3_batch(pose0[swap_mask]), pose1[swap_mask])
 
-        height0 = dim0[:,2] * lego_schemes.PlateHeight
-        rel_distance = rel_pose[:,2,3] - (height0 + lego_schemes.StudHeight)
+        height0 = dim0[:,2] * PlateHeight
+        rel_distance = rel_pose[:,2,3] - (height0 + StudHeight)
 
         # Reason: exceeding distance tolerance
         keep = (rel_distance <= DistanceTolerance)
@@ -191,11 +188,11 @@ class AssemblyDetector:
         # Reason: exceeding yaw tolerance
         keep &= (np.abs(yaw_err) <= YawTolerance)
 
-        p0 = (rel_pose[:,:2,3] / lego_schemes.BrickLength + (dim0[:,:2] - np.einsum("bij,bj->bi", rel_pose[:,:2,:2], dim1[:,:2])) / 2)
+        p0 = (rel_pose[:,:2,3] / BrickLength + (dim0[:,:2] - np.einsum("bij,bj->bi", rel_pose[:,:2,:2], dim1[:,:2])) / 2)
         p0_snapped = np.round(p0).astype(int)
         R_snapped = np.stack([np.cos(snapped_yaw), -np.sin(snapped_yaw), np.sin(snapped_yaw),  np.cos(snapped_yaw)], axis=1).reshape(-1,2,2)
         p1_snapped = np.round(p0 + np.einsum("bij,bj->bi", R_snapped, dim1[:,:2])).astype(int)
-        p_err = np.linalg.norm(p0 - p0_snapped, axis=1) * lego_schemes.BrickLength
+        p_err = np.linalg.norm(p0 - p0_snapped, axis=1) * BrickLength
 
         # Reason: exceeding position tolerance
         keep &= (p_err <= PositionTolerance)
@@ -219,7 +216,7 @@ class AssemblyDetector:
                 continue
 
             R_sn = R_snapped[k]
-            assemble_xy = (p0_snapped[k] + (R_sn @ dim1[k, :2] - dim0[k, :2]) / 2) * lego_schemes.BrickLength
+            assemble_xy = (p0_snapped[k] + (R_sn @ dim1[k, :2] - dim0[k, :2]) / 2) * BrickLength
             assemble_tr = np.array([
                 [R_sn[0,0], R_sn[0,1],  0, assemble_xy[0]   ],
                 [R_sn[1,0], R_sn[1,1],  0, assemble_xy[1]   ],
