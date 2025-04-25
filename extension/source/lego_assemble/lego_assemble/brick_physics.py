@@ -13,16 +13,9 @@ from .utils import get_physics_scene
 
 _logger = logging.getLogger(__name__)
 
-def path_for_brick(brick_id: int) -> str:
-    return f"/World/Brick_{brick_id}"
-
-def path_for_brick(env_id: int, brick_id: int) -> str:
-    return f"/World/envs/env_{env_id}/Brick_{brick_id}"
-
 class BrickPhysicsInterface:
     def __init__(self, mode: Literal["simple", "cpu_vectorized"] = "cpu_vectorized"):
         self.mode = mode
-        self.brick_path_filter = ["/World/Brick_*", "/World/envs/env_*/Brick_*"]
         self.needs_reload = False
 
         update_bus: carb.events.IEventStream = omni.kit.app.get_app().get_update_event_stream()
@@ -55,7 +48,7 @@ class BrickPhysicsInterface:
 
     def _next_brick_path(self, stage: Usd.Stage, env_id: Optional[int] = None) -> str:
         prefix = f"/World/envs/env_{env_id}/Brick_" if env_id is not None else "/World/Brick_"
-        unquifier = 1
+        unquifier = 0
         while stage.GetPrimAtPath(f"{prefix}{unquifier}").IsValid():
             unquifier += 1
         return f"{prefix}{unquifier}"
@@ -70,14 +63,15 @@ class BrickPhysicsInterface:
             assembly_events = brick_assembler_simple.handle_assembly_contacts()
 
         elif self.mode == "cpu_vectorized":
-            if self.needs_reload or self.vectorized_detector is None or not self.vectorized_detector.check():
-                current_stage = omni.usd.get_context().get_stage()
-                if current_stage is None or get_physics_scene(current_stage) is None:
+            if self.needs_reload or (self.vectorized_detector is None) or (not self.vectorized_detector.check()):
+                current_stage: Usd.Stage = omni.usd.get_context().get_stage()
+                if (current_stage is None) or (get_physics_scene(current_stage) is None):
                     # Not ready to initialize now
                     return
                 omni.physx.get_physx_interface().force_load_physics_from_usd()
-                self.vectorized_detector = brick_assembler_vectorized.VectorizedAssemblyDetector(self.brick_path_filter)
+                self.vectorized_detector = brick_assembler_vectorized.VectorizedAssemblyDetector()
                 self.needs_reload = False
+                _logger.info("Brick assembly detector reloaded")
             assembly_events = self.vectorized_detector.handle_assembly_contacts()
 
         else:

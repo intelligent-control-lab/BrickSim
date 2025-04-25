@@ -1,9 +1,8 @@
-import logging
 import omni.usd
 import omni.physx
 import numpy as np
 import omni.physx.scripts.physicsUtils as physicsUtils
-from typing import Optional, Union
+from typing import Optional
 from pxr import Gf, Usd, UsdGeom, UsdPhysics
 from pxr.PhysicsSchemaTools._physicsSchemaTools import sdfPathToInt
 from omni.physx.bindings._physx import ContactEventType
@@ -52,11 +51,8 @@ def _inv_se3_batch(T: np.ndarray) -> np.ndarray:
     return out
 
 class VectorizedAssemblyDetector:
-    def __init__(self, brick_filter: Union[str, list[str]]):
-        self.brick_filter = brick_filter
-
+    def __init__(self):
         self.physx_sim_interface = omni.physx.get_physx_simulation_interface()
-
         self.stage: Usd.Stage = omni.usd.get_context().get_stage()
 
         physx_scene = get_physics_scene(self.stage)
@@ -64,11 +60,19 @@ class VectorizedAssemblyDetector:
             raise RuntimeError("No PhysicsScene found in the stage.")
         self.dt = 1.0 / physx_scene.GetTimeStepsPerSecondAttr().Get()
 
-        self.sim_view = create_simulation_view("numpy")
-        self.rigid_body_view: RigidBodyView = self.sim_view.create_rigid_body_view(self.brick_filter)
-        if self.rigid_body_view._backend is None:
+        # Only add filter if there is at least one brick matching the filter to avoid warnings
+        brick_filters = []
+        if self.stage.GetPrimAtPath("/World/Brick_0").IsValid():
+            brick_filters.append("/World/Brick_*")
+        if self.stage.GetPrimAtPath("/World/envs/env_0/Brick_0").IsValid():
+            brick_filters.append("/World/envs/env_*/Brick_*")
+        if not brick_filters:
             # There is no rigid body matching the filter
+            self.rigid_body_view = None
             return
+
+        self.sim_view = create_simulation_view("numpy")
+        self.rigid_body_view: RigidBodyView = self.sim_view.create_rigid_body_view(brick_filters)
         self.prim_paths = self.rigid_body_view.prim_paths
 
         keys = np.array([sdfPathToInt(p) for p in self.prim_paths], dtype=int)
@@ -83,9 +87,7 @@ class VectorizedAssemblyDetector:
         current_stage = omni.usd.get_context().get_stage()
         if current_stage != self.stage:
             return False
-        if not self.sim_view.check():
-            return False
-        if self.rigid_body_view._backend and not self.rigid_body_view.check():
+        if (self.rigid_body_view is not None) and (not self.rigid_body_view.check()):
             return False
         return True
 
@@ -112,7 +114,7 @@ class VectorizedAssemblyDetector:
         return dim_attr.Get()
 
     def handle_assembly_contacts(self) -> list[AssemblyEvent]:
-        if not self.rigid_body_view._backend:
+        if self.rigid_body_view is None:
             return []
 
         _contacts, _contact_data = self.physx_sim_interface.get_contact_report()
