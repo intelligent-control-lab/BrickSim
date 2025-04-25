@@ -12,7 +12,7 @@ from pxr import Gf, Usd, UsdGeom, UsdPhysics
 import pxr.PhysxSchema as PhysxSchema
 from pxr.PhysicsSchemaTools._physicsSchemaTools import intToSdfPath
 from omni.physx.bindings._physx import ContactEventHeader, ContactEventType, ContactData
-from lego_schemes import BrickLength, PlateHeight, StudHeight
+from .lego_schemes import BrickLength, PlateHeight, StudHeight
 
 DistanceTolerance = 0.001           # Maximum distance between bricks (m)
 MaxPenetration = 0.005              # Maximum penetration between bricks (m), penetration can happen due to simulation inaccuracies
