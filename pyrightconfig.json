@@ -1,0 +1,13 @@
+{
+    "exclude": [
+        "**/node_modules",
+        "**/__pycache__",
+        "**/.*",
+        "isaacsim",
+        "IsaacLab/_isaac_sim"
+    ],
+    "ignore":[
+        "IsaacLab"
+    ],
+    "typeCheckingMode": "off"
+}
