@@ -1,8 +1,6 @@
 import logging
-import carb.events
 import omni.usd
 import omni.physx
-import omni.kit.app
 import numpy as np
 import omni.physx.scripts.physicsUtils as physicsUtils
 from typing import Optional, Union
@@ -11,10 +9,9 @@ from pxr.PhysicsSchemaTools._physicsSchemaTools import sdfPathToInt
 from omni.physx.bindings._physx import ContactEventType
 from omni.physics.tensors.impl.api import create_simulation_view, RigidBodyView
 from .lego_schemes import BrickLength, PlateHeight, StudHeight
+from .brick_assembler import DistanceTolerance, MaxPenetration, ZAngleTolerance, RequiredForce, YawTolerance, PositionTolerance, AssemblyEvent
 from .physx_c import buffer_from_ContactDataVector, buffer_from_ContactEventHeaderVector
-from .brick_physics import DistanceTolerance, MaxPenetration, ZAngleTolerance, RequiredForce, YawTolerance, PositionTolerance, _get_physics_scene
-
-_logger = logging.getLogger(__name__)
+from .utils import get_physics_scene
 
 def _quat_to_rot_batch(q: np.ndarray) -> np.ndarray:
     """
@@ -54,7 +51,7 @@ def _inv_se3_batch(T: np.ndarray) -> np.ndarray:
     out[:,3,:]   = np.array([0,0,0,1])
     return out
 
-class AssemblyDetector:
+class VectorizedAssemblyDetector:
     def __init__(self, brick_filter: Union[str, list[str]]):
         self.brick_filter = brick_filter
 
@@ -62,7 +59,7 @@ class AssemblyDetector:
 
         self.stage: Usd.Stage = omni.usd.get_context().get_stage()
 
-        physx_scene = _get_physics_scene(self.stage)
+        physx_scene = get_physics_scene(self.stage)
         if physx_scene is None:
             raise RuntimeError("No PhysicsScene found in the stage.")
         self.dt = 1.0 / physx_scene.GetTimeStepsPerSecondAttr().Get()
@@ -114,7 +111,7 @@ class AssemblyDetector:
             return None
         return dim_attr.Get()
 
-    def handle_assembly_contacts(self):
+    def handle_assembly_contacts(self) -> list[AssemblyEvent]:
         if not self.rigid_body_view._backend:
             return []
 
@@ -203,7 +200,7 @@ class AssemblyDetector:
         # Reason: no overlap
         keep &= (overlap_x * overlap_y) > 0
 
-        assembly_events = []
+        assembly_events: list[AssemblyEvent] = []
         for k in np.flatnonzero(keep):
             path0 = self.prim_paths[brick0_idx[k]]
             path1 = self.prim_paths[brick1_idx[k]]
@@ -242,49 +239,13 @@ class AssemblyDetector:
             filtered_pairs1 = UsdPhysics.FilteredPairsAPI.Apply(prim1)
             filtered_pairs1.CreateFilteredPairsRel().AddTarget(prim0.GetPath())
 
-            assembly_events.append({
-                "brick0": prim0.GetPath().pathString,
-                "brick1": prim1.GetPath().pathString,
-                "joint": joint_path,
-                "p0": p0_snapped[k].tolist(),
-                "p1": p1_snapped[k].tolist(),
-                "yaw": float(snapped_yaw[k]),
-            })
+            assembly_events.append(AssemblyEvent(
+                brick0=prim0.GetPath().pathString,
+                brick1=prim1.GetPath().pathString,
+                joint=joint_path,
+                p0=p0_snapped[k].tolist(),
+                p1=p1_snapped[k].tolist(),
+                yaw=float(snapped_yaw[k]),
+            ))
 
         return assembly_events
-
-class BrickPhysicsInterface:
-    def __init__(self, brick_filter: Union[str, list[str]] = "/World/Brick_*"):
-        self.brick_filter = brick_filter
-        self.brick_physics = None
-        self.dirty = False
-        update_bus: carb.events.IEventStream = omni.kit.app.get_app().get_update_event_stream()
-        self.update_sub = update_bus.create_subscription_to_push(self._on_update)
-
-    def mark_dirty(self):
-        self.dirty = True
-
-    def _on_update(self, event: carb.events.IEvent):
-        if not omni.physx.get_physx_interface().is_running():
-            return
-        current_stage = omni.usd.get_context().get_stage()
-        if self.brick_physics is None or not self.brick_physics.check() or self.dirty:
-            if current_stage is None or _get_physics_scene(current_stage) is None:
-                return
-            _logger.info("Initializing AssemblyDetector")
-            omni.physx.get_physx_interface().force_load_physics_from_usd()
-            self.brick_physics = AssemblyDetector(self.brick_filter)
-            self.dirty = False
-
-        assembly_events = self.brick_physics.handle_assembly_contacts()
-        for event in assembly_events:
-            _logger.info(
-                f"Assembly event: {event['brick0']} and {event['brick1']}, "
-                f"joint={event['joint']}, "
-                f"p_0=({event['p0'][0]}, {event['p0'][1]}), "
-                f"p_1=({event['p1'][0]}, {event['p1'][1]}), "
-                f"yaw={np.degrees(event['yaw'])}"
-            )
-
-    def destroy(self):
-        self.update_sub.unsubscribe()

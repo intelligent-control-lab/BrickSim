@@ -1,236 +1,121 @@
+import math
 import logging
 import carb.events
+import omni.kit.app
 import omni.usd
 import omni.physx
-import omni.kit.app
-import numpy as np
 import omni.physx.scripts.physicsUtils as physicsUtils
-from typing import Optional
-from functools import cache
-from scipy.spatial.transform import Rotation
-from pxr import Gf, Usd, UsdGeom, UsdPhysics
-import pxr.PhysxSchema as PhysxSchema
-from pxr.PhysicsSchemaTools._physicsSchemaTools import intToSdfPath
-from omni.physx.bindings._physx import ContactEventHeader, ContactEventType, ContactData
-from .lego_schemes import BrickLength, PlateHeight, StudHeight
-
-DistanceTolerance = 0.001           # Maximum distance between bricks (m)
-MaxPenetration = 0.005              # Maximum penetration between bricks (m), penetration can happen due to simulation inaccuracies
-ZAngleTolerance = np.radians(5)     # Maximum angle between z-axis of bricks (rad)
-RequiredForce = 1.0                 # Minimum clutch power (N)
-YawTolerance = np.radians(5)        # Maximum yaw error (rad)
-PositionTolerance = 0.002           # Maximum position error (m)
+from typing import Tuple, Optional, Literal
+from pxr import Gf, Usd, UsdGeom
+from . import brick_generator, brick_assembler_simple, brick_assembler_vectorized
+from .brick_assembler import AssemblyEvent
+from .utils import get_physics_scene
 
 _logger = logging.getLogger(__name__)
 
-def _get_physics_scene(stage: Usd.Stage) -> Optional[PhysxSchema.PhysxSceneAPI]:
-    prim: Usd.Prim
-    for prim in stage.Traverse():
-        if prim.GetTypeName() == "PhysicsScene":
-            return PhysxSchema.PhysxSceneAPI(prim)
-    return None
+def path_for_brick(brick_id: int) -> str:
+    return f"/World/Brick_{brick_id}"
 
-#### Below is the legacy implementation of assembly detection ####
-
-def _get_rigidbody_transform(physx: omni.physx.PhysX, path: str) -> Optional[np.ndarray]:
-    result = physx.get_rigidbody_transformation(path)
-    if not result["ret_val"]:
-        return None
-    position = result["position"]
-    rotation = result["rotation"]
-    transform = np.eye(4)
-    transform[:3, 3] = position
-    transform[:3, :3] = Rotation.from_quat(rotation).as_matrix()
-    return transform
-
-def _inv_se3(mat: np.ndarray) -> np.ndarray:
-    inv_mat = np.eye(4)
-    inv_mat[:3, :3] = mat[:3, :3].T
-    inv_mat[:3, 3] = -inv_mat[:3, :3] @ mat[:3, 3]
-    return inv_mat
-
-def _handle_assembly_contacts():
-    physx = omni.physx.get_physx_interface()
-    if not physx.is_running():
-        return []
-
-    stage: Usd.Stage = omni.usd.get_context().get_stage()
-    if stage is None:
-        return []
-    physics_scene = _get_physics_scene(stage)
-    if physics_scene is None:
-        return []
-    sim_timestep = 1.0 / physics_scene.GetTimeStepsPerSecondAttr().Get()
-
-    @cache
-    def get_brick_data(actor: int):
-        path = intToSdfPath(actor).pathString
-        prim = stage.GetPrimAtPath(path)
-        if not prim.IsValid():
-            return None
-        dim_attr = prim.GetAttribute("lego_dimensions")
-        if not dim_attr.IsValid():
-            return None
-        dim = np.array(dim_attr.Get(), dtype=int)
-        pose = _get_rigidbody_transform(physx, path)
-        if pose is None:
-            return None
-        return prim, dim, pose
-
-    assembly_events = []
-    contact_headers, contact_data = omni.physx.get_physx_simulation_interface().get_contact_report()
-    contact: ContactEventHeader
-    for contact in contact_headers:
-        if contact.type == ContactEventType.CONTACT_LOST:
-            continue
-        brick_data0 = get_brick_data(contact.actor0)
-        brick_data1 = get_brick_data(contact.actor1)
-        if brick_data0 is None or brick_data1 is None:
-            continue
-        prim0, dim0, pose0 = brick_data0
-        prim1, dim1, pose1 = brick_data1
-
-        rel_pose = _inv_se3(pose0) @ pose1
-        rel_z = rel_pose[2,3]
-
-        # Swap the order of the bricks, so prim0 is always the one offering studs
-        if rel_z < 0:
-            prim0, prim1 = prim1, prim0
-            dim0, dim1 = dim1, dim0
-            pose0, pose1 = pose1, pose0
-            rel_pose = _inv_se3(pose0) @ pose1
-            rel_z = rel_pose[2,3]
-        # Delete other variables so we don't accidentally use them
-        del brick_data0, brick_data1
-
-        # The height of the first brick
-        height0 = dim0[2] * PlateHeight
-
-        # The distance between the bricks, must be within a threshold to triger assembly
-        # Can be negative if penetration occurs
-        rel_distance = rel_z - (height0 + StudHeight)
-        if rel_distance > DistanceTolerance:
-            # Reason: exceeding distance tolerance
-            continue
-        elif rel_distance < -MaxPenetration:
-            # Reason: penetrating too much
-            continue
-
-        # The angle between the z-axis of the first brick and the z-axis of the second brick
-        # Must be within a threshold to triger assembly
-        rel_z_angle = np.arccos(rel_pose[2,2])
-        if rel_z_angle > ZAngleTolerance:
-            # Reason: exceeding z-angle tolerance
-            continue
-
-        impulse = np.zeros(3)
-        contact_pt: ContactData
-        for contact_pt in contact_data[contact.contact_data_offset:contact.contact_data_offset+contact.num_contact_data]:
-            impulse += contact_pt.impulse
-        # The contact force along the z-axis of the first brick
-        frc_prj = np.abs(np.dot(impulse, pose0[:3,2])) / sim_timestep
-        if frc_prj < RequiredForce:
-            # Reason: insufficient force
-            continue
-
-        # Angle between the x-axis of the first brick and the x-axis of the second brick
-        rel_yaw = np.arctan2(rel_pose[1,0], rel_pose[0,0])
-        # Expected angle after assembly, can be -pi, -pi/2, 0, pi/2, pi
-        snapped_yaw = np.round(rel_yaw / (np.pi/2)) * (np.pi/2)
-        # Error withing [-pi/4, pi/4]
-        yaw_err = rel_yaw - snapped_yaw
-        if abs(yaw_err) > YawTolerance:
-            # Reason: exceeding yaw tolerance
-            continue
-
-        # Relative position of the second brick in studs
-        p0 = rel_pose[:2,3] / BrickLength + (dim0[:2] - rel_pose[:2,:2] @ dim1[:2]) / 2 
-        p0_snapped = np.round(p0).astype(int)
-        R_snapped = np.array([[np.cos(snapped_yaw), -np.sin(snapped_yaw)], [np.sin(snapped_yaw), np.cos(snapped_yaw)]])
-        p1_snapped = np.round(p0 + R_snapped @ dim1[:2]).astype(int)
-        p_err = p0 - p0_snapped
-        if np.linalg.norm(p_err) * BrickLength > PositionTolerance:
-            # Reason: exceeding position tolerance
-            continue
-
-        overlap_x = max(0, min(dim0[0], max(p0_snapped[0], p1_snapped[0])) - max(0, min(p0_snapped[0], p1_snapped[0])))
-        overlap_y = max(0, min(dim0[1], max(p0_snapped[1], p1_snapped[1])) - max(0, min(p0_snapped[1], p1_snapped[1])))
-        overlap_area = overlap_x * overlap_y
-        if overlap_area <= 0:
-            # Reason: no overlap
-            continue
-
-        joint_path = f"{prim0.GetPath()}_Conn_{prim1.GetPath().name}"
-        if stage.GetPrimAtPath(joint_path).IsValid():
-            # Reason: already assembled
-            continue
-
-        assemble_xy = (p0_snapped + (R_snapped @ dim1[:2] - dim0[:2]) / 2) * BrickLength
-        assemble_tr = np.array([
-            [R_snapped[0,0], R_snapped[0,1], 0, assemble_xy[0]  ],
-            [R_snapped[1,0], R_snapped[1,1], 0, assemble_xy[1]  ],
-            [0,              0,              1, height0         ],
-            [0,              0,              0, 1               ],
-        ])
-        assemble_tr_gf = Gf.Matrix4f(assemble_tr.T)
-
-        xformable1 = UsdGeom.Xformable(prim1)
-        parent_pose1 = np.array(xformable1.ComputeParentToWorldTransform(Usd.TimeCode.Default())).T
-        assemble_rel_pose1 = _inv_se3(parent_pose1) @ pose0 @ assemble_tr
-        assemble_rel_pose1_gf = Gf.Matrix4d(assemble_rel_pose1.T)
-
-        physicsUtils.set_or_add_translate_op(xformable1, assemble_rel_pose1_gf.ExtractTranslation())
-        physicsUtils.set_or_add_orient_op(xformable1, assemble_rel_pose1_gf.ExtractRotationQuat())
-
-        joint = UsdPhysics.FixedJoint.Define(stage, joint_path)
-        joint.CreateBody0Rel().AddTarget(prim0.GetPath())
-        joint.CreateBody1Rel().AddTarget(prim1.GetPath())
-        joint.CreateLocalPos0Attr().Set(assemble_tr_gf.ExtractTranslation())
-        joint.CreateLocalRot0Attr().Set(assemble_tr_gf.ExtractRotationQuat())
-
-        filtered_pairs1 = UsdPhysics.FilteredPairsAPI.Apply(prim1)
-        filtered_pairs1.CreateFilteredPairsRel().AddTarget(prim0.GetPath())
-
-        assembly_events.append({
-            "brick0": prim0.GetPath().pathString,
-            "brick1": prim1.GetPath().pathString,
-            "joint": joint_path,
-            "p0": p0_snapped,
-            "p1": p1_snapped,
-            "yaw": snapped_yaw,
-        })
-
-        # logger.info(
-        #     f"Contact between {prim0.GetPath()} ({dim0[0]}x{dim0[1]}x{dim0[2]}) "
-        #     f"and {prim1.GetPath()} ({dim1[0]}x{dim1[1]}x{dim1[2]}), "
-        #     f"distance={rel_distance:.3f} m, "
-        #     f"z-angle={np.degrees(rel_z_angle):.3f} deg, "
-        #     f"force={frc_prj:.3f} N, "
-        #     f"p_0=({p0_snapped[0]}, {p0_snapped[1]}), "
-        #     f"p_1=({p1_snapped[0]}, {p1_snapped[1]}), "
-        #     f"p_err=({p_err[0]:.3f}, {p_err[1]:.3f}), "
-        #     f"rel_yaw={np.degrees(snapped_yaw):.3f} ({np.degrees(yaw_err):.3f}) deg, "
-        #     f"overlap={overlap_x}x{overlap_y}, "
-        #     f"status: {status}"
-        # )
-
-    return assembly_events
+def path_for_brick(env_id: int, brick_id: int) -> str:
+    return f"/World/envs/env_{env_id}/Brick_{brick_id}"
 
 class BrickPhysicsInterface:
-    def __init__(self):
+    def __init__(self, mode: Literal["simple", "cpu_vectorized"] = "cpu_vectorized"):
+        self.mode = mode
+        self.brick_path_filter = ["/World/Brick_*", "/World/envs/env_*/Brick_*"]
+        self.needs_reload = False
+
         update_bus: carb.events.IEventStream = omni.kit.app.get_app().get_update_event_stream()
         self.update_sub = update_bus.create_subscription_to_push(self._on_update)
+        self.vectorized_detector: Optional[brick_assembler_vectorized.VectorizedAssemblyDetector] = None
+        self.accumulated_assembly_events = []
 
-    def _on_update(self, event: carb.events.IEvent):
-        assembly_events = _handle_assembly_contacts()
+    def force_reload(self):
+        self.needs_reload = True
+
+    def create_brick(self, dimensions: Tuple[int, int, int], color_name: str, env_id: Optional[int] = None, pos: Gf.Vec3f = None, quat: Gf.Quatf = None) -> UsdGeom.Xform:
+        stage: Usd.Stage = omni.usd.get_context().get_stage()
+        path = self._next_brick_path(stage, env_id)
+        brick = brick_generator.create_brick(stage, path, dimensions, color_name)
+        if pos is not None:
+            physicsUtils.set_or_add_translate_op(brick, pos)
+        if quat is not None:
+            physicsUtils.set_or_add_orient_op(brick, quat)
+        self.force_reload()
+        _logger.info(f"Added brick {path} ({dimensions[0]}x{dimensions[1]}x{dimensions[2]}) {color_name}")
+        return brick
+
+    def poll_assembly_events(self) -> list[AssemblyEvent]:
+        acc = self.accumulated_assembly_events
+        self.accumulated_assembly_events = []
+        return acc
+
+    def reset_env(self, env_id: Optional[int] = None):
+        raise NotImplementedError("reset_env is not implemented") # TODO
+
+    def _next_brick_path(self, stage: Usd.Stage, env_id: Optional[int] = None) -> str:
+        prefix = f"/World/envs/env_{env_id}/Brick_" if env_id is not None else "/World/Brick_"
+        unquifier = 1
+        while stage.GetPrimAtPath(f"{prefix}{unquifier}").IsValid():
+            unquifier += 1
+        return f"{prefix}{unquifier}"
+
+    def _on_update(self, _event: carb.events.IEvent):
+        if not omni.physx.get_physx_interface().is_running():
+            return
+
+        if self.mode == "simple":
+            if self.needs_reload:
+                self.needs_reload = False
+            assembly_events = brick_assembler_simple.handle_assembly_contacts()
+
+        elif self.mode == "cpu_vectorized":
+            if self.needs_reload or self.vectorized_detector is None or not self.vectorized_detector.check():
+                current_stage = omni.usd.get_context().get_stage()
+                if current_stage is None or get_physics_scene(current_stage) is None:
+                    # Not ready to initialize now
+                    return
+                omni.physx.get_physx_interface().force_load_physics_from_usd()
+                self.vectorized_detector = brick_assembler_vectorized.VectorizedAssemblyDetector(self.brick_path_filter)
+                self.needs_reload = False
+            assembly_events = self.vectorized_detector.handle_assembly_contacts()
+
+        else:
+            raise RuntimeError(f"Unknown mode: {self.mode}")
+
+        self.accumulated_assembly_events.extend(assembly_events)
+
         for event in assembly_events:
             _logger.info(
-                f"Assembly event: {event['brick0']} and {event['brick1']}, "
-                f"joint={event['joint']}, "
-                f"p_0=({event['p0'][0]}, {event['p0'][1]}), "
-                f"p_1=({event['p1'][0]}, {event['p1'][1]}), "
-                f"yaw={np.degrees(event['yaw'])}"
+                f"Brick assembly: {event.brick0} and {event.brick1}, "
+                f"joint={event.joint}, "
+                f"p_0={event.p0}, "
+                f"p_1={event.p1}, "
+                f"yaw={math.degrees(event.yaw)}"
             )
 
-    def destroy(self):
+    def _destroy(self):
         self.update_sub.unsubscribe()
+
+_brick_physics_interface = None
+
+def get_brick_physics_interface() -> BrickPhysicsInterface:
+    """Get the BrickPhysicsInterface instance."""
+    global _brick_physics_interface
+    if _brick_physics_interface is None:
+        raise RuntimeError("BrickPhysicsInterface is not initialized.")
+    return _brick_physics_interface
+
+def init_brick_physics_interface():
+    global _brick_physics_interface
+    if _brick_physics_interface is not None:
+        raise RuntimeError("BrickPhysicsInterface is already initialized.")
+    _brick_physics_interface = BrickPhysicsInterface()
+    return _brick_physics_interface
+
+def deinit_brick_physics_interface():
+    global _brick_physics_interface
+    if _brick_physics_interface is None:
+        raise RuntimeError("BrickPhysicsInterface is not initialized.")
+    _brick_physics_interface._destroy()
+    _brick_physics_interface = None
