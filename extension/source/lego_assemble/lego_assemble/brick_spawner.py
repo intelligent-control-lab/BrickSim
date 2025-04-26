@@ -8,7 +8,8 @@ def create_brick(stage: Usd.Stage, path: str, dimensions: Tuple[int, int, int], 
     brick: UsdGeom.Xform = UsdGeom.Xform.Define(stage, path)
 
     if use_cache:
-        class_brick_prim_path = f"/__CLASS__/Brick_{dimensions[0]}x{dimensions[1]}x{dimensions[2]}_{color_name}"
+        santitized_color_name = color_name.replace(" ", "_").replace("-", "_")
+        class_brick_prim_path = f"/__CLASS__/Brick_{dimensions[0]}x{dimensions[1]}x{dimensions[2]}_{santitized_color_name}"
         class_brick_prim = stage.GetPrimAtPath(class_brick_prim_path)
         if not class_brick_prim.IsValid():
             class_brick_prim = stage.CreateClassPrim(class_brick_prim_path)

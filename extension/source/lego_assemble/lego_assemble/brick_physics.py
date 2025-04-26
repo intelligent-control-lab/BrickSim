@@ -6,10 +6,10 @@ import omni.usd
 import omni.physx
 import omni.physx.scripts.physicsUtils as physicsUtils
 from typing import Tuple, Optional, Literal
-from pxr import Gf, Sdf, Usd, UsdGeom
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 from . import brick_spawner, brick_assembler_simple, brick_assembler_vectorized
 from .brick_assembler import AssemblyEvent
-from .utils import get_physics_scene
+from .utils import get_physics_scene, add_to_collision_group
 
 _logger = logging.getLogger(__name__)
 
@@ -32,6 +32,8 @@ class BrickPhysicsInterface:
         stage: Usd.Stage = omni.usd.get_context().get_stage()
         path = self._next_brick_path(stage, env_id)
         brick = brick_spawner.create_brick(stage, path, dimensions, color_name)
+        if env_id is not None:
+            add_to_collision_group(stage, env_id, brick.GetPath())
         if pos is not None:
             physicsUtils.set_or_add_translate_op(brick, pos)
         if quat is not None:
@@ -47,15 +49,29 @@ class BrickPhysicsInterface:
     def reset_env(self, env_id: Optional[int] = None):
         self.invalidate()
         stage: Usd.Stage = omni.usd.get_context().get_stage()
+
         root_path = f"/World/envs/env_{env_id}" if env_id is not None else "/World"
         root_prim = stage.GetPrimAtPath(root_path)
         if not root_prim.IsValid():
             _logger.warning(f"Resetting bricks in env {env_id} but it does not exist")
             return
         root_path_sdf: Sdf.Path = root_prim.GetPath()
+
+        collision_group_prim = stage.GetPrimAtPath(f"/World/collisions/group{env_id}")
+        if collision_group_prim.IsValid():
+            collision_group = UsdPhysics.CollisionGroup(collision_group_prim)
+            collider_collection: Usd.CollectionAPI = collision_group.GetCollidersCollectionAPI()
+            collision_rel = collider_collection.GetIncludesRel()
+        else:
+            collision_rel = None
+
         for child in root_prim.GetAllChildrenNames():
             if child.startswith(("Brick_", "Conn_")):
-                stage.RemovePrim(f"{root_path_sdf}/{child}")
+                path = root_path_sdf.AppendChild(child)
+                stage.RemovePrim(path)
+                if collision_rel is not None:
+                    collision_rel.RemoveTarget(path)
+
         _logger.info(f"Resetting bricks in env {env_id}")
 
     def _next_brick_path(self, stage: Usd.Stage, env_id: Optional[int] = None) -> str:

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Optional
 from pxr import Gf, Usd, UsdGeom, UsdPhysics
 from .lego_schemes import BrickLength
-from .utils import inv_se3
+from .utils import inv_se3, add_to_collision_group
 
 DistanceTolerance = 0.001           # Maximum distance between bricks (m)
 MaxPenetration = 0.005              # Maximum penetration between bricks (m), penetration can happen due to simulation inaccuracies
@@ -100,6 +100,7 @@ def assemble_bricks(
     joint.CreateBody1Rel().AddTarget(prim1.GetPath())
     joint.CreateLocalPos0Attr().Set(assemble_tr_gf.ExtractTranslation())
     joint.CreateLocalRot0Attr().Set(assemble_tr_gf.ExtractRotationQuat())
+    add_to_collision_group(stage, env_id0, joint.GetPath())
 
     filtered_pairs1: UsdPhysics.FilteredPairsAPI = UsdPhysics.FilteredPairsAPI.Apply(prim1)
     filtered_pairs1.CreateFilteredPairsRel().AddTarget(prim0.GetPath())
