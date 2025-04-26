@@ -21,19 +21,18 @@ class VectorizedAssemblyDetector:
             raise RuntimeError("No PhysicsScene found in the stage.")
         self.dt = 1.0 / physx_scene.GetTimeStepsPerSecondAttr().Get()
 
-        # Only add filter if there is at least one brick matching the filter to avoid warnings
-        brick_filters = []
-        if self.stage.GetPrimAtPath(path_for_brick(0)).IsValid():
-            brick_filters.append("/World/Brick_*")
-        if self.stage.GetPrimAtPath(path_for_brick(0, 0)).IsValid():
-            brick_filters.append("/World/envs/env_*/Brick_*")
-        if not brick_filters:
-            # There is no rigid body matching the filter
-            self.rigid_body_view = None
-            return
+        if self.stage.GetPrimAtPath("/World/envs").IsValid():
+            brick_filter = "/World/envs/env_*/Brick_*"
+        else:
+            brick_filter = "/World/Brick_*"
 
         self.sim_view = create_simulation_view("numpy")
-        self.rigid_body_view: RigidBodyView = self.sim_view.create_rigid_body_view(brick_filters)
+        self.rigid_body_view: RigidBodyView = self.sim_view.create_rigid_body_view(brick_filter)
+        if self.rigid_body_view._backend is None:
+            # There is no rigid body matching the filter
+            self.sim_view = None
+            self.rigid_body_view = None
+            return
         self.prim_paths = self.rigid_body_view.prim_paths
 
         keys = np.array([sdfPathToInt(p) for p in self.prim_paths], dtype=int)
