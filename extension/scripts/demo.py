@@ -1,9 +1,3 @@
-"""
-Franka-Emika Panda manager-based demo
-• identical launch code to the cart-pole example
-• new SceneCfg that spawns a Franka arm
-• joint-effort actions on all seven arm joints
-"""
 import os
 import sys
 import math
@@ -11,7 +5,6 @@ import torch
 import argparse
 from isaaclab.app import AppLauncher
 
-# ──────────────────────────────── launch Isaac Lab ──────────────────────────────
 parser = argparse.ArgumentParser(description="Franka Panda Demo")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -23,7 +16,6 @@ app_launcher = AppLauncher(args_cli)
 from isaacsim.simulation_app import SimulationApp
 simulation_app: SimulationApp = app_launcher.app
 
-# ───────────────────────────────── Isaac Lab imports ────────────────────────────
 import isaaclab.envs.mdp as mdp
 from isaaclab.envs import ManagerBasedEnv, ManagerBasedEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -36,62 +28,44 @@ from isaaclab_assets import FRANKA_PANDA_CFG
 from isaaclab.assets import AssetBaseCfg, ArticulationCfg
 from isaaclab.scene import InteractiveSceneCfg
 
-# ═════════════════════════════ 1. Scene configuration ═══════════════════════════
 @configclass
 class FrankaSceneCfg(InteractiveSceneCfg):
-    """Plane, dome-light and one Franka arm per environment."""
-    # ground plane
+
+    # lego_assemble doesn't support replicate_physics
+    replicate_physics = False
+
     ground = AssetBaseCfg(
         prim_path="/World/ground",
         spawn=GroundPlaneCfg(size=(100.0, 100.0)),
     )
-    # robot
     robot: ArticulationCfg = FRANKA_PANDA_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot"
     )
-    # basic light
     dome_light = AssetBaseCfg(
         prim_path="/World/DomeLight",
         spawn=DomeLightCfg(intensity=500.0, color=(0.9, 0.9, 0.9)),
     )
 
-# ═════════════════════════════ 2. MDP specification ═════════════════════════════
 @configclass
 class ActionsCfg:
-    """Effort control on the seven arm joints."""
     joint_efforts = mdp.JointEffortActionCfg(
         asset_name="robot",
-        joint_names=["panda_joint.*"],   # regex covers joint1 … joint7
+        joint_names=["panda_joint.*"],
         scale=5.0,
     )
 
 @configclass
 class ObservationsCfg:
-    """Policy receives (q, q̇) of the arm."""
     @configclass
     class PolicyCfg(ObsGroup):
         joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel)
 
-        def __post_init__(self):
-            self.enable_corruption = False
-            self.concatenate_terms = True
-
     policy: PolicyCfg = PolicyCfg()
 
 @configclass
 class EventCfg:
-    """Randomize & reset Franka."""
-    add_link_mass = EventTerm(          # randomize mass of the hand link
-        func=mdp.randomize_rigid_body_mass,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=["panda_hand"]),
-            "mass_distribution_params": (-0.2, 0.2),
-            "operation": "add",
-        },
-    )
-    reset_arm_pose = EventTerm(         # small joint offsets & zero velocity
+    reset_arm_pose = EventTerm(
         func=mdp.reset_joints_by_offset,
         mode="reset",
         params={
@@ -101,7 +75,6 @@ class EventCfg:
         },
     )
 
-# ═════════════════════════════ 3. Environment config ════════════════════════════
 @configclass
 class FrankaEnvCfg(ManagerBasedEnvCfg):
     scene = FrankaSceneCfg(num_envs=16, env_spacing=2.5)
@@ -110,15 +83,12 @@ class FrankaEnvCfg(ManagerBasedEnvCfg):
     events = EventCfg()
 
     def __post_init__(self):
-        self.sim.device = "cpu"
-        # viewer
+        self.sim.device = "cpu" # lego_assemble supports cpu only
         self.viewer.eye = (4.5, 0.0, 6.0)
         self.viewer.lookat = (0.0, 0.0, 2.0)
-        # timing
         self.decimation = 4
         self.sim.dt = 0.005
 
-# ═════════════════════════════ 4. Main loop ═════════════════════════════════════
 def main():
     env_cfg = FrankaEnvCfg()
     env = ManagerBasedEnv(cfg=env_cfg)

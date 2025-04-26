@@ -1,6 +1,6 @@
 import omni.ext
 import omni.ui
-from . import lego_schemes, brick_physics
+from . import brick_physics, lego_schemes
 
 class LegoExtension(omni.ext.IExt):
 

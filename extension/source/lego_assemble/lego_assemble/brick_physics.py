@@ -7,7 +7,7 @@ import omni.physx
 import omni.physx.scripts.physicsUtils as physicsUtils
 from typing import Tuple, Optional, Literal
 from pxr import Gf, Sdf, Usd, UsdGeom
-from . import brick_generator, brick_assembler_simple, brick_assembler_vectorized
+from . import brick_spawner, brick_assembler_simple, brick_assembler_vectorized
 from .brick_assembler import AssemblyEvent
 from .utils import get_physics_scene
 
@@ -31,7 +31,7 @@ class BrickPhysicsInterface:
         self.invalidate()
         stage: Usd.Stage = omni.usd.get_context().get_stage()
         path = self._next_brick_path(stage, env_id)
-        brick = brick_generator.create_brick(stage, path, dimensions, color_name)
+        brick = brick_spawner.create_brick(stage, path, dimensions, color_name)
         if pos is not None:
             physicsUtils.set_or_add_translate_op(brick, pos)
         if quat is not None:
