@@ -1,16 +1,15 @@
 import omni.usd
 import omni.physx
 import numpy as np
-import omni.physx.scripts.physicsUtils as physicsUtils
 from typing import Optional
 from functools import cache
 from scipy.spatial.transform import Rotation
-from pxr import Gf, Usd, UsdGeom, UsdPhysics
+from pxr import Usd
 from pxr.PhysicsSchemaTools._physicsSchemaTools import intToSdfPath
 from omni.physx.bindings._physx import ContactEventHeader, ContactEventType, ContactData
 from .lego_schemes import BrickLength, PlateHeight, StudHeight
-from .brick_assembler import DistanceTolerance, MaxPenetration, ZAngleTolerance, RequiredForce, YawTolerance, PositionTolerance, AssemblyEvent
-from .utils import get_physics_scene
+from .brick_assembler import DistanceTolerance, MaxPenetration, ZAngleTolerance, RequiredForce, YawTolerance, PositionTolerance, AssemblyEvent, assemble_bricks
+from .utils import get_physics_scene, inv_se3
 
 def _get_rigidbody_transform(physx: omni.physx.PhysX, path: str) -> Optional[np.ndarray]:
     result = physx.get_rigidbody_transformation(path)
@@ -22,12 +21,6 @@ def _get_rigidbody_transform(physx: omni.physx.PhysX, path: str) -> Optional[np.
     transform[:3, 3] = position
     transform[:3, :3] = Rotation.from_quat(rotation).as_matrix()
     return transform
-
-def _inv_se3(mat: np.ndarray) -> np.ndarray:
-    inv_mat = np.eye(4)
-    inv_mat[:3, :3] = mat[:3, :3].T
-    inv_mat[:3, 3] = -inv_mat[:3, :3] @ mat[:3, 3]
-    return inv_mat
 
 def handle_assembly_contacts() -> list[AssemblyEvent]:
     physx = omni.physx.get_physx_interface()
@@ -70,7 +63,7 @@ def handle_assembly_contacts() -> list[AssemblyEvent]:
         prim0, dim0, pose0 = brick_data0
         prim1, dim1, pose1 = brick_data1
 
-        rel_pose = _inv_se3(pose0) @ pose1
+        rel_pose = inv_se3(pose0) @ pose1
         rel_z = rel_pose[2,3]
 
         # Swap the order of the bricks, so prim0 is always the one offering studs
@@ -78,7 +71,7 @@ def handle_assembly_contacts() -> list[AssemblyEvent]:
             prim0, prim1 = prim1, prim0
             dim0, dim1 = dim1, dim0
             pose0, pose1 = pose1, pose0
-            rel_pose = _inv_se3(pose0) @ pose1
+            rel_pose = inv_se3(pose0) @ pose1
             rel_z = rel_pose[2,3]
         # Delete other variables so we don't accidentally use them
         del brick_data0, brick_data1
@@ -140,44 +133,17 @@ def handle_assembly_contacts() -> list[AssemblyEvent]:
             # Reason: no overlap
             continue
 
-        joint_path = f"{prim0.GetPath()}_Conn_{prim1.GetPath().name}"
-        if stage.GetPrimAtPath(joint_path).IsValid():
-            # Reason: already assembled
-            continue
-
-        assemble_xy = (p0_snapped + (R_snapped @ dim1[:2] - dim0[:2]) / 2) * BrickLength
-        assemble_tr = np.array([
-            [R_snapped[0,0], R_snapped[0,1], 0, assemble_xy[0]  ],
-            [R_snapped[1,0], R_snapped[1,1], 0, assemble_xy[1]  ],
-            [0,              0,              1, height0         ],
-            [0,              0,              0, 1               ],
-        ])
-        assemble_tr_gf = Gf.Matrix4f(assemble_tr.T)
-
-        xformable1 = UsdGeom.Xformable(prim1)
-        parent_pose1 = np.array(xformable1.ComputeParentToWorldTransform(Usd.TimeCode.Default())).T
-        assemble_rel_pose1 = _inv_se3(parent_pose1) @ pose0 @ assemble_tr
-        assemble_rel_pose1_gf = Gf.Matrix4d(assemble_rel_pose1.T)
-
-        physicsUtils.set_or_add_translate_op(xformable1, assemble_rel_pose1_gf.ExtractTranslation())
-        physicsUtils.set_or_add_orient_op(xformable1, assemble_rel_pose1_gf.ExtractRotationQuat())
-
-        joint = UsdPhysics.FixedJoint.Define(stage, joint_path)
-        joint.CreateBody0Rel().AddTarget(prim0.GetPath())
-        joint.CreateBody1Rel().AddTarget(prim1.GetPath())
-        joint.CreateLocalPos0Attr().Set(assemble_tr_gf.ExtractTranslation())
-        joint.CreateLocalRot0Attr().Set(assemble_tr_gf.ExtractRotationQuat())
-
-        filtered_pairs1 = UsdPhysics.FilteredPairsAPI.Apply(prim1)
-        filtered_pairs1.CreateFilteredPairsRel().AddTarget(prim0.GetPath())
-
-        assembly_events.append(AssemblyEvent(
-            brick0=prim0.GetPath().pathString,
-            brick1=prim1.GetPath().pathString,
-            joint=joint_path,
-            p0=p0_snapped.tolist(),
-            p1=p1_snapped.tolist(),
-            yaw=float(snapped_yaw),
-        ))
+        event = assemble_bricks(
+            stage=stage,
+            prim0=prim0, prim1=prim1,
+            dim0=dim0, dim1=dim1,
+            pose0=pose0,
+            p0_snapped=p0_snapped, p1_snapped=p1_snapped,
+            R_snapped=R_snapped,
+            height0=height0,
+            snapped_yaw=snapped_yaw,
+        )
+        if event is not None:
+            assembly_events.append(event)
 
     return assembly_events

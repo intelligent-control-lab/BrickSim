@@ -82,9 +82,9 @@ class BrickPhysicsInterface:
         for event in assembly_events:
             _logger.info(
                 f"Brick assembly: {event.brick0} and {event.brick1}, "
-                f"joint={event.joint}, "
-                f"p_0={event.p0}, "
-                f"p_1={event.p1}, "
+                f"env={event.env_id}, "
+                f"p0={event.p0}, "
+                f"p1={event.p1}, "
                 f"yaw={math.degrees(event.yaw)}"
             )
 

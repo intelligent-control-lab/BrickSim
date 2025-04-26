@@ -1,54 +1,15 @@
 import omni.usd
 import omni.physx
 import numpy as np
-import omni.physx.scripts.physicsUtils as physicsUtils
 from typing import Optional
-from pxr import Gf, Usd, UsdGeom, UsdPhysics
+from pxr import Gf, Usd
 from pxr.PhysicsSchemaTools._physicsSchemaTools import sdfPathToInt
 from omni.physx.bindings._physx import ContactEventType
 from omni.physics.tensors.impl.api import create_simulation_view, RigidBodyView
 from .lego_schemes import BrickLength, PlateHeight, StudHeight
-from .brick_assembler import DistanceTolerance, MaxPenetration, ZAngleTolerance, RequiredForce, YawTolerance, PositionTolerance, AssemblyEvent
+from .brick_assembler import DistanceTolerance, MaxPenetration, ZAngleTolerance, RequiredForce, YawTolerance, PositionTolerance, AssemblyEvent, assemble_bricks, path_for_brick
 from .physx_c import buffer_from_ContactDataVector, buffer_from_ContactEventHeaderVector
-from .utils import get_physics_scene
-
-def _quat_to_rot_batch(q: np.ndarray) -> np.ndarray:
-    """
-    Convert (N,4) [qx,qy,qz,qw] to (N,3,3) rotation matrices.
-    """
-    qx, qy, qz, qw = q.T
-    xx = 1 - 2*(qy*qy + qz*qz)
-    yy = 1 - 2*(qx*qx + qz*qz)
-    zz = 1 - 2*(qx*qx + qy*qy)
-
-    xy = 2*(qx*qy);  xz = 2*(qx*qz);  yz = 2*(qy*qz)
-    wx = 2*(qw*qx);  wy = 2*(qw*qy);  wz = 2*(qw*qz)
-
-    R = np.empty((q.shape[0], 3, 3), dtype=q.dtype)
-    R[:,0,0] = xx;   R[:,0,1] = xy - wz; R[:,0,2] = xz + wy
-    R[:,1,0] = xy + wz; R[:,1,1] = yy;   R[:,1,2] = yz - wx
-    R[:,2,0] = xz - wy; R[:,2,1] = yz + wx; R[:,2,2] = zz
-    return R
-
-def _pose7_to_mat44_batch(pose7: np.ndarray) -> np.ndarray:
-    """
-    (N,7) [x,y,z,qx,qy,qz,qw] -> (N,4,4) SE(3) matrices.
-    """
-    R = _quat_to_rot_batch(pose7[:,3:])
-    T = np.zeros((pose7.shape[0], 4, 4), dtype=pose7.dtype)
-    T[:,:3,:3] = R
-    T[:,:3, 3] = pose7[:,:3]
-    T[:,3,3]   = 1.0
-    return T
-
-def _inv_se3_batch(T: np.ndarray) -> np.ndarray:
-    R = np.transpose(T[:,:3,:3], (0,2,1))
-    p = -np.einsum("bij,bj->bi", R, T[:,:3,3])
-    out = np.empty_like(T)
-    out[:,:3,:3] = R
-    out[:,:3,3]  = p
-    out[:,3,:]   = np.array([0,0,0,1])
-    return out
+from .utils import get_physics_scene, pose7_to_mat44_batch, inv_se3_batch
 
 class VectorizedAssemblyDetector:
     def __init__(self):
@@ -62,9 +23,9 @@ class VectorizedAssemblyDetector:
 
         # Only add filter if there is at least one brick matching the filter to avoid warnings
         brick_filters = []
-        if self.stage.GetPrimAtPath("/World/Brick_0").IsValid():
+        if self.stage.GetPrimAtPath(path_for_brick(0)).IsValid():
             brick_filters.append("/World/Brick_*")
-        if self.stage.GetPrimAtPath("/World/envs/env_0/Brick_0").IsValid():
+        if self.stage.GetPrimAtPath(path_for_brick(0, 0)).IsValid():
             brick_filters.append("/World/envs/env_*/Brick_*")
         if not brick_filters:
             # There is no rigid body matching the filter
@@ -137,13 +98,13 @@ class VectorizedAssemblyDetector:
             return []
 
         pose = self.rigid_body_view.get_transforms()
-        pose0 = _pose7_to_mat44_batch(pose[brick0_idx])
-        pose1 = _pose7_to_mat44_batch(pose[brick1_idx])
+        pose0 = pose7_to_mat44_batch(pose[brick0_idx])
+        pose1 = pose7_to_mat44_batch(pose[brick1_idx])
 
         dim0 = self.lego_dims[brick0_idx]
         dim1 = self.lego_dims[brick1_idx]
 
-        rel_pose = np.matmul(_inv_se3_batch(pose0), pose1)
+        rel_pose = np.matmul(inv_se3_batch(pose0), pose1)
 
         # Swap bricks where z<0 so brick0 always offers studs
         swap_mask = rel_pose[:,2,3] < 0
@@ -153,7 +114,7 @@ class VectorizedAssemblyDetector:
             brick0_idx[swap_mask], brick1_idx[swap_mask] = brick1_idx[swap_mask], brick0_idx[swap_mask]
             pose0[swap_mask], pose1[swap_mask] = pose1_sw, pose0_sw
             dim0[swap_mask], dim1[swap_mask] = dim1_sw, dim0_sw
-            rel_pose[swap_mask] = np.matmul(_inv_se3_batch(pose0[swap_mask]), pose1[swap_mask])
+            rel_pose[swap_mask] = np.matmul(inv_se3_batch(pose0[swap_mask]), pose1[swap_mask])
 
         height0 = dim0[:,2] * PlateHeight
         rel_distance = rel_pose[:,2,3] - (height0 + StudHeight)
@@ -204,50 +165,19 @@ class VectorizedAssemblyDetector:
 
         assembly_events: list[AssemblyEvent] = []
         for k in np.flatnonzero(keep):
-            path0 = self.prim_paths[brick0_idx[k]]
-            path1 = self.prim_paths[brick1_idx[k]]
-            prim0 = self.stage.GetPrimAtPath(path0)
-            prim1 = self.stage.GetPrimAtPath(path1)
-
-            joint_path = f"{path0}_Conn_{prim1.GetPath().name}"
-            if self.stage.GetPrimAtPath(joint_path).IsValid():
-                # Reason: already assembled
-                continue
-
-            R_sn = R_snapped[k]
-            assemble_xy = (p0_snapped[k] + (R_sn @ dim1[k, :2] - dim0[k, :2]) / 2) * BrickLength
-            assemble_tr = np.array([
-                [R_sn[0,0], R_sn[0,1],  0, assemble_xy[0]   ],
-                [R_sn[1,0], R_sn[1,1],  0, assemble_xy[1]   ],
-                [0,         0,          1, height0[k]       ],
-                [0,         0,          0, 1                ],
-            ])
-            assemble_tr_gf = Gf.Matrix4f(assemble_tr.T)
-
-            xformable1 = UsdGeom.Xformable(prim1)
-            parent_pose1 = np.array(xformable1.ComputeParentToWorldTransform(Usd.TimeCode.Default())).T
-            assemble_rel_pose1 = _inv_se3_batch(parent_pose1[None])[0] @ pose0[k] @ assemble_tr
-            assemble_rel_pose1_gf = Gf.Matrix4d(assemble_rel_pose1.T)
-
-            physicsUtils.set_or_add_translate_op(xformable1, assemble_rel_pose1_gf.ExtractTranslation())
-            physicsUtils.set_or_add_orient_op(xformable1, assemble_rel_pose1_gf.ExtractRotationQuat())
-
-            joint = UsdPhysics.FixedJoint.Define(self.stage, joint_path)
-            joint.CreateBody0Rel().AddTarget(prim0.GetPath())
-            joint.CreateBody1Rel().AddTarget(prim1.GetPath())
-            joint.CreateLocalPos0Attr().Set(assemble_tr_gf.ExtractTranslation())
-            joint.CreateLocalRot0Attr().Set(assemble_tr_gf.ExtractRotationQuat())
-
-            filtered_pairs1 = UsdPhysics.FilteredPairsAPI.Apply(prim1)
-            filtered_pairs1.CreateFilteredPairsRel().AddTarget(prim0.GetPath())
-
-            assembly_events.append(AssemblyEvent(
-                brick0=prim0.GetPath().pathString,
-                brick1=prim1.GetPath().pathString,
-                joint=joint_path,
-                p0=p0_snapped[k].tolist(),
-                p1=p1_snapped[k].tolist(),
-                yaw=float(snapped_yaw[k]),
-            ))
-
+            event = assemble_bricks(
+                stage=self.stage,
+                prim0=self.stage.GetPrimAtPath(self.prim_paths[brick0_idx[k]]),
+                prim1=self.stage.GetPrimAtPath(self.prim_paths[brick1_idx[k]]),
+                dim0=dim0[k],
+                dim1=dim1[k],
+                pose0=pose0[k],
+                p0_snapped=p0_snapped[k],
+                p1_snapped=p1_snapped[k],
+                R_snapped=R_snapped[k],
+                height0=height0[k],
+                snapped_yaw=snapped_yaw[k],
+            )
+            if event is not None:
+                assembly_events.append(event)
         return assembly_events
