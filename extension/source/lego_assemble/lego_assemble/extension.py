@@ -40,6 +40,7 @@ class LegoExtension(omni.ext.IExt):
                     self._pos_z_field = omni.ui.FloatField()
                     self._pos_z_field.model.set_value(0.1)
                 omni.ui.Button("Add Brick", clicked_fn=self._add_brick_clicked)
+                omni.ui.Button("Reset Env", clicked_fn=self._reset_env_clicked)
 
     def on_shutdown(self):
         brick_physics.deinit_brick_physics_interface()
@@ -61,3 +62,8 @@ class LegoExtension(omni.ext.IExt):
             env_id=env_id,
             pos=(pos_x, pos_y, pos_z),
         )
+
+    def _reset_env_clicked(self):
+        env_id_str = self._base_path_field.model.as_string
+        env_id = int(env_id_str) if env_id_str else None
+        self.brick_physics.reset_env(env_id)

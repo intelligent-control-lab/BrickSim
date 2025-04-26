@@ -180,3 +180,9 @@ class VectorizedAssemblyDetector:
             if event is not None:
                 assembly_events.append(event)
         return assembly_events
+
+    def destroy(self):
+        if self.rigid_body_view is not None:
+            self.rigid_body_view = None
+            self.sim_view.invalidate()
+            self.sim_view = None

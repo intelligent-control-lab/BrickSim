@@ -1,147 +1,144 @@
+"""
+Franka-Emika Panda manager-based demo
+• identical launch code to the cart-pole example
+• new SceneCfg that spawns a Franka arm
+• joint-effort actions on all seven arm joints
+"""
 import os
 import sys
+import math
+import torch
 import argparse
 from isaaclab.app import AppLauncher
 
-parser = argparse.ArgumentParser(description="LEGO Assembly Demo")
+# ──────────────────────────────── launch Isaac Lab ──────────────────────────────
+parser = argparse.ArgumentParser(description="Franka Panda Demo")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
-args_cli.experience = "isaaclab.python.rendering.kit"
+args_cli.experience = "isaaclab.python.rendering.kit"          # same as before
 ext_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "source"))
 sys.argv += ["--ext-folder", ext_folder, "--enable", "lego_assemble", "-v"]
 app_launcher = AppLauncher(args_cli)
 
-
-"""Rest everything follows."""
-
-import torch
-import isaacsim.core.utils.prims as prim_utils
-import isaaclab.sim as sim_utils
-import isaaclab.utils.math as math_utils
-import lego_assemble.brick_generator
-import omni.usd
-import omni.physx.scripts.physicsUtils as physicsUtils
-from typing import Optional
-from omni.physics.tensors.impl.api import SimulationView, RigidBodyView, RigidContactView
-from isaaclab.assets import RigidObject, RigidObjectCfg
-from isaaclab.sim import SimulationContext
 from isaacsim.simulation_app import SimulationApp
-
 simulation_app: SimulationApp = app_launcher.app
 
-def design_scene():
-    """Designs the scene."""
-    # Ground-plane
-    cfg = sim_utils.GroundPlaneCfg()
-    cfg.func("/World/defaultGroundPlane", cfg)
-    # Lights
-    cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.8, 0.8, 0.8))
-    cfg.func("/World/Light", cfg)
+# ───────────────────────────────── Isaac Lab imports ────────────────────────────
+import isaaclab.envs.mdp as mdp
+from isaaclab.envs import ManagerBasedEnv, ManagerBasedEnvCfg
+from isaaclab.managers import EventTermCfg as EventTerm
+from isaaclab.managers import ObservationGroupCfg as ObsGroup
+from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import SceneEntityCfg
+from isaaclab.utils import configclass
+from isaaclab.sim import GroundPlaneCfg, DomeLightCfg
+from isaaclab_assets import FRANKA_PANDA_CFG
+from isaaclab.assets import AssetBaseCfg, ArticulationCfg
+from isaaclab.scene import InteractiveSceneCfg
 
-    # Create separate groups called "Origin1", "Origin2", "Origin3"
-    # Each group will have a robot in it
-    origins = [[0.25, 0.25, 0.0], [-0.25, 0.25, 0.0], [0.25, -0.25, 0.0], [-0.25, -0.25, 0.0]]
-    for i, origin in enumerate(origins):
-        prim_utils.create_prim(f"/World/Origin{i}", "Xform", translation=origin)
-
-    # Rigid Object
-    cone_cfg = RigidObjectCfg(
-        prim_path="/World/Origin.*/Cone",
-        spawn=sim_utils.ConeCfg(
-            radius=0.1,
-            height=0.2,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(),
-            mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0), metallic=0.2),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(),
+# ═════════════════════════════ 1. Scene configuration ═══════════════════════════
+@configclass
+class FrankaSceneCfg(InteractiveSceneCfg):
+    """Plane, dome-light and one Franka arm per environment."""
+    # ground plane
+    ground = AssetBaseCfg(
+        prim_path="/World/ground",
+        spawn=GroundPlaneCfg(size=(100.0, 100.0)),
     )
-    cone_object = RigidObject(cfg=cone_cfg)
+    # robot
+    robot: ArticulationCfg = FRANKA_PANDA_CFG.replace(
+        prim_path="{ENV_REGEX_NS}/Robot"
+    )
+    # basic light
+    dome_light = AssetBaseCfg(
+        prim_path="/World/DomeLight",
+        spawn=DomeLightCfg(intensity=500.0, color=(0.9, 0.9, 0.9)),
+    )
 
-    # return the scene information
-    scene_entities = {"cone": cone_object}
-    return scene_entities, origins
+# ═════════════════════════════ 2. MDP specification ═════════════════════════════
+@configclass
+class ActionsCfg:
+    """Effort control on the seven arm joints."""
+    joint_efforts = mdp.JointEffortActionCfg(
+        asset_name="robot",
+        joint_names=["panda_joint.*"],   # regex covers joint1 … joint7
+        scale=5.0,
+    )
 
+@configclass
+class ObservationsCfg:
+    """Policy receives (q, q̇) of the arm."""
+    @configclass
+    class PolicyCfg(ObsGroup):
+        joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel)
+        joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel)
 
-def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, RigidObject], origins: torch.Tensor):
-    """Runs the simulation loop."""
-    # Extract scene entities
-    # note: we only do this here for readability. In general, it is better to access the entities directly from
-    #   the dictionary. This dictionary is replaced by the InteractiveScene class in the next tutorial.
-    cone_object = entities["cone"]
-    # Define simulation stepping
-    sim_dt = sim.get_physics_dt()
-    sim_time = 0.0
-    count = 0
-    uniquifier = 0
-    brick_physics = lego_assemble.get_brick_physics_interface()
-    # Simulate physics
-    while simulation_app.is_running():
-        # reset
-        if count % 250 == 0:
-            # reset counters
-            sim_time = 0.0
-            count = 0
-            # reset root state
-            root_state = cone_object.data.default_root_state.clone()
-            # sample a random position on a cylinder around the origins
-            root_state[:, :3] += origins
-            root_state[:, :3] += math_utils.sample_cylinder(
-                radius=0.1, h_range=(0.25, 0.5), size=cone_object.num_instances, device=cone_object.device
-            )
-            # write root state to simulation
-            cone_object.write_root_pose_to_sim(root_state[:, :7])
-            cone_object.write_root_velocity_to_sim(root_state[:, 7:])
-            # reset buffers
-            cone_object.reset()
-            print("----------------------------------------")
-            print("[INFO]: Resetting object state...")
-        # apply sim data
-        cone_object.write_data_to_sim()
-        # perform step
-        sim.step()
-        # update sim-time
-        sim_time += sim_dt
-        count += 1
-        # update buffers
-        cone_object.update(sim_dt)
-        # print the root position
-        if count % 10 == 0:
-            if uniquifier < 200:
-                uniquifier += 1
-                path = f"/World/Brick_{uniquifier}"
-                brick = lego_assemble.brick_generator.create_brick(
-                    omni.usd.get_context().get_stage(),
-                    path,
-                    dimensions=(4, 2, 3),
-                    color_name="Pink"
-                )
-                physicsUtils.set_or_add_translate_op(brick, (0, 0, 0.1))
-                brick_physics.mark_dirty()
-            print(f"Root position (in world): {cone_object.data.root_state_w[:, :3]}")
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
 
+    policy: PolicyCfg = PolicyCfg()
 
+@configclass
+class EventCfg:
+    """Randomize & reset Franka."""
+    add_link_mass = EventTerm(          # randomize mass of the hand link
+        func=mdp.randomize_rigid_body_mass,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=["panda_hand"]),
+            "mass_distribution_params": (-0.2, 0.2),
+            "operation": "add",
+        },
+    )
+    reset_arm_pose = EventTerm(         # small joint offsets & zero velocity
+        func=mdp.reset_joints_by_offset,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=["panda_joint.*"]),
+            "position_range": (-0.125 * math.pi, 0.125 * math.pi),
+            "velocity_range": (-0.1, 0.1),
+        },
+    )
+
+# ═════════════════════════════ 3. Environment config ════════════════════════════
+@configclass
+class FrankaEnvCfg(ManagerBasedEnvCfg):
+    scene = FrankaSceneCfg(num_envs=16, env_spacing=2.5)
+    observations = ObservationsCfg()
+    actions = ActionsCfg()
+    events = EventCfg()
+
+    def __post_init__(self):
+        self.sim.device = "cpu"
+        # viewer
+        self.viewer.eye = (4.5, 0.0, 6.0)
+        self.viewer.lookat = (0.0, 0.0, 2.0)
+        # timing
+        self.decimation = 4
+        self.sim.dt = 0.005
+
+# ═════════════════════════════ 4. Main loop ═════════════════════════════════════
 def main():
-    """Main function."""
-    # Load kit helper
-    sim_cfg = sim_utils.SimulationCfg(device="cpu")
-    sim = SimulationContext(sim_cfg)
-    # Set main camera
-    sim.set_camera_view(eye=[1.5, 0.0, 1.0], target=[0.0, 0.0, 0.0])
-    # Design scene
-    scene_entities, scene_origins = design_scene()
-    scene_origins = torch.tensor(scene_origins, device=sim.device)
-    # Play the simulator
-    sim.reset()
-    # Now we are ready!
-    print("[INFO]: Setup complete...")
-    # Run the simulator
-    run_simulator(sim, scene_entities, scene_origins)
+    env_cfg = FrankaEnvCfg()
+    env = ManagerBasedEnv(cfg=env_cfg)
 
+    count = 0
+    while simulation_app.is_running():
+        with torch.inference_mode():
+            if count % 300 == 0:
+                count = 0
+                env.reset()
+                print("-" * 80)
+                print("[INFO]: Resetting environment...")
+            # sample random torques
+            joint_efforts = torch.randn_like(env.action_manager.action)
+            obs, _ = env.step(joint_efforts)
+            # print shoulder pitch of env 0 (panda_joint2)
+            print("[Env 0]: panda_joint2 = ", obs["policy"][0][1].item())
+            count += 1
+    env.close()
 
 if __name__ == "__main__":
-    # run the main function
     main()
-    # close sim app
     simulation_app.close()
