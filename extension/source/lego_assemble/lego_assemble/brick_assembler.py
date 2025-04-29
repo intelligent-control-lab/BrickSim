@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Optional
 from pxr import Gf, Usd, UsdGeom, UsdPhysics
 from .lego_schemes import BrickLength
-from .utils import inv_se3, add_to_collision_group
+from .utils import inv_se3
 
 DistanceTolerance = 0.001           # Maximum distance between bricks (m)
 MaxPenetration = 0.005              # Maximum penetration between bricks (m), penetration can happen due to simulation inaccuracies

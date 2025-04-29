@@ -21,6 +21,7 @@ class BrickPhysicsInterface:
         self.update_sub = update_bus.create_subscription_to_push(self._on_update)
         self.vectorized_detector: Optional[brick_assembler_vectorized.VectorizedAssemblyDetector] = None
         self.accumulated_assembly_events = []
+        self.uniqueifier = 0 # Global monotonically-increasing brick id
 
     def invalidate(self):
         if self.vectorized_detector is not None:
@@ -76,10 +77,9 @@ class BrickPhysicsInterface:
 
     def _next_brick_path(self, stage: Usd.Stage, env_id: Optional[int] = None) -> str:
         prefix = f"/World/envs/env_{env_id}/Brick_" if env_id is not None else "/World/Brick_"
-        unquifier = 0
-        while stage.GetPrimAtPath(f"{prefix}{unquifier}").IsValid():
-            unquifier += 1
-        return f"{prefix}{unquifier}"
+        while stage.GetPrimAtPath(path := f"{prefix}{self.uniqueifier}").IsValid():
+            self.uniqueifier += 1
+        return path
 
     def _on_update(self, _event: carb.events.IEvent):
         if not omni.physx.get_physx_interface().is_running():

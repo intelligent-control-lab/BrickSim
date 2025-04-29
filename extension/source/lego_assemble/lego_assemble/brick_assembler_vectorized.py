@@ -96,7 +96,7 @@ class VectorizedAssemblyDetector:
         if contacts_f.size == 0:
             return []
 
-        pose = self.rigid_body_view.get_transforms()
+        pose: np.ndarray = self.rigid_body_view.get_transforms()
         pose0 = pose7_to_mat44_batch(pose[brick0_idx])
         pose1 = pose7_to_mat44_batch(pose[brick1_idx])
 
