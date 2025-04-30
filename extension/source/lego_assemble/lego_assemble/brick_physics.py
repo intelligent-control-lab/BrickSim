@@ -1,4 +1,3 @@
-import math
 import logging
 import carb.events
 import omni.kit.app
@@ -39,7 +38,7 @@ class BrickPhysicsInterface:
             physicsUtils.set_or_add_translate_op(brick, pos)
         if quat is not None:
             physicsUtils.set_or_add_orient_op(brick, quat)
-        _logger.info(f"Added brick {path} ({dimensions[0]}x{dimensions[1]}x{dimensions[2]}) {color_name}")
+        # _logger.info(f"Added brick {path} ({dimensions[0]}x{dimensions[1]}x{dimensions[2]}) {color_name}")
         return brick
 
     def poll_assembly_events(self) -> list[AssemblyEvent]:
@@ -73,12 +72,12 @@ class BrickPhysicsInterface:
                 if collision_rel is not None:
                     collision_rel.RemoveTarget(path)
 
-        _logger.info(f"Resetting bricks in env {env_id}")
+        # _logger.info(f"Resetting bricks in env {env_id}")
 
     def _next_brick_path(self, stage: Usd.Stage, env_id: Optional[int] = None) -> str:
         prefix = f"/World/envs/env_{env_id}/Brick_" if env_id is not None else "/World/Brick_"
-        while stage.GetPrimAtPath(path := f"{prefix}{self.uniqueifier}").IsValid():
-            self.uniqueifier += 1
+        path = f"{prefix}{self.uniqueifier}"
+        self.uniqueifier += 1
         return path
 
     def _on_update(self, _event: carb.events.IEvent):
@@ -96,7 +95,7 @@ class BrickPhysicsInterface:
                     return
                 omni.physx.get_physx_interface().force_load_physics_from_usd()
                 self.vectorized_detector = brick_assembler_vectorized.VectorizedAssemblyDetector()
-                _logger.info("Brick assembly detector reloaded")
+                # _logger.info("Brick assembly detector reloaded")
             assembly_events = self.vectorized_detector.handle_assembly_contacts()
 
         else:
@@ -104,14 +103,14 @@ class BrickPhysicsInterface:
 
         self.accumulated_assembly_events.extend(assembly_events)
 
-        for event in assembly_events:
-            _logger.info(
-                f"Brick assembly: {event.brick0} and {event.brick1}, "
-                f"env={event.env_id}, "
-                f"p0={event.p0}, "
-                f"p1={event.p1}, "
-                f"yaw={math.degrees(event.yaw)}"
-            )
+        # for event in assembly_events:
+        #     _logger.info(
+        #         f"Brick assembly: {event.brick0} and {event.brick1}, "
+        #         f"env={event.env_id}, "
+        #         f"p0={event.p0}, "
+        #         f"p1={event.p1}, "
+        #         f"yaw={math.degrees(event.yaw)}"
+        #     )
 
     def _destroy(self):
         self.update_sub.unsubscribe()

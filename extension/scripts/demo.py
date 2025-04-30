@@ -1,32 +1,86 @@
+"""Launch Isaac Sim Simulator first."""
+
 import os
 import sys
-import math
-import torch
 import argparse
 from isaaclab.app import AppLauncher
 
-parser = argparse.ArgumentParser(description="Franka Panda Demo")
+parser = argparse.ArgumentParser()
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
-args_cli.experience = "isaaclab.python.rendering.kit"          # same as before
-ext_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "source"))
-sys.argv += ["--ext-folder", ext_folder, "--enable", "lego_assemble", "-v"]
-app_launcher = AppLauncher(args_cli)
 
+# Enable lego_assemble extension
+plugin_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "source"))
+sys.argv += ["--ext-folder", plugin_folder, "--enable", "lego_assemble"]
+
+# Verbose output
+sys.argv += ["-v"]
+
+app_launcher = AppLauncher(args_cli)
 from isaacsim.simulation_app import SimulationApp
 simulation_app: SimulationApp = app_launcher.app
 
+"""Rest everything follows."""
+
+import time
+import math
+import torch
 import isaaclab.envs.mdp as mdp
+import isaaclab.utils.math as math_utils
+from pxr import Gf
 from isaaclab.envs import ManagerBasedEnv, ManagerBasedEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
-from isaaclab.sim import GroundPlaneCfg, DomeLightCfg
-from isaaclab_assets import FRANKA_PANDA_CFG
+from isaaclab.sim import GroundPlaneCfg, DomeLightCfg, UsdFileCfg
+from isaaclab_assets import FRANKA_PANDA_CFG, ISAAC_NUCLEUS_DIR
 from isaaclab.assets import AssetBaseCfg, ArticulationCfg
 from isaaclab.scene import InteractiveSceneCfg
+import lego_assemble
+
+def spawn_random_brick(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    dimensions: list[tuple[int,int,int]],
+    colors: list[str],
+    pos_range: tuple[tuple[float, float, float], tuple[float, float, float]],
+    yaw_range: tuple[float, float] = (-math.pi, math.pi),
+):
+    t0 = time.perf_counter()
+
+    dim_choices = torch.randint(0, len(dimensions), (len(env_ids),), device="cpu")
+    color_choices = torch.randint(0, len(colors), (len(env_ids),), device="cpu")
+    pos = math_utils.sample_uniform(
+        lower=torch.tensor(pos_range[0], device="cpu"),
+        upper=torch.tensor(pos_range[1], device="cpu"),
+        size=(len(env_ids), 3),
+        device="cpu",
+    )
+    quat = math_utils.quat_from_angle_axis(
+        angle=math_utils.sample_uniform(
+            lower=yaw_range[0],
+            upper=yaw_range[1],
+            size=(len(env_ids),),
+            device="cpu",
+        ),
+        axis=torch.tensor([0., 0., 1.], device="cpu")
+    )
+
+    iface = lego_assemble.get_brick_physics_interface()
+    for env_id in env_ids:
+        iface.reset_env(int(env_id))
+        iface.create_brick(
+            dimensions=dimensions[dim_choices[env_id]],
+            color_name=colors[color_choices[env_id]],
+            env_id=int(env_id),
+            pos=Gf.Vec3f(pos[env_id].tolist()),
+            quat=Gf.Quatf(*quat[env_id].tolist()),
+        )
+
+    t1 = time.perf_counter()
+    print(f"Reset {len(env_ids)} envs in {(t1 - t0)*1e3:.2f} ms")
 
 @configclass
 class FrankaSceneCfg(InteractiveSceneCfg):
@@ -34,16 +88,25 @@ class FrankaSceneCfg(InteractiveSceneCfg):
     # lego_assemble doesn't support replicate_physics
     replicate_physics = False
 
-    ground = AssetBaseCfg(
-        prim_path="/World/ground",
-        spawn=GroundPlaneCfg(size=(100.0, 100.0)),
-    )
     robot: ArticulationCfg = FRANKA_PANDA_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot"
     )
-    dome_light = AssetBaseCfg(
-        prim_path="/World/DomeLight",
-        spawn=DomeLightCfg(intensity=500.0, color=(0.9, 0.9, 0.9)),
+
+    table = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/Table",
+        init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5, 0, 0], rot=[0.707, 0, 0, 0.707]),
+        spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"),
+    )
+
+    ground_plane = AssetBaseCfg(
+        prim_path="/World/GroundPlane",
+        init_state=AssetBaseCfg.InitialStateCfg(pos=[0, 0, -1.05]),
+        spawn=GroundPlaneCfg(),
+    )
+
+    light = AssetBaseCfg(
+        prim_path="/World/light",
+        spawn=DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=3000.0),
     )
 
 @configclass
@@ -51,7 +114,6 @@ class ActionsCfg:
     joint_efforts = mdp.JointEffortActionCfg(
         asset_name="robot",
         joint_names=["panda_joint.*"],
-        scale=5.0,
     )
 
 @configclass
@@ -73,6 +135,24 @@ class EventCfg:
             "position_range": (-0.125 * math.pi, 0.125 * math.pi),
             "velocity_range": (-0.1, 0.1),
         },
+    )
+    spawn_brick = EventTerm(
+        func=spawn_random_brick,
+        mode="reset",
+        params={
+            "dimensions": [
+                (4, 2, 3),
+                (2, 2, 3),
+            ],
+            "colors": [
+                "Pink",
+                "Light Blue",
+            ],
+            "pos_range": (
+                (0.1, -0.5, 0.0),
+                (0.6, 0.5, 0.0),
+            )
+        }
     )
 
 @configclass
@@ -96,6 +176,8 @@ def main():
     count = 0
     while simulation_app.is_running():
         with torch.inference_mode():
+            # if count < 500:
+                # lego_assemble.get_brick_physics_interface().create_brick((4,2,3), "Pink", 0, (1.0, 0.0, 0.5))
             if count % 300 == 0:
                 count = 0
                 env.reset()
@@ -105,7 +187,7 @@ def main():
             joint_efforts = torch.randn_like(env.action_manager.action)
             obs, _ = env.step(joint_efforts)
             # print shoulder pitch of env 0 (panda_joint2)
-            print("[Env 0]: panda_joint2 = ", obs["policy"][0][1].item())
+            # print("[Env 0]: panda_joint2 = ", obs["policy"][0][1].item())
             count += 1
     env.close()
 
