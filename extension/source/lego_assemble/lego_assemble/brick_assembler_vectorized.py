@@ -1,7 +1,7 @@
 import omni.usd
 import omni.physx
 import numpy as np
-from typing import Optional
+from typing import Optional, Union
 from pxr import Gf, Usd
 from pxr.PhysicsSchemaTools._physicsSchemaTools import sdfPathToInt
 from omni.physx.bindings._physx import ContactEventType
@@ -51,17 +51,18 @@ class VectorizedAssemblyDetector:
             return False
         return True
 
-    def _path_id_to_id(self, actors_u64: np.ndarray) -> np.ndarray:
+    def _path_id_to_id(self, sdf_id: np.ndarray) -> np.ndarray:
         """
         Converts SDF Path ids to brick indicies.
         Uses a sorted search table prepared in initialize().
         Unknown actors get value -1.
         """
-        idx = np.searchsorted(self.table_path_id, actors_u64, side="left")
-        idx = np.minimum(idx, self.table_path_id.size - 1)
-        valid = self.table_path_id[idx] == actors_u64
-        out = np.full(idx.shape, -1, dtype=int)
-        out[valid] = self.table_id[idx[valid]]
+        out = np.full(sdf_id.shape, -1, dtype=int)
+        if self.rigid_body_view is not None:
+            idx = np.searchsorted(self.table_path_id, sdf_id, side="left")
+            idx = np.minimum(idx, self.table_path_id.size - 1)
+            valid = self.table_path_id[idx] == sdf_id
+            out[valid] = self.table_id[idx[valid]]
         return out
 
     def _get_lego_dimensions(self, path: str) -> Optional[Gf.Vec3i]:
@@ -186,3 +187,45 @@ class VectorizedAssemblyDetector:
             self.rigid_body_view = None
             self.sim_view.invalidate()
             self.sim_view = None
+
+class BrickTracker:
+    def __init__(self, num_envs: int, num_trackings: int):
+        self.num_envs = num_envs
+        self.num_trackings = num_trackings
+        self.tracked_brick_ids = np.full((num_envs, num_trackings), -1, dtype=int)
+        self.tracked_rigid_body_ids = np.full((num_envs, num_trackings), -1, dtype=int)
+        self.backend: VectorizedAssemblyDetector = None
+
+    def set_backend(self, backend: VectorizedAssemblyDetector):
+        self.backend = backend
+        if self.backend is None:
+            self.tracked_rigid_body_ids.fill(-1)
+            return
+
+        sdf_ids = np.array([
+            sdfPathToInt(path_for_brick(brick_id=brick_id, env_id=env_id)) if brick_id >= 0 else -1
+            for (env_id, tracking_id), brick_id in np.ndenumerate(self.tracked_brick_ids)
+        ], dtype=int)
+        self.tracked_rigid_body_ids[:] = self.backend._path_id_to_id(sdf_ids).reshape(self.tracked_brick_ids.shape)
+
+    def set_tracked_bricks(self, tracking_id: int, env_ids: Union[np.ndarray, list[int]], brick_ids: Union[np.ndarray, list[int]]):
+        self.tracked_brick_ids[env_ids, tracking_id] = brick_ids
+        if self.backend is not None:
+            sdf_ids = np.array([
+                sdfPathToInt(path_for_brick(brick_id=b, env_id=e)) if b >= 0 else -1
+                for e, b in zip(env_ids, brick_ids)
+            ], dtype=int)
+            self.tracked_rigid_body_ids[env_ids, tracking_id] = self.backend._path_id_to_id(sdf_ids)
+
+    @property
+    def view(self) -> Optional[RigidBodyView]:
+        if self.backend is None:
+            return None
+        return self.backend.rigid_body_view
+
+    def get_transforms(self, tracking_id: int) -> np.ndarray:
+        result = np.zeros((self.num_envs, 7), dtype=np.float32)
+        if (view := self.view) is not None:
+            mask = self.tracked_rigid_body_ids[:, tracking_id] >= 0
+            result[mask] = view.get_transforms()[self.tracked_rigid_body_ids[mask, tracking_id]]
+        return result

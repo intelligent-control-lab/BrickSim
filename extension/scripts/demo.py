@@ -27,6 +27,7 @@ import math
 import torch
 import isaaclab.envs.mdp as mdp
 import isaaclab.utils.math as math_utils
+from enum import IntEnum
 from pxr import Gf
 from isaaclab.envs import ManagerBasedEnv, ManagerBasedEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -36,9 +37,12 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 from isaaclab.sim import GroundPlaneCfg, DomeLightCfg, UsdFileCfg
 from isaaclab_assets import FRANKA_PANDA_CFG, ISAAC_NUCLEUS_DIR
-from isaaclab.assets import AssetBaseCfg, ArticulationCfg
+from isaaclab.assets import AssetBaseCfg, ArticulationCfg, RigidObject
 from isaaclab.scene import InteractiveSceneCfg
 import lego_assemble
+
+class TrackedBrick(IntEnum):
+    TO_GRASP = 0
 
 def spawn_random_brick(
     env: ManagerBasedEnv,
@@ -69,18 +73,46 @@ def spawn_random_brick(
     )
 
     iface = lego_assemble.get_brick_physics_interface()
+
     for env_id in env_ids:
         iface.reset_env(int(env_id))
-        iface.create_brick(
+
+    new_brick_ids = []
+    for env_id in env_ids:
+        brick_xform, brick_id = iface.create_brick(
             dimensions=dimensions[dim_choices[env_id]],
             color_name=colors[color_choices[env_id]],
             env_id=int(env_id),
             pos=Gf.Vec3f(pos[env_id].tolist()),
             quat=Gf.Quatf(*quat[env_id].tolist()),
         )
+        new_brick_ids.append(brick_id)
+
+    tracker = iface.get_tracker(num_envs=env.num_envs, num_trackings=len(TrackedBrick))
+    tracker.set_tracked_bricks(TrackedBrick.TO_GRASP, env_ids, new_brick_ids)
 
     t1 = time.perf_counter()
     print(f"Reset {len(env_ids)} envs in {(t1 - t0)*1e3:.2f} ms")
+
+def brick_pose_in_robot_root_frame(
+    env: ManagerBasedEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    iface = lego_assemble.get_brick_physics_interface()
+    tracker = iface.get_tracker(num_envs=env.num_envs, num_trackings=len(TrackedBrick))
+    # x, y, z, qx, qy, qz, qw
+    brick_poses = torch.from_numpy(tracker.get_transforms(TrackedBrick.TO_GRASP))
+
+    robot: RigidObject = env.scene[robot_cfg.name]
+    robot_t = robot.data.root_state_w[:, :3]
+    robot_q = robot.data.root_state_w[:, 3:7]
+    brick_t = brick_poses[:, :3]
+    brick_q = math_utils.convert_quat(brick_poses[:, 3:7], to="wxyz")
+    brick_rel_t, brick_rel_q = math_utils.subtract_frame_transforms(
+        robot_t, robot_q,
+        brick_t, brick_q
+    )
+    return torch.cat((brick_rel_t, brick_rel_q), dim=-1)
 
 @configclass
 class FrankaSceneCfg(InteractiveSceneCfg):
@@ -122,6 +154,7 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel)
+        brick_pose = ObsTerm(func=brick_pose_in_robot_root_frame)
 
     policy: PolicyCfg = PolicyCfg()
 
@@ -176,18 +209,11 @@ def main():
     count = 0
     while simulation_app.is_running():
         with torch.inference_mode():
-            # if count < 500:
-                # lego_assemble.get_brick_physics_interface().create_brick((4,2,3), "Pink", 0, (1.0, 0.0, 0.5))
             if count % 300 == 0:
                 count = 0
                 env.reset()
-                print("-" * 80)
-                print("[INFO]: Resetting environment...")
-            # sample random torques
             joint_efforts = torch.randn_like(env.action_manager.action)
             obs, _ = env.step(joint_efforts)
-            # print shoulder pitch of env 0 (panda_joint2)
-            # print("[Env 0]: panda_joint2 = ", obs["policy"][0][1].item())
             count += 1
     env.close()
 
