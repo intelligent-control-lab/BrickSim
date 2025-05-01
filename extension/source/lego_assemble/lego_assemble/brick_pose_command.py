@@ -5,9 +5,8 @@ from isaaclab.assets import Articulation
 from isaaclab.envs import configclass, ManagerBasedEnv
 from isaaclab.managers import CommandTerm, CommandTermCfg
 from isaaclab.markers import FRAME_MARKER_CFG, VisualizationMarkers, VisualizationMarkersCfg
-from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, convert_quat, quat_from_euler_xyz, quat_unique
-from .brick_physics import get_brick_physics_interface
-from .brick_mdp import TrackedBrick
+from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, quat_from_euler_xyz, quat_unique
+from .brick_mdp import TrackedBrick, get_brick_pos_quat
 
 #### This is a modified version of IsaacLab's UniformPoseCommand
 
@@ -42,8 +41,6 @@ class BrickUniformPoseCommand(CommandTerm):
         """
         # initialize the base class
         super().__init__(cfg, env)
-
-        self.iface = get_brick_physics_interface()
 
         # extract the robot and body index for which the command is generated
         self.robot: Articulation = env.scene[cfg.asset_name]
@@ -80,10 +77,6 @@ class BrickUniformPoseCommand(CommandTerm):
     Implementation specific functions.
     """
 
-    def _get_brick_pose(self) -> torch.Tensor:
-        tracker = self.iface.get_tracker(num_envs=self.num_envs, num_trackings=len(TrackedBrick))
-        return torch.from_numpy(tracker.get_transforms(self.cfg.tracked_brick))
-
     def _update_metrics(self):
         # transform command from base frame to simulation world frame
         self.pose_command_w[:, :3], self.pose_command_w[:, 3:] = combine_frame_transforms(
@@ -93,12 +86,12 @@ class BrickUniformPoseCommand(CommandTerm):
             self.pose_command_b[:, 3:],
         )
         # compute the error
-        brick_pose = self._get_brick_pose()
+        brick_pos, brick_quat = get_brick_pos_quat(self._env, self.cfg.tracked_brick)
         pos_error, rot_error = compute_pose_error(
             self.pose_command_w[:, :3],
             self.pose_command_w[:, 3:],
-            brick_pose[:, :3],
-            convert_quat(brick_pose[:, 3:7], to="wxyz"),
+            brick_pos,
+            brick_quat,
         )
         self.metrics["position_error"] = torch.norm(pos_error, dim=-1)
         self.metrics["orientation_error"] = torch.norm(rot_error, dim=-1)
@@ -147,12 +140,8 @@ class BrickUniformPoseCommand(CommandTerm):
         # -- goal pose
         self.goal_pose_visualizer.visualize(self.pose_command_w[:, :3], self.pose_command_w[:, 3:])
         # -- current body pose
-        brick_pose = self._get_brick_pose()
-        self.current_pose_visualizer.visualize(
-            brick_pose[:, :3],
-            convert_quat(brick_pose[:, 3:7], to="wxyz"),
-        )
-
+        brick_pos, brick_quat = get_brick_pos_quat(self._env, self.cfg.tracked_brick)
+        self.current_pose_visualizer.visualize(brick_pos, brick_quat)
 
 @configclass
 class BrickUniformPoseCommandCfg(CommandTermCfg):
