@@ -29,6 +29,7 @@ from lego_assemble.envs.lift_brick.env import LiftBrickEnvCfg
 def main():
     env_cfg = LiftBrickEnvCfg()
     env = ManagerBasedRLEnv(cfg=env_cfg)
+    env.reset()
 
     while simulation_app.is_running():
         with torch.inference_mode():
