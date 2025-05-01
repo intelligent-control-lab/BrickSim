@@ -8,7 +8,7 @@ from pxr import Usd
 from pxr.PhysicsSchemaTools._physicsSchemaTools import intToSdfPath
 from omni.physx.bindings._physx import ContactEventHeader, ContactEventType, ContactData
 from .lego_schemes import BrickLength, PlateHeight, StudHeight
-from .brick_assembler import DistanceTolerance, MaxPenetration, ZAngleTolerance, RequiredForce, YawTolerance, PositionTolerance, AssemblyEvent, assemble_bricks
+from .assembler import DistanceTolerance, MaxPenetration, ZAngleTolerance, RequiredForce, YawTolerance, PositionTolerance, AssemblyEvent, assemble_bricks
 from .utils import get_physics_scene, inv_se3
 
 def _get_rigidbody_transform(physx: omni.physx.PhysX, path: str) -> Optional[np.ndarray]:

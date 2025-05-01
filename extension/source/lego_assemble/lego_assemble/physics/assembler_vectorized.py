@@ -7,7 +7,7 @@ from pxr.PhysicsSchemaTools._physicsSchemaTools import sdfPathToInt
 from omni.physx.bindings._physx import ContactEventType
 from omni.physics.tensors.impl.api import create_simulation_view, RigidBodyView
 from .lego_schemes import BrickLength, PlateHeight, StudHeight
-from .brick_assembler import DistanceTolerance, MaxPenetration, ZAngleTolerance, RequiredForce, YawTolerance, PositionTolerance, AssemblyEvent, assemble_bricks, path_for_brick
+from .assembler import DistanceTolerance, MaxPenetration, ZAngleTolerance, RequiredForce, YawTolerance, PositionTolerance, AssemblyEvent, assemble_bricks, path_for_brick
 from .physx_c import buffer_from_ContactDataVector, buffer_from_ContactEventHeaderVector
 from .utils import get_physics_scene, pose7_to_mat44_batch, inv_se3_batch
 

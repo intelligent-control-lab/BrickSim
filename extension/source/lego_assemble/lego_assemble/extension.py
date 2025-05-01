@@ -1,11 +1,12 @@
 import omni.ext
 import omni.ui
-from . import brick_physics, lego_schemes
+import lego_assemble.physics.lego_schemes as lego_schemes
+from lego_assemble.physics.interface import init_brick_physics_interface, deinit_brick_physics_interface
 
 class LegoExtension(omni.ext.IExt):
 
     def on_startup(self, ext_id):
-        self.brick_physics = brick_physics.init_brick_physics_interface()
+        self.brick_physics = init_brick_physics_interface()
 
         self._window = omni.ui.Window("LEGO Assemble", width=300, height=300)
         self._window.deferred_dock_in("Console")
@@ -43,7 +44,7 @@ class LegoExtension(omni.ext.IExt):
                 omni.ui.Button("Reset Env", clicked_fn=self._reset_env_clicked)
 
     def on_shutdown(self):
-        brick_physics.deinit_brick_physics_interface()
+        deinit_brick_physics_interface()
 
     def _add_brick_clicked(self):
         width = self._dim_x_field.model.as_int

@@ -7,9 +7,9 @@ import omni.physx
 import omni.physx.scripts.physicsUtils as physicsUtils
 from typing import Tuple, Optional, Literal
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
-from . import brick_spawner, brick_assembler_simple
-from .brick_assembler_vectorized import VectorizedAssemblyDetector, BrickTracker
-from .brick_assembler import AssemblyEvent, path_for_brick
+from . import assembler_simple, spawner
+from .assembler_vectorized import VectorizedAssemblyDetector, BrickTracker
+from .assembler import AssemblyEvent, path_for_brick
 from .utils import get_physics_scene, add_to_collision_group
 
 _logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ class BrickPhysicsInterface:
         path = path_for_brick(brick_id=brick_id, env_id=env_id)
 
         stage: Usd.Stage = omni.usd.get_context().get_stage()
-        brick = brick_spawner.create_brick(stage, path, dimensions, color_name)
+        brick = spawner.create_brick(stage, path, dimensions, color_name)
         if env_id is not None:
             add_to_collision_group(stage, env_id, brick.GetPath())
         if pos is not None:
@@ -115,7 +115,7 @@ class BrickPhysicsInterface:
             return
 
         if self.mode == "simple":
-            assembly_events = brick_assembler_simple.handle_assembly_contacts()
+            assembly_events = assembler_simple.handle_assembly_contacts()
 
         elif self.mode == "cpu_vectorized":
             self._ensure_vectorized_detector()

@@ -6,7 +6,7 @@ from isaaclab.envs import configclass, ManagerBasedEnv
 from isaaclab.managers import CommandTerm, CommandTermCfg
 from isaaclab.markers import FRAME_MARKER_CFG, VisualizationMarkers, VisualizationMarkersCfg
 from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, quat_from_euler_xyz, quat_unique
-from .brick_mdp import TrackedBrick, get_brick_pos_quat
+from .tracking import TrackedBrick, get_brick_pos_quat
 
 #### This is a modified version of IsaacLab's UniformPoseCommand
 
