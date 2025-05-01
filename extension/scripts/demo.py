@@ -24,7 +24,7 @@ simulation_app: SimulationApp = app_launcher.app
 
 import torch
 from isaaclab.envs import ManagerBasedRLEnv
-from lego_assemble.envs.lift_brick import LiftBrickEnvCfg
+from lego_assemble.envs.lift_brick.env import LiftBrickEnvCfg
 
 def main():
     env_cfg = LiftBrickEnvCfg()

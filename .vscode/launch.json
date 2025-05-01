@@ -17,6 +17,17 @@
             "justMyCode": false,
             "cwd": "${workspaceFolder}",
             "python": "${workspaceFolder}/isaacsim/python.sh",
-        }
+        },
+        {
+            "name": "Train LiftBrick",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/extension/scripts/skrl_train.py",
+            "args": ["--task", "Lego-LiftBrick-v0", "--num_envs", "32"],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "python": "${workspaceFolder}/isaacsim/python.sh",
+        },
     ]
 }
