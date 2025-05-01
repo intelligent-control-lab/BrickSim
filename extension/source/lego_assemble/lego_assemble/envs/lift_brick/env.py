@@ -1,7 +1,7 @@
 import math
 from isaaclab.envs import ManagerBasedRLEnvCfg
-from isaaclab.envs.mdp import BinaryJointPositionActionCfg, JointEffortActionCfg, action_rate_l2, generated_commands, joint_vel_l2, last_action, reset_joints_by_offset, joint_pos_rel, joint_vel_rel, time_out
-from isaaclab.managers import EventTermCfg, ObservationGroupCfg, ObservationTermCfg, RewardTermCfg, SceneEntityCfg, TerminationTermCfg
+from isaaclab.envs.mdp import BinaryJointPositionActionCfg, JointEffortActionCfg, action_rate_l2, generated_commands, joint_vel_l2, last_action, modify_reward_weight, reset_joints_by_offset, joint_pos_rel, joint_vel_rel, time_out
+from isaaclab.managers import CurriculumTermCfg, EventTermCfg, ObservationGroupCfg, ObservationTermCfg, RewardTermCfg, SceneEntityCfg, TerminationTermCfg
 from isaaclab.utils import configclass
 from isaaclab.sim import GroundPlaneCfg, DomeLightCfg, UsdFileCfg
 from isaaclab_assets import FRANKA_PANDA_CFG, ISAAC_NUCLEUS_DIR
@@ -234,19 +234,51 @@ class TerminationsCfg:
     )
 
 @configclass
+class CurriculumCfg:
+    action_rate = CurriculumTermCfg(
+        func=modify_reward_weight,
+        params={
+            "term_name": "action_rate",
+            "weight": -1e-1,
+            "num_steps": 10000,
+        },
+    )
+
+    joint_vel = CurriculumTermCfg(
+        func=modify_reward_weight,
+        params={
+            "term_name": "joint_vel",
+            "weight": -1e-1,
+            "num_steps": 10000,
+        },
+    )
+
+@configclass
 class LiftBrickEnvCfg(ManagerBasedRLEnvCfg):
-    scene = SceneCfg(num_envs=16, env_spacing=2.5)
+    # Scene settings
+    scene = SceneCfg(num_envs=4096, env_spacing=2.5)
+    # Basic settings
     observations = ObservationsCfg()
     actions = ActionsCfg()
     commands = CommandsCfg()
-    events = EventCfg()
+    # MDP settings
     rewards = RewardsCfg()
-    terminations= TerminationsCfg()
+    terminations = TerminationsCfg()
+    events = EventCfg()
+    curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self):
         self.sim.device = "cpu" # lego_assemble supports cpu only
-        self.viewer.eye = (4.5, 0.0, 6.0)
-        self.viewer.lookat = (0.0, 0.0, 2.0)
-        self.decimation = 4
-        self.sim.dt = 0.005
+
+        # general settings
+        self.decimation = 2
         self.episode_length_s = 5.0
+        # simulation settings
+        self.sim.dt = 0.01  # 100Hz
+        self.sim.render_interval = self.decimation
+
+        self.sim.physx.bounce_threshold_velocity = 0.2
+        self.sim.physx.bounce_threshold_velocity = 0.01
+        self.sim.physx.gpu_found_lost_aggregate_pairs_capacity = 1024 * 1024 * 4
+        self.sim.physx.gpu_total_aggregate_pairs_capacity = 16 * 1024
+        self.sim.physx.friction_correlation_distance = 0.00625
