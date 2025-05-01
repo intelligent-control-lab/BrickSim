@@ -1,6 +1,6 @@
 import math
 from isaaclab.envs import ManagerBasedRLEnvCfg
-from isaaclab.envs.mdp import BinaryJointPositionActionCfg, JointEffortActionCfg, action_rate_l2, generated_commands, joint_vel_l2, last_action, modify_reward_weight, reset_joints_by_offset, joint_pos_rel, joint_vel_rel, time_out
+from isaaclab.envs.mdp import BinaryJointPositionActionCfg, JointEffortActionCfg, JointPositionActionCfg, action_rate_l2, generated_commands, joint_vel_l2, last_action, modify_reward_weight, reset_joints_by_offset, joint_pos_rel, joint_vel_rel, time_out
 from isaaclab.managers import CurriculumTermCfg, EventTermCfg, ObservationGroupCfg, ObservationTermCfg, RewardTermCfg, SceneEntityCfg, TerminationTermCfg
 from isaaclab.utils import configclass
 from isaaclab.sim import GroundPlaneCfg, DomeLightCfg, UsdFileCfg
@@ -74,9 +74,16 @@ class SceneCfg(InteractiveSceneCfg):
 
 @configclass
 class ActionsCfg:
-    joint_efforts = JointEffortActionCfg(
+    # joint_efforts = JointEffortActionCfg(
+    #     asset_name="robot",
+    #     joint_names=["panda_joint.*"],
+    # )
+
+    arm_action = JointPositionActionCfg(
         asset_name="robot",
         joint_names=["panda_joint.*"],
+        scale=0.5,
+        use_default_offset=True,
     )
 
     gripper_action = BinaryJointPositionActionCfg(
