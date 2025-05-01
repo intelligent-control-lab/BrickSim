@@ -49,4 +49,4 @@ def reset_and_spawn_brick(
         new_brick_ids.append(brick_id)
 
     tracker = iface.get_tracker(num_envs=env.num_envs, num_trackings=len(TrackedBrick))
-    tracker.set_tracked_bricks(TrackedBrick.TO_GRASP, env_ids, new_brick_ids)
+    tracker.set_tracked_bricks(TrackedBrick.TO_GRASP, env_ids.numpy(), new_brick_ids)
