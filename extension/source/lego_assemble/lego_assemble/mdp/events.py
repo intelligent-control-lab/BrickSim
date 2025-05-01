@@ -22,7 +22,7 @@ def reset_and_spawn_brick(
         size=(len(env_ids), 3),
         device="cpu",
     )
-    quat = math_utils.quat_from_angle_axis(
+    quat: torch.Tensor = math_utils.quat_from_angle_axis(
         angle=math_utils.sample_uniform(
             lower=yaw_range[0],
             upper=yaw_range[1],
@@ -38,13 +38,13 @@ def reset_and_spawn_brick(
         iface.reset_env(int(env_id))
 
     new_brick_ids = []
-    for env_id in env_ids:
+    for env_id, dim_choice, color_choice, p, q in zip(env_ids, dim_choices, color_choices, pos, quat):
         brick_xform, brick_id = iface.create_brick(
-            dimensions=dimensions[dim_choices[env_id]],
-            color_name=colors[color_choices[env_id]],
+            dimensions=dimensions[dim_choice],
+            color_name=colors[color_choice],
             env_id=int(env_id),
-            pos=Gf.Vec3f(pos[env_id].tolist()),
-            quat=Gf.Quatf(*quat[env_id].tolist()),
+            pos=Gf.Vec3f(p.tolist()),
+            quat=Gf.Quatf(*q.tolist()),
         )
         new_brick_ids.append(brick_id)
 

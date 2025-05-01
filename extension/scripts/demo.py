@@ -28,6 +28,7 @@ from lego_assemble.envs.lift_brick.env import LiftBrickEnvCfg
 
 def main():
     env_cfg = LiftBrickEnvCfg()
+    env_cfg.scene.num_envs = 64
     env = ManagerBasedRLEnv(cfg=env_cfg)
     env.reset()
 
