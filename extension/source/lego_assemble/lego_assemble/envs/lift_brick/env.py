@@ -15,6 +15,8 @@ from lego_assemble.mdp.terminations import brick_height_below_minimum
 from lego_assemble.mdp.tracking import TrackedBrick
 from lego_assemble.mdp.pose_command import BrickUniformPoseCommandCfg
 
+# Reference: isaaclab_tasks/manager_based/manipulation/lift/lift_env_cfg.py
+
 @configclass
 class SceneCfg(InteractiveSceneCfg):
 
