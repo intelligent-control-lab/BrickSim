@@ -14,22 +14,22 @@ def reset_and_spawn_brick(
     pos_range: tuple[tuple[float, float, float], tuple[float, float, float]],
     yaw_range: tuple[float, float] = (-math.pi, math.pi),
 ):
-    dim_choices = torch.randint(0, len(dimensions), (len(env_ids),), device="cpu")
-    color_choices = torch.randint(0, len(colors), (len(env_ids),), device="cpu")
+    dim_choices = torch.randint(0, len(dimensions), (len(env_ids),), device=env.device)
+    color_choices = torch.randint(0, len(colors), (len(env_ids),), device=env.device)
     pos = math_utils.sample_uniform(
-        lower=torch.tensor(pos_range[0], device="cpu"),
-        upper=torch.tensor(pos_range[1], device="cpu"),
+        lower=torch.tensor(pos_range[0], device=env.device),
+        upper=torch.tensor(pos_range[1], device=env.device),
         size=(len(env_ids), 3),
-        device="cpu",
+        device=env.device,
     )
     quat: torch.Tensor = math_utils.quat_from_angle_axis(
         angle=math_utils.sample_uniform(
             lower=yaw_range[0],
             upper=yaw_range[1],
             size=(len(env_ids),),
-            device="cpu",
+            device=env.device,
         ),
-        axis=torch.tensor([0., 0., 1.], device="cpu")
+        axis=torch.tensor([0., 0., 1.], device=env.device)
     )
 
     iface = get_brick_physics_interface()
@@ -49,4 +49,4 @@ def reset_and_spawn_brick(
         new_brick_ids.append(brick_id)
 
     tracker = iface.get_tracker(num_envs=env.num_envs, num_trackings=len(TrackedBrick))
-    tracker.set_tracked_bricks(TrackedBrick.TO_GRASP, env_ids.numpy(), new_brick_ids)
+    tracker.set_tracked_bricks(TrackedBrick.TO_GRASP, env_ids, torch.tensor(new_brick_ids, device=env.device))
