@@ -80,6 +80,7 @@ from isaaclab.utils.pretrained_checkpoint import get_published_pretrained_checkp
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path, load_cfg_from_registry, parse_env_cfg
+from lego_assemble.envs.wrappers import ToDeviceWrapper
 
 # config shortcuts
 algorithm = args_cli.algorithm.lower()
@@ -95,6 +96,7 @@ def main():
     env_cfg = parse_env_cfg(
         args_cli.task, device="cpu", num_envs=args_cli.num_envs, use_fabric=True
     )
+    env_cfg.scene.num_envs = 64
     try:
         experiment_cfg = load_cfg_from_registry(args_cli.task, f"skrl_{algorithm}_cfg_entry_point")
     except ValueError:
@@ -144,7 +146,9 @@ def main():
         env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
     # wrap around environment for skrl
+    env = ToDeviceWrapper(env, "cuda")
     env = SkrlVecEnvWrapper(env, ml_framework=args_cli.ml_framework)  # same as: `wrap_env(env, wrapper="auto")`
+    env._device = env._env.device
 
     # configure and instantiate the skrl runner
     # https://skrl.readthedocs.io/en/latest/api/utils/runner.html
