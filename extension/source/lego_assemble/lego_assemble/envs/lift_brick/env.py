@@ -183,7 +183,7 @@ class RewardsCfg:
     lifting_object = RewardTermCfg(
         func=brick_is_lifted,
         params={
-            "minimal_height": 0.04,
+            "minimal_height": 0.01,
             "tracked_brick": TrackedBrick.TO_GRASP,
         },
         weight=15.0,
@@ -193,7 +193,7 @@ class RewardsCfg:
         func=brick_goal_distance,
         params={
             "std": 0.3,
-            "minimal_height": 0.04,
+            "minimal_height": 0.01,
             "command_name": "goal_pose",
             "tracked_brick": TrackedBrick.TO_GRASP,
         },
@@ -204,7 +204,7 @@ class RewardsCfg:
         func=brick_goal_distance,
         params={
             "std": 0.05,
-            "minimal_height": 0.04,
+            "minimal_height": 0.01,
             "command_name": "goal_pose",
             "tracked_brick": TrackedBrick.TO_GRASP,
         },
