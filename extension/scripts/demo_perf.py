@@ -36,8 +36,8 @@ def main():
     normal_step_profiled = False
     reset_step_profiled = False
 
-    while simulation_app.is_running():
-        with torch.inference_mode():
+    with torch.inference_mode():
+        while simulation_app.is_running():
             joint_efforts = torch.randn_like(env.action_manager.action)
 
             profiler = pyinstrument.Profiler()
@@ -49,12 +49,34 @@ def main():
             profiler.stop()
             if not is_reset_step and not normal_step_profiled:
                 profiler.write_html("step_profile_normal.html", timeline=False, show_all=True)
+                print("Normal step profile saved!")
                 normal_step_profiled = True
             if is_reset_step and not reset_step_profiled:
                 profiler.write_html("step_profile_reset.html", timeline=False, show_all=True)
+                print("Reset step profile saved!")
                 reset_step_profiled = True
             if normal_step_profiled and reset_step_profiled:
                 break
+        
+        # waiting for reset
+        while not is_reset_step and simulation_app.is_running():
+            joint_efforts = torch.randn_like(env.action_manager.action)
+            obs, reward, reset_terminated, reset_time_outs, extras = env.step(joint_efforts)
+            is_reset_step = reset_terminated.any() or reset_time_outs.any()
+
+        profiler = pyinstrument.Profiler()
+        profiler.start()
+
+        while simulation_app.is_running():
+            joint_efforts = torch.randn_like(env.action_manager.action)
+            obs, reward, reset_terminated, reset_time_outs, extras = env.step(joint_efforts)
+            is_reset_step = reset_terminated.any() or reset_time_outs.any()
+            if is_reset_step:
+                break
+
+        profiler.stop()
+        profiler.write_html("step_profile_whole.html", timeline=False, show_all=True)
+        print("Whole step profile saved!")
 
     env.close()
 
