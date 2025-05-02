@@ -14,6 +14,8 @@ class LegoExtension(omni.ext.IExt):
         self._init_ui()
 
     def on_shutdown(self):
+        if self._ui is not None:
+            self._ui.destroy()
         deinit_brick_physics_interface()
         carb.settings.get_settings().unsubscribe_to_change_events(self._disableContactProcessing_sub)
 
@@ -22,6 +24,7 @@ class LegoExtension(omni.ext.IExt):
             import omni.kit.window.property as p
         except ImportError:
             # Likely running headless
+            self._ui = None
             return
 
         from lego_assemble.ui import LegoUI

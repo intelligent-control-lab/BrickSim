@@ -39,6 +39,9 @@ class LegoUI():
                 omni.ui.Button("Add Brick", clicked_fn=self._add_brick_clicked)
                 omni.ui.Button("Reset Env", clicked_fn=self._reset_env_clicked)
 
+    def destroy(self):
+        self._window.destroy()    
+
     def _add_brick_clicked(self):
         width = self._dim_x_field.model.as_int
         length = self._dim_y_field.model.as_int
