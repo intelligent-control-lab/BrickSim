@@ -5,3 +5,6 @@ outputs/
 *.egg-info/
 __pycache__/
 /isaacsim/
+
+step_profile_normal.html
+step_profile_reset.html
