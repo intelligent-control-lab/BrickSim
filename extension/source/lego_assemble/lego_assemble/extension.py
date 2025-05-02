@@ -1,8 +1,6 @@
-import os
 import carb.settings
 import omni.ext
 from lego_assemble.physics.interface import init_brick_physics_interface, deinit_brick_physics_interface
-from omni.physx import get_physx_interface
 
 class LegoExtension(omni.ext.IExt):
     def on_startup(self, ext_id):
@@ -11,7 +9,6 @@ class LegoExtension(omni.ext.IExt):
         self._disableContactProcessing_sub = carb.settings.get_settings().subscribe_to_node_change_events(
             "/physics/disableContactProcessing", self._enable_contact_processing
         )
-        get_physx_interface().set_thread_count(os.cpu_count())
 
         self.brick_physics = init_brick_physics_interface()
         self._init_ui()
