@@ -9,7 +9,7 @@ from isaaclab.app import AppLauncher
 parser = argparse.ArgumentParser(description="Play a checkpoint of an RL agent from skrl.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
-parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
+parser.add_argument("--num_envs", type=int, default=16, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint.")
 parser.add_argument(
@@ -94,9 +94,9 @@ def main():
 
     # parse configuration
     env_cfg = parse_env_cfg(
-        args_cli.task, device="cpu", num_envs=args_cli.num_envs, use_fabric=True
+        args_cli.task, device="cpu", num_envs=args_cli.num_envs, use_fabric=False
     )
-    env_cfg.scene.num_envs = 64
+    env_cfg.scene.num_envs = args_cli.num_envs
     try:
         experiment_cfg = load_cfg_from_registry(args_cli.task, f"skrl_{algorithm}_cfg_entry_point")
     except ValueError:
