@@ -123,7 +123,10 @@ class ObservationsCfg:
         )
 
         brick_pose = ObservationTermCfg(
-            func=brick_pose_in_robot_root_frame
+            func=brick_pose_in_robot_root_frame,
+            params={
+                "tracked_brick": TrackedBrick.TO_GRASP,
+            }
         )
 
         target_object_position = ObservationTermCfg(
