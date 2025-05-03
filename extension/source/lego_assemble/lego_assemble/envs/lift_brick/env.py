@@ -9,8 +9,9 @@ from isaaclab_assets import FRANKA_PANDA_CFG, FRANKA_PANDA_HIGH_PD_CFG, ISAAC_NU
 from isaaclab.assets import AssetBaseCfg, ArticulationCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import FrameTransformerCfg, OffsetCfg
+from isaaclab_tasks.manager_based.manipulation.stack.mdp import ee_frame_pos, ee_frame_quat
 from lego_assemble.mdp.events import reset_and_spawn_brick
-from lego_assemble.mdp.observations import brick_pose_in_robot_root_frame
+from lego_assemble.mdp.observations import brick_pose_in_ee_frame, brick_pose_in_robot_root_frame
 from lego_assemble.mdp.rewards import brick_ee_distance, brick_goal_distance, brick_is_lifted, brick_upright
 from lego_assemble.mdp.terminations import brick_height_below_minimum
 from lego_assemble.mdp.tracking import TrackedBrick
@@ -132,28 +133,43 @@ class ObservationsCfg:
     @configclass
     class PolicyCfg(ObservationGroupCfg):
         joint_pos_rel = ObservationTermCfg(
-            func=joint_pos_rel
+            func=joint_pos_rel,
         )
 
         joint_vel_rel = ObservationTermCfg(
-            func=joint_vel_rel
+            func=joint_vel_rel,
         )
 
         brick_pose = ObservationTermCfg(
             func=brick_pose_in_robot_root_frame,
             params={
                 "tracked_brick": TrackedBrick.TO_GRASP,
-            }
+            },
         )
 
-        target_object_position = ObservationTermCfg(
+        goal_pose = ObservationTermCfg(
             func=generated_commands,
             params={
                 "command_name": "goal_pose"
-            }
+            },
         )
 
-        actions = ObservationTermCfg(
+        brick_pose_in_ee_frame = ObservationTermCfg(
+            func=brick_pose_in_ee_frame,
+            params={
+                "tracked_brick": TrackedBrick.TO_GRASP,
+            },
+        )
+
+        eef_pos = ObservationTermCfg(
+            func=ee_frame_pos,
+        )
+
+        eef_quat = ObservationTermCfg(
+            func=ee_frame_quat,
+        )
+
+        last_actions = ObservationTermCfg(
             func=last_action,
         )
 
