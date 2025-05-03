@@ -35,3 +35,18 @@ def brick_pose_in_ee_frame(
         brick_t, brick_q,
     )
     return torch.cat((rel_t, rel_q), dim=-1)
+
+def brick_delta_pos_to_fingers(
+    env: ManagerBasedEnv,
+    tracked_brick: TrackedBrick,
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+) -> torch.Tensor:
+    brick_t, brick_q = get_brick_pos_quat(env, tracked_brick)
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+    right_finger_t, right_finger_q = ee_frame.data.target_pos_w[..., 1, :], ee_frame.data.target_quat_w[..., 1, :]
+    left_finger_t, left_finger_q = ee_frame.data.target_pos_w[..., 2, :], ee_frame.data.target_quat_w[..., 2, :]
+
+    return torch.cat((
+        brick_t - right_finger_t,
+        brick_t - left_finger_t,
+    ), dim=-1)
