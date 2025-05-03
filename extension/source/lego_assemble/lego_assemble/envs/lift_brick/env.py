@@ -98,7 +98,7 @@ class ActionsCfg:
             use_relative_mode=True,
             ik_method="dls",
         ),
-        scale=(0.05, 0.05, 0.05, 0.20, 0.20, 0.20), # dx, dy, dz, droll, dpitch, dyaw
+        scale=(0.5, 0.5, 0.5, 0.5, 0.5, 0.5), # dx, dy, dz, droll, dpitch, dyaw
         body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(
             pos=[0.0, 0.0, 0.107],
         ),
@@ -154,6 +154,7 @@ class ObservationsCfg:
             },
         )
 
+        #### Useful for learning
         brick_pose_in_ee_frame = ObservationTermCfg(
             func=brick_pose_in_ee_frame,
             params={
@@ -169,9 +170,10 @@ class ObservationsCfg:
             func=ee_frame_quat,
         )
 
-        gripper_pos = ObservationTermCfg(
-            func=gripper_pos,
-        )
+        #### Hampers learning
+        # gripper_pos = ObservationTermCfg(
+        #     func=gripper_pos,
+        # )
 
         last_actions = ObservationTermCfg(
             func=last_action,
