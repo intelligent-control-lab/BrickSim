@@ -4,6 +4,7 @@ import isaaclab.utils.math as math_utils
 from isaaclab.assets import RigidObject
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.managers import SceneEntityCfg
+from lego_assemble.physics.utils_torch import quat_z_cos_batch
 from .tracking import TrackedBrick, get_brick_pose
 
 # From isaaclab_tasks/manager_based/manipulation/lift/mdp/rewards.py
@@ -56,3 +57,11 @@ def brick_goal_distance(
     distance = torch.norm(des_pos_w - brick_pose[:, :3], dim=1)
     # rewarded if the object is lifted above the threshold
     return (brick_pose[:, 2] > minimal_height) * (1 - torch.tanh(distance / std))
+
+def brick_upright(
+    env: ManagerBasedRLEnv,
+    tracked_brick: TrackedBrick,
+) -> torch.Tensor:
+    brick_q = get_brick_pose(env, tracked_brick)[:, 3:7] # xyzw
+    cos_angle = quat_z_cos_batch(brick_q) # [-1, 1]
+    return torch.clamp(cos_angle, 0, 1) # never reward upside down
