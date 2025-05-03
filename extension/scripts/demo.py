@@ -28,14 +28,16 @@ from lego_assemble.envs.lift_brick.env import LiftBrickEnvCfg
 
 def main():
     env_cfg = LiftBrickEnvCfg()
-    env_cfg.scene.num_envs = 64
+    env_cfg.scene.num_envs = 16
+    env_cfg.episode_length_s = 1e6
+    env_cfg.sim.use_fabric = False
     env = ManagerBasedRLEnv(cfg=env_cfg)
     env.reset()
 
     while simulation_app.is_running():
         with torch.inference_mode():
             joint_efforts = torch.randn_like(env.action_manager.action)
-            env.step(joint_efforts)
+            obs, reward, reset_terminated, reset_time_outs, extras = env.step(joint_efforts)
     env.close()
 
 if __name__ == "__main__":

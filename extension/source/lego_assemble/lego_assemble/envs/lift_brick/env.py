@@ -1,10 +1,11 @@
 import math
+from isaaclab.controllers import DifferentialIKControllerCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
-from isaaclab.envs.mdp import BinaryJointPositionActionCfg, JointEffortActionCfg, JointPositionActionCfg, action_rate_l2, generated_commands, joint_vel_l2, last_action, modify_reward_weight, reset_joints_by_offset, joint_pos_rel, joint_vel_rel, time_out
+from isaaclab.envs.mdp import BinaryJointPositionActionCfg, DifferentialInverseKinematicsActionCfg, JointEffortActionCfg, JointPositionActionCfg, action_rate_l2, generated_commands, joint_vel_l2, last_action, modify_reward_weight, reset_joints_by_offset, joint_pos_rel, joint_vel_rel, time_out
 from isaaclab.managers import CurriculumTermCfg, EventTermCfg, ObservationGroupCfg, ObservationTermCfg, RewardTermCfg, SceneEntityCfg, TerminationTermCfg
 from isaaclab.utils import configclass
 from isaaclab.sim import GroundPlaneCfg, DomeLightCfg, UsdFileCfg
-from isaaclab_assets import FRANKA_PANDA_CFG, ISAAC_NUCLEUS_DIR
+from isaaclab_assets import FRANKA_PANDA_CFG, FRANKA_PANDA_HIGH_PD_CFG, ISAAC_NUCLEUS_DIR
 from isaaclab.assets import AssetBaseCfg, ArticulationCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import FrameTransformerCfg, OffsetCfg
@@ -23,7 +24,8 @@ class SceneCfg(InteractiveSceneCfg):
     # lego_assemble doesn't support replicate_physics
     replicate_physics = False
 
-    robot: ArticulationCfg = FRANKA_PANDA_CFG.replace(
+    # Alternative: FRANKA_PANDA_CFG
+    robot: ArticulationCfg = FRANKA_PANDA_HIGH_PD_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot"
     )
 
@@ -79,11 +81,26 @@ class ActionsCfg:
     #     joint_names=["panda_joint.*"],
     # )
 
-    arm_action = JointPositionActionCfg(
+    # arm_action = JointPositionActionCfg(
+    #     asset_name="robot",
+    #     joint_names=["panda_joint.*"],
+    #     scale=0.5,
+    #     use_default_offset=True,
+    # )
+
+    hand_pose = DifferentialInverseKinematicsActionCfg(
         asset_name="robot",
         joint_names=["panda_joint.*"],
+        body_name="panda_hand",
+        controller=DifferentialIKControllerCfg(
+            command_type="pose",
+            use_relative_mode=True,
+            ik_method="dls",
+        ),
         scale=0.5,
-        use_default_offset=True,
+        body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(
+            pos=[0.0, 0.0, 0.107],
+        ),
     )
 
     gripper_action = BinaryJointPositionActionCfg(
