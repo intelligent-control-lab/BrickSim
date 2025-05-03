@@ -98,7 +98,7 @@ class ActionsCfg:
             use_relative_mode=True,
             ik_method="dls",
         ),
-        scale=0.05,
+        scale=(0.05, 0.05, 0.05, 0.20, 0.20, 0.20), # dx, dy, dz, droll, dpitch, dyaw
         body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(
             pos=[0.0, 0.0, 0.107],
         ),
