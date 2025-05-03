@@ -196,7 +196,7 @@ class RewardsCfg:
         func=brick_goal_distance,
         params={
             "std": 0.3,
-            "minimal_height": 0.01,
+            "minimal_height": 0.04,
             "command_name": "goal_pose",
             "tracked_brick": TrackedBrick.TO_GRASP,
         },
@@ -207,7 +207,7 @@ class RewardsCfg:
         func=brick_goal_distance,
         params={
             "std": 0.05,
-            "minimal_height": 0.01,
+            "minimal_height": 0.04,
             "command_name": "goal_pose",
             "tracked_brick": TrackedBrick.TO_GRASP,
         },
@@ -217,9 +217,10 @@ class RewardsCfg:
     brick_upright = RewardTermCfg(
         func=brick_upright,
         params={
+            "minimal_height": 0.01,
             "tracked_brick": TrackedBrick.TO_GRASP,
         },
-        weight=5.0,
+        weight=1.0,
     )
 
     # action penalty

@@ -60,8 +60,10 @@ def brick_goal_distance(
 
 def brick_upright(
     env: ManagerBasedRLEnv,
+    minimal_height: float,
     tracked_brick: TrackedBrick,
 ) -> torch.Tensor:
-    brick_q = get_brick_pose(env, tracked_brick)[:, 3:7] # xyzw
+    brick_pose = get_brick_pose(env, tracked_brick)
+    brick_q = brick_pose[:, 3:7] # xyzw
     cos_angle = quat_z_cos_batch(brick_q) # [-1, 1]
-    return torch.clamp(cos_angle, 0, 1) # never reward upside down
+    return (brick_pose[:, 2] > minimal_height) * torch.clamp(cos_angle, 0, 1) # never reward upside down
