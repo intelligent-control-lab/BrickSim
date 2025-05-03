@@ -26,7 +26,7 @@ class SceneCfg(InteractiveSceneCfg):
     replicate_physics = False
 
     # Alternative: FRANKA_PANDA_CFG
-    robot: ArticulationCfg = FRANKA_PANDA_HIGH_PD_CFG.replace(
+    robot: ArticulationCfg = FRANKA_PANDA_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot"
     )
 
@@ -82,27 +82,27 @@ class ActionsCfg:
     #     joint_names=["panda_joint.*"],
     # )
 
-    # arm_action = JointPositionActionCfg(
-    #     asset_name="robot",
-    #     joint_names=["panda_joint.*"],
-    #     scale=0.5,
-    #     use_default_offset=True,
-    # )
-
-    hand_pose = DifferentialInverseKinematicsActionCfg(
+    arm_action = JointPositionActionCfg(
         asset_name="robot",
         joint_names=["panda_joint.*"],
-        body_name="panda_hand",
-        controller=DifferentialIKControllerCfg(
-            command_type="pose",
-            use_relative_mode=True,
-            ik_method="dls",
-        ),
-        scale=(0.5, 0.5, 0.5, 0.5, 0.5, 0.5), # dx, dy, dz, droll, dpitch, dyaw
-        body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(
-            pos=[0.0, 0.0, 0.107],
-        ),
+        scale=0.5,
+        use_default_offset=True,
     )
+
+    # hand_pose = DifferentialInverseKinematicsActionCfg(
+    #     asset_name="robot",
+    #     joint_names=["panda_joint.*"],
+    #     body_name="panda_hand",
+    #     controller=DifferentialIKControllerCfg(
+    #         command_type="pose",
+    #         use_relative_mode=True,
+    #         ik_method="dls",
+    #     ),
+    #     scale=(0.5, 0.5, 0.5, 0.5, 0.5, 0.5), # dx, dy, dz, droll, dpitch, dyaw
+    #     body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(
+    #         pos=[0.0, 0.0, 0.107],
+    #     ),
+    # )
 
     gripper_action = BinaryJointPositionActionCfg(
         asset_name="robot",
@@ -132,13 +132,13 @@ class CommandsCfg:
 class ObservationsCfg:
     @configclass
     class PolicyCfg(ObservationGroupCfg):
-        # joint_pos_rel = ObservationTermCfg(
-        #     func=joint_pos_rel,
-        # )
+        joint_pos_rel = ObservationTermCfg(
+            func=joint_pos_rel,
+        )
 
-        # joint_vel_rel = ObservationTermCfg(
-        #     func=joint_vel_rel,
-        # )
+        joint_vel_rel = ObservationTermCfg(
+            func=joint_vel_rel,
+        )
 
         brick_pose = ObservationTermCfg(
             func=brick_pose_in_robot_root_frame,
@@ -155,12 +155,12 @@ class ObservationsCfg:
         )
 
         #### Useful for learning
-        # brick_pose_in_ee_frame = ObservationTermCfg(
-        #     func=brick_pose_in_ee_frame,
-        #     params={
-        #         "tracked_brick": TrackedBrick.TO_GRASP,
-        #     },
-        # )
+        brick_pose_in_ee_frame = ObservationTermCfg(
+            func=brick_pose_in_ee_frame,
+            params={
+                "tracked_brick": TrackedBrick.TO_GRASP,
+            },
+        )
 
         brick_obs = ObservationTermCfg(
             func=brick_delta_pos_to_fingers,
