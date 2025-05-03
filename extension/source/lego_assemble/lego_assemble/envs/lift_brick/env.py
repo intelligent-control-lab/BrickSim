@@ -9,7 +9,7 @@ from isaaclab_assets import FRANKA_PANDA_CFG, FRANKA_PANDA_HIGH_PD_CFG, ISAAC_NU
 from isaaclab.assets import AssetBaseCfg, ArticulationCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import FrameTransformerCfg, OffsetCfg
-from isaaclab_tasks.manager_based.manipulation.stack.mdp import ee_frame_pos, ee_frame_quat
+from isaaclab_tasks.manager_based.manipulation.stack.mdp import ee_frame_pos, ee_frame_quat, gripper_pos
 from lego_assemble.mdp.events import reset_and_spawn_brick
 from lego_assemble.mdp.observations import brick_pose_in_ee_frame, brick_pose_in_robot_root_frame
 from lego_assemble.mdp.rewards import brick_ee_distance, brick_goal_distance, brick_is_lifted, brick_upright
@@ -132,13 +132,13 @@ class CommandsCfg:
 class ObservationsCfg:
     @configclass
     class PolicyCfg(ObservationGroupCfg):
-        joint_pos_rel = ObservationTermCfg(
-            func=joint_pos_rel,
-        )
+        # joint_pos_rel = ObservationTermCfg(
+        #     func=joint_pos_rel,
+        # )
 
-        joint_vel_rel = ObservationTermCfg(
-            func=joint_vel_rel,
-        )
+        # joint_vel_rel = ObservationTermCfg(
+        #     func=joint_vel_rel,
+        # )
 
         brick_pose = ObservationTermCfg(
             func=brick_pose_in_robot_root_frame,
@@ -167,6 +167,10 @@ class ObservationsCfg:
 
         eef_quat = ObservationTermCfg(
             func=ee_frame_quat,
+        )
+
+        gripper_pos = ObservationTermCfg(
+            func=gripper_pos,
         )
 
         last_actions = ObservationTermCfg(
