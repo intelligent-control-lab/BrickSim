@@ -37,6 +37,10 @@ parser.add_argument(
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli, hydra_args = parser.parse_known_args()
+hydra_args.extend([
+    "+hydra.callbacks.git_infos._target_=hydra_callbacks.GitInfo",
+    "+hydra.callbacks.git_infos.clean=true",
+])
 # always enable cameras to record video
 if args_cli.video:
     args_cli.enable_cameras = True
