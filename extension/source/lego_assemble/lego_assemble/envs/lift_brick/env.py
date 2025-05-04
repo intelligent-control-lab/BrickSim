@@ -82,18 +82,18 @@ class ActionsCfg:
     #     joint_names=["panda_joint.*"],
     # )
 
-    # arm_action = JointPositionActionCfg(
-    #     asset_name="robot",
-    #     joint_names=["panda_joint.*"],
-    #     scale=0.5,
-    #     use_default_offset=True,
-    # )
-
-    arm_action = RelativeJointPositionActionCfg(
+    arm_action = JointPositionActionCfg(
         asset_name="robot",
         joint_names=["panda_joint.*"],
         scale=0.5,
+        use_default_offset=True,
     )
+
+    # arm_action = RelativeJointPositionActionCfg(
+    #     asset_name="robot",
+    #     joint_names=["panda_joint.*"],
+    #     scale=0.5,
+    # )
 
     # hand_pose = DifferentialInverseKinematicsActionCfg(
     #     asset_name="robot",
