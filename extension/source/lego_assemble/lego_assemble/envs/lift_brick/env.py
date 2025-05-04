@@ -12,7 +12,7 @@ from isaaclab.sensors import FrameTransformerCfg, OffsetCfg
 from isaaclab_tasks.manager_based.manipulation.stack.mdp import ee_frame_pos, ee_frame_quat, gripper_pos
 from lego_assemble.mdp.events import reset_and_spawn_brick
 from lego_assemble.mdp.observations import brick_delta_pos_to_fingers, brick_pose_in_ee_frame, brick_pose_in_robot_root_frame
-from lego_assemble.mdp.rewards import brick_ee_distance, brick_goal_distance, brick_is_lifted, brick_upright
+from lego_assemble.mdp.rewards import brick_ee_distance, brick_goal_distance, brick_is_lifted, brick_upright, brick_yaw_tracking
 from lego_assemble.mdp.terminations import brick_height_below_minimum
 from lego_assemble.mdp.tracking import TrackedBrick
 from lego_assemble.mdp.pose_command import BrickUniformPoseCommandCfg
@@ -270,6 +270,16 @@ class RewardsCfg:
         func=brick_upright,
         params={
             "minimal_height": 0.01,
+            "tracked_brick": TrackedBrick.TO_GRASP,
+        },
+        weight=5.0,
+    )
+
+    brick_yaw_tracking = RewardTermCfg(
+        func=brick_yaw_tracking,
+        params={
+            "minimal_height": 0.01,
+            "command_name": "goal_pose",
             "tracked_brick": TrackedBrick.TO_GRASP,
         },
         weight=5.0,
