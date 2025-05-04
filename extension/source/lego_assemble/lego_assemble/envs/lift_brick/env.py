@@ -272,7 +272,7 @@ class RewardsCfg:
             "minimal_height": 0.01,
             "tracked_brick": TrackedBrick.TO_GRASP,
         },
-        weight=1.0,
+        weight=5.0,
     )
 
     # action penalty
