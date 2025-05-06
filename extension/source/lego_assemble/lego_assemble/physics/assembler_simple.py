@@ -117,15 +117,54 @@ def handle_assembly_contacts() -> list[AssemblyEvent]:
             continue
 
         # Relative position of the second brick in studs
-        p0 = rel_pose[:2,3] / BrickLength + (dim0[:2] - rel_pose[:2,:2] @ dim1[:2]) / 2 
+        # Calculate p0: the 2D position (x,y) of brick1's "min-corner" (e.g., bottom-left)
+        # relative to brick0's "min-corner", expressed in stud units.
+        # The origin of this p0 coordinate system is the min-corner of brick0.
+        #
+        # Breakdown:
+        #   rel_pose[:2,3]: XY translation of brick1's center relative to brick0's center (in physics units).
+        #   BrickLength: Conversion factor from physics units to stud units.
+        #   rel_pose[:2,3] / BrickLength: XY translation of brick1's center relative to brick0's center (in stud units).
+        #   dim0[:2]: [width, depth] of brick0 in stud units.
+        #   dim1[:2]: [width, depth] of brick1 in stud units.
+        #   rel_pose[:2,:2]: 2D rotation matrix of brick1 relative to brick0.
+        #   rel_pose[:2,:2] @ dim1[:2]: Dimensions of brick1 rotated into brick0's frame.
+        #   (dim0[:2] - rel_pose[:2,:2] @ dim1[:2]) / 2: This term converts the center-relative position
+        #                                                to a min-corner-relative position.
+        #                                                It's equivalent to: (dim0[:2]/2) - (rotated_dim1[:2]/2)
+        #                                                which is (offset_from_brick0_center_to_its_min_corner) - (offset_from_brick1_center_to_its_min_corner_in_brick0_frame)
+        p0 = rel_pose[:2,3] / BrickLength + (dim0[:2] - rel_pose[:2,:2] @ dim1[:2]) / 2
+
+        # Snap p0 (the calculated min-corner position of brick1) to the nearest stud grid point.
+        # p0_snapped represents the integer grid coordinates of brick1's min-corner.
         p0_snapped = np.round(p0).astype(int)
+
+        # Define the 2D rotation matrix for the "snapped" yaw.
+        # snapped_yaw is the relative yaw angle between bricks, rounded to the nearest 90 degrees (pi/2 radians).
         R_snapped = np.array([[np.cos(snapped_yaw), -np.sin(snapped_yaw)], [np.sin(snapped_yaw), np.cos(snapped_yaw)]])
+
+        # Calculate p1_snapped: the 2D position of brick1's "max-corner" (e.g., top-right)
+        # after snapping, in brick0's stud grid (where brick0's min-corner is the origin).
+        # This is found by taking an initial corner position (p0 - note: uses unsnapped p0),
+        # adding brick1's dimensions rotated by the snapped_yaw, and then rounding to the grid.
+        # p0: unsnapped min-corner of brick1 relative to min-corner of brick0.
+        # R_snapped @ dim1[:2]: brick1's dimensions [width, depth] rotated by the snapped angle.
+        #                     This vector points from brick1's min-corner to its max-corner in the snapped orientation.
         p1_snapped = np.round(p0 + R_snapped @ dim1[:2]).astype(int)
         p_err = p0 - p0_snapped
         if np.linalg.norm(p_err) * BrickLength > PositionTolerance:
             # Reason: exceeding position tolerance
             continue
 
+        # --- Overlap Calculation ---
+        # The goal is to find the overlapping area in studs between brick0 and the snapped brick1.
+        # Brick0's extent in its own stud grid (min-corner at origin):
+        #   x-axis: [0, dim0[0]]
+        #   y-axis: [0, dim0[1]]
+        # Brick1's extent in brick0's stud grid (after snapping):
+        #   x-axis: [min(p0_snapped[0], p1_snapped[0]), max(p0_snapped[0], p1_snapped[0])]
+        #   y-axis: [min(p0_snapped[1], p1_snapped[1]), max(p0_snapped[1], p1_snapped[1])]
+        # The formula used is the standard 1D interval overlap: max(0, min(end1, end2) - max(start1, start2))
         overlap_x = max(0, min(dim0[0], max(p0_snapped[0], p1_snapped[0])) - max(0, min(p0_snapped[0], p1_snapped[0])))
         overlap_y = max(0, min(dim0[1], max(p0_snapped[1], p1_snapped[1])) - max(0, min(p0_snapped[1], p1_snapped[1])))
         overlap_area = overlap_x * overlap_y
