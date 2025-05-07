@@ -6,7 +6,7 @@ from functools import cache
 from scipy.spatial.transform import Rotation
 from pxr import Usd
 from pxr.PhysicsSchemaTools._physicsSchemaTools import intToSdfPath
-from omni.physx.bindings._physx import ContactEventHeader, ContactEventType, ContactData
+from omni.physx.bindings._physx import ContactEventHeader, ContactEventType, ContactData, ContactEventHeaderVector, ContactDataVector
 from .lego_schemes import BrickLength, PlateHeight, StudHeight
 from .assembler import DistanceTolerance, MaxPenetration, ZAngleTolerance, RequiredForce, YawTolerance, PositionTolerance, AssemblyEvent, assemble_bricks
 from .utils import get_physics_scene, inv_se3
@@ -22,7 +22,7 @@ def _get_rigidbody_transform(physx: omni.physx.PhysX, path: str) -> Optional[np.
     transform[:3, :3] = Rotation.from_quat(rotation).as_matrix()
     return transform
 
-def handle_assembly_contacts() -> list[AssemblyEvent]:
+def handle_assembly_contacts(contact_headers: ContactEventHeaderVector, contact_data: ContactDataVector) -> list[AssemblyEvent]:
     physx = omni.physx.get_physx_interface()
     if not physx.is_running():
         return []
@@ -51,7 +51,6 @@ def handle_assembly_contacts() -> list[AssemblyEvent]:
         return prim, dim, pose
 
     assembly_events: list[AssemblyEvent] = []
-    contact_headers, contact_data = omni.physx.get_physx_simulation_interface().get_contact_report()
     contact: ContactEventHeader
     for contact in contact_headers:
         if contact.type == ContactEventType.CONTACT_LOST:

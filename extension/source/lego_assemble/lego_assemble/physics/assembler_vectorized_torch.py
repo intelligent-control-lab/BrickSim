@@ -5,7 +5,7 @@ import omni.physx
 from typing import Optional
 from pxr import Gf, Usd
 from pxr.PhysicsSchemaTools._physicsSchemaTools import sdfPathToInt
-from omni.physx.bindings._physx import ContactEventType
+from omni.physx.bindings._physx import ContactEventType, ContactEventHeaderVector, ContactDataVector
 from omni.physics.tensors.impl.api import create_simulation_view, RigidBodyView
 from .lego_schemes import BrickLength, PlateHeight, StudHeight
 from .assembler import DistanceTolerance, MaxPenetration, ZAngleTolerance, RequiredForce, YawTolerance, PositionTolerance, AssemblyEvent, assemble_bricks, path_for_brick
@@ -77,11 +77,10 @@ class VectorizedAssemblyDetector:
             return None
         return dim_attr.Get()
 
-    def handle_assembly_contacts(self) -> list[AssemblyEvent]:
+    def handle_assembly_contacts(self, _contacts: ContactEventHeaderVector, _contact_data: ContactDataVector) -> list[AssemblyEvent]:
         if self.rigid_body_view is None:
             return []
 
-        _contacts, _contact_data = self.physx_sim_interface.get_contact_report()
         if len(_contacts) == 0 or len(_contact_data) == 0:
             return []
 
