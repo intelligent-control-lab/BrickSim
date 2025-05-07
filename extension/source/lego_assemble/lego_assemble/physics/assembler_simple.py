@@ -145,12 +145,12 @@ def handle_assembly_contacts() -> list[AssemblyEvent]:
 
         # Calculate p1_snapped: the 2D position of brick1's "max-corner" (e.g., top-right)
         # after snapping, in brick0's stud grid (where brick0's min-corner is the origin).
-        # This is found by taking an initial corner position (p0 - note: uses unsnapped p0),
+        # This is found by taking an initial corner position p0_snapped,
         # adding brick1's dimensions rotated by the snapped_yaw, and then rounding to the grid.
-        # p0: unsnapped min-corner of brick1 relative to min-corner of brick0.
+        # p0_snapped: snapped min-corner of brick1 relative to min-corner of brick0.
         # R_snapped @ dim1[:2]: brick1's dimensions [width, depth] rotated by the snapped angle.
         #                     This vector points from brick1's min-corner to its max-corner in the snapped orientation.
-        p1_snapped = np.round(p0 + R_snapped @ dim1[:2]).astype(int)
+        p1_snapped = np.round(p0_snapped + R_snapped @ dim1[:2]).astype(int)
         p_err = p0 - p0_snapped
         if np.linalg.norm(p_err) * BrickLength > PositionTolerance:
             # Reason: exceeding position tolerance
