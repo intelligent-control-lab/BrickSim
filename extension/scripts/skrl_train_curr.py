@@ -37,6 +37,7 @@ parser.add_argument(
     "--curr",
     type=str,
     choices=["together", "curr", "direct"],
+    required=True,
 )
 
 # append AppLauncher cli args
