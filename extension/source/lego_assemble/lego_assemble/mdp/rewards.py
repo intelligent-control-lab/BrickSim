@@ -69,14 +69,14 @@ def brick_upright(
     return (brick_pose[:, 2] > minimal_height) * torch.clamp(cos_angle, 0, 1) # never reward upside down
 
 @torch.jit.script
-def _cos_yaw_diff(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor: # wxyz
+def _cos_quat_diff(q1: torch.Tensor, q2: torch.Tensor): # wxyz
     dq = math_utils.quat_mul(q1, math_utils.quat_conjugate(q2))
+    dq = math_utils.normalize(dq)
     qw = dq[:, 0]; qx = dq[:, 1]; qy = dq[:, 2]; qz = dq[:, 3]
-    yaw = torch.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz))
-    cos_yaw = torch.cos(yaw)
-    return cos_yaw
+    theta = 2 * torch.atan2(torch.sqrt(qx*qx + qy*qy + qz*qz), qw)
+    return torch.cos(theta)
 
-def brick_yaw_tracking(
+def brick_goal_aligned(
     env: ManagerBasedRLEnv,
     minimal_height: float,
     command_name: str,
@@ -89,6 +89,31 @@ def brick_yaw_tracking(
     )
     command = env.command_manager.get_command(command_name)
     des_q = command[:, 3:7] # wxyz
-    cos_yaw_diff = _cos_yaw_diff(brick_q, des_q) # [-1, 1]
+    orientation_diff = _cos_quat_diff(brick_q, des_q) # [-1, 1]
     height_gate = brick_pose[:, 2] > minimal_height
-    return height_gate * (1 + cos_yaw_diff) / 2
+    return height_gate * torch.clamp(orientation_diff, 0, 1)
+
+# @torch.jit.script
+# def _cos_yaw_diff(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor: # wxyz
+#     dq = math_utils.quat_mul(q1, math_utils.quat_conjugate(q2))
+#     qw = dq[:, 0]; qx = dq[:, 1]; qy = dq[:, 2]; qz = dq[:, 3]
+#     yaw = torch.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz))
+#     cos_yaw = torch.cos(yaw)
+#     return cos_yaw
+
+# def brick_yaw_tracking(
+#     env: ManagerBasedRLEnv,
+#     minimal_height: float,
+#     command_name: str,
+#     tracked_brick: TrackedBrick,
+# ) -> torch.Tensor:
+#     brick_pose = get_brick_pose(env, tracked_brick)
+#     brick_q = math_utils.convert_quat(
+#         brick_pose[:, 3:7], # xyzw
+#         to="wxyz"
+#     )
+#     command = env.command_manager.get_command(command_name)
+#     des_q = command[:, 3:7] # wxyz
+#     cos_yaw_diff = _cos_yaw_diff(brick_q, des_q) # [-1, 1]
+#     height_gate = brick_pose[:, 2] > minimal_height
+#     return height_gate * (1 + cos_yaw_diff) / 2

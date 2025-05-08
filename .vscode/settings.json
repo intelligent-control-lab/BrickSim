@@ -10,6 +10,8 @@
     "files.watcherExclude": {
         "isaacsim": true,
         "IsaacLab/_isaac_sim": true,
+        "logs": true,
+        "outputs": true,
     },
     "files.associations": {
         "*.kit": "ini",
