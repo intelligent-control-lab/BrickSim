@@ -165,7 +165,7 @@ def init_brick_physics_interface():
     global _brick_physics_interface
     if _brick_physics_interface is not None:
         raise RuntimeError("BrickPhysicsInterface is already initialized.")
-    mode = carb.settings.get_settings().get("/lego_assemble/mode") or "numpy_vectorized"
+    mode = carb.settings.get_settings().get("/lego_assemble/mode") or "torch_vectorized"
     _logger.info(f"Initializing BrickPhysicsInterface in {mode} mode")
     _brick_physics_interface = BrickPhysicsInterface(mode)
     return _brick_physics_interface
