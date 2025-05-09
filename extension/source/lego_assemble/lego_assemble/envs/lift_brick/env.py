@@ -30,6 +30,14 @@ class SceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/Robot"
     )
 
+    robot2: ArticulationCfg = FRANKA_PANDA_CFG.replace(
+        prim_path="{ENV_REGEX_NS}/Robot2",
+        init_state=FRANKA_PANDA_CFG.init_state.replace(
+            pos=[0.7, 0.0, 0.0],
+            rot=[0.0, 0.0, 0.0, 1.0],
+        ),
+    )
+
     ee_frame = FrameTransformerCfg(
         prim_path="{ENV_REGEX_NS}/Robot/panda_link0",
         debug_vis=False,
@@ -56,6 +64,7 @@ class SceneCfg(InteractiveSceneCfg):
                 ),
             ),
         ],
+        visualizer_cfg=None,
     )
 
     table = AssetBaseCfg(
@@ -123,7 +132,7 @@ class CommandsCfg:
         asset_name="robot",
         tracked_brick=TrackedBrick.TO_GRASP,
         resampling_time_range=(1e6, 1e6),
-        debug_vis=True,
+        debug_vis=False,
         ranges=BrickUniformPoseCommandCfg.Ranges(
             pos_x=(0.1, 0.6),
             pos_y=(-0.25, 0.25),
@@ -211,15 +220,15 @@ class EventCfg:
         params={
             "dimensions": [
                 (4, 2, 3),
-                (2, 2, 3),
+                # (2, 2, 3),
             ],
             "colors": [
                 "Pink",
-                "Light Blue",
+                # "Light Blue",
             ],
             "pos_range": (
-                (0.1, -0.25, 0.0),
-                (0.6, 0.25, 0.0),
+                (0.1, -0.25, 0.02),
+                (0.6, 0.25, 0.02),
             )
         }
     )

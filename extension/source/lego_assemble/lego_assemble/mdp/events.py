@@ -39,6 +39,12 @@ def reset_and_spawn_brick(
 
     new_brick_ids = []
     for env_id, dim_choice, color_choice, p, q in zip(env_ids, dim_choices, color_choices, pos, quat):
+        iface.create_brick(
+            dimensions=(50,50,1),
+            color_name="Black",
+            env_id=int(env_id),
+            pos=Gf.Vec3f(0.35, 0, 0),
+        )
         brick_xform, brick_id = iface.create_brick(
             dimensions=dimensions[dim_choice],
             color_name=colors[color_choice],
