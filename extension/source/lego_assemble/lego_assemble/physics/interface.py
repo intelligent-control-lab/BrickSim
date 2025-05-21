@@ -32,12 +32,15 @@ class BrickPhysicsInterface:
 
     def create_brick(self, dimensions: Tuple[int, int, int], color_name: str, env_id: Optional[int] = None, pos: Gf.Vec3f = None, quat: Gf.Quatf = None) -> Tuple[UsdGeom.Xform, int]:
         self.invalidate()
-
-        brick_id = self.uniqueifier
-        self.uniqueifier += 1
-        path = path_for_brick(brick_id=brick_id, env_id=env_id)
-
         stage: Usd.Stage = omni.usd.get_context().get_stage()
+
+        while True:
+            brick_id = self.uniqueifier
+            self.uniqueifier += 1
+            path = path_for_brick(brick_id=brick_id, env_id=env_id)
+            if not stage.GetPrimAtPath(path).IsValid():
+                break
+
         brick = spawner.create_brick(stage, path, dimensions, color_name)
         if env_id is not None:
             add_to_collision_group(stage, env_id, brick.GetPath())
