@@ -1,4 +1,5 @@
 import omni.ui
+import omni.physx
 import lego_assemble.physics.lego_schemes as lego_schemes
 from lego_assemble.physics.interface import get_brick_physics_interface
 
@@ -38,6 +39,7 @@ class LegoUI():
                     self._pos_z_field.model.set_value(0.1)
                 omni.ui.Button("Add Brick", clicked_fn=self._add_brick_clicked)
                 omni.ui.Button("Reset Env", clicked_fn=self._reset_env_clicked)
+                omni.ui.Button("Save to USD", clicked_fn=self._save_to_usd)
 
     def destroy(self):
         self._window.destroy()    
@@ -64,3 +66,8 @@ class LegoUI():
         env_id_str = self._base_path_field.model.as_string
         env_id = int(env_id_str) if env_id_str else None
         get_brick_physics_interface().reset_env(env_id)
+
+    def _save_to_usd(self):
+        omni.physx.get_physx_interface().update_transformations(True, True, True, True)
+        omni.physx.get_physx_interface().release_physics_objects()
+        omni.physx.get_physx_interface().force_load_physics_from_usd()
