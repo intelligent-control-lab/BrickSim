@@ -30,13 +30,13 @@ class SceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/Robot"
     )
 
-    robot2: ArticulationCfg = FRANKA_PANDA_CFG.replace(
-        prim_path="{ENV_REGEX_NS}/Robot2",
-        init_state=FRANKA_PANDA_CFG.init_state.replace(
-            pos=[0.7, 0.0, 0.0],
-            rot=[0.0, 0.0, 0.0, 1.0],
-        ),
-    )
+    # robot2: ArticulationCfg = FRANKA_PANDA_CFG.replace(
+    #     prim_path="{ENV_REGEX_NS}/Robot2",
+    #     init_state=FRANKA_PANDA_CFG.init_state.replace(
+    #         pos=[0.7, 0.0, 0.0],
+    #         rot=[0.0, 0.0, 0.0, 1.0],
+    #     ),
+    # )
 
     ee_frame = FrameTransformerCfg(
         prim_path="{ENV_REGEX_NS}/Robot/panda_link0",
