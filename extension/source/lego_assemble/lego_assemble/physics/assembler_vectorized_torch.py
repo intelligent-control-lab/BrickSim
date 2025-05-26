@@ -157,7 +157,7 @@ class VectorizedAssemblyDetector:
             torch.cos(snapped_yaw), -torch.sin(snapped_yaw),
             torch.sin(snapped_yaw),  torch.cos(snapped_yaw)
         ], dim=1).reshape(-1,2,2)
-        p1_snapped = torch.round(p0 + torch.einsum("bij,bj->bi", R_snapped, dim1[:,:2].float())).to(torch.int64)
+        p1_snapped = torch.round(p0_snapped + torch.einsum("bij,bj->bi", R_snapped, dim1[:,:2].float())).to(torch.int64)
         p_err = torch.norm(p0 - p0_snapped, dim=1) * BrickLength
 
         # Reason: exceeding position tolerance

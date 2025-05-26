@@ -150,7 +150,7 @@ class VectorizedAssemblyDetector:
         p0 = (rel_pose[:,:2,3] / BrickLength + (dim0[:,:2] - np.einsum("bij,bj->bi", rel_pose[:,:2,:2], dim1[:,:2])) / 2)
         p0_snapped = np.round(p0).astype(int)
         R_snapped = np.stack([np.cos(snapped_yaw), -np.sin(snapped_yaw), np.sin(snapped_yaw),  np.cos(snapped_yaw)], axis=1).reshape(-1,2,2)
-        p1_snapped = np.round(p0 + np.einsum("bij,bj->bi", R_snapped, dim1[:,:2])).astype(int)
+        p1_snapped = np.round(p0_snapped + np.einsum("bij,bj->bi", R_snapped, dim1[:,:2])).astype(int)
         p_err = np.linalg.norm(p0 - p0_snapped, axis=1) * BrickLength
 
         # Reason: exceeding position tolerance
