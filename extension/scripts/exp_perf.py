@@ -1,4 +1,3 @@
-MODE = "simple"  # Options: "none", "numpy_vectorized", "torch_vectorized", "simple"
 RENDER = False
 
 import os
@@ -12,7 +11,6 @@ args_cli = parser.parse_args()
 args_cli.headless = not RENDER
 ext_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "source"))
 sys.argv += ["--ext-folder", ext_folder, "--enable", "lego_assemble", "-v"]
-sys.argv += [f"--/lego_assemble/mode={MODE}"]
 app_launcher = AppLauncher(args_cli)
 
 
@@ -148,7 +146,7 @@ def run_simulator(sim: sim_utils.SimulationContext):
     data_array = np.array(performance_data)
 
     # Export data as .npy file
-    npy_filename = f"perf_{MODE}.npy"
+    npy_filename = f"perf.npy"
     np.save(npy_filename, data_array)
     print(f"Performance data saved to {npy_filename}")
 
@@ -157,21 +155,17 @@ def run_simulator(sim: sim_utils.SimulationContext):
     mean_times = data_array[:, 1]
     std_times = data_array[:, 2]
 
-    plt.figure(figsize=(10, 6))
-    plt.errorbar(bricks_count, mean_times, yerr=std_times, fmt='-o', capsize=5, ecolor='red', label='Mean Step Time')
-    plt.xlabel("Total Number of Bricks in Scene")
-    plt.ylabel(f"Mean Step Time over N={measurement_steps_N} steps (ms)")
-    plt.title("Simulation Step Time vs. Number of Bricks")
+    plt.figure(figsize=(8, 3))
+    plt.plot(bricks_count, mean_times, color="red")
+    plt.fill_between(bricks_count, mean_times - std_times, mean_times + std_times, color="red", alpha=0.3)
+    plt.xlabel("Number of Bricks")
+    plt.ylabel("Average Step Time (ms)")
     plt.grid(True, which="both", linestyle="--", linewidth=0.5)
-    plt.legend()
-    
-    plot_filename = f"perf_{MODE}.png"
-    try:
-        plt.savefig(plot_filename)
-        print(f"Plot saved to {plot_filename}")
-    except Exception as e:
-        print(f"Error saving plot: {e}")
-    # plt.show() # Optionally show plot if running in an environment that supports it
+    plt.tight_layout()
+
+    plot_filename = f"perf.pdf"
+    plt.savefig(plot_filename, bbox_inches="tight")
+    print(f"Plot saved")
 
 # --- Main Execution ---
 def main():
