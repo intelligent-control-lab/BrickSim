@@ -1,27 +1,23 @@
 import math
 import logging
-import carb.settings
 import omni.usd
 import omni.physx
 import omni.physx.scripts.physicsUtils as physicsUtils
-from typing import Tuple, Optional, Literal, Union
+from typing import Tuple, Optional
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 from omni.physx.bindings._physx import ContactEventHeaderVector, ContactDataVector
-from . import assembler_simple, spawner
-from .assembler_vectorized import VectorizedAssemblyDetector as NumpyVectorizedAssemblyDetector, BrickTracker as NumpyBrickTracker
-from .assembler_vectorized_torch import VectorizedAssemblyDetector as TorchVectorizedAssemblyDetector, BrickTracker as TorchBrickTracker
+from . import spawner
+from .assembler_impl import VectorizedAssemblyDetector, BrickTracker
 from .assembler import AssemblyEvent, path_for_brick
 from .utils import get_physics_scene, add_to_collision_group
 
 _logger = logging.getLogger(__name__)
 
 class BrickPhysicsInterface:
-    def __init__(self, mode: Literal["none", "simple", "numpy_vectorized", "torch_vectorized"]):
-        self.mode = mode
-
+    def __init__(self):
         self.update_sub = omni.physx.get_physx_simulation_interface().subscribe_contact_report_events(self._on_contact_report)
-        self.vectorized_detector: Optional[Union[NumpyVectorizedAssemblyDetector, TorchVectorizedAssemblyDetector]] = None
-        self.tracker: Optional[Union[NumpyBrickTracker, TorchBrickTracker]] = None
+        self.vectorized_detector: Optional[VectorizedAssemblyDetector] = None
+        self.tracker: Optional[BrickTracker] = None
         self.accumulated_assembly_events = []
         self.uniqueifier = 0 # Global monotonically-increasing brick id
 
@@ -84,17 +80,11 @@ class BrickPhysicsInterface:
 
         _logger.info(f"Resetting bricks in env {env_id}")
 
-    def get_tracker(self, num_envs: int, num_trackings: int) -> Union[NumpyBrickTracker, TorchBrickTracker]:
-        if self.mode not in ["numpy_vectorized", "torch_vectorized"]:
-            raise RuntimeError("BrickTracker is only available in vectorized mode")
-
+    def get_tracker(self, num_envs: int, num_trackings: int) -> BrickTracker:
         self._ensure_vectorized_detector()
 
         if self.tracker is None:
-            if self.mode == "numpy_vectorized":
-                self.tracker = NumpyBrickTracker(num_envs, num_trackings)
-            else:
-                self.tracker = TorchBrickTracker(num_envs, num_trackings)
+            self.tracker = BrickTracker(num_envs, num_trackings)
             self.tracker.set_backend(self.vectorized_detector)
         else:
             if (self.tracker.num_envs, self.tracker.num_trackings) != (num_envs, num_trackings):
@@ -102,43 +92,27 @@ class BrickPhysicsInterface:
 
         return self.tracker
 
-    def _ensure_vectorized_detector(self) -> Optional[Union[NumpyVectorizedAssemblyDetector, TorchVectorizedAssemblyDetector]]:
-        if self.mode not in ["numpy_vectorized", "torch_vectorized"]:
-            raise RuntimeError("Vectorized assembly detector is not available")
+    def _ensure_vectorized_detector(self) -> Optional[VectorizedAssemblyDetector]:
         if (self.vectorized_detector is None) or (not self.vectorized_detector.check()):
             current_stage: Usd.Stage = omni.usd.get_context().get_stage()
             if (current_stage is None) or (get_physics_scene(current_stage) is None):
                 # Not ready to initialize now
                 return None
             omni.physx.get_physx_interface().force_load_physics_from_usd()
-            if self.mode == "numpy_vectorized":
-                self.vectorized_detector = NumpyVectorizedAssemblyDetector()
-            else:
-                self.vectorized_detector = TorchVectorizedAssemblyDetector()
+            self.vectorized_detector = VectorizedAssemblyDetector()
             if self.tracker is not None:
                 self.tracker.set_backend(self.vectorized_detector)
-            _logger.info(f"Brick assembly detector reloaded in {self.mode} mode")
+            _logger.info(f"Brick assembly detector reloaded")
 
     def _on_contact_report(self, contacts: ContactEventHeaderVector, contact_data: ContactDataVector):
         if not omni.physx.get_physx_interface().is_running():
             return
 
-        if self.mode == "simple":
-            assembly_events = assembler_simple.handle_assembly_contacts(contacts, contact_data)
-
-        elif self.mode in ["numpy_vectorized", "torch_vectorized"]:
-            self._ensure_vectorized_detector()
-            if self.vectorized_detector is None:
-                return
-            assembly_events = self.vectorized_detector.handle_assembly_contacts(contacts, contact_data)
-
-        elif self.mode == "none":
-            # Assembly detection disabled
+        self._ensure_vectorized_detector()
+        if self.vectorized_detector is None:
             return
 
-        else:
-            raise RuntimeError(f"Unknown mode: {self.mode}")
-
+        assembly_events = self.vectorized_detector.handle_assembly_contacts(contacts, contact_data)
         self.accumulated_assembly_events.extend(assembly_events)
 
         for event in assembly_events:
@@ -168,9 +142,7 @@ def init_brick_physics_interface():
     global _brick_physics_interface
     if _brick_physics_interface is not None:
         raise RuntimeError("BrickPhysicsInterface is already initialized.")
-    mode = carb.settings.get_settings().get("/lego_assemble/mode") or "torch_vectorized"
-    _logger.info(f"Initializing BrickPhysicsInterface in {mode} mode")
-    _brick_physics_interface = BrickPhysicsInterface(mode)
+    _brick_physics_interface = BrickPhysicsInterface()
     return _brick_physics_interface
 
 def deinit_brick_physics_interface():
