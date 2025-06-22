@@ -167,39 +167,6 @@ def main():
     timestep = 0
     # simulate environment
     while simulation_app.is_running():
-
-        #############
-        # import numpy as np
-        # import tqdm
-        # SAMPLE_STEPS = 2000      # total env steps to analyse
-        # PERCENTILE  = 95         # cover 95% of observed deltas
-
-        # deltas = []
-        # obs, _ = env.reset()
-
-        # last_pos_cmd = None                     # <-- track previous command
-        # for _ in tqdm.tqdm(range(SAMPLE_STEPS), desc="Calculating deltas"):
-        #     with torch.inference_mode():
-        #         out = runner.agent.act(obs, timestep=0, timesteps=0)
-        #         next_pos_cmd = out[-1].get("mean_actions", out[0]).cpu().numpy()  # (envs, nq)
-
-        #     if last_pos_cmd is not None:        # skip diff on very first frame only
-        #         deltas.append(next_pos_cmd - last_pos_cmd)
-
-        #     last_pos_cmd = next_pos_cmd
-        #     obs, *_ = env.step(torch.as_tensor(next_pos_cmd, device=env._device))  # keep device
-
-        # # now deltas has len = SAMPLE_STEPS-1
-        # deltas = np.abs(np.concatenate(deltas, axis=0))      # (samples, nq)
-        # per_joint_scale = np.percentile(deltas, PERCENTILE, axis=0)
-        # scalar_scale    = float(np.percentile(deltas, PERCENTILE))
-
-        # print(f"\nSuggested Δ-θ scales ({PERCENTILE}-th percentile over {SAMPLE_STEPS} steps):")
-        # for j, s in enumerate(per_joint_scale):
-        #     print(f"  joint {j}: {s:.3f} rad")
-        # print(f"  single-scalar alternative: {scalar_scale:.3f} rad\n")
-        #############
-
         start_time = time.time()
 
         # run everything in inference mode
