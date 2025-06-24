@@ -4,7 +4,6 @@ import isaaclab.utils.math as math_utils
 from isaaclab.assets import RigidObject
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.managers import SceneEntityCfg
-from lego_assemble.physics.utils_torch import quat_z_cos_batch
 from .tracking import TrackedBrick, get_brick_pose
 
 # From isaaclab_tasks/manager_based/manipulation/lift/mdp/rewards.py
@@ -65,7 +64,11 @@ def brick_upright(
 ) -> torch.Tensor:
     brick_pose = get_brick_pose(env, tracked_brick)
     brick_q = brick_pose[:, 3:7] # xyzw
-    cos_angle = quat_z_cos_batch(brick_q) # [-1, 1]
+
+    qx = brick_q[:,0]
+    qy = brick_q[:,1]
+    cos_angle = 1 - 2*(qx*qx + qy*qy) # [-1, 1]
+
     return (brick_pose[:, 2] > minimal_height) * torch.clamp(cos_angle, 0, 1) # never reward upside down
 
 @torch.jit.script

@@ -3,17 +3,17 @@ import torch
 import omni.usd
 import omni.physx
 from typing import Optional
-from pxr import Gf, Usd
+from pxr import Gf, Usd, UsdPhysics
 from pxr.PhysicsSchemaTools._physicsSchemaTools import sdfPathToInt
 from omni.physx.bindings._physx import ContactEventType, ContactEventHeaderVector, ContactDataVector
 from omni.physics.tensors.impl.api import create_simulation_view, RigidBodyView
 from .lego_schemes import BrickLength, PlateHeight, StudHeight
-from .assembler import DistanceTolerance, MaxPenetration, ZAngleTolerance, RequiredForce, YawTolerance, PositionTolerance, AssemblyEvent, assemble_bricks, path_for_brick
+from .assembler import DistanceTolerance, MaxPenetration, ZAngleTolerance, RequiredForce, YawTolerance, PositionTolerance, parse_brick_path, path_for_brick, path_for_conn
 from .physx_c import buffer_from_ContactDataVector, buffer_from_ContactEventHeaderVector
 from .utils import get_physics_scene
-from .utils_torch import pose7_to_mat44_batch, inv_se3_batch
+from .utils_torch import pose_to_se3, inv_se3, se3_to_pose
 
-class VectorizedAssemblyDetector:
+class AssemblyDetector:
     def __init__(self):
         self.physx_sim_interface = omni.physx.get_physx_simulation_interface()
         self.stage: Usd.Stage = omni.usd.get_context().get_stage()
@@ -30,45 +30,31 @@ class VectorizedAssemblyDetector:
 
         self.sim_view = create_simulation_view("torch")
         self.device = self.sim_view.device
-        self.rigid_body_view: RigidBodyView = self.sim_view.create_rigid_body_view(brick_filter)
-        if self.rigid_body_view._backend is None:
+        self.rb_view: RigidBodyView = self.sim_view.create_rigid_body_view(brick_filter)
+        if self.rb_view._backend is None:
             # There is no rigid body matching the filter
             self.sim_view = None
-            self.rigid_body_view = None
+            self.rb_view = None
             return
-        self.prim_paths = self.rigid_body_view.prim_paths
+        self.rb_paths = self.rb_view.prim_paths
 
-        keys = torch.tensor([sdfPathToInt(p) for p in self.prim_paths], dtype=torch.int64, device=self.device)
-        values = torch.arange(len(keys), dtype=torch.int64, device=self.device)
-        order = torch.argsort(keys)
-        self.table_path_id = keys[order]
-        self.table_id = values[order]
+        sdf2rb_keys_ = torch.tensor([sdfPathToInt(p) for p in self.rb_paths], dtype=torch.int64, device=self.device)
+        sdf2rb_values_ = torch.arange(len(sdf2rb_keys_), dtype=torch.int64, device=self.device)
+        sdf2rb_order_ = torch.argsort(sdf2rb_keys_)
+        self.sdf2rb_keys = sdf2rb_keys_[sdf2rb_order_]
+        self.sdf2rb_values = sdf2rb_values_[sdf2rb_order_]
 
-        self.lego_dims = torch.tensor([self._get_lego_dimensions(p) for p in self.prim_paths], dtype=torch.int64, device=self.device)
+        self.lego_dims = torch.tensor([self._get_brick_dimensions(p) for p in self.rb_paths], dtype=torch.int64, device=self.device)
 
     def check(self) -> bool:
         current_stage = omni.usd.get_context().get_stage()
         if current_stage != self.stage:
             return False
-        if (self.rigid_body_view is not None) and (not self.rigid_body_view.check()):
+        if (self.rb_view is not None) and (not self.rb_view.check()):
             return False
         return True
 
-    def _path_id_to_id(self, sdf_id: torch.Tensor) -> torch.Tensor:
-        """
-        Converts SDF Path ids to brick indicies.
-        Uses a sorted search table prepared in initialize().
-        Unknown actors get value -1.
-        """
-        out = torch.full(sdf_id.shape, -1, dtype=torch.int64, device=self.device)
-        if self.rigid_body_view is not None:
-            idx = torch.searchsorted(self.table_path_id, sdf_id, side="left")
-            idx = torch.clamp(idx, max=len(self.table_path_id) - 1)
-            valid = self.table_path_id[idx] == sdf_id
-            out[valid] = self.table_id[idx[valid]]
-        return out
-
-    def _get_lego_dimensions(self, path: str) -> Optional[Gf.Vec3i]:
+    def _get_brick_dimensions(self, path: str) -> Optional[Gf.Vec3i]:
         prim = self.stage.GetPrimAtPath(path)
         if not prim.IsValid():
             return None
@@ -77,171 +63,275 @@ class VectorizedAssemblyDetector:
             return None
         return dim_attr.Get()
 
-    def handle_assembly_contacts(self, _contacts: ContactEventHeaderVector, _contact_data: ContactDataVector) -> list[AssemblyEvent]:
-        if self.rigid_body_view is None:
-            return []
+    def _sdf2rb_lookup(self, sdf_id: torch.Tensor) -> torch.Tensor:
+        """
+        Converts SDF path ids to rigid body indicies.
+        Uses a prepared sorted search table.
+        Unknown rigid bodies get value -1.
+        """
+        out = torch.full(sdf_id.shape, -1, dtype=torch.int64, device=self.device)
+        if self.rb_view is not None:
+            idx = torch.searchsorted(self.sdf2rb_keys, sdf_id, side="left")
+            idx = torch.clamp(idx, max=len(self.sdf2rb_keys) - 1)
+            valid = self.sdf2rb_keys[idx] == sdf_id
+            out[valid] = self.sdf2rb_values[idx[valid]]
+        return out
 
-        if len(_contacts) == 0 or len(_contact_data) == 0:
-            return []
+    def extract_brick_contacts(self, contacts: ContactEventHeaderVector, contact_data: ContactDataVector) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """ Extracts brick rigid body indicies and contact impulse vectors from a contact report.
 
-        np_contacts = buffer_from_ContactEventHeaderVector(_contacts)
+            Returns:
+                tuple[torch.Tensor, torch.Tensor, torch.Tensor]: A tuple containing:
+                - rb0_id (torch.Tensor): Rigid body indicies of the 1st brick in the contact pair in (N,) of type torch.int64.
+                - rb1_id (torch.Tensor): Rigid body indicies of the 2nd brick in the contact pair in (N,) of type torch.int64.
+                - impulse (torch.Tensor): Contact impulse vectors between the two bricks in (N, 3) of type torch.float32.
+        """
+        if len(contacts) == 0 or len(contact_data) == 0:
+            return torch.empty(0, dtype=torch.int64, device=self.device), \
+                   torch.empty(0, dtype=torch.int64, device=self.device), \
+                   torch.empty(0, 3, dtype=torch.float32, device=self.device)
+
+        np_contacts = buffer_from_ContactEventHeaderVector(contacts)
         contacts_type = torch.from_numpy(np_contacts["type"]).to(self.device)
         contacts_actor0 = torch.from_numpy(np_contacts["actor0"]).to(dtype=torch.int64, device=self.device)
         contacts_actor1 = torch.from_numpy(np_contacts["actor1"]).to(dtype=torch.int64, device=self.device)
+        rb0_id = self._sdf2rb_lookup(contacts_actor0)
+        rb1_id = self._sdf2rb_lookup(contacts_actor1)
 
-        mask = (contacts_type != ContactEventType.CONTACT_LOST.value)
+        np_contact_data = buffer_from_ContactDataVector(contact_data)
+        cd_impulse = torch.from_numpy(np_contact_data["impulse"]).to(self.device)
+        cd_offset = torch.from_numpy(np_contacts["contact_data_offset"]).to(dtype=torch.int64, device=self.device)
+        cd_len = torch.from_numpy(np_contacts["num_contact_data"]).to(dtype=torch.int64, device=self.device)
+        cd_impulse_cumsum = torch.empty((cd_impulse.shape[0] + 1, 3))
+        cd_impulse_cumsum[0] = 0.0
+        torch.cumsum(cd_impulse, dim=0, out=cd_impulse_cumsum[1:])
+        impulse = cd_impulse_cumsum[cd_offset + cd_len] - cd_impulse_cumsum[cd_offset]
 
-        brick0_idx = self._path_id_to_id(contacts_actor0)
-        brick1_idx = self._path_id_to_id(contacts_actor1)
-        mask &= (brick0_idx >= 0) & (brick1_idx >= 0)
+        mask = (rb0_id >= 0) & (rb1_id >= 0) & (contacts_type != ContactEventType.CONTACT_LOST.value)
 
-        if not mask.any():
-            return []
+        return rb0_id[mask], rb1_id[mask], impulse[mask]
 
-        pose: torch.Tensor = self.rigid_body_view.get_transforms()
-        pose0 = pose7_to_mat44_batch(pose[brick0_idx])
-        pose1 = pose7_to_mat44_batch(pose[brick1_idx])
+    def handle_brick_contacts(self, rb0_id: torch.Tensor, rb1_id: torch.Tensor, frc: torch.Tensor):
+        """ Filters brick contacts and process assembly events.
 
-        dim0 = self.lego_dims[brick0_idx]
-        dim1 = self.lego_dims[brick1_idx]
+            Args:
+                rb0_id (torch.Tensor): Rigid body indicies of the 1st brick in the contact pair in (N,).
+                rb1_id (torch.Tensor): Rigid body indicies of the 2nd brick in the contact pair in (N,).
+                frc (torch.Tensor): Contact force vectors between the two bricks in (N, 3).
+        """
+        #### Prepare inputs
 
-        rel_pose = torch.matmul(inv_se3_batch(pose0), pose1)
+        # Get poses of bricks
+        pose: torch.Tensor = self.rb_view.get_transforms()
+        pose0 = pose_to_se3(pose[rb0_id])
+        pose1 = pose_to_se3(pose[rb1_id])
+        rel_pose = torch.matmul(inv_se3(pose0), pose1)
 
-        # Swap bricks where z<0 so brick0 always offers studs
-        swap_mask = rel_pose[:,2,3] < 0
-        if swap_mask.any():
-            brick0_idx_sw, brick1_idx_sw = brick0_idx[swap_mask].clone(), brick1_idx[swap_mask].clone()
-            pose0_sw, pose1_sw = pose0[swap_mask].clone(), pose1[swap_mask].clone()
-            dim0_sw, dim1_sw = dim0[swap_mask].clone(), dim1[swap_mask].clone()
-            brick0_idx[swap_mask], brick1_idx[swap_mask] = brick1_idx_sw, brick0_idx_sw
-            pose0[swap_mask], pose1[swap_mask] = pose1_sw, pose0_sw
-            dim0[swap_mask], dim1[swap_mask] = dim1_sw, dim0_sw
-            rel_pose[swap_mask] = torch.matmul(inv_se3_batch(pose0[swap_mask]), pose1[swap_mask])
+        # Ensure brick0 is always below brick1 -- brick0 is the one that offers studs
+        to_swap = rel_pose[:,2,3] < 0
+        rb0_id, rb1_id = \
+            torch.where(to_swap, rb1_id, rb0_id), \
+            torch.where(to_swap, rb0_id, rb1_id)
+        to_swap_ = to_swap[:,None,None]
+        pose0, pose1 = \
+            torch.where(to_swap_, pose1, pose0), \
+            torch.where(to_swap_, pose0, pose1)
+        rel_pose = torch.matmul(inv_se3(pose0), pose1)
 
-        height0 = dim0[:,2] * PlateHeight
-        rel_distance = rel_pose[:,2,3] - (height0 + StudHeight)
+        # Get dimensions of bricks
+        dim0 = self.lego_dims[rb0_id].to(pose.dtype)
+        dim1 = self.lego_dims[rb1_id].to(pose.dtype)
 
-        # Reason: exceeding distance tolerance
-        keep = (rel_distance <= DistanceTolerance)
+        #### Calculate metrics
 
-        # Reason: penetrating too much
-        keep &= (rel_distance >= -MaxPenetration)
+        # Calculate relative distance
+        brick0_height = dim0[:,2] * PlateHeight
+        rel_distance = rel_pose[:,2,3] - (brick0_height + StudHeight)
 
-        # Reason: exceeding z-angle tolerance
-        keep &= (rel_pose[:,2,2] > math.cos(ZAngleTolerance))
+        # Calculate projected force along brick0's z-axis
+        frc_z = torch.abs(torch.einsum("ij,ij->i", frc, pose0[:, :3, 2]))
 
-        # Calculate force along local z
-        idx0 = torch.from_numpy(np_contacts["contact_data_offset"]).to(dtype=torch.int64, device=self.device)
-        ncd = torch.from_numpy(np_contacts["num_contact_data"]).to(dtype=torch.int64, device=self.device)
-        np_contact_data = buffer_from_ContactDataVector(_contact_data)
-        imp = torch.from_numpy(np_contact_data["impulse"]).to(self.device)
-        cumsum = torch.empty((imp.shape[0] + 1, 3))
-        cumsum[0] = 0.0
-        torch.cumsum(imp, dim=0, out=cumsum[1:])
-        sum_imp = cumsum[idx0 + ncd] - cumsum[idx0]
-        frc = (torch.abs(torch.einsum("ij,ij->i", sum_imp, pose0[:, :3, 2])) / self.dt)
-
-        # Reason: insufficient force
-        keep &= (frc >= RequiredForce)
-
+        # Calculate snapped yaw & yaw error
         rel_yaw = torch.arctan2(rel_pose[:,1,0], rel_pose[:,0,0])
-        snapped_yaw = torch.round(rel_yaw / (torch.pi/2)) * (torch.pi/2)
-        yaw_err = rel_yaw - snapped_yaw
-
-        # Reason: exceeding yaw tolerance
-        keep &= (torch.abs(yaw_err) <= YawTolerance)
-
-        p0 = (rel_pose[:,:2,3] / BrickLength + (dim0[:,:2] - torch.einsum("bij,bj->bi", rel_pose[:,:2,:2], dim1[:,:2].float())) / 2)
-        p0_snapped = torch.round(p0).to(torch.int64)
-        R_snapped = torch.stack([
-            torch.cos(snapped_yaw), -torch.sin(snapped_yaw),
-            torch.sin(snapped_yaw),  torch.cos(snapped_yaw)
+        yaw_snap = torch.round(rel_yaw / (torch.pi/2)) * (torch.pi/2)
+        R_snap = torch.stack([
+            torch.cos(yaw_snap), -torch.sin(yaw_snap),
+            torch.sin(yaw_snap),  torch.cos(yaw_snap),
         ], dim=1).reshape(-1,2,2)
-        p1_snapped = torch.round(p0_snapped + torch.einsum("bij,bj->bi", R_snapped, dim1[:,:2].float())).to(torch.int64)
-        p_err = torch.norm(p0 - p0_snapped, dim=1) * BrickLength
+        yaw_err = rel_yaw - yaw_snap
 
-        # Reason: exceeding position tolerance
-        keep &= (p_err <= PositionTolerance)
+        # Calculate snapped position in grid coordinates & position error
+        p0 = rel_pose[:,:2,3] / BrickLength + (dim0[:,:2] - torch.einsum("bij,bj->bi", rel_pose[:,:2,:2], dim1[:,:2])) / 2
+        p0_snap = torch.round(p0)
+        p1_snap = torch.round(p0_snap + torch.einsum("bij,bj->bi", R_snap, dim1[:,:2]))
+        p_err = torch.norm(p0 - p0_snap, dim=1) * BrickLength
 
-        overlap_x = torch.clamp(torch.clamp(torch.maximum(p0_snapped[:,0], p1_snapped[:,0]), max=dim0[:,0]) - torch.clamp(torch.minimum(p0_snapped[:,0], p1_snapped[:,0]), min=0), min=0)
-        overlap_y = torch.clamp(torch.clamp(torch.maximum(p0_snapped[:,1], p1_snapped[:,1]), max=dim0[:,1]) - torch.clamp(torch.minimum(p0_snapped[:,1], p1_snapped[:,1]), min=0), min=0)
+        # Calculate adjusted relative pose
+        xy_snap = (p0_snap + (torch.einsum("bij,bj->bi", R_snap, dim1[:,:2]) - dim0[:,:2]) / 2) * BrickLength
+        relpose_snap = torch.zeros_like(rel_pose)
+        relpose_snap[:,:2,:2] = R_snap
+        relpose_snap[:, 2, 2] = 1.0
+        relpose_snap[:,:2, 3] = xy_snap
+        relpose_snap[:, 2, 3] = brick0_height
+        relpose_snap[:, 3, 3] = 1.0
 
-        # Reason: no overlap
-        keep &= (overlap_x * overlap_y) > 0
+        # Calculate adjusted absolute poses
+        pose1_snap = torch.matmul(pose0, relpose_snap)
 
-        assembly_events: list[AssemblyEvent] = []
-        for k in torch.nonzero(keep, as_tuple=True)[0]:
-            event = assemble_bricks(
-                stage=self.stage,
-                prim0=self.stage.GetPrimAtPath(self.prim_paths[brick0_idx[k]]),
-                prim1=self.stage.GetPrimAtPath(self.prim_paths[brick1_idx[k]]),
-                dim0=dim0[k].numpy(),
-                dim1=dim1[k].numpy(),
-                pose0=pose0[k].numpy(),
-                p0_snapped=p0_snapped[k].numpy(),
-                p1_snapped=p1_snapped[k].numpy(),
-                R_snapped=R_snapped[k].numpy(),
-                height0=height0[k].numpy(),
-                snapped_yaw=snapped_yaw[k].numpy(),
-            )
-            if event is not None:
-                assembly_events.append(event)
-        return assembly_events
+        # Calculate overlap
+        overlap_x = torch.clamp(
+            torch.clamp(torch.maximum(p0_snap[:,0], p1_snap[:,0]), max=dim0[:,0]) -
+            torch.clamp(torch.minimum(p0_snap[:,0], p1_snap[:,0]), min=0),
+            min=0
+        )
+        overlap_y = torch.clamp(
+            torch.clamp(torch.maximum(p0_snap[:,1], p1_snap[:,1]), max=dim0[:,1]) -
+            torch.clamp(torch.minimum(p0_snap[:,1], p1_snap[:,1]), min=0),
+            min=0
+        )
+
+        #### Filtering
+        as_flag = \
+            (rel_distance <= DistanceTolerance) & \
+            (rel_distance >= -MaxPenetration) & \
+            (rel_pose[:,2,2] > math.cos(ZAngleTolerance)) & \
+            (frc_z >= RequiredForce) & \
+            (torch.abs(yaw_err) <= YawTolerance) & \
+            (p_err <= PositionTolerance) & \
+            ((overlap_x > 0) & (overlap_y > 0))
+
+        #### Perform assembly
+
+        # Adjust poses
+        if as_flag.any():
+            idx_buf = rb1_id[as_flag]
+            pose_buf = pose.clone()
+            pose_buf[idx_buf] = se3_to_pose(pose1_snap[as_flag])
+            self.rb_view.set_transforms(pose_buf.unsqueeze(-1), idx_buf)
+
+        # Create joints
+        for as_rb0, as_rb1, as_relpose in zip(
+            rb0_id[as_flag].cpu(),
+            rb1_id[as_flag].cpu(),
+            relpose_snap[as_flag].transpose(1,2).cpu(),
+        ):
+            path0 = self.rb_paths[as_rb0]
+            path1 = self.rb_paths[as_rb1]
+            brick_id0, env_id0 = parse_brick_path(path0)
+            brick_id1, env_id1 = parse_brick_path(path1)
+            if env_id0 != env_id1:
+                raise ValueError(f"Bricks are in different environments: {path0} and {path1}")
+
+            joint_path = path_for_conn(brick_id0, brick_id1, env_id0)
+            if self.stage.GetPrimAtPath(joint_path).IsValid():
+                # Already assembled
+                continue
+
+            joint: UsdPhysics.FixedJoint = UsdPhysics.FixedJoint.Define(self.stage, joint_path)
+            joint.CreateBody0Rel().AddTarget(path0)
+            joint.CreateBody1Rel().AddTarget(path1)
+            relpose_gf = Gf.Matrix4f(as_relpose.tolist())
+            joint.CreateLocalPos0Attr().Set(relpose_gf.ExtractTranslation())
+            joint.CreateLocalRot0Attr().Set(relpose_gf.ExtractRotationQuat())
+
+            filtered_pairs1: UsdPhysics.FilteredPairsAPI = UsdPhysics.FilteredPairsAPI.Apply(self.stage.GetPrimAtPath(path1))
+            filtered_pairs1.CreateFilteredPairsRel().AddTarget(path0)
+
+            # xformable1 = UsdGeom.Xformable(prim1)
+            # parent_pose1 = np.array(xformable1.ComputeParentToWorldTransform(Usd.TimeCode.Default())).T
+            # assemble_rel_pose1 = inv_se3(parent_pose1) @ pose0 @ assemble_tr
+            # assemble_rel_pose1_gf = Gf.Matrix4d(assemble_rel_pose1.T)
+            # physicsUtils.set_or_add_translate_op(xformable1, assemble_rel_pose1_gf.ExtractTranslation())
+            # physicsUtils.set_or_add_orient_op(xformable1, assemble_rel_pose1_gf.ExtractRotationQuat())
+
+    def handle_contact_report(self, _contacts: ContactEventHeaderVector, _contact_data: ContactDataVector):
+        if self.rb_view is None:
+            return
+
+        rb0_id, rb1_id, impulse = self.extract_brick_contacts(_contacts, _contact_data)
+        if rb0_id.numel() == 0:
+            return
+
+        frc = impulse / self.dt
+        self.handle_brick_contacts(rb0_id, rb1_id, frc)
 
     def destroy(self):
-        if self.rigid_body_view is not None:
-            self.rigid_body_view = None
+        if self.rb_view is not None:
+            self.rb_view = None
             self.sim_view.invalidate()
             self.sim_view = None
 
 class BrickTracker:
-    def __init__(self, num_envs: int, num_trackings: int):
+    def __init__(self, num_envs: int, num_types: int):
         self.num_envs = num_envs
-        self.num_trackings = num_trackings
+        self.num_types = num_types
 
         sim_view = create_simulation_view("torch")
         self.device = sim_view.device
         sim_view.invalidate()
 
-        self.tracked_brick_ids = torch.full((num_envs, num_trackings), -1, dtype=torch.int64, device=self.device)
-        self.tracked_rigid_body_ids = torch.full((num_envs, num_trackings), -1, dtype=torch.int64, device=self.device)
-        self.backend: VectorizedAssemblyDetector = None
+        self.brick_ids = torch.full((num_envs, num_types), -1, dtype=torch.int64, device=self.device) # (E,T)
+        self.rb_ids = torch.full((num_envs, num_types), -1, dtype=torch.int64, device=self.device) # (E,T)
+        self.backend: AssemblyDetector = None
 
-    def set_backend(self, backend: VectorizedAssemblyDetector):
+    def set_backend(self, backend: AssemblyDetector):
+        self.rb_ids.fill_(-1)
+
         self.backend = backend
-        self.tracked_rigid_body_ids.fill_(-1)
         if self.backend is None:
             return
 
-        mask = self.tracked_brick_ids >= 0
-        env_ids, tracking_ids = torch.nonzero(mask, as_tuple=True)
-        brick_ids = self.tracked_brick_ids[env_ids, tracking_ids]
+        mask = (self.brick_ids >= 0) # (E,T)
+        env_ids, type_ids = torch.nonzero(mask, as_tuple=True) # (N,), (N,)
+        brick_ids = self.brick_ids[env_ids, type_ids] # (N,)
 
         sdf_ids = torch.tensor([
             sdfPathToInt(path_for_brick(brick_id=brick_id, env_id=env_id))
-            for env_id, brick_id in zip(env_ids, brick_ids)
+            for env_id, brick_id in zip(env_ids.cpu(), brick_ids.cpu())
+        ], dtype=torch.int64, device=self.device) # (N,)
+
+        self.rb_ids[env_ids, type_ids] = self.backend._sdf2rb_lookup(sdf_ids)
+
+    def set_tracked_bricks(self, type_id: int, env_ids: torch.Tensor, brick_ids: torch.Tensor):
+        """ Sets the tracked brick ids for a specific type in the specified environments.
+
+            -1 is used to indicate that no brick is tracked in that environment.
+
+            Args:
+                type_id (int): The tracking type id.
+                env_ids (torch.Tensor): Indices of environments to set the brick ids for, shape (N,).
+                brick_ids (torch.Tensor): Brick ids to track in the specified environments, shape (N,).
+        """
+        self.brick_ids[env_ids, type_id] = brick_ids
+
+        if self.backend is None:
+            return
+
+        sdf_ids = torch.tensor([
+            sdfPathToInt(path_for_brick(brick_id=brick_id, env_id=env_id))
+            if brick_id >= 0 else -1
+            for env_id, brick_id in zip(env_ids.cpu(), brick_ids.cpu())
         ], dtype=torch.int64, device=self.device)
-
-        self.tracked_rigid_body_ids[env_ids, tracking_ids] = self.backend._path_id_to_id(sdf_ids)
-
-    def set_tracked_bricks(self, tracking_id: int, env_ids: torch.Tensor, brick_ids: torch.Tensor):
-        self.tracked_brick_ids[env_ids, tracking_id] = brick_ids
-        if self.backend is not None:
-            sdf_ids = torch.tensor([
-                sdfPathToInt(path_for_brick(brick_id=brick_id, env_id=env_id)) if brick_id >= 0 else -1
-                for env_id, brick_id in zip(env_ids, brick_ids)
-            ], dtype=torch.int64, device=self.device)
-            self.tracked_rigid_body_ids[env_ids, tracking_id] = self.backend._path_id_to_id(sdf_ids)
+        self.rb_ids[env_ids, type_id] = self.backend._sdf2rb_lookup(sdf_ids)
 
     @property
     def view(self) -> Optional[RigidBodyView]:
         if self.backend is None:
             return None
-        return self.backend.rigid_body_view
+        return self.backend.rb_view
 
     def get_transforms(self, tracking_id: int) -> torch.Tensor:
-        result = torch.zeros((self.num_envs, 7), dtype=torch.float32, device=self.device)
+        """ Returns the transforms of the tracked bricks for a specific tracking type.
+
+            Args:
+                tracking_id (int): The tracking type id.
+
+            Returns:
+                torch.Tensor: A tensor of shape (E, 7) containing the transforms of the tracked bricks in all environments in the format (x, y, z, qx, qy, qz, qw).
+        """
+        result = torch.zeros((self.num_envs, 7), dtype=torch.float32, device=self.device) # (E,7)
         if (view := self.view) is not None:
-            mask = self.tracked_rigid_body_ids[:, tracking_id] >= 0
-            result[mask] = view.get_transforms()[self.tracked_rigid_body_ids[mask, tracking_id]]
+            mask = (self.rb_ids[:, tracking_id] >= 0) # (E,)
+            valid_rb_ids = self.rb_ids[mask, tracking_id] # (N,)
+            result[mask] = view.get_transforms()[valid_rb_ids] # (N,7)
         return result

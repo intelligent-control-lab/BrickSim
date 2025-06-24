@@ -5,7 +5,7 @@ PlateHeight = 0.0032    # 3.2 mm per plate
 BrickHeightPerPlate = 3 # 1 brick height = 3 plates
 StudDiameter = 0.0048   # 4.8 mm stud diameter
 StudHeight = 0.0017     # 1.7 mm stud height
-Density = 1150           # kg/m^3
+Density = 1150          # kg/m^3
 
 # From https://rebrickable.com/colors/
 Colors = {

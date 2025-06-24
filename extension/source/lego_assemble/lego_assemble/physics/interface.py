@@ -7,8 +7,8 @@ from typing import Tuple, Optional
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 from omni.physx.bindings._physx import ContactEventHeaderVector, ContactDataVector
 from . import spawner
-from .assembler_impl import VectorizedAssemblyDetector, BrickTracker
-from .assembler import AssemblyEvent, path_for_brick
+from .assembler_impl import AssemblyDetector, BrickTracker
+from .assembler import path_for_brick
 from .utils import get_physics_scene, add_to_collision_group
 
 _logger = logging.getLogger(__name__)
@@ -16,9 +16,8 @@ _logger = logging.getLogger(__name__)
 class BrickPhysicsInterface:
     def __init__(self):
         self.update_sub = omni.physx.get_physx_simulation_interface().subscribe_contact_report_events(self._on_contact_report)
-        self.vectorized_detector: Optional[VectorizedAssemblyDetector] = None
+        self.vectorized_detector: Optional[AssemblyDetector] = None
         self.tracker: Optional[BrickTracker] = None
-        self.accumulated_assembly_events = []
         self.uniqueifier = 0 # Global monotonically-increasing brick id
 
     def invalidate(self):
@@ -46,11 +45,6 @@ class BrickPhysicsInterface:
             physicsUtils.set_or_add_orient_op(brick, quat)
         _logger.info(f"Added brick {path} ({dimensions[0]}x{dimensions[1]}x{dimensions[2]}) {color_name}")
         return brick, brick_id
-
-    def poll_assembly_events(self) -> list[AssemblyEvent]:
-        acc = self.accumulated_assembly_events
-        self.accumulated_assembly_events = []
-        return acc
 
     def reset_env(self, env_id: Optional[int] = None):
         self.invalidate()
@@ -87,19 +81,19 @@ class BrickPhysicsInterface:
             self.tracker = BrickTracker(num_envs, num_trackings)
             self.tracker.set_backend(self.vectorized_detector)
         else:
-            if (self.tracker.num_envs, self.tracker.num_trackings) != (num_envs, num_trackings):
-                raise RuntimeError(f"BrickTracker has been initialized with a different config ({self.tracker.tracked_brick_ids.shape})")
+            if (self.tracker.num_envs, self.tracker.num_types) != (num_envs, num_trackings):
+                raise RuntimeError(f"BrickTracker has been initialized with a different config ({self.tracker.brick_ids.shape})")
 
         return self.tracker
 
-    def _ensure_vectorized_detector(self) -> Optional[VectorizedAssemblyDetector]:
+    def _ensure_vectorized_detector(self) -> Optional[AssemblyDetector]:
         if (self.vectorized_detector is None) or (not self.vectorized_detector.check()):
             current_stage: Usd.Stage = omni.usd.get_context().get_stage()
             if (current_stage is None) or (get_physics_scene(current_stage) is None):
                 # Not ready to initialize now
                 return None
             omni.physx.get_physx_interface().force_load_physics_from_usd()
-            self.vectorized_detector = VectorizedAssemblyDetector()
+            self.vectorized_detector = AssemblyDetector()
             if self.tracker is not None:
                 self.tracker.set_backend(self.vectorized_detector)
             _logger.info(f"Brick assembly detector reloaded")
@@ -112,17 +106,7 @@ class BrickPhysicsInterface:
         if self.vectorized_detector is None:
             return
 
-        assembly_events = self.vectorized_detector.handle_assembly_contacts(contacts, contact_data)
-        self.accumulated_assembly_events.extend(assembly_events)
-
-        for event in assembly_events:
-            _logger.info(
-                f"Brick assembly: {event.brick0} and {event.brick1}, "
-                f"env={event.env_id}, "
-                f"p0={event.p0}, "
-                f"p1={event.p1}, "
-                f"yaw={math.degrees(event.yaw)}"
-            )
+        self.vectorized_detector.handle_contact_report(contacts, contact_data)
 
     def _destroy(self):
         self.update_sub.unsubscribe()
