@@ -11,7 +11,7 @@ from .lego_schemes import BrickLength, PlateHeight, StudHeight
 from .assembler import DistanceTolerance, MaxPenetration, ZAngleTolerance, RequiredForce, YawTolerance, PositionTolerance, parse_brick_path, path_for_brick, path_for_conn
 from .physx_c import buffer_from_ContactDataVector, buffer_from_ContactEventHeaderVector
 from .utils import get_physics_scene
-from .utils_torch import pose_to_se3, inv_se3, se3_to_pose
+from .math_utils import pose_to_se3, inv_se3, se3_to_pose
 
 class AssemblyDetector:
     def __init__(self):
@@ -236,13 +236,6 @@ class AssemblyDetector:
 
             filtered_pairs1: UsdPhysics.FilteredPairsAPI = UsdPhysics.FilteredPairsAPI.Apply(self.stage.GetPrimAtPath(path1))
             filtered_pairs1.CreateFilteredPairsRel().AddTarget(path0)
-
-            # xformable1 = UsdGeom.Xformable(prim1)
-            # parent_pose1 = np.array(xformable1.ComputeParentToWorldTransform(Usd.TimeCode.Default())).T
-            # assemble_rel_pose1 = inv_se3(parent_pose1) @ pose0 @ assemble_tr
-            # assemble_rel_pose1_gf = Gf.Matrix4d(assemble_rel_pose1.T)
-            # physicsUtils.set_or_add_translate_op(xformable1, assemble_rel_pose1_gf.ExtractTranslation())
-            # physicsUtils.set_or_add_orient_op(xformable1, assemble_rel_pose1_gf.ExtractRotationQuat())
 
     def handle_contact_report(self, _contacts: ContactEventHeaderVector, _contact_data: ContactDataVector):
         if self.rb_view is None:
