@@ -91,18 +91,18 @@ class ActionsCfg:
     #     joint_names=["panda_joint.*"],
     # )
 
-    arm_action = JointPositionActionCfg(
-        asset_name="robot",
-        joint_names=["panda_joint.*"],
-        scale=0.5,
-        use_default_offset=True,
-    )
-
-    # arm_action = RelativeJointPositionActionCfg(
+    # arm_action = JointPositionActionCfg(
     #     asset_name="robot",
     #     joint_names=["panda_joint.*"],
     #     scale=0.5,
+    #     use_default_offset=True,
     # )
+
+    arm_action = RelativeJointPositionActionCfg(
+        asset_name="robot",
+        joint_names=["panda_joint.*"],
+        scale=0.5,
+    )
 
     # hand_pose = DifferentialInverseKinematicsActionCfg(
     #     asset_name="robot",
@@ -294,19 +294,19 @@ class RewardsCfg:
         weight=0.0,
     )
 
-    # action penalty
-    action_rate = RewardTermCfg(
-        func=action_rate_l2,
-        weight=-1e-4,
-    )
+    # # action penalty
+    # action_rate = RewardTermCfg(
+    #     func=action_rate_l2,
+    #     weight=-1e-4,
+    # )
 
-    joint_vel = RewardTermCfg(
-        func=joint_vel_l2,
-        weight=-1e-4,
-        params={
-            "asset_cfg": SceneEntityCfg("robot"),
-        },
-    )
+    # joint_vel = RewardTermCfg(
+    #     func=joint_vel_l2,
+    #     weight=-1e-4,
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot"),
+    #     },
+    # )
 
 @configclass
 class TerminationsCfg:
@@ -325,23 +325,23 @@ class TerminationsCfg:
 
 @configclass
 class CurriculumCfg:
-    action_rate = CurriculumTermCfg(
-        func=modify_reward_weight,
-        params={
-            "term_name": "action_rate",
-            "weight": -1e-1,
-            "num_steps": 10000,
-        },
-    )
+    # action_rate = CurriculumTermCfg(
+    #     func=modify_reward_weight,
+    #     params={
+    #         "term_name": "action_rate",
+    #         "weight": -1e-1,
+    #         "num_steps": 10000,
+    #     },
+    # )
 
-    joint_vel = CurriculumTermCfg(
-        func=modify_reward_weight,
-        params={
-            "term_name": "joint_vel",
-            "weight": -1e-1,
-            "num_steps": 10000,
-        },
-    )
+    # joint_vel = CurriculumTermCfg(
+    #     func=modify_reward_weight,
+    #     params={
+    #         "term_name": "joint_vel",
+    #         "weight": -1e-1,
+    #         "num_steps": 10000,
+    #     },
+    # )
 
     brick_upright = CurriculumTermCfg(
         func=modify_reward_weight,
