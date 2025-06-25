@@ -101,7 +101,7 @@ class ActionsCfg:
     arm_action = RelativeJointPositionActionCfg(
         asset_name="robot",
         joint_names=["panda_joint.*"],
-        scale=1.0,
+        scale=0.25,
     )
 
     # hand_pose = DifferentialInverseKinematicsActionCfg(
