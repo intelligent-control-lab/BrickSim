@@ -2,6 +2,7 @@
     "files.exclude": {
         "**/*.egg-info": true,
         "**/.thumbs": true,
+        "**/.build": true,
         "IsaacLab/_isaac_sim": true,
         "logs": true,
         "outputs": true,

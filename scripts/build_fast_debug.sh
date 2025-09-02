@@ -1,30 +1,14 @@
 #!/usr/bin/env bash
-
-# Fast incremental Debug build for the C++ pybind module (Option A)
-# - Always reconfigures to refresh compile_commands.json
-# - Builds in cpp/.build/Debug and writes the .so into the python package dir
-
 set -eo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
 
-# Activate venv (also sets up IsaacSim env as per your .venv/activate)
 source "$ROOT_DIR/.venv/bin/activate"
 
 SRC="$ROOT_DIR/extension/source/lego_assemble/cpp"
 BUILD="$SRC/.build/Debug"
 OUT="$ROOT_DIR/extension/source/lego_assemble/lego_assemble"
-
-if [[ -z "${ISAACSIM_TARGET_DEPS:-}" ]]; then
-  echo "ERROR: ISAACSIM_TARGET_DEPS is not set."
-  echo "       Export it in your venv activate (already done) or in this shell."
-  exit 1
-fi
-if [[ ! -d "$ISAACSIM_TARGET_DEPS" ]]; then
-  echo "ERROR: ISAACSIM_TARGET_DEPS does not exist: $ISAACSIM_TARGET_DEPS" >&2
-  exit 1
-fi
 
 mkdir -p "$BUILD"
 

@@ -7,7 +7,7 @@ from lego_assemble._native import get_physx_version
 class LegoExtension(omni.ext.IExt):
     def on_startup(self, ext_id):
 
-        carb.log_info(f"lego_assemble._native loaded. PhysX version: {get_physx_version}")
+        carb.log_info(f"lego_assemble._native loaded. PhysX version: {get_physx_version()}")
 
         # Force enabling contact processing, see https://github.com/isaac-sim/IsaacLab/pull/1861
         self._enable_contact_processing()

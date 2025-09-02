@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-
-# Launch Isaac Sim with lego_assemble enabled and debug server listening.
-
 set -eo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
