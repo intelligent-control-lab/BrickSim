@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+
+# Fast incremental Debug build for the C++ pybind module (Option A)
+# - Always reconfigures to refresh compile_commands.json
+# - Builds in cpp/.build/Debug and writes the .so into the python package dir
+
+set -eo pipefail
+
+SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
+ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
+
+# Activate venv (also sets up IsaacSim env as per your .venv/activate)
+source "$ROOT_DIR/.venv/bin/activate"
+
+SRC="$ROOT_DIR/extension/source/lego_assemble/cpp"
+BUILD="$SRC/.build/Debug"
+OUT="$ROOT_DIR/extension/source/lego_assemble/lego_assemble"
+
+if [[ -z "${ISAACSIM_TARGET_DEPS:-}" ]]; then
+  echo "ERROR: ISAACSIM_TARGET_DEPS is not set."
+  echo "       Export it in your venv activate (already done) or in this shell."
+  exit 1
+fi
+if [[ ! -d "$ISAACSIM_TARGET_DEPS" ]]; then
+  echo "ERROR: ISAACSIM_TARGET_DEPS does not exist: $ISAACSIM_TARGET_DEPS" >&2
+  exit 1
+fi
+
+mkdir -p "$BUILD"
+
+# Generator and ccache preferences
+GEN_ARGS=()
+if command -v ninja >/dev/null 2>&1; then
+  GEN_ARGS=("-G" "Ninja")
+fi
+
+CCACHE_ARGS=()
+if command -v ccache >/dev/null 2>&1; then
+  CCACHE_ARGS=("-DCMAKE_C_COMPILER_LAUNCHER=ccache" "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
+fi
+
+# Always (re)configure to ensure compile_commands.json is regenerated
+cmake -S "$SRC" -B "$BUILD" \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DEXT_OUTPUT_DIR="$OUT" \
+  -DTARGET_DEPS_DIR="$ISAACSIM_TARGET_DEPS" \
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+  -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
+  "${GEN_ARGS[@]}" \
+  "${CCACHE_ARGS[@]}"
+
+# Copy compile_commands.json to the C++ source dir for clangd/IDE
+if [[ -f "$BUILD/compile_commands.json" ]]; then
+  cp -f "$BUILD/compile_commands.json" "$SRC/compile_commands.json"
+fi
+
+# Build with parallel jobs (defaults to all cores if not set)
+JOBS=${CMAKE_BUILD_PARALLEL_LEVEL:-}
+if [[ -n "$JOBS" ]]; then
+  cmake --build "$BUILD" --parallel "$JOBS"
+else
+  cmake --build "$BUILD" --parallel
+fi
+
+echo "Built module(s) in: $OUT"

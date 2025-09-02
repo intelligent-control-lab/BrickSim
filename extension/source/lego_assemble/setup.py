@@ -59,6 +59,7 @@ class CMakeBuild(build_ext):
         build_temp.mkdir(parents=True, exist_ok=True)
 
         cmake_args: List[str] = [
+            "-G", "Ninja",
             f"-DCMAKE_BUILD_TYPE={cfg}",
             f"-DEXT_OUTPUT_DIR={extdir}",
             f"-DTARGET_DEPS_DIR={target_deps}",

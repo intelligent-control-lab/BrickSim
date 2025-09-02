@@ -1,2 +1,3 @@
+cpp/.build/
 cpp/compile_commands.json
 lego_assemble/_native.*.so

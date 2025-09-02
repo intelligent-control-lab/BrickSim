@@ -1,19 +1,78 @@
 {
-  "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "Build Extension",
-      "type": "shell",
-      "command": "bash",
-      "args": [
-        "-lc",
-        "source ${workspaceFolder}/.venv/bin/activate && python -m pip install -e extension/source/lego_assemble"
-      ],
-      "problemMatcher": [],
-      "group": { "kind": "build", "isDefault": true },
-      "options": {
-        "cwd": "${workspaceFolder}"
-      }
-    }
-  ]
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build Extension (Clean)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-lc",
+                "source ${workspaceFolder}/.venv/bin/activate && python -m pip install -e extension/source/lego_assemble"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "group": {
+                "kind": "build"
+            }
+        },
+        {
+            "label": "Build Extension (Fast Debug)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-lc",
+                "${workspaceFolder}/scripts/build_fast_debug.sh"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Launch IsaacSim",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-lc",
+                "${workspaceFolder}/scripts/launch_isaacsim.sh"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "isBackground": true,
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "dedicated",
+                "showReuseMessage": true,
+                "clear": true
+            },
+            "problemMatcher": [
+                {
+                    "owner": "custom",
+                    "fileLocation": [
+                        "absolute"
+                    ],
+                    "pattern": {
+                        "regexp": "^(?!x)x(.*)$",
+                        "file": 1,
+                        "message": 1
+                    },
+                    "background": {
+                        "activeOnStart": true,
+                        "beginsPattern": "Waiting for debugger to connect\\.\\.\\.",
+                        "endsPattern": "Waiting for debugger to connect\\.\\.\\."
+                    }
+                }
+            ],
+            "dependsOn": "Build Extension (Fast Debug)"
+        }
+    ]
 }

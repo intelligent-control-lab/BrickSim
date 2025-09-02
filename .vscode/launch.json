@@ -2,14 +2,18 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "IsaacSim: Attach",
+            "name": "Debug IsaacSim",
             "type": "debugpy",
             "request": "attach",
-            "processId": "${command:pickProcess}",
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            },
             "justMyCode": false,
+            "preLaunchTask": "Launch IsaacSim",
         },
         {
-            "name": "IsaacSim: Current File",
+            "name": "Python: Current File",
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
@@ -22,7 +26,12 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/extension/scripts/skrl_train.py",
-            "args": ["--task", "Lego-LiftBrick-v0", "--num_envs", "32"],
+            "args": [
+                "--task",
+                "Lego-LiftBrick-v0",
+                "--num_envs",
+                "32"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "cwd": "${workspaceFolder}",
