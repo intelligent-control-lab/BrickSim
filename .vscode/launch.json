@@ -16,7 +16,6 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "cwd": "${workspaceFolder}",
-            "python": "${workspaceFolder}/isaacsim/python.sh",
         },
         {
             "name": "Train LiftBrick",
@@ -27,7 +26,6 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "cwd": "${workspaceFolder}",
-            "python": "${workspaceFolder}/isaacsim/python.sh",
         },
     ]
 }

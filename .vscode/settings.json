@@ -15,5 +15,9 @@
     "files.associations": {
         "*.kit": "ini",
     },
-    "python.analysis.languageServerMode": "full"
+    "python.analysis.languageServerMode": "full",
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}/extension/source/lego_assemble/cpp"
+    ],
+    "C_Cpp.intelliSenseEngine": "disabled"
 }

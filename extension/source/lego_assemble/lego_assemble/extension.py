@@ -1,9 +1,14 @@
+import carb
 import carb.settings
 import omni.ext
 from lego_assemble.physics.interface import init_brick_physics_interface, deinit_brick_physics_interface
+from lego_assemble._native import get_physx_version
 
 class LegoExtension(omni.ext.IExt):
     def on_startup(self, ext_id):
+
+        carb.log_info(f"lego_assemble._native loaded. PhysX version: {get_physx_version}")
+
         # Force enabling contact processing, see https://github.com/isaac-sim/IsaacLab/pull/1861
         self._enable_contact_processing()
         self._disableContactProcessing_sub = carb.settings.get_settings().subscribe_to_node_change_events(
