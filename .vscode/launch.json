@@ -1,40 +1,72 @@
 {
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "Debug IsaacSim",
-            "type": "debugpy",
-            "request": "attach",
-            "connect": {
-                "host": "localhost",
-                "port": 5678
-            },
-            "justMyCode": false,
-            "preLaunchTask": "Launch IsaacSim",
-        },
-        {
-            "name": "Python: Current File",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${file}",
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "cwd": "${workspaceFolder}",
-        },
-        {
-            "name": "Train LiftBrick",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/extension/scripts/skrl_train.py",
-            "args": [
-                "--task",
-                "Lego-LiftBrick-v0",
-                "--num_envs",
-                "32"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "cwd": "${workspaceFolder}",
-        },
-    ]
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Attach 5678",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5678
+      },
+      "justMyCode": false,
+      "preLaunchTask": "Launch IsaacSim",
+    },
+    {
+      "name": "C++: Attach kit",
+      "type": "cppdbg",
+      "request": "attach",
+      "program": "${workspaceRoot}/.venv/bin/python",
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "processId": "${input:pid5678}"
+    },
+    {
+      "name": "Python: Current File",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "cwd": "${workspaceFolder}",
+    },
+    {
+      "name": "Train LiftBrick",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/extension/scripts/skrl_train.py",
+      "args": [
+        "--task",
+        "Lego-LiftBrick-v0",
+        "--num_envs",
+        "32"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "cwd": "${workspaceFolder}",
+    },
+  ],
+  "compounds": [
+    {
+   
+      "name": "Debug C++ & Python",
+      "configurations": [
+        "Python: Attach 5678",
+        "C++: Attach kit"
+      ],
+      "stopAll": true,
+      "preLaunchTask": "Launch IsaacSim"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "pid5678",
+      "type": "command",
+      "command": "shellCommand.execute",
+      "args": {
+        "command": "pgrep -nx kit",
+        "useFirstResult": true
+      }
+    }
+  ]
 }
