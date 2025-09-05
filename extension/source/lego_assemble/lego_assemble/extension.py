@@ -2,27 +2,33 @@ import carb
 import carb.settings
 import omni.ext
 from lego_assemble.physics.interface import init_brick_physics_interface, deinit_brick_physics_interface
-from lego_assemble._native import get_physx_version
+from lego_assemble import _native
 
 class LegoExtension(omni.ext.IExt):
     def on_startup(self, ext_id):
+        if not _native.create_stage_update_listener():
+            carb.log_error("Failed to create stage update listener")
 
-        carb.log_info(f"lego_assemble._native loaded. PhysX version: {get_physx_version()}")
-
-        # Force enabling contact processing, see https://github.com/isaac-sim/IsaacLab/pull/1861
+        # Forcibly enabling contact processing, see https://github.com/isaac-sim/IsaacLab/pull/1861
         self._enable_contact_processing()
         self._disableContactProcessing_sub = carb.settings.get_settings().subscribe_to_node_change_events(
             "/physics/disableContactProcessing", self._enable_contact_processing
         )
 
         self.brick_physics = init_brick_physics_interface()
+
         self._init_ui()
 
     def on_shutdown(self):
         if self._ui is not None:
             self._ui.destroy()
+
         deinit_brick_physics_interface()
+
         carb.settings.get_settings().unsubscribe_to_change_events(self._disableContactProcessing_sub)
+
+        if not _native.destroy_stage_update_listener():
+            carb.log_error("Failed to destroy stage update listener")
 
     def _init_ui(self):
         try:
@@ -31,7 +37,6 @@ class LegoExtension(omni.ext.IExt):
             # Likely running headless
             self._ui = None
             return
-
         from lego_assemble.ui import LegoUI
         self._ui = LegoUI()
 

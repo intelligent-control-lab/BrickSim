@@ -1,5 +1,4 @@
-import math
-import logging
+import carb
 import omni.usd
 import omni.physx
 import omni.physx.scripts.physicsUtils as physicsUtils
@@ -10,8 +9,6 @@ from . import spawner
 from .assembler_impl import AssemblyDetector, BrickTracker
 from .assembler import path_for_brick
 from .utils import get_physics_scene, add_to_collision_group
-
-_logger = logging.getLogger(__name__)
 
 class BrickPhysicsInterface:
     def __init__(self):
@@ -43,7 +40,7 @@ class BrickPhysicsInterface:
             physicsUtils.set_or_add_translate_op(brick, pos)
         if quat is not None:
             physicsUtils.set_or_add_orient_op(brick, quat)
-        _logger.info(f"Added brick {path} ({dimensions[0]}x{dimensions[1]}x{dimensions[2]}) {color_name}")
+        carb.log_info(f"Added brick {path} ({dimensions[0]}x{dimensions[1]}x{dimensions[2]}) {color_name}")
         return brick, brick_id
 
     def reset_env(self, env_id: Optional[int] = None):
@@ -53,7 +50,7 @@ class BrickPhysicsInterface:
         root_path = f"/World/envs/env_{env_id}" if env_id is not None else "/World"
         root_prim = stage.GetPrimAtPath(root_path)
         if not root_prim.IsValid():
-            _logger.warning(f"Resetting bricks in env {env_id} but it does not exist")
+            carb.log_warn(f"Resetting bricks in env {env_id} but it does not exist")
             return
         root_path_sdf: Sdf.Path = root_prim.GetPath()
 
@@ -72,7 +69,7 @@ class BrickPhysicsInterface:
                 if collision_rel is not None:
                     collision_rel.RemoveTarget(path)
 
-        _logger.info(f"Resetting bricks in env {env_id}")
+        carb.log_info(f"Resetting bricks in env {env_id}")
 
     def get_tracker(self, num_envs: int, num_trackings: int) -> BrickTracker:
         self._ensure_vectorized_detector()
@@ -96,7 +93,7 @@ class BrickPhysicsInterface:
             self.vectorized_detector = AssemblyDetector()
             if self.tracker is not None:
                 self.tracker.set_backend(self.vectorized_detector)
-            _logger.info(f"Brick assembly detector reloaded")
+            carb.log_info(f"Brick assembly detector reloaded")
 
     def _on_contact_report(self, contacts: ContactEventHeaderVector, contact_data: ContactDataVector):
         if not omni.physx.get_physx_interface().is_running():

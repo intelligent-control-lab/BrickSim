@@ -1,9 +1,11 @@
 import math
+import carb
 import torch
 import omni.usd
 import omni.physx
 from typing import Optional
-from pxr import Gf, Usd, UsdPhysics
+from pxr import Gf, Usd, UsdGeom, UsdPhysics, PhysxSchema
+from lego_assemble import _native as _native
 from pxr.PhysicsSchemaTools._physicsSchemaTools import sdfPathToInt
 from omni.physx.bindings._physx import ContactEventType, ContactEventHeaderVector, ContactDataVector
 from omni.physics.tensors.impl.api import create_simulation_view, RigidBodyView
@@ -17,6 +19,9 @@ class AssemblyDetector:
     def __init__(self):
         self.physx_sim_interface = omni.physx.get_physx_simulation_interface()
         self.stage: Usd.Stage = omni.usd.get_context().get_stage()
+
+        self.mpu = UsdGeom.GetStageMetersPerUnit(self.stage)
+        self.kpu = UsdPhysics.GetStageKilogramsPerUnit(self.stage)
 
         physx_scene = get_physics_scene(self.stage)
         if physx_scene is None:
@@ -145,8 +150,8 @@ class AssemblyDetector:
         #### Calculate metrics
 
         # Calculate relative distance
-        brick0_height = dim0[:,2] * PlateHeight
-        rel_distance = rel_pose[:,2,3] - (brick0_height + StudHeight)
+        brick0_height = dim0[:,2] * (PlateHeight / self.mpu)
+        rel_distance = rel_pose[:,2,3] - (brick0_height + (StudHeight / self.mpu))
 
         # Calculate projected force along brick0's z-axis
         frc_z = torch.abs(torch.einsum("ij,ij->i", frc, pose0[:, :3, 2]))
@@ -161,13 +166,13 @@ class AssemblyDetector:
         yaw_err = rel_yaw - yaw_snap
 
         # Calculate snapped position in grid coordinates & position error
-        p0 = rel_pose[:,:2,3] / BrickLength + (dim0[:,:2] - torch.einsum("bij,bj->bi", rel_pose[:,:2,:2], dim1[:,:2])) / 2
+        p0 = rel_pose[:,:2,3] / (BrickLength / self.mpu) + (dim0[:,:2] - torch.einsum("bij,bj->bi", rel_pose[:,:2,:2], dim1[:,:2])) / 2
         p0_snap = torch.round(p0)
         p1_snap = torch.round(p0_snap + torch.einsum("bij,bj->bi", R_snap, dim1[:,:2]))
-        p_err = torch.norm(p0 - p0_snap, dim=1) * BrickLength
+        p_err = torch.norm(p0 - p0_snap, dim=1) * (BrickLength / self.mpu)
 
         # Calculate adjusted relative pose
-        xy_snap = (p0_snap + (torch.einsum("bij,bj->bi", R_snap, dim1[:,:2]) - dim0[:,:2]) / 2) * BrickLength
+        xy_snap = (p0_snap + (torch.einsum("bij,bj->bi", R_snap, dim1[:,:2]) - dim0[:,:2]) / 2) * (BrickLength / self.mpu)
         relpose_snap = torch.zeros_like(rel_pose)
         relpose_snap[:,:2,:2] = R_snap
         relpose_snap[:, 2, 2] = 1.0
@@ -192,12 +197,12 @@ class AssemblyDetector:
 
         #### Filtering
         as_flag = \
-            (rel_distance <= DistanceTolerance) & \
-            (rel_distance >= -MaxPenetration) & \
+            (rel_distance <= (DistanceTolerance / self.mpu)) & \
+            (rel_distance >= -(MaxPenetration / self.mpu)) & \
             (rel_pose[:,2,2] > math.cos(ZAngleTolerance)) & \
-            (frc_z >= RequiredForce) & \
+            (frc_z >= (RequiredForce / self.mpu / self.kpu)) & \
             (torch.abs(yaw_err) <= YawTolerance) & \
-            (p_err <= PositionTolerance) & \
+            (p_err <= (PositionTolerance / self.mpu)) & \
             ((overlap_x > 0) & (overlap_y > 0))
 
         #### Perform assembly
@@ -233,9 +238,20 @@ class AssemblyDetector:
             relpose_gf = Gf.Matrix4f(as_relpose.tolist())
             joint.CreateLocalPos0Attr().Set(relpose_gf.ExtractTranslation())
             joint.CreateLocalRot0Attr().Set(relpose_gf.ExtractRotationQuat())
+            joint.CreateCollisionEnabledAttr(True)
+
+            ok = _native.enqueue_joint_inv_mass_inertia(
+                joint_path,
+                0.2,  # invMassScale0 (tower)
+                0.2,  # invInertiaScale0 (tower)
+                1.0,  # invMassScale1 (pulled)
+                1.0,  # invInertiaScale1 (pulled)
+            )
+            if not ok:
+                carb.log_error(f"Failed to enqueue joint mass/inertia scales for: {joint_path}")
 
             filtered_pairs1: UsdPhysics.FilteredPairsAPI = UsdPhysics.FilteredPairsAPI.Apply(self.stage.GetPrimAtPath(path1))
-            filtered_pairs1.CreateFilteredPairsRel().AddTarget(path0)
+            filtered_pairs1.CreateFilteredPairsRel().AddTarget(path0 + "/TopCollider")
 
     def handle_contact_report(self, _contacts: ContactEventHeaderVector, _contact_data: ContactDataVector):
         if self.rb_view is None:

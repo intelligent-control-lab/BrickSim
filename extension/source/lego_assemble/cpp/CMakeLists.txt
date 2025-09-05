@@ -18,20 +18,36 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(pybind11)
 
 # Build the Python extension module
-pybind11_add_module(_native src/native.cpp)
+pybind11_add_module(_native
+  src/native.cpp
+  src/StageUpdateListener.cpp
+)
 
 target_compile_features(_native PRIVATE cxx_std_17)
 
-# IsaacSim target-deps configuration (variables only)
-include(cmake/IsaacSimTargetDeps.cmake)
+# IsaacSim target-deps configuration
+if(NOT DEFINED TARGET_DEPS_DIR)
+  if(DEFINED ENV{ISAACSIM_TARGET_DEPS})
+    set(TARGET_DEPS_DIR "$ENV{ISAACSIM_TARGET_DEPS}")
+  endif()
+endif()
+if(NOT DEFINED TARGET_DEPS_DIR)
+  message(FATAL_ERROR "TARGET_DEPS_DIR/ISAACSIM_TARGET_DEPS is not set. Point it to your IsaacSim _build/target-deps directory.")
+endif()
+if(NOT IS_DIRECTORY "${TARGET_DEPS_DIR}")
+  message(FATAL_ERROR "TARGET_DEPS_DIR does not exist: ${TARGET_DEPS_DIR}")
+endif()
+message(STATUS "IsaacSim target-deps: ${TARGET_DEPS_DIR}")
 
-# Only include and library directories here (no search logic, no linking)
 target_include_directories(_native PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  "${TARGET_DEPS_DIR}/../linux-x86_64/release/kit/dev/include"
   "${TARGET_DEPS_DIR}/omni_client_library/include"
-  "${TARGET_DEPS_DIR}/usd/${ISAAC_CFG_DIR}/include"
-  "${TARGET_DEPS_DIR}/usd/${ISAAC_CFG_DIR}/include/boost"
-  "${TARGET_DEPS_DIR}/usd_ext_physics/${ISAAC_CFG_DIR}/include"
-  "${TARGET_DEPS_DIR}/omni_physics/${ISAAC_CFG_DIR}/include"
+  "${TARGET_DEPS_DIR}/usd/release/include"
+  "${TARGET_DEPS_DIR}/usd/release/include/boost"
+  "${TARGET_DEPS_DIR}/usd_ext_physics/release/include"
+  "${TARGET_DEPS_DIR}/omni_physics/release/include"
+  "${TARGET_DEPS_DIR}/carb_sdk_plugins/include"
   "${TARGET_DEPS_DIR}/python/include"
   "${TARGET_DEPS_DIR}/physx/include"
   "${TARGET_DEPS_DIR}/cuda/include"
@@ -39,9 +55,10 @@ target_include_directories(_native PRIVATE
 
 target_link_directories(_native PRIVATE
   "${TARGET_DEPS_DIR}/python/lib"
-  "${TARGET_DEPS_DIR}/usd/${ISAAC_CFG_DIR}/lib"
-  "${TARGET_DEPS_DIR}/usd_ext_physics/${ISAAC_CFG_DIR}/lib"
-  "${TARGET_DEPS_DIR}/physx/bin/${ISAAC_PLATFORM_DIR}/${ISAAC_CFG_DIR}"
+  "${TARGET_DEPS_DIR}/usd/release/lib"
+  "${TARGET_DEPS_DIR}/usd_ext_physics/release/lib"
+  "${TARGET_DEPS_DIR}/physx/bin/linux.x86_64/checked"
+  "${TARGET_DEPS_DIR}/carb_sdk_plugins/_build/linux-x86_64/release"
   "${TARGET_DEPS_DIR}/cuda/lib64"
   "${TARGET_DEPS_DIR}/nvtx/lib64"
 )
@@ -55,6 +72,10 @@ target_link_libraries(_native PRIVATE
   PhysXCooking_static_64
   PhysXCommon_static_64
   PhysXFoundation_static_64
+  carb
+  usd_sdf
+  usd_tf
+  usd_arch
 )
 
 # Allow the caller (setup.py) to override the output directory for the built module

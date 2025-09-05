@@ -21,10 +21,12 @@ def create_brick(stage: Usd.Stage, path: str, dimensions: Tuple[int, int, int], 
     return brick
 
 def build_brick(stage: Usd.Stage, brick_prim: Usd.Prim, dimensions: Tuple[int, int, int], color_name: str):
+    mpu = UsdGeom.GetStageMetersPerUnit(stage)
+    kpu = UsdPhysics.GetStageKilogramsPerUnit(stage)
+
     brick_path: Sdf.Path = brick_prim.GetPath()
     color = lego_schemes.parse_color(color_name)
     real_dimensions = lego_schemes.to_real_dimensions(dimensions)
-    collider_dimensions = [real_dimensions[0], real_dimensions[1], real_dimensions[2]+StudHeight]
 
     brick_prim.CreateAttribute("lego_dimensions", Sdf.ValueTypeNames.Int3).Set(Gf.Vec3i(*dimensions))
     brick_prim.CreateAttribute("lego_color", Sdf.ValueTypeNames.String).Set(color_name)
@@ -35,23 +37,57 @@ def build_brick(stage: Usd.Stage, brick_prim: Usd.Prim, dimensions: Tuple[int, i
     contactReportAPI: PhysxSchema.PhysxContactReportAPI = PhysxSchema.PhysxContactReportAPI.Apply(brick_prim)
     contactReportAPI.CreateThresholdAttr(0.0)
 
-    collider: UsdGeom.Cube = UsdGeom.Cube.Define(stage, brick_path.AppendChild("BodyCollider"))
-    collider.CreateSizeAttr(1.0)
-    collider.CreateVisibilityAttr(UsdGeom.Tokens.invisible)
-    UsdGeom.XformCommonAPI(collider).SetScale(collider_dimensions)
-    UsdGeom.XformCommonAPI(collider).SetTranslate((0, 0, collider_dimensions[2]/2))
-    colliderPrim = collider.GetPrim()
-    collisionAPI: UsdPhysics.CollisionAPI = UsdPhysics.CollisionAPI.Apply(colliderPrim)
-    collisionAPI.CreateCollisionEnabledAttr(True)
-    PhysxSchema.PhysxCollisionAPI.Apply(colliderPrim)
-    massAPI = UsdPhysics.MassAPI.Apply(colliderPrim)
-    massAPI.CreateMassAttr(lego_schemes.compute_mass(dimensions))
+    bc: UsdGeom.Cube = UsdGeom.Cube.Define(stage, brick_path.AppendChild("BodyCollider"))
+    bc.CreateSizeAttr(1.0)
+    bc.CreateVisibilityAttr(UsdGeom.Tokens.invisible)
+    UsdGeom.XformCommonAPI(bc).SetScale((
+        real_dimensions[0] / mpu,
+        real_dimensions[1] / mpu,
+        real_dimensions[2] / mpu
+    ))
+    UsdGeom.XformCommonAPI(bc).SetTranslate((
+        0,
+        0,
+        real_dimensions[2] / 2 / mpu
+    ))
+    bcPrim = bc.GetPrim()
+    bcCollisionAPI: UsdPhysics.CollisionAPI = UsdPhysics.CollisionAPI.Apply(bcPrim)
+    bcCollisionAPI.CreateCollisionEnabledAttr(True)
+    bcMassAPI = UsdPhysics.MassAPI.Apply(bcPrim)
+    bcMassAPI.CreateMassAttr(lego_schemes.compute_mass(dimensions) / kpu)
+
+    tc: UsdGeom.Cube = UsdGeom.Cube.Define(stage, brick_path.AppendChild("TopCollider"))
+    tc.CreateSizeAttr(1.0)
+    tc.CreateVisibilityAttr(UsdGeom.Tokens.invisible)
+    UsdGeom.XformCommonAPI(tc).SetScale((
+        real_dimensions[0] / mpu,
+        real_dimensions[1] / mpu,
+        StudHeight / mpu
+    ))
+    UsdGeom.XformCommonAPI(tc).SetTranslate((
+        0,
+        0,
+        (real_dimensions[2] + StudHeight / 2) / mpu
+    ))
+    tcPrim = tc.GetPrim()
+    tcCollisionAPI: UsdPhysics.CollisionAPI = UsdPhysics.CollisionAPI.Apply(tcPrim)
+    tcCollisionAPI.CreateCollisionEnabledAttr(True)
+    tcMassAPI = UsdPhysics.MassAPI.Apply(tcPrim)
+    tcMassAPI.CreateMassAttr(0.0)
 
     body: UsdGeom.Cube = UsdGeom.Cube.Define(stage, brick_path.AppendChild("Body"))
     body.CreateSizeAttr(1.0)
     body.CreateDisplayColorAttr([color])
-    UsdGeom.XformCommonAPI(body).SetScale(real_dimensions)
-    UsdGeom.XformCommonAPI(body).SetTranslate((0, 0, real_dimensions[2]/2))
+    UsdGeom.XformCommonAPI(body).SetScale((
+        real_dimensions[0] / mpu,
+        real_dimensions[1] / mpu,
+        real_dimensions[2] / mpu
+    ))
+    UsdGeom.XformCommonAPI(body).SetTranslate((
+        0,
+        0,
+        real_dimensions[2] / 2 / mpu
+    ))
 
     for i in range(dimensions[0]):
         for j in range(dimensions[1]):
@@ -61,5 +97,13 @@ def build_brick(stage: Usd.Stage, brick_prim: Usd.Prim, dimensions: Tuple[int, i
             x_offset = (i - (dimensions[0]-1)/2) * BrickLength
             y_offset = (j - (dimensions[1]-1)/2) * BrickLength
             z_offset = real_dimensions[2] + StudHeight/2
-            UsdGeom.XformCommonAPI(stud).SetTranslate((x_offset, y_offset, z_offset))
-            UsdGeom.XformCommonAPI(stud).SetScale((StudDiameter/2, StudDiameter/2, StudHeight))
+            UsdGeom.XformCommonAPI(stud).SetTranslate((
+                x_offset / mpu,
+                y_offset / mpu,
+                z_offset / mpu
+            ))
+            UsdGeom.XformCommonAPI(stud).SetScale((
+                StudDiameter / 2 / mpu,
+                StudDiameter / 2 / mpu,
+                StudHeight / mpu
+            ))
