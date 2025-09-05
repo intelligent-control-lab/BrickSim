@@ -18,8 +18,8 @@
       "request": "attach",
       "program": "${workspaceRoot}/.venv/bin/python",
       "MIMode": "gdb",
-      "miDebuggerPath": "/usr/bin/gdb",
-      "processId": "${input:pid5678}"
+      "miDebuggerPath": "${workspaceFolder}/scripts/gdb-wrapper.sh",
+      "processId": "${input:pid_kit}"
     },
     {
       "name": "Python: Current File",
@@ -48,7 +48,6 @@
   ],
   "compounds": [
     {
-   
       "name": "Debug C++ & Python",
       "configurations": [
         "Python: Attach 5678",
@@ -60,7 +59,7 @@
   ],
   "inputs": [
     {
-      "id": "pid5678",
+      "id": "pid_kit",
       "type": "command",
       "command": "shellCommand.execute",
       "args": {
