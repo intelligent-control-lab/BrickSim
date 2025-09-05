@@ -61,14 +61,14 @@
             "absolute"
           ],
           "pattern": {
-            "regexp": "^(?!x)x(.*)$",
+            "regexp": "__________",
             "file": 1,
             "message": 1
           },
           "background": {
             "activeOnStart": true,
-            "beginsPattern": "Waiting for debugger to connect\\.\\.\\.",
-            "endsPattern": "Waiting for debugger to connect\\.\\.\\."
+            "beginsPattern": "__________",
+            "endsPattern": "Waiting for debugger to connect"
           }
         }
       ],
