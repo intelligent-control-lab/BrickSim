@@ -6,8 +6,8 @@ from lego_assemble import _native
 
 class LegoExtension(omni.ext.IExt):
     def on_startup(self, ext_id):
-        if not _native.create_stage_update_listener():
-            carb.log_error("Failed to create stage update listener")
+        if not _native.init_natives():
+            carb.log_error("Failed to initialize native components")
 
         # Forcibly enabling contact processing, see https://github.com/isaac-sim/IsaacLab/pull/1861
         self._enable_contact_processing()
@@ -27,8 +27,8 @@ class LegoExtension(omni.ext.IExt):
 
         carb.settings.get_settings().unsubscribe_to_change_events(self._disableContactProcessing_sub)
 
-        if not _native.destroy_stage_update_listener():
-            carb.log_error("Failed to destroy stage update listener")
+        if not _native.deinit_natives:
+            carb.log_error("Failed to deinitialize native components")
 
     def _init_ui(self):
         try:

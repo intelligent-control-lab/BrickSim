@@ -20,7 +20,7 @@ FetchContent_MakeAvailable(pybind11)
 # Build the Python extension module
 pybind11_add_module(_native
   src/native.cpp
-  src/StageUpdateListener.cpp
+  src/JointInvMassInertiaSetter.cpp
 )
 
 target_compile_features(_native PRIVATE cxx_std_17)

@@ -240,7 +240,7 @@ class AssemblyDetector:
             joint.CreateLocalRot0Attr().Set(relpose_gf.ExtractRotationQuat())
             joint.CreateCollisionEnabledAttr(True)
 
-            ok = _native.enqueue_joint_inv_mass_inertia(
+            ok = _native.set_joint_inv_mass_inertia(
                 joint_path,
                 0.2,  # invMassScale0 (tower)
                 0.2,  # invInertiaScale0 (tower)
@@ -248,7 +248,7 @@ class AssemblyDetector:
                 1.0,  # invInertiaScale1 (pulled)
             )
             if not ok:
-                carb.log_error(f"Failed to enqueue joint mass/inertia scales for: {joint_path}")
+                carb.log_error(f"Failed to set joint mass/inertia scales for: {joint_path}")
 
             filtered_pairs1: UsdPhysics.FilteredPairsAPI = UsdPhysics.FilteredPairsAPI.Apply(self.stage.GetPrimAtPath(path1))
             filtered_pairs1.CreateFilteredPairsRel().AddTarget(path0 + "/TopCollider")
