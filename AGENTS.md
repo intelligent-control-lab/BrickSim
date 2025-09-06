@@ -21,6 +21,7 @@ Isaac Sim 5.0 extension for simulating LEGO bricks and their assembly. This repo
 │  ├─ build_fast_debug.sh               # Invokes CMake to build C++ code
 │  └─ launch_isaacsim.sh                # Launches Isaac Sim for debugging
 └─ .vscode/               # VS Code workspace settings
+../IsaacSim/              # IsaacSim source
 ```
 
 ## Build & Test
@@ -72,3 +73,23 @@ You must NOT:
 - Minimize unsolicited scope changes: keep edits surgical and aligned with the exact request; prefer proposing alternatives rather than implementing them.
 - Reflect and learn: when asked to revise behavior, summarize the lesson and how to apply it across future tasks.
 - Update this file only on request: edit AGENTS.md if and only if the user explicitly says “update agents.md”.
+
+## Designs
+
+- Dimensions: LEGO bricks are defined by L × W × H.
+  - L and W are measured in studs.
+  - H is measured in plate heights; a plate has height 1, and a brick typically has height 3.
+- Rigid bodies: Bricks are modeled as rigid bodies.
+- Assembly mechanics: Assembly is detected when two bricks are aligned and sufficient force is applied; a joint is added between them after assembly.
+
+- Geometry
+  - Visual: a main body cube plus L × W cylindrical studs.
+  - Colliders: a main body cube (`BodyCollider`) plus a cube approximating the bounding box of the top studs (`TopCollider`).
+    - `BodyCollider`: the solid portion of a brick, excluding the top studs.
+    - `TopCollider`: sits on top of `BodyCollider`; same length and width; height equals the stud height. This is an approximation.
+  - Holes are not modeled.
+
+- Assembly behavior
+  - When two bricks assemble, their poses are adjusted to produce a “snap‑fit” effect. This removes small alignment errors within the threshold that permits assembly.
+  - After assembly, collisions between the upper brick and the lower brick’s `TopCollider` are excluded from physics simulation.
+  - The relative distance is adjusted so the bottom of the upper brick contacts the top of the lower brick’s `BodyCollider`. In this state, the lower brick’s `TopCollider` (studs) lies completely within the upper brick (with collisions disabled), mimicking studs entering holes.
