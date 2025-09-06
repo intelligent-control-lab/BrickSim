@@ -96,14 +96,19 @@ class BrickPhysicsInterface:
             carb.log_info(f"Brick assembly detector reloaded")
 
     def _on_contact_report(self, contacts: ContactEventHeaderVector, contact_data: ContactDataVector):
-        if not omni.physx.get_physx_interface().is_running():
-            return
+        try:
+            if not omni.physx.get_physx_interface().is_running():
+                return
 
-        self._ensure_vectorized_detector()
-        if self.vectorized_detector is None:
-            return
+            self._ensure_vectorized_detector()
+            if self.vectorized_detector is None:
+                return
 
-        self.vectorized_detector.handle_contact_report(contacts, contact_data)
+            self.vectorized_detector.handle_contact_report(contacts, contact_data)
+
+        except Exception as e:
+            # Throwing in a callback will crash the entire application
+            carb.log_error(f"Error in contact report handler: {e}")
 
     def _destroy(self):
         self.update_sub.unsubscribe()

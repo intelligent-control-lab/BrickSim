@@ -1,11 +1,9 @@
 import math
-import carb
 import torch
 import omni.usd
 import omni.physx
 from typing import Optional
 from pxr import Gf, Usd, UsdGeom, UsdPhysics, PhysxSchema
-from lego_assemble import _native as _native
 from pxr.PhysicsSchemaTools._physicsSchemaTools import sdfPathToInt
 from omni.physx.bindings._physx import ContactEventType, ContactEventHeaderVector, ContactDataVector
 from omni.physics.tensors.impl.api import create_simulation_view, RigidBodyView
@@ -14,6 +12,7 @@ from .assembler import DistanceTolerance, MaxPenetration, ZAngleTolerance, Requi
 from .physx_c import buffer_from_ContactDataVector, buffer_from_ContactEventHeaderVector
 from .utils import get_physics_scene
 from .math_utils import pose_to_se3, inv_se3, se3_to_pose
+from .brick_joint import configure_brick_joint
 
 class AssemblyDetector:
     def __init__(self):
@@ -239,16 +238,7 @@ class AssemblyDetector:
             joint.CreateLocalPos0Attr().Set(relpose_gf.ExtractTranslation())
             joint.CreateLocalRot0Attr().Set(relpose_gf.ExtractRotationQuat())
             joint.CreateCollisionEnabledAttr(True)
-
-            ok = _native.set_joint_inv_mass_inertia(
-                joint_path,
-                0.2,  # invMassScale0 (tower)
-                0.2,  # invInertiaScale0 (tower)
-                1.0,  # invMassScale1 (pulled)
-                1.0,  # invInertiaScale1 (pulled)
-            )
-            if not ok:
-                carb.log_error(f"Failed to set joint mass/inertia scales for: {joint_path}")
+            configure_brick_joint(joint)
 
             filtered_pairs1: UsdPhysics.FilteredPairsAPI = UsdPhysics.FilteredPairsAPI.Apply(self.stage.GetPrimAtPath(path1))
             filtered_pairs1.CreateFilteredPairsRel().AddTarget(path0 + "/TopCollider")

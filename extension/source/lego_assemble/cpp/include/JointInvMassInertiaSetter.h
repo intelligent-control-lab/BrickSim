@@ -8,8 +8,8 @@ bool initJointInvMassInertiaSetter();
 
 bool deinitJointInvMassInertiaSetter();
 
-bool setJointInvMassInertia(const pxr::SdfPath &jointPath, float invMassScale0,
-                            float invInertiaScale0, float invMassScale1,
-                            float invInertiaScale1);
+bool setPhysxJointInvMassInertia(const pxr::SdfPath &jointPath,
+                                 float invMassScale0, float invInertiaScale0,
+                                 float invMassScale1, float invInertiaScale1);
 
 } // namespace lego_assemble

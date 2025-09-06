@@ -8,10 +8,10 @@ PYBIND11_MODULE(_native, m) {
 	m.doc() = "lego_assemble: native module";
 
 	m.def(
-	    "set_joint_inv_mass_inertia",
+	    "set_physx_joint_inv_mass_inertia",
 	    [](const std::string &sdfPath, float inv_mass0, float inv_inertia0,
 	       float inv_mass1, float inv_inertia1) {
-		    return lego_assemble::setJointInvMassInertia(
+		    return lego_assemble::setPhysxJointInvMassInertia(
 		        pxr::SdfPath(sdfPath), inv_mass0, inv_inertia0, inv_mass1,
 		        inv_inertia1);
 	    },

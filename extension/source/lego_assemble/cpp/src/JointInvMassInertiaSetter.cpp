@@ -97,9 +97,9 @@ bool deinitJointInvMassInertiaSetter() {
 	return true;
 }
 
-bool setJointInvMassInertia(const pxr::SdfPath &jointPath, float invMassScale0,
-                            float invInertiaScale0, float invMassScale1,
-                            float invInertiaScale1) {
+bool setPhysxJointInvMassInertia(const pxr::SdfPath &jointPath,
+                                 float invMassScale0, float invInertiaScale0,
+                                 float invMassScale1, float invInertiaScale1) {
 	SetInvMassInertiaReq req{jointPath, invMassScale0, invInertiaScale0,
 	                         invMassScale1, invInertiaScale1};
 	std::scoped_lock lock(g_pendingMutex);
