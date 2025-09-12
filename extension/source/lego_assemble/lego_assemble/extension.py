@@ -1,10 +1,8 @@
 import carb
 import carb.settings
 import omni.ext
-import omni.physx
 from lego_assemble import _native
 from lego_assemble.physics.interface import init_brick_physics_interface, deinit_brick_physics_interface
-from lego_assemble.physics.brick_joint import on_simulation_event
 
 class LegoExtension(omni.ext.IExt):
     def on_startup(self, ext_id):
@@ -19,15 +17,11 @@ class LegoExtension(omni.ext.IExt):
 
         self.brick_physics = init_brick_physics_interface()
 
-        self.simulation_event_sub = omni.physx.get_physx_interface().get_simulation_event_stream_v2().create_subscription_to_pop(on_simulation_event)
-
         self._init_ui()
 
     def on_shutdown(self):
         if self._ui is not None:
             self._ui.destroy()
-
-        self.simulation_event_sub.unsubscribe()
 
         deinit_brick_physics_interface()
 

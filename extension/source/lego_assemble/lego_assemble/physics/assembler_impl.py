@@ -3,7 +3,7 @@ import torch
 import omni.usd
 import omni.physx
 from typing import Optional
-from pxr import Gf, Usd, UsdGeom, UsdPhysics, PhysxSchema
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, PhysxSchema
 from pxr.PhysicsSchemaTools._physicsSchemaTools import sdfPathToInt
 from omni.physx.bindings._physx import ContactEventType, ContactEventHeaderVector, ContactDataVector
 from omni.physics.tensors.impl.api import create_simulation_view, RigidBodyView
@@ -12,7 +12,6 @@ from .assembler import DistanceTolerance, MaxPenetration, ZAngleTolerance, Requi
 from .physx_c import buffer_from_ContactDataVector, buffer_from_ContactEventHeaderVector
 from .utils import get_physics_scene
 from .math_utils import pose_to_se3, inv_se3, se3_to_pose
-from .brick_joint import configure_brick_joint
 
 class AssemblyDetector:
     def __init__(self):
@@ -238,7 +237,7 @@ class AssemblyDetector:
             joint.CreateLocalPos0Attr().Set(relpose_gf.ExtractTranslation())
             joint.CreateLocalRot0Attr().Set(relpose_gf.ExtractRotationQuat())
             joint.CreateCollisionEnabledAttr(True)
-            configure_brick_joint(joint)
+            joint.GetPrim().CreateAttribute("lego_conn", Sdf.ValueTypeNames.Bool).Set(True)
 
             filtered_pairs1: UsdPhysics.FilteredPairsAPI = UsdPhysics.FilteredPairsAPI.Apply(self.stage.GetPrimAtPath(path1))
             filtered_pairs1.CreateFilteredPairsRel().AddTarget(path0 + "/TopCollider")

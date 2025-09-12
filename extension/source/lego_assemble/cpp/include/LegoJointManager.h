@@ -4,12 +4,17 @@
 
 namespace lego_assemble {
 
-bool initJointInvMassInertiaSetter();
+bool initLegoJointManager();
 
-bool deinitJointInvMassInertiaSetter();
+bool deinitLegoJointManager();
 
 bool setPhysxJointInvMassInertia(const pxr::SdfPath &jointPath,
                                  float invMassScale0, float invInertiaScale0,
                                  float invMassScale1, float invInertiaScale1);
+
+bool setDefaultLegoJointInvMassInertia(float invMassScale0,
+                                       float invInertiaScale0,
+                                       float invMassScale1,
+                                       float invInertiaScale1);
 
 } // namespace lego_assemble

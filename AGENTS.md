@@ -65,7 +65,7 @@ You may operate in:
 4) Any other directories/files that are explicitly referenced
 
 You must NOT:
-- Run global searches from filesystem root or from the home directory—they are too large—unless you first ask the user for approval.
+- Run global searches from filesystem root, or from the home directory, or other directories not listed above—they are too large—unless you first ask the user for approval.
 
 ## Collaboration Rules (How to Work With the User)
 - Respect explicit decisions: do not change established values or designs (e.g., callback orders, algorithm choices) without strong evidence and prior approval.

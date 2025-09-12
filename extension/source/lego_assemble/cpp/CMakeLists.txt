@@ -20,7 +20,8 @@ FetchContent_MakeAvailable(pybind11)
 # Build the Python extension module
 pybind11_add_module(_native
   src/native.cpp
-  src/JointInvMassInertiaSetter.cpp
+  src/LegoJointManager.cpp
+  src/tokens.cpp
 )
 
 target_compile_features(_native PRIVATE cxx_std_17)
@@ -73,6 +74,9 @@ target_link_libraries(_native PRIVATE
   PhysXCommon_static_64
   PhysXFoundation_static_64
   carb
+  usd_usd
+  usd_usdUtils
+  usd_usdPhysics
   usd_sdf
   usd_tf
   usd_arch
