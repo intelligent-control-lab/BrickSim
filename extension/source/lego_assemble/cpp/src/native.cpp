@@ -19,6 +19,7 @@ PYBIND11_MODULE(_native, m) {
 	    pybind11::arg("inv_inertia0") = 1.0f, pybind11::arg("inv_mass1") = 1.0f,
 	    pybind11::arg("inv_inertia1") = 1.0f,
 	    "Set inv-mass/inertia scales for given PhysX joint.");
+
 	m.def(
 	    "set_default_lego_joint_inv_mass_inertia",
 	    [](float inv_mass0, float inv_inertia0, float inv_mass1,
@@ -29,6 +30,20 @@ PYBIND11_MODULE(_native, m) {
 	    pybind11::arg("inv_mass0") = 0.2f, pybind11::arg("inv_inertia0") = 0.2f,
 	    pybind11::arg("inv_mass1") = 1.0f, pybind11::arg("inv_inertia1") = 1.0f,
 	    "Set default inv-mass/inertia scales for lego joints.");
+
+	m.def(
+	    "get_physx_joint_force_torque",
+	    [](const std::string &sdfPath) -> pybind11::object {
+		    auto res =
+		        lego_assemble::getPhysxJointForceTorque(pxr::SdfPath(sdfPath));
+		    if (!res)
+			    return pybind11::none();
+		    const auto &[force, torque] = *res;
+		    return pybind11::make_tuple(
+		        pybind11::make_tuple(force.x, force.y, force.z),
+		        pybind11::make_tuple(torque.x, torque.y, torque.z));
+	    },
+	    pybind11::arg("sdf_path"), "Get force/torque applied on a PhysX joint");
 
 	m.def(
 	    "init_natives",

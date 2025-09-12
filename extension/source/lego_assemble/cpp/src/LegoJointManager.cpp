@@ -260,4 +260,22 @@ bool setDefaultLegoJointInvMassInertia(float invMassScale0,
 	return true;
 }
 
+std::optional<std::tuple<physx::PxVec3, physx::PxVec3>>
+getPhysxJointForceTorque(const pxr::SdfPath &jointPath) {
+	if (!g_physx)
+		return std::nullopt;
+	void *jointPtr =
+	    g_physx->getPhysXPtr(jointPath, omni::physx::PhysXType::ePTJoint);
+	if (!jointPtr)
+		return std::nullopt;
+	physx::PxJoint *joint = static_cast<physx::PxJoint *>(jointPtr);
+	physx::PxConstraint *constraint = joint->getConstraint();
+	if (!constraint)
+		return std::nullopt;
+
+	physx::PxVec3 force, torque;
+	constraint->getForce(force, torque);
+	return std::make_tuple(force, torque);
+}
+
 } // namespace lego_assemble
