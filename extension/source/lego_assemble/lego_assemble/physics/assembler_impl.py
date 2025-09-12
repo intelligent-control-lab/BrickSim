@@ -3,12 +3,12 @@ import torch
 import omni.usd
 import omni.physx
 from typing import Optional
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, PhysxSchema
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 from pxr.PhysicsSchemaTools._physicsSchemaTools import sdfPathToInt
 from omni.physx.bindings._physx import ContactEventType, ContactEventHeaderVector, ContactDataVector
 from omni.physics.tensors.impl.api import create_simulation_view, RigidBodyView
 from .lego_schemes import BrickLength, PlateHeight, StudHeight
-from .assembler import DistanceTolerance, MaxPenetration, ZAngleTolerance, RequiredForce, YawTolerance, PositionTolerance, parse_brick_path, path_for_brick, path_for_conn
+from .assembler import Thresholds, parse_brick_path, path_for_brick, path_for_conn
 from .physx_c import buffer_from_ContactDataVector, buffer_from_ContactEventHeaderVector
 from .utils import get_physics_scene
 from .math_utils import pose_to_se3, inv_se3, se3_to_pose
@@ -195,12 +195,12 @@ class AssemblyDetector:
 
         #### Filtering
         as_flag = \
-            (rel_distance <= (DistanceTolerance / self.mpu)) & \
-            (rel_distance >= -(MaxPenetration / self.mpu)) & \
-            (rel_pose[:,2,2] > math.cos(ZAngleTolerance)) & \
-            (frc_z >= (RequiredForce / self.mpu / self.kpu)) & \
-            (torch.abs(yaw_err) <= YawTolerance) & \
-            (p_err <= (PositionTolerance / self.mpu)) & \
+            (rel_distance <= (Thresholds.DistanceTolerance / self.mpu)) & \
+            (rel_distance >= -(Thresholds.MaxPenetration / self.mpu)) & \
+            (rel_pose[:,2,2] > math.cos(Thresholds.ZAngleTolerance)) & \
+            (frc_z >= (Thresholds.RequiredForce / self.mpu / self.kpu)) & \
+            (torch.abs(yaw_err) <= Thresholds.YawTolerance) & \
+            (p_err <= (Thresholds.PositionTolerance / self.mpu)) & \
             ((overlap_x > 0) & (overlap_y > 0))
 
         #### Perform assembly

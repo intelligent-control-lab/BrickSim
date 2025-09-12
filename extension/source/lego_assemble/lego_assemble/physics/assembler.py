@@ -1,12 +1,13 @@
 import math
 from typing import Optional
 
-DistanceTolerance = 0.001           # Maximum distance between bricks (m)
-MaxPenetration = 0.005              # Maximum penetration between bricks (m), penetration can happen due to simulation inaccuracies
-ZAngleTolerance = math.radians(5)   # Maximum angle between z-axis of bricks (rad)
-RequiredForce = 1.0                 # Minimum clutch power (N)
-YawTolerance = math.radians(5)      # Maximum yaw error (rad)
-PositionTolerance = 0.002           # Maximum position error (m)
+class Thresholds:
+    DistanceTolerance = 0.001           # Maximum distance between bricks (m)
+    MaxPenetration = 0.005              # Maximum penetration between bricks (m), penetration can happen due to simulation inaccuracies
+    ZAngleTolerance = math.radians(5)   # Maximum angle between z-axis of bricks (rad)
+    RequiredForce = 1.0                 # Minimum clutch power (N)
+    YawTolerance = math.radians(5)      # Maximum yaw error (rad)
+    PositionTolerance = 0.002           # Maximum position error (m)
 
 def path_for_brick(brick_id: int, env_id: Optional[int] = None) -> str:
     if env_id is None:

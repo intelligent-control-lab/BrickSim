@@ -1,9 +1,11 @@
 import omni.ui
 import omni.physx
+import math
 import lego_assemble.physics.lego_schemes as lego_schemes
 from lego_assemble.physics.interface import get_brick_physics_interface
 from lego_assemble import _native
 from .force_monitor import ForceMonitor
+from lego_assemble.physics.assembler import Thresholds
 
 class LegoUI():
     def __init__(self):
@@ -47,8 +49,53 @@ class LegoUI():
                     omni.ui.Button("Reset Env", clicked_fn=self._reset_env_clicked)
                     omni.ui.Button("Save to USD", clicked_fn=self._save_to_usd)
 
-                # Middle: inv mass/inertia scale settings
-                with omni.ui.VStack(height=0, spacing=5):
+                # Middle: thresholds (top) + inv mass/inertia scale settings (bottom)
+                with omni.ui.VStack(height=0, spacing=8):
+                    with omni.ui.HStack(spacing=10):
+                        omni.ui.Label("Distance tol (m):", width=140)
+                        self._dist_tol_field = omni.ui.FloatDrag(min=0.0, max=0.05)
+                        self._dist_tol_field.model.set_value(float(Thresholds.DistanceTolerance))
+                        self._dist_tol_field.model.add_value_changed_fn(
+                            lambda m: setattr(Thresholds, "DistanceTolerance", float(m.as_float))
+                        )
+                    with omni.ui.HStack(spacing=10):
+                        omni.ui.Label("Max penetration (m):", width=140)
+                        self._max_pen_field = omni.ui.FloatDrag(min=0.0, max=0.05)
+                        self._max_pen_field.model.set_value(float(Thresholds.MaxPenetration))
+                        self._max_pen_field.model.add_value_changed_fn(
+                            lambda m: setattr(Thresholds, "MaxPenetration", float(m.as_float))
+                        )
+                    with omni.ui.HStack(spacing=10):
+                        omni.ui.Label("Z angle tol (deg):", width=140)
+                        self._zang_deg_field = omni.ui.FloatDrag(min=0.0, max=90.0)
+                        self._zang_deg_field.model.set_value(float(math.degrees(Thresholds.ZAngleTolerance)))
+                        self._zang_deg_field.model.add_value_changed_fn(
+                            lambda m: setattr(Thresholds, "ZAngleTolerance", math.radians(float(m.as_float)))
+                        )
+                    with omni.ui.HStack(spacing=10):
+                        omni.ui.Label("Required force (N):", width=140)
+                        self._req_force_field = omni.ui.FloatDrag(min=0.0, max=10.0)
+                        self._req_force_field.model.set_value(float(Thresholds.RequiredForce))
+                        self._req_force_field.model.add_value_changed_fn(
+                            lambda m: setattr(Thresholds, "RequiredForce", float(m.as_float))
+                        )
+                    with omni.ui.HStack(spacing=10):
+                        omni.ui.Label("Yaw tol (deg):", width=140)
+                        self._yaw_deg_field = omni.ui.FloatDrag(min=0.0, max=180.0)
+                        self._yaw_deg_field.model.set_value(float(math.degrees(Thresholds.YawTolerance)))
+                        self._yaw_deg_field.model.add_value_changed_fn(
+                            lambda m: setattr(Thresholds, "YawTolerance", math.radians(float(m.as_float)))
+                        )
+                    with omni.ui.HStack(spacing=10):
+                        omni.ui.Label("Position tol (m):", width=140)
+                        self._pos_tol_field = omni.ui.FloatDrag(min=0.0, max=0.05)
+                        self._pos_tol_field.model.set_value(float(Thresholds.PositionTolerance))
+                        self._pos_tol_field.model.add_value_changed_fn(
+                            lambda m: setattr(Thresholds, "PositionTolerance", float(m.as_float))
+                        )
+
+                    omni.ui.Spacer(height=6)
+                    # Inv mass/inertia scale settings
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("inv_mass0:", width=100)
                         self._inv_mass0_field = omni.ui.FloatDrag(min=0.0, max=100.0)
