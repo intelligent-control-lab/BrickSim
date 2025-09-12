@@ -37,7 +37,7 @@ class LegoExtension(omni.ext.IExt):
             # Likely running headless
             self._ui = None
             return
-        from lego_assemble.ui import LegoUI
+        from lego_assemble.ui.main_ui import LegoUI
         self._ui = LegoUI()
 
     def _enable_contact_processing(self, *args, **kwargs):
