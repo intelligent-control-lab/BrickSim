@@ -22,6 +22,7 @@ Isaac Sim 5.0 extension for simulating LEGO bricks and their assembly. This repo
 │  └─ launch_isaacsim.sh                # Launches Isaac Sim for debugging
 └─ .vscode/               # VS Code workspace settings
 ../IsaacSim/              # IsaacSim source
+../PhysX/                 # PhysX source
 ```
 
 ## Build & Test
@@ -49,9 +50,10 @@ Isaac Sim 5.0 extension for simulating LEGO bricks and their assembly. This repo
 - Treat online docs as potentially stale; verify against local Isaac Sim code.
 - When blocked, consult local sources.
 - Isaac Sim source code lives at `../IsaacSim` (relative to this project directory).
+- PhysX source checkout lives at `../PhysX` (relative to this project directory). The version is 107.3-physx-5.6.1, which is used by current Isaac Sim build.
 
 ### Where to Look / How to Inspect
-1. Consult anything under `../IsaacSim`.
+1. Consult anything under `../IsaacSim` and `../PhysX`.
 2. Dependent libraries are under `../IsaacSim/_build` (many in `../IsaacSim/_build/target-deps`).
 3. Use `rg` (ripgrep) or similar to search symbols in headers or even binary files.
 4. Decompile/disassemble/reverse‑engineer binaries when source is unavailable.
@@ -60,7 +62,7 @@ Isaac Sim 5.0 extension for simulating LEGO bricks and their assembly. This repo
 ## Safety
 You may operate in:
 1) This project directory
-2) `../IsaacSim` directory
+2) `../IsaacSim` directory and `../PhysX` directory
 3) Common system locations (e.g., system headers)
 4) Any other directories/files that are explicitly referenced
 
