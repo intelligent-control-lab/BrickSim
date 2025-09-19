@@ -3,7 +3,6 @@ import omni.physx
 import math
 import lego_assemble.physics.lego_schemes as lego_schemes
 from lego_assemble.physics.interface import get_brick_physics_interface
-from lego_assemble import _native
 from .force_monitor import ForceMonitor
 from lego_assemble.physics.assembler import Thresholds
 
@@ -94,40 +93,9 @@ class LegoUI():
                             lambda m: setattr(Thresholds, "PositionTolerance", float(m.as_float))
                         )
 
-                    omni.ui.Spacer(height=6)
-                    # Inv mass/inertia scale settings
-                    with omni.ui.HStack(spacing=10):
-                        omni.ui.Label("inv_mass0:", width=100)
-                        self._inv_mass0_field = omni.ui.FloatDrag(min=0.0, max=100.0)
-                        self._inv_mass0_field.model.set_value(0.2)
-                    with omni.ui.HStack(spacing=10):
-                        omni.ui.Label("inv_inertia0:", width=100)
-                        self._inv_inertia0_field = omni.ui.FloatDrag(min=0.0, max=100.0)
-                        self._inv_inertia0_field.model.set_value(0.2)
-                    with omni.ui.HStack(spacing=10):
-                        omni.ui.Label("inv_mass1:", width=100)
-                        self._inv_mass1_field = omni.ui.FloatDrag(min=0.0, max=100.0)
-                        self._inv_mass1_field.model.set_value(1.0)
-                    with omni.ui.HStack(spacing=10):
-                        omni.ui.Label("inv_inertia1:", width=100)
-                        self._inv_inertia1_field = omni.ui.FloatDrag(min=0.0, max=100.0)
-                        self._inv_inertia1_field.model.set_value(1.0)
-
-                    # Apply automatically when any field changes
-                    for m in (
-                        self._inv_mass0_field.model,
-                        self._inv_inertia0_field.model,
-                        self._inv_mass1_field.model,
-                        self._inv_inertia1_field.model,
-                    ):
-                        m.add_value_changed_fn(self._apply_inv_mass_inertia_scales)
-
                 # Right: monitoring column (delegated)
                 with omni.ui.VStack(height=0, spacing=5):
                     self._monitor = ForceMonitor()
-
-            # Apply initial defaults
-            self._apply_inv_mass_inertia_scales()
 
     def destroy(self):
         self._monitor.destroy()
@@ -160,14 +128,3 @@ class LegoUI():
         omni.physx.get_physx_interface().update_transformations(True, True, True, True)
         omni.physx.get_physx_interface().release_physics_objects()
         omni.physx.get_physx_interface().force_load_physics_from_usd()
-
-    def _apply_inv_mass_inertia_scales(self, *_args):
-        inv_mass0 = self._inv_mass0_field.model.as_float
-        inv_inertia0 = self._inv_inertia0_field.model.as_float
-        inv_mass1 = self._inv_mass1_field.model.as_float
-        inv_inertia1 = self._inv_inertia1_field.model.as_float
-        _native.set_default_lego_joint_inv_mass_inertia(
-            inv_mass0, inv_inertia0, inv_mass1, inv_inertia1
-        )
-
-    # (Connection monitor moved to lego_assemble.connection_monitor.ConnectionMonitor)
