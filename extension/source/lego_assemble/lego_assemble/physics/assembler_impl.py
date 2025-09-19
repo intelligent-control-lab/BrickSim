@@ -210,7 +210,7 @@ class AssemblyDetector:
             idx_buf = rb1_id[as_flag]
             pose_buf = pose.clone()
             pose_buf[idx_buf] = se3_to_pose(pose1_snap[as_flag])
-            self.rb_view.set_transforms(pose_buf.unsqueeze(-1), idx_buf)
+            # self.rb_view.set_transforms(pose_buf.unsqueeze(-1), idx_buf)
 
         # Create joints
         for as_rb0, as_rb1, as_relpose in zip(
