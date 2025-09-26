@@ -22,6 +22,7 @@ FetchContent_MakeAvailable(pybind11)
 pybind11_add_module(_native
   src/native.cpp
   src/LegoJointManager.cpp
+  src/LegoWeldConstraint.cpp
   src/tokens.cpp
 )
 
