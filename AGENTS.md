@@ -96,3 +96,9 @@ You must NOT:
   - When two bricks assemble, their poses are adjusted to produce a “snap‑fit” effect. This removes small alignment errors within the threshold that permits assembly.
   - After assembly, collisions between the upper brick and the lower brick’s `TopCollider` are excluded from physics simulation.
   - The relative distance is adjusted so the bottom of the upper brick contacts the top of the lower brick’s `BodyCollider`. In this state, the lower brick’s `TopCollider` (studs) lies completely within the upper brick (with collisions disabled), mimicking studs entering holes.
+
+## Debugging
+- If `gdb` tool is available, you can use gdb to do interactive debugging.
+- Isaac Sim's PID can be obtained by `pgrep -nx kit`. If the process not running, ask the user to start it. Don't start on yourself.
+- The executable to use is `.venv/bin/python`.
+- When you need the user to trigger error, ask the user to do so before proceeding.
