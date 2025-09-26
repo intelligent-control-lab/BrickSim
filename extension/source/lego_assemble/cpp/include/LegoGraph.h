@@ -8,6 +8,7 @@
 #include <carb/logging/Log.h>
 
 #include <PxRigidActor.h>
+#include <PxRigidBody.h>
 #include <foundation/PxTransform.h>
 
 namespace lego_assemble {
@@ -122,9 +123,7 @@ class LegoGraph {
 		c.parent = da;
 		c.child = db;
 		c.tf = T_a_b;
-		c.joint = CreateLegoWeld(
-		    *px_, a, b,
-		    {.parentLocal = T_a_b, .childLocal = Transform(physx::PxIdentity)});
+		c.joint = createConstraint_(da, db, T_a_b);
 		auto edge_key = std::make_pair(a, b);
 		conns_[edge_key] = c;
 		da->children.insert(&conns_[edge_key]);
@@ -246,9 +245,7 @@ class LegoGraph {
 			return nullptr;
 		}
 		CARB_LOG_INFO("Creating aux constraint between %p and %p", a, b);
-		return CreateLegoWeld(
-		    *px_, a->actor, b->actor,
-		    {.parentLocal = T_a_b, .childLocal = Transform(physx::PxIdentity)});
+		return createConstraint_(a, b, T_a_b);
 	}
 
 	void destroyAuxConstraint_(Constraint *j) {
@@ -259,6 +256,33 @@ class LegoGraph {
 		CARB_LOG_INFO("Destroying aux constraint %p", j);
 		j->release();
 	}
+
+    Constraint *createConstraint_(BodyDesc *a, BodyDesc *b, Transform T_a_b) {
+        // PxConstraint shader uses body frames (COM frames) bA2w/bB2w.
+        // Our T_a_b (from Python) is defined between actor-local origins (bottom centers).
+        // Convert to COM-local frames so the weld aligns the intended anchor points.
+        //
+        // parentLocal (A_com -> B_com) = (A_com -> A_orig) * (A_orig -> B_orig) * (B_orig -> B_com)
+        // childLocal is identity so cB2w = bB2w (B_com).
+
+        Transform A_o2com(physx::PxIdentity);
+        Transform B_o2com(physx::PxIdentity);
+
+        if (auto *rbA = a->actor->is<physx::PxRigidBody>()) {
+            A_o2com = rbA->getCMassLocalPose();
+        }
+        if (auto *rbB = b->actor->is<physx::PxRigidBody>()) {
+            B_o2com = rbB->getCMassLocalPose();
+        }
+
+        Transform A_com2o = A_o2com.getInverse();
+        Transform parentLocal = A_com2o * T_a_b * B_o2com;
+        Transform childLocal(physx::PxIdentity);
+
+        return CreateLegoWeld(
+            *px_, a->actor, b->actor,
+            {.parentLocal = parentLocal, .childLocal = childLocal});
+    }
 };
 
 }; // namespace lego_assemble
