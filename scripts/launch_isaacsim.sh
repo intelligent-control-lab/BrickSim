@@ -13,7 +13,7 @@ DEBUG_HOST="${DEBUG_HOST:-127.0.0.1}"
 DEBUG_PORT="${DEBUG_PORT:-5678}"
 WAIT_FOR_CLIENT="${WAIT_FOR_CLIENT:-true}"
 
-STAGE_PATH="${STAGE_PATH:-$ROOT_DIR/resources/demo.usd}"
+STAGE_PATH="${STAGE_PATH:-$ROOT_DIR/resources/test_tower.usd}"
 
 exec "$KIT_BIN" "$APP_CFG" \
   --ext-folder "$ROOT_DIR/isaacsim/apps" \
