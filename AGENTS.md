@@ -65,6 +65,7 @@ You may operate in:
 2) `../IsaacSim` directory and `../PhysX` directory
 3) Common system locations (e.g., system headers)
 4) Any other directories/files that are explicitly referenced
+5) NEVER change files not belonging to this repository (including `../PhysX`, `../IsaacSim` and `IsaacLab`), UNLESS you ask the user for this an get an explicit approval 
 
 You must NOT:
 - Run global searches from filesystem root, or from the home directory, or other directories not listed above—they are too large—unless you first ask the user for approval.
