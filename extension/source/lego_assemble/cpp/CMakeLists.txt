@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 3.18)
 
 project(lego_assemble_native LANGUAGES CXX)
 
-# Always export compile_commands.json for clangd
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Python and pybind11
@@ -24,7 +25,10 @@ pybind11_add_module(_native
   src/tokens.cpp
 )
 
-target_compile_features(_native PRIVATE cxx_std_17)
+# Workaround for childrenProxy.h:75:21: error: no member named '_Set' in 'SdfChildrenProxy<_View>'
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  target_compile_options(_native PRIVATE -fdelayed-template-parsing -Wno-delayed-template-parsing-in-cxx20)
+endif()
 
 # IsaacSim target-deps configuration
 if(NOT DEFINED TARGET_DEPS_DIR)
@@ -42,6 +46,9 @@ message(STATUS "IsaacSim target-deps: ${TARGET_DEPS_DIR}")
 
 target_include_directories(_native PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/include"
+)
+
+target_include_directories(_native SYSTEM PRIVATE
   "${TARGET_DEPS_DIR}/../linux-x86_64/release/kit/dev/include"
   "${TARGET_DEPS_DIR}/omni_client_library/include"
   "${TARGET_DEPS_DIR}/usd/release/include"
@@ -64,7 +71,6 @@ target_link_directories(_native PRIVATE
   "${TARGET_DEPS_DIR}/nvtx/lib64"
 )
 
-# PhysX: link static libs explicitly; fail if missing
 target_compile_definitions(_native PRIVATE PX_PHYSX_STATIC_LIB)
 target_link_libraries(_native PRIVATE
   PhysXExtensions_static_64

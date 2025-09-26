@@ -43,8 +43,8 @@ class CMakeBuild(build_ext):
         # Require a single env var that points to IsaacSim's target-deps tree.
         # Example: export ISAACSIM_TARGET_DEPS=/home/you/IsaacSim/_build/target-deps
         env = os.environ.copy()
-        env["CC"] = "gcc-11"
-        env["CXX"] = "g++-11"
+        env["CC"] = "clang"
+        env["CXX"] = "clang++"
         env["NVCC_CCBIN"] = "gcc-11"
         target_deps = env.get("ISAACSIM_TARGET_DEPS")
         if not target_deps:

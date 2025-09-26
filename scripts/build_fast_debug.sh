@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-export CC=gcc-11 CXX=g++-11 NVCC_CCBIN=gcc-11
+export CC=clang CXX=clang++ NVCC_CCBIN=gcc-11
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
@@ -33,6 +33,7 @@ cmake -S "$SRC" -B "$BUILD" \
   -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
   -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
   -DCMAKE_COLOR_DIAGNOSTICS=ON \
+  -Wno-deprecated \
   "${GEN_ARGS[@]}" \
   "${CCACHE_ARGS[@]}"
 
