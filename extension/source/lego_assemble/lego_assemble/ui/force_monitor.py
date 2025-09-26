@@ -205,10 +205,11 @@ class ForceMonitor:
             self._set_force_labels(None)
             self._set_torque_labels(None)
             return
-        try:
-            ft = _native.get_physx_joint_force_torque(path)
-        except Exception:
-            ft = None
+        # try:
+        #     ft = _native.get_physx_joint_force_torque(path)
+        # except Exception:
+        #     ft = None
+        ft = None # TODO: Force/torque reading not yet implemented
         if not ft:
             self._set_force_labels(None)
             self._set_torque_labels(None)

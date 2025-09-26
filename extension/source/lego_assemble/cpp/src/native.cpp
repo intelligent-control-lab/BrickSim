@@ -8,20 +8,6 @@ PYBIND11_MODULE(_native, m) {
 	m.doc() = "lego_assemble: native module";
 
 	m.def(
-	    "get_physx_joint_force_torque",
-	    [](const std::string &sdfPath) -> pybind11::object {
-		    auto res =
-		        lego_assemble::getPhysxJointForceTorque(pxr::SdfPath(sdfPath));
-		    if (!res)
-			    return pybind11::none();
-		    const auto &[force, torque] = *res;
-		    return pybind11::make_tuple(
-		        pybind11::make_tuple(force.x, force.y, force.z),
-		        pybind11::make_tuple(torque.x, torque.y, torque.z));
-	    },
-	    pybind11::arg("sdf_path"), "Get force/torque applied on a PhysX joint");
-
-	m.def(
 	    "init_natives",
 	    []() {
 		    bool success = true;
