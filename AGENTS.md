@@ -102,3 +102,9 @@ You must NOT:
 - Isaac Sim's PID can be obtained by `pgrep -nx kit`. If the process not running, ask the user to start it. Don't start on yourself.
 - The executable to use is `.venv/bin/python`.
 - When you need the user to trigger error, ask the user to do so before proceeding.
+- Be cautious not producing large amount of output, otherwise your context window would be full.
+- Use `zenity` command! ****IMPORTANT****
+  - You can ask the user to assist with debugging, such as perform an operation, notify you when something happens (tool call will block until user proceed), ask user's opinion or preference, let user describe what happened.
+  - You should ALWAYS use `zenity` in an interactive scenario, and AVOID STOPPING response.
+  - Don't worry about being blocked, it's intended to be blocked. If it times out, you can always retry.
+  - Always use text input, don't use buttons so the user can provide feedback.
