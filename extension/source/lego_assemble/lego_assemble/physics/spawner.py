@@ -28,8 +28,8 @@ def build_brick(stage: Usd.Stage, brick_prim: Usd.Prim, dimensions: Tuple[int, i
     color = lego_schemes.parse_color(color_name)
     real_dimensions = lego_schemes.to_real_dimensions(dimensions)
 
-    brick_prim.CreateAttribute("lego_dimensions", Sdf.ValueTypeNames.Int3).Set(Gf.Vec3i(*dimensions))
-    brick_prim.CreateAttribute("lego_color", Sdf.ValueTypeNames.String).Set(color_name)
+    brick_prim.CreateAttribute("lego_brick:dimensions", Sdf.ValueTypeNames.Int3).Set(Gf.Vec3i(*dimensions))
+    brick_prim.CreateAttribute("lego_brick:color", Sdf.ValueTypeNames.String).Set(color_name)
     Usd.ModelAPI(brick_prim).SetKind("component")
     rigidBodyAPI: UsdPhysics.RigidBodyAPI = UsdPhysics.RigidBodyAPI.Apply(brick_prim)
     rigidBodyAPI.CreateRigidBodyEnabledAttr(True)

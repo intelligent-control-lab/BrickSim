@@ -61,7 +61,7 @@ class AssemblyDetector:
         prim = self.stage.GetPrimAtPath(path)
         if not prim.IsValid():
             return None
-        dim_attr = prim.GetAttribute("lego_dimensions")
+        dim_attr = prim.GetAttribute("lego_brick:dimensions")
         if not dim_attr.IsValid():
             return None
         return dim_attr.Get()
@@ -230,14 +230,13 @@ class AssemblyDetector:
                 # Already assembled
                 continue
 
-            joint: UsdPhysics.FixedJoint = UsdPhysics.FixedJoint.Define(self.stage, joint_path)
-            joint.CreateBody0Rel().AddTarget(path0)
-            joint.CreateBody1Rel().AddTarget(path1)
-            relpose_gf = Gf.Matrix4f(as_relpose.tolist())
-            joint.CreateLocalPos0Attr().Set(relpose_gf.ExtractTranslation())
-            joint.CreateLocalRot0Attr().Set(relpose_gf.ExtractRotationQuat())
-            joint.CreateCollisionEnabledAttr(True)
-            joint.GetPrim().CreateAttribute("lego_conn", Sdf.ValueTypeNames.Bool).Set(True)
+            bond_prim: Usd.Prim = UsdGeom.Xform.Define(self.stage, joint_path).GetPrim()
+            bond_prim.CreateRelationship("lego_conn:body0").AddTarget(path0)
+            bond_prim.CreateRelationship("lego_conn:body1").AddTarget(path1)
+            M = Gf.Matrix4f(as_relpose.tolist())
+            bond_prim.CreateAttribute("lego_conn:pos", Sdf.ValueTypeNames.Float3).Set(M.ExtractTranslation())
+            bond_prim.CreateAttribute("lego_conn:rot", Sdf.ValueTypeNames.Quatf).Set(M.ExtractRotationQuat())
+            bond_prim.CreateAttribute("lego_conn:enabled", Sdf.ValueTypeNames.Bool).Set(True)
 
             filtered_pairs1: UsdPhysics.FilteredPairsAPI = UsdPhysics.FilteredPairsAPI.Apply(self.stage.GetPrimAtPath(path1))
             filtered_pairs1.CreateFilteredPairsRel().AddTarget(path0 + "/TopCollider")
