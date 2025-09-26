@@ -47,7 +47,129 @@ template <class V, class Eq> struct PairEq {
 	}
 };
 
-// ---------- The Scheduler ----------
+template <
+    class V,      // Vertex / body id
+    class Handle, // Edge handle returned by CreateEdge and fed to DestroyEdge
+    class CreateEdge,            // (V const&, V const&) -> Handle
+    class DestroyEdge,           // (Handle) -> void
+    class Hash = std::hash<V>,   // hash for V
+    class Eq = std::equal_to<V>, // equality for V
+    class Cmp = std::less<V>     // comparator for stable ordering (min)
+    >
+    requires EdgeCreateFn<CreateEdge, V, Handle> &&
+             EdgeDestroyFn<DestroyEdge, Handle> && LessLike<Cmp, V>
+class NoOpSkipGraphScheduler {
+  public:
+	using Vertex = V;
+	using EdgeKey = std::pair<V, V>; // canonicalized (a<=b by cmp_)
+	using AdjSet = std::unordered_set<V, Hash, Eq>;
+	using AdjMap = std::unordered_map<V, AdjSet, Hash, Eq>;
+	using HandleMap =
+	    std::unordered_map<EdgeKey, Handle, PairHash<V, Hash>, PairEq<V, Eq>>;
+
+	NoOpSkipGraphScheduler(CreateEdge create_edge, DestroyEdge destroy_edge,
+	                       Hash h = Hash{}, Eq e = Eq{}, Cmp cmp = Cmp{})
+	    : create_(std::move(create_edge)), destroy_(std::move(destroy_edge)),
+	      hash_(std::move(h)), eq_(std::move(e)), cmp_(std::move(cmp)) {}
+
+	~NoOpSkipGraphScheduler() {}
+
+	// ---- Base graph API ----
+	// You call this when your base/body constraints should exist between a and b.
+	bool connect(const V &a, const V &b) {
+		if (eq_(a, b))
+			return false;
+		bool inserted = add_base_adj_(a, b);
+		if (!inserted)
+			return false;
+		return true;
+	}
+
+	// You call this when your base constraint should be removed.
+	bool disconnect(const V &a, const V &b) {
+		if (eq_(a, b))
+			return false;
+		bool removed = remove_base_adj_(a, b);
+		if (!removed)
+			return false;
+		return true;
+	}
+
+	// ---- Inspection ----
+	std::vector<EdgeKey> aux_edges() const {
+		return {};
+	}
+
+	// base adjacency snapshot (for diagnostics)
+	const AdjMap &base_adjacency() const noexcept {
+		return base_adj_;
+	}
+
+  private:
+	// -------- internals --------
+	// Canonicalize edge as (min,max) according to cmp_
+	EdgeKey canon_(const V &u, const V &v) const {
+		if (cmp_(v, u))
+			return {v, u};
+		return {u, v};
+	}
+
+	// Add/remove base adjacency
+	bool add_base_adj_(const V &a, const V &b) {
+		auto &A = base_adj_[a];
+		auto [itA, insA] = A.insert(b);
+		auto &B = base_adj_[b];
+		auto [itB, insB] = B.insert(a);
+		if (!(insA && insB)) {
+			// rollback partial insert to keep symmetry
+			if (insA)
+				A.erase(itA);
+			if (insB)
+				B.erase(itB);
+			return false;
+		}
+		return true;
+	}
+
+	bool remove_base_adj_(const V &a, const V &b) {
+		auto ita = base_adj_.find(a);
+		if (ita == base_adj_.end())
+			return false;
+		auto itb = base_adj_.find(b);
+		if (itb == base_adj_.end())
+			return false;
+
+		size_t ea = ita->second.erase(b);
+		size_t eb = itb->second.erase(a);
+		if (ea == 0 || eb == 0) {
+			// keep consistent
+			if (ea)
+				ita->second.insert(b);
+			if (eb)
+				itb->second.insert(a);
+			return false;
+		}
+		if (ita->second.empty())
+			base_adj_.erase(ita);
+		if (itb->second.empty())
+			base_adj_.erase(itb);
+		return true;
+	}
+
+  private:
+	// injected ops
+	CreateEdge create_;
+	DestroyEdge destroy_;
+
+	// functors
+	Hash hash_;
+	Eq eq_;
+	Cmp cmp_;
+
+	// state
+	AdjMap base_adj_;
+};
+
 template <
     class V,      // Vertex / body id
     class Handle, // Edge handle returned by CreateEdge and fed to DestroyEdge
