@@ -27,6 +27,7 @@ exec "$KIT_BIN" "$APP_CFG" \
   --/exts/omni.kit.debug.python/waitForClient="$WAIT_FOR_CLIENT" \
   --/exts/omni.kit.debug.python/debugpyLogging=true \
   --/app/content/emptyStageOnStart=false \
+  --/crashreporter/enabled=false \
   --exec "open_stage.py $STAGE_PATH" \
   -v
 
