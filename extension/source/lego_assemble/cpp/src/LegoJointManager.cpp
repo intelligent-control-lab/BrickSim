@@ -1,5 +1,6 @@
 #include "LegoJointManager.h"
 #include "LegoGraph.h"
+#include "ScenePatcher.h"
 #include "tokens.h"
 
 #include <PxPhysicsAPI.h>
@@ -270,6 +271,8 @@ static long int g_stageId = -1;
 
 static omni::physx::SubscriptionId g_physxObjSub =
     omni::physx::kInvalidSubscriptionId;
+static omni::physx::SubscriptionId g_physxObjFullSub =
+    omni::physx::kInvalidSubscriptionId;
 static omni::physx::SubscriptionId g_preStepSub =
     omni::physx::kInvalidSubscriptionId;
 static omni::kit::StageUpdatePtr g_stageUpdate;
@@ -319,9 +322,30 @@ bool initLegoJointManager() {
 			CARB_LOG_INFO("Lego state destroyed");
 		}
 	};
-	physxObjCb.userData = nullptr;
 	physxObjCb.stopCallbackWhenSimStopped = true;
 	g_physxObjSub = g_physx->subscribeObjectChangeNotifications(physxObjCb);
+
+	// ==== Subscribe to ALL PhysX object creation/destruction
+	omni::physx::IPhysicsObjectChangeCallback physxObjFullCb;
+	physxObjFullCb.objectCreationNotifyFn =
+	    [](const pxr::SdfPath &sdfPath,
+	       omni::physx::usdparser::ObjectId objectId,
+	       omni::physx::PhysXType type, void *userData) {
+		    if (type == omni::physx::PhysXType::ePTScene) {
+			    auto *scene = static_cast<physx::PxScene *>(
+			        g_physx->getPhysXPtrFast(objectId));
+			    if (scene) {
+				    if (patchPxScene(scene)) {
+					    CARB_LOG_INFO("PxScene %p patched successfully", scene);
+				    } else {
+					    CARB_LOG_ERROR("Failed to patch PxScene %p", scene);
+				    }
+			    }
+		    }
+	    };
+	physxObjFullCb.stopCallbackWhenSimStopped = false;
+	g_physxObjFullSub =
+	    g_physx->subscribeObjectChangeNotifications(physxObjFullCb);
 
 	// ==== Subscribe to PhysX pre-step event
 	if (g_preStepSub == omni::physx::kInvalidSubscriptionId) {
@@ -435,6 +459,15 @@ bool deinitLegoJointManager() {
 			g_physxObjSub = omni::physx::kInvalidSubscriptionId;
 		} else {
 			CARB_LOG_WARN("PhysX object change not subscribed");
+			success = false;
+		}
+
+		// ==== Unsubscribe from ALL PhysX object creation/destruction
+		if (g_physxObjFullSub != omni::physx::kInvalidSubscriptionId) {
+			g_physx->unsubscribeObjectChangeNotifications(g_physxObjFullSub);
+			g_physxObjFullSub = omni::physx::kInvalidSubscriptionId;
+		} else {
+			CARB_LOG_WARN("PhysX full object change not subscribed");
 			success = false;
 		}
 	} else {

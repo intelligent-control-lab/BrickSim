@@ -21,6 +21,7 @@ FetchContent_MakeAvailable(pybind11)
 # Build the Python extension module
 pybind11_add_module(_native
   src/native.cpp
+  src/ScenePatcher.cpp
   src/LegoJointManager.cpp
   src/LegoWeldConstraint.cpp
   src/tokens.cpp
