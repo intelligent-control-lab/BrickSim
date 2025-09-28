@@ -21,7 +21,18 @@ LegoUsdBridge::~LegoUsdBridge() {}
 void LegoUsdBridge::onRigidCreated(physx::PxRigidActor *actor,
                                    const pxr::SdfPath &primPath) {
 	pxr::UsdPrim prim = stage_->GetPrimAtPath(primPath);
-	if (!prim || !isBrickPrim_(prim)) {
+	BrickInfo info;
+	if (!prim || !getBrickInfo_(prim, info)) {
+		return;
+	}
+
+	auto *body_collider = static_cast<physx::PxShape *>(
+	    omni_px_->getPhysXPtr(info.body_collider, omni::physx::ePTShape));
+	auto *top_collider = static_cast<physx::PxShape *>(
+	    omni_px_->getPhysXPtr(info.top_collider, omni::physx::ePTShape));
+	if (!body_collider || !top_collider) {
+		CARB_LOG_WARN("Failed to get colliders for brick prim %s",
+		              primPath.GetText());
 		return;
 	}
 
@@ -32,7 +43,7 @@ void LegoUsdBridge::onRigidCreated(physx::PxRigidActor *actor,
 		return;
 	}
 	bodies_[primPath] = actor;
-	if (!graph_.addRigidBody(actor)) {
+	if (!graph_.addRigidBody(actor, body_collider, top_collider)) {
 		CARB_LOG_ERROR("Failed to add rigid body for prim %s",
 		               primPath.GetText());
 	}
@@ -147,18 +158,30 @@ void LegoUsdBridge::loadFromStage_() {
 
 	std::vector<QueuedConn> queued_conns;
 	for (const pxr::UsdPrim &prim : stage_->Traverse()) {
-		ConnInfo info;
-		if (getConnInfo_(prim, info)) {
-			queued_conns.push_back({prim.GetPath(), info});
-		} else if (isBrickPrim_(prim)) {
+		ConnInfo conn_info;
+		BrickInfo brick_info;
+		if (getConnInfo_(prim, conn_info)) {
+			queued_conns.push_back({prim.GetPath(), conn_info});
+		} else if (getBrickInfo_(prim, brick_info)) {
 			auto path = prim.GetPath();
 			auto *rb = static_cast<physx::PxRigidActor *>(
 			    omni_px_->getPhysXPtr(path, omni::physx::ePTActor));
 			if (rb) {
-				bodies_[path] = rb;
-				if (!graph_.addRigidBody(rb)) {
-					CARB_LOG_ERROR("Failed to add rigid body for prim %s",
-					               path.GetText());
+				auto *body_collider =
+				    static_cast<physx::PxShape *>(omni_px_->getPhysXPtr(
+				        brick_info.body_collider, omni::physx::ePTShape));
+				auto *top_collider =
+				    static_cast<physx::PxShape *>(omni_px_->getPhysXPtr(
+				        brick_info.top_collider, omni::physx::ePTShape));
+				if (body_collider && top_collider) {
+					bodies_[path] = rb;
+					if (!graph_.addRigidBody(rb, body_collider, top_collider)) {
+						CARB_LOG_ERROR("Failed to add rigid body for prim %s",
+						               path.GetText());
+					}
+				} else {
+					CARB_LOG_WARN("Failed to get colliders for brick prim %s",
+					              path.GetText());
 				}
 			} else {
 				CARB_LOG_WARN("Failed to get rigid body for brick prim %s",
@@ -196,9 +219,21 @@ void LegoUsdBridge::loadFromStage_() {
 	}
 }
 
-bool LegoUsdBridge::isBrickPrim_(const pxr::UsdPrim &prim) const {
-	return prim.IsActive() &&
-	       prim.GetAttribute(LegoTokens->brick_dimensions).IsValid();
+bool LegoUsdBridge::getBrickInfo_(const pxr::UsdPrim &prim,
+                                  BrickInfo &out) const {
+	if (!prim.IsActive())
+		return false;
+	if (!prim.GetAttribute(LegoTokens->brick_dimensions).IsValid())
+		return false;
+	auto body_collider_prim = prim.GetChild(LegoTokens->BodyCollider);
+	auto top_collider_prim = prim.GetChild(LegoTokens->TopCollider);
+	if (!body_collider_prim || !body_collider_prim.IsActive())
+		return false;
+	if (!top_collider_prim || !top_collider_prim.IsActive())
+		return false;
+	out.body_collider = body_collider_prim.GetPath();
+	out.top_collider = top_collider_prim.GetPath();
+	return true;
 }
 
 bool LegoUsdBridge::getConnInfo_(const pxr::UsdPrim &prim,

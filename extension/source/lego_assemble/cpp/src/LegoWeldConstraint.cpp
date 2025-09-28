@@ -135,10 +135,10 @@ static PxU32 WeldSolverPrep(Px1DConstraint *constraints,
 	return count;
 }
 
-static PxConstraintShaderTable gWeldShaders = {.solverPrep = &WeldSolverPrep,
-                                               .visualize = nullptr,
-                                               .flag =
-                                                   PxConstraintFlag::Enum(0)};
+static PxConstraintShaderTable gWeldShaders = {
+    .solverPrep = &WeldSolverPrep,
+    .visualize = nullptr,
+    .flag = PxConstraintFlag::eCOLLISION_ENABLED};
 
 // ---------------- Connector ----------------
 

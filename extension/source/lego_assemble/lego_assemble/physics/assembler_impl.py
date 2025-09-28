@@ -238,9 +238,6 @@ class AssemblyDetector:
             bond_prim.CreateAttribute("lego_conn:rot", Sdf.ValueTypeNames.Quatf).Set(M.ExtractRotationQuat())
             bond_prim.CreateAttribute("lego_conn:enabled", Sdf.ValueTypeNames.Bool).Set(True)
 
-            filtered_pairs1: UsdPhysics.FilteredPairsAPI = UsdPhysics.FilteredPairsAPI.Apply(self.stage.GetPrimAtPath(path1))
-            filtered_pairs1.CreateFilteredPairsRel().AddTarget(path0 + "/TopCollider")
-
     def handle_contact_report(self, _contacts: ContactEventHeaderVector, _contact_data: ContactDataVector):
         if self.rb_view is None:
             return

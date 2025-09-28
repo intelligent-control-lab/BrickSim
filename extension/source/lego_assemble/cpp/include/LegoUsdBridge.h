@@ -37,6 +37,10 @@ class LegoUsdBridge {
 		pxr::SdfPath child;
 		physx::PxTransform tf;
 	};
+	struct BrickInfo {
+		pxr::SdfPath top_collider;
+		pxr::SdfPath body_collider;
+	};
 
 	omni::physx::IPhysx *omni_px_;
 	pxr::UsdStageRefPtr stage_;
@@ -48,7 +52,7 @@ class LegoUsdBridge {
 	std::mutex mutex_;
 
 	void loadFromStage_();
-	bool isBrickPrim_(const pxr::UsdPrim &prim) const;
+	bool getBrickInfo_(const pxr::UsdPrim &prim, BrickInfo &out) const;
 	bool getConnInfo_(const pxr::UsdPrim &prim, ConnInfo &out) const;
 };
 

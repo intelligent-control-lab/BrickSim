@@ -1,6 +1,7 @@
 #include "LegoGraph.h"
 
 #include "LegoWeldConstraint.h"
+#include "ScenePatcher.h"
 #include "SkipGraph.h"
 
 #include <deque>
@@ -19,6 +20,7 @@ class LegoGraph::Impl {
 	struct ConnDesc;
 	using RigidBody = physx::PxRigidActor;
 	using Constraint = physx::PxConstraint;
+	using Shape = physx::PxShape;
 	using Scheduler = SimpleSkipGraphScheduler<
 	    BodyDesc *, Constraint *,
 	    std::function<Constraint *(BodyDesc *, BodyDesc *)>,
@@ -34,6 +36,8 @@ class LegoGraph::Impl {
 		RigidBody *actor;
 		std::unordered_set<ConnDesc *> parents;  // this is child
 		std::unordered_set<ConnDesc *> children; // this is parent
+		Shape *body_collider;
+		Shape *top_collider;
 	};
 	struct ConnDesc {
 		Constraint *joint;
@@ -51,14 +55,19 @@ class LegoGraph::Impl {
 
 	Impl(const Impl &) = delete;
 	Impl &operator=(const Impl &) = delete;
-	~Impl() {}
+	~Impl() {
+		clear();
+	}
 
-	bool addRigidBody(RigidBody *actor) {
+	bool addRigidBody(RigidBody *actor, physx::PxShape *body_collider,
+	                  physx::PxShape *top_collider) {
 		if (bodies_.contains(actor)) {
 			return false;
 		}
 		BodyDesc desc;
 		desc.actor = actor;
+		desc.body_collider = body_collider;
+		desc.top_collider = top_collider;
 		bodies_[actor] = desc;
 		return true;
 	}
@@ -70,8 +79,12 @@ class LegoGraph::Impl {
 		}
 		BodyDesc &desc = it->second;
 		for (ConnDesc *c : desc.parents) {
-			c->parent->children.erase(c);
-			c->joint->release();
+			if (!c->parent->children.erase(c)) {
+				CARB_LOG_ERROR(
+				    "Inconsistent state when removing body %p, continuing",
+				    actor);
+			}
+			releaseConn_(*c);
 			if (!scheduler_.disconnect(c->parent, c->child)) {
 				CARB_LOG_ERROR("Failed to remove edge between %p and %p from "
 				               "scheduler, continuing",
@@ -85,8 +98,12 @@ class LegoGraph::Impl {
 			}
 		}
 		for (ConnDesc *c : desc.children) {
-			c->child->parents.erase(c);
-			c->joint->release();
+			if (!c->child->parents.erase(c)) {
+				CARB_LOG_ERROR(
+				    "Inconsistent state when removing body %p, continuing",
+				    actor);
+			}
+			releaseConn_(*c);
 			if (!scheduler_.disconnect(c->parent, c->child)) {
 				CARB_LOG_ERROR("Failed to remove edge between %p and %p from "
 				               "scheduler, continuing",
@@ -122,17 +139,18 @@ class LegoGraph::Impl {
 		c.parent = da;
 		c.child = db;
 		c.tf = T_a_b;
-		c.joint = createConstraint_(da, db, T_a_b);
+		setupConn_(c);
 		auto edge_key = std::make_pair(a, b);
 		conns_[edge_key] = c;
 		da->children.insert(&conns_[edge_key]);
 		db->parents.insert(&conns_[edge_key]);
-		CARB_LOG_INFO("Created base constraint between %p and %p", a, b);
 		if (!scheduler_.connect(da, db)) {
 			CARB_LOG_ERROR(
 			    "Failed to add edge between %p and %p to scheduler, continuing",
 			    a, b);
 		}
+		b->getScene()->resetFiltering(*b);
+		CARB_LOG_INFO("Created base constraint between %p and %p", a, b);
 		return true;
 	}
 
@@ -153,16 +171,26 @@ class LegoGraph::Impl {
 		ConnDesc &c = itc->second;
 		c.parent->children.erase(&c);
 		c.child->parents.erase(&c);
-		c.joint->release();
-		conns_.erase(itc);
-		CARB_LOG_INFO("Destroyed base constraint between %p and %p",
-		              c.parent->actor, c.child->actor);
+		releaseConn_(c);
 		if (!scheduler_.disconnect(c.parent, c.child)) {
 			CARB_LOG_ERROR("Failed to remove edge between %p and %p from "
 			               "scheduler, continuing",
 			               c.parent->actor, c.child->actor);
 		}
+		c.child->actor->getScene()->resetFiltering(*c.child->actor);
+		CARB_LOG_INFO("Destroyed base constraint between %p and %p",
+		              c.parent->actor, c.child->actor);
+		conns_.erase(itc);
 		return true;
+	}
+
+	void clear() {
+		scheduler_.clear();
+		for (auto &[_, c] : conns_) {
+			releaseConn_(c);
+		}
+		conns_.clear();
+		bodies_.clear();
 	}
 
   private:
@@ -170,6 +198,25 @@ class LegoGraph::Impl {
 	BodyMap bodies_;
 	ConnMap conns_;
 	Scheduler scheduler_;
+
+	void setupConn_(ConnDesc &c) {
+		c.joint = createConstraint_(c.parent, c.child, c.tf);
+		if (!addContactExclusion(c.parent->actor, c.parent->top_collider,
+		                         c.child->actor, c.child->body_collider)) {
+			CARB_LOG_ERROR("Failed to add contact exclusion between %p and %p",
+			               c.parent->actor, c.child->actor);
+		}
+	}
+
+	void releaseConn_(ConnDesc &c) {
+		c.joint->release();
+		if (!removeContactExclusion(c.parent->actor, c.parent->top_collider,
+		                            c.child->actor, c.child->body_collider)) {
+			CARB_LOG_ERROR(
+			    "Failed to remove contact exclusion between %p and %p",
+			    c.parent->actor, c.child->actor);
+		}
+	}
 
 	ConnMap::iterator find_conn_bidirectional_(RigidBody *a, RigidBody *b) {
 		auto it = conns_.find(std::make_pair(a, b));
@@ -288,8 +335,10 @@ LegoGraph::LegoGraph(physx::PxPhysics *px)
     : impl_(std::make_unique<Impl>(px)) {}
 LegoGraph::~LegoGraph() = default;
 
-bool LegoGraph::addRigidBody(physx::PxRigidActor *actor) {
-	return impl_->addRigidBody(actor);
+bool LegoGraph::addRigidBody(physx::PxRigidActor *actor,
+                             physx::PxShape *body_collider,
+                             physx::PxShape *top_collider) {
+	return impl_->addRigidBody(actor, body_collider, top_collider);
 }
 bool LegoGraph::removeRigidBody(physx::PxRigidActor *actor) {
 	return impl_->removeRigidBody(actor);
@@ -300,6 +349,9 @@ bool LegoGraph::connect(physx::PxRigidActor *a, physx::PxRigidActor *b,
 }
 bool LegoGraph::disconnect(physx::PxRigidActor *a, physx::PxRigidActor *b) {
 	return impl_->disconnect(a, b);
+}
+void LegoGraph::clear() {
+	impl_->clear();
 }
 
 }; // namespace lego_assemble

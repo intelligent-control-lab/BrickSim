@@ -64,13 +64,6 @@ bool initLegoJointManager() {
 			    }
 		    }
 	    };
-	physxObjCb.allObjectsDestructionNotifyFn = [](void *userData) {
-		// Called on release_physics_objects()
-		if (g_lego) {
-			g_lego = nullptr;
-			CARB_LOG_INFO("Lego state destroyed");
-		}
-	};
 	physxObjCb.stopCallbackWhenSimStopped = true;
 	g_physxObjSub = g_physx->subscribeObjectChangeNotifications(physxObjCb);
 
@@ -92,6 +85,12 @@ bool initLegoJointManager() {
 			    }
 		    }
 	    };
+	physxObjFullCb.allObjectsDestructionNotifyFn = [](void *userData) {
+		if (g_lego) {
+			g_lego = nullptr;
+			CARB_LOG_INFO("Lego state destroyed (allObjectsDestructionNotify)");
+		}
+	};
 	physxObjFullCb.stopCallbackWhenSimStopped = false;
 	g_physxObjFullSub =
 	    g_physx->subscribeObjectChangeNotifications(physxObjFullCb);
@@ -146,17 +145,6 @@ bool initLegoJointManager() {
 	desc.onDetach = [](void *userData) {
 		// Called when USD detach
 		g_stageId = -1;
-		if (g_lego) {
-			g_lego = nullptr;
-			CARB_LOG_INFO("Lego state destroyed (onDetach)");
-		}
-	};
-	desc.onStop = [](void *userData) {
-		// Called when simulation stops
-		if (g_lego) {
-			g_lego = nullptr;
-			CARB_LOG_INFO("Lego state destroyed (onStop)");
-		}
 	};
 	desc.onPrimAdd = [](const pxr::SdfPath &primPath, void *userData) {
 		if (g_lego) {

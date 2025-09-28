@@ -1,6 +1,7 @@
 #include "ScenePatcher.h"
 
 #include <cassert>
+#include <unordered_set>
 
 #include <carb/logging/Log.h>
 
@@ -11,14 +12,75 @@
 
 namespace lego_assemble {
 
+struct CollisionExcludePair {
+	const physx::PxActor *a0;
+	const physx::PxShape *s0;
+	const physx::PxActor *a1;
+	const physx::PxShape *s1;
+
+	CollisionExcludePair(const physx::PxActor *A0, const physx::PxShape *S0,
+	                     const physx::PxActor *A1, const physx::PxShape *S1) {
+		std::less<const void *> less;
+		const bool swap_needed = less(static_cast<const void *>(A1),
+		                              static_cast<const void *>(A0)) ||
+		                         (!(less(static_cast<const void *>(A0),
+		                                 static_cast<const void *>(A1)) ||
+		                            less(static_cast<const void *>(A1),
+		                                 static_cast<const void *>(A0))) &&
+		                          less(static_cast<const void *>(S1),
+		                               static_cast<const void *>(S0)));
+
+		if (swap_needed) {
+			a0 = A1;
+			s0 = S1;
+			a1 = A0;
+			s1 = S0;
+		} else {
+			a0 = A0;
+			s0 = S0;
+			a1 = A1;
+			s1 = S1;
+		}
+	}
+
+	bool operator==(const CollisionExcludePair &o) const {
+		return (a0 == o.a0 && s0 == o.s0 && a1 == o.a1 && s1 == o.s1) ||
+		       (a0 == o.a1 && s0 == o.s1 && a1 == o.a0 && s1 == o.s0);
+	}
+
+	struct Hasher {
+		static std::size_t hashPtr(const void *p) {
+			return std::hash<const void *>{}(p);
+		}
+		static std::size_t mix(std::size_t seed, std::size_t v) {
+			seed ^= v + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
+			return seed;
+		}
+		static std::size_t hashSide(const physx::PxActor *a,
+		                            const physx::PxShape *s) {
+			std::size_t seed = 0;
+			seed = mix(seed, hashPtr(a));
+			seed = mix(seed, hashPtr(s));
+			return seed;
+		}
+		std::size_t operator()(const CollisionExcludePair &p) const {
+			const std::size_t h0 = hashSide(p.a0, p.s0);
+			const std::size_t h1 = hashSide(p.a1, p.s1);
+			return h0 ^ h1; // commutative
+		}
+	};
+};
+
 class PxSimulationFilterCallbackWrapper final
     : public physx::PxSimulationFilterCallback {
   public:
-	physx::PxSimulationFilterCallback *const wrapped_;
+	physx::PxSimulationFilterCallback *const wrapped;
+	std::unordered_set<CollisionExcludePair, CollisionExcludePair::Hasher>
+	    exclusions;
 
 	explicit PxSimulationFilterCallbackWrapper(
 	    physx::PxSimulationFilterCallback *wrapped)
-	    : wrapped_(wrapped) {}
+	    : wrapped(wrapped) {}
 	virtual ~PxSimulationFilterCallbackWrapper() override {
 		// mFilterCallback is not owned by ScScene, do not delete it here.
 	}
@@ -33,9 +95,13 @@ class PxSimulationFilterCallbackWrapper final
 	    const physx::PxShape *s0, physx::PxFilterObjectAttributes attributes1,
 	    physx::PxFilterData filterData1, const physx::PxActor *a1,
 	    const physx::PxShape *s1, physx::PxPairFlags &pairFlags) override {
-		// TODO
-		return wrapped_->pairFound(pairID, attributes0, filterData0, a0, s0,
-		                           attributes1, filterData1, a1, s1, pairFlags);
+		auto result =
+		    wrapped->pairFound(pairID, attributes0, filterData0, a0, s0,
+		                       attributes1, filterData1, a1, s1, pairFlags);
+		if (exclusions.contains({a0, s0, a1, s1})) {
+			result = physx::PxFilterFlag::eKILL;
+		}
+		return result;
 	}
 
 	virtual void pairLost(physx::PxU64 pairID,
@@ -44,16 +110,14 @@ class PxSimulationFilterCallbackWrapper final
 	                      physx::PxFilterObjectAttributes attributes1,
 	                      physx::PxFilterData filterData1,
 	                      bool objectRemoved) override {
-		// TODO
-		wrapped_->pairLost(pairID, attributes0, filterData0, attributes1,
-		                   filterData1, objectRemoved);
+		wrapped->pairLost(pairID, attributes0, filterData0, attributes1,
+		                  filterData1, objectRemoved);
 	}
 
 	virtual bool statusChange(physx::PxU64 &pairID,
 	                          physx::PxPairFlags &pairFlags,
 	                          physx::PxFilterFlags &filterFlags) override {
-		// TODO
-		return wrapped_->statusChange(pairID, pairFlags, filterFlags);
+		return wrapped->statusChange(pairID, pairFlags, filterFlags);
 	}
 };
 
@@ -68,7 +132,6 @@ static physx::PxFilterFlags entry_SimulationFilterShader(
     physx::PxFilterObjectAttributes attributes1,
     physx::PxFilterData filterData1, physx::PxPairFlags &pairFlags,
     const void *constantBlock, physx::PxU32 constantBlockSize) {
-	// TODO
 	return g_shader_wrapped(attributes0, filterData0, attributes1, filterData1,
 	                        pairFlags, constantBlock, constantBlockSize);
 }
@@ -114,6 +177,11 @@ bool patchPxScene(physx::PxScene *scene) {
 	std::lock_guard<std::mutex> lock(g_mutex);
 
 	if (g_scene != nullptr) {
+		if (g_scene == scene) {
+			CARB_LOG_INFO("PxScene %p is already patched", scene);
+			return true;
+		}
+
 		// Check if previous scene is already released
 		auto &px = scene->getPhysics();
 		auto *mutex_ptr = reinterpret_cast<physx::PxMutex *>(
@@ -186,12 +254,34 @@ bool patchPxScene(physx::PxScene *scene) {
 		*callback_ptr = g_callback_wrapper;
 		CARB_LOG_INFO(
 		    "NpScene->mScene->mFilterCallback patched, original %p, now %p",
-		    g_callback_wrapper->wrapped_, *callback_ptr);
+		    g_callback_wrapper->wrapped, *callback_ptr);
 	}
 
 	scene->unlockWrite();
 
 	return ok;
+}
+
+bool addContactExclusion(const physx::PxActor *a0, const physx::PxShape *s0,
+                         const physx::PxActor *a1, const physx::PxShape *s1) {
+	std::lock_guard<std::mutex> lock(g_mutex);
+	if (g_callback_wrapper == nullptr) {
+		CARB_LOG_ERROR("No PxScene is patched");
+		return false;
+	}
+	g_callback_wrapper->exclusions.insert({a0, s0, a1, s1});
+	return true;
+}
+
+bool removeContactExclusion(const physx::PxActor *a0, const physx::PxShape *s0,
+                            const physx::PxActor *a1,
+                            const physx::PxShape *s1) {
+	std::lock_guard<std::mutex> lock(g_mutex);
+	if (g_callback_wrapper == nullptr) {
+		CARB_LOG_ERROR("No PxScene is patched");
+		return false;
+	}
+	return g_callback_wrapper->exclusions.erase({a0, s0, a1, s1}) > 0;
 }
 
 } // namespace lego_assemble

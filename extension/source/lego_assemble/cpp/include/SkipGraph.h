@@ -69,8 +69,7 @@ class NoOpSkipGraphScheduler {
 
 	NoOpSkipGraphScheduler(CreateEdge create_edge, DestroyEdge destroy_edge,
 	                       Hash h = Hash{}, Eq e = Eq{}, Cmp cmp = Cmp{})
-	    : create_(std::move(create_edge)), destroy_(std::move(destroy_edge)),
-	      hash_(std::move(h)), eq_(std::move(e)), cmp_(std::move(cmp)) {}
+	    : eq_(std::move(e)), cmp_(std::move(cmp)) {}
 
 	~NoOpSkipGraphScheduler() {}
 
@@ -105,15 +104,11 @@ class NoOpSkipGraphScheduler {
 		return base_adj_;
 	}
 
-  private:
-	// -------- internals --------
-	// Canonicalize edge as (min,max) according to cmp_
-	EdgeKey canon_(const V &u, const V &v) const {
-		if (cmp_(v, u))
-			return {v, u};
-		return {u, v};
+	void clear() {
+		base_adj_.clear();
 	}
 
+  private:
 	// Add/remove base adjacency
 	bool add_base_adj_(const V &a, const V &b) {
 		auto &A = base_adj_[a];
@@ -157,12 +152,7 @@ class NoOpSkipGraphScheduler {
 	}
 
   private:
-	// injected ops
-	CreateEdge create_;
-	DestroyEdge destroy_;
-
 	// functors
-	Hash hash_;
 	Eq eq_;
 	Cmp cmp_;
 
@@ -173,9 +163,9 @@ class NoOpSkipGraphScheduler {
 template <
     class V,      // Vertex / body id
     class Handle, // Edge handle returned by CreateEdge and fed to DestroyEdge
-    class CreateEdge,                    // (V const&, V const&) -> Handle
-    class DestroyEdge,                   // (Handle) -> void
-    bool DestroyEdgesOnDestruct = false, // destroy all edges on dtor
+    class CreateEdge,                   // (V const&, V const&) -> Handle
+    class DestroyEdge,                  // (Handle) -> void
+    bool DestroyEdgesOnDestruct = true, // destroy all edges on dtor
     int K = 8, // number of skip-levels (distances 2^1 ... 2^K)
     bool Stable =
         true, // pick min target deterministically; otherwise prefer existing aux link
@@ -202,7 +192,7 @@ class SimpleSkipGraphScheduler {
 	~SimpleSkipGraphScheduler() {
 		if (DestroyEdgesOnDestruct) {
 			// destroy all edges we created
-			clear_all_();
+			clear();
 		}
 	}
 
@@ -244,6 +234,15 @@ class SimpleSkipGraphScheduler {
 	}
 	const AdjMap &aux_adjacency() const noexcept {
 		return aux_adj_;
+	}
+
+	void clear() {
+		// destroy aux edges first
+		for (auto &[_, h] : aux_handles_)
+			destroy_(h);
+		aux_handles_.clear();
+		aux_adj_.clear();
+		base_adj_.clear();
 	}
 
   private:
@@ -462,15 +461,6 @@ class SimpleSkipGraphScheduler {
 		}
 
 		// Ensure aux_adj_ contains only realized aux edges (already maintained above)
-	}
-
-	void clear_all_() {
-		// destroy aux edges first
-		for (auto &[_, h] : aux_handles_)
-			destroy_(h);
-		aux_handles_.clear();
-		aux_adj_.clear();
-		base_adj_.clear();
 	}
 
   private:
