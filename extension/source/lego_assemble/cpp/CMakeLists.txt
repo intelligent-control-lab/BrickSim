@@ -20,11 +20,13 @@ FetchContent_MakeAvailable(pybind11)
 
 # Build the Python extension module
 pybind11_add_module(_native
+  src/LegoGraph.cpp
+  src/LegoJointManager.cpp
+  src/LegoTokens.cpp
+  src/LegoUsdBridge.cpp
+  src/LegoWeldConstraint.cpp
   src/native.cpp
   src/ScenePatcher.cpp
-  src/LegoJointManager.cpp
-  src/LegoWeldConstraint.cpp
-  src/tokens.cpp
 )
 
 # Workaround for childrenProxy.h:75:21: error: no member named '_Set' in 'SdfChildrenProxy<_View>'

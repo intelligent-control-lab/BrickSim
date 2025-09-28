@@ -1,3 +1,5 @@
+#include "ScenePatcher.h"
+
 #include <cassert>
 
 #include <carb/logging/Log.h>
