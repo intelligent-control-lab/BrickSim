@@ -58,6 +58,9 @@ Isaac Sim 5.0 extension for simulating LEGO bricks and their assembly. This repo
 3. Use `rg` (ripgrep) or similar to search symbols in headers or even binary files.
 4. Decompile/disassemble/reverse‑engineer binaries when source is unavailable.
 5. Many dirs are symlinks created by repoman; they may point outside the tree. Follow them, and enable following links in searches.
+6. If you are looking for Isaac Sim's source, search in `../IsaacSim/`, which contains its source checkout. Don't search in `isaacsim/` or `IsaacLab/_isaac_sim/`, where there is only binary and headers.
+7. If you are looking for PhysX's source, search in `../PhysX/`, which contains its full source. `../IsaacSim/` doesn't contain PhysX's source.
+8. Omni PhysX is not open-source, so do reverse engineering (disassemble / decompile) on its binaries.
 
 ## Safety
 You may operate in:
