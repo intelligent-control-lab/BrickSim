@@ -5,11 +5,6 @@
 
 #include <carb/logging/Log.h>
 
-#include <PxPhysics.h>
-#include <PxScene.h>
-#include <foundation/PxArray.h>
-#include <foundation/PxMutex.h>
-
 namespace lego_assemble {
 
 struct CollisionExcludePair {
@@ -126,6 +121,43 @@ static physx::PxScene *g_scene = nullptr;
 static physx::PxSimulationFilterShader g_shader_wrapped = nullptr;
 static PxSimulationFilterCallbackWrapper *g_callback_wrapper = nullptr;
 
+// PhysX 107.3-physx-5.6.1, Linux x86_64, gcc-11, with GPU, PUBLIC_RELEASE=0
+//
+// physx/source/physx/src/NpScene.h:747
+// field mScene
+// Type: Sc::Scene
+// Offset: 1440 bytes
+// Size: 5440 bytes, alignment 16 byte
+//
+// physx/source/simulationcontroller/include/ScScene.h:783
+// field mFilterShader
+// Type: PxSimulationFilterShader (aka PxFlags<physx::PxFilterFlag::Enum, unsigned short> (*)(unsigned int, physx::PxFilterData, unsigned int, physx::PxFilterData, PxFlags<physx::PxPairFlag::Enum, unsigned short> &, const void *, unsigned int))
+// Offset: 1008 bytes
+// Size: 8 bytes, alignment 8 bytes
+//
+// physx/source/simulationcontroller/include/ScScene.h:784
+// field mFilterCallback
+// Type: PxSimulationFilterCallback *
+// Offset: 1016 bytes
+// Size: 8 bytes, alignment 8 bytes
+static constexpr size_t offset_NpScene_mScene = 1440;
+static constexpr size_t offset_NpScene_mScene_mFilterShader =
+    offset_NpScene_mScene + 1008;
+static constexpr size_t offset_NpScene_mScene_mFilterCallback =
+    offset_NpScene_mScene + 1016;
+static physx::PxSimulationFilterShader *
+locate_mFilterShader(physx::PxScene *scene) {
+	return reinterpret_cast<physx::PxSimulationFilterShader *>(
+	    reinterpret_cast<unsigned char *>(scene) +
+	    offset_NpScene_mScene_mFilterShader);
+}
+static physx::PxSimulationFilterCallback **
+locate_mFilterCallback(physx::PxScene *scene) {
+	return reinterpret_cast<physx::PxSimulationFilterCallback **>(
+	    reinterpret_cast<unsigned char *>(scene) +
+	    offset_NpScene_mScene_mFilterCallback);
+}
+
 static physx::PxFilterFlags entry_SimulationFilterShader(
     physx::PxFilterObjectAttributes attributes0,
     physx::PxFilterData filterData0,
@@ -137,94 +169,23 @@ static physx::PxFilterFlags entry_SimulationFilterShader(
 }
 
 bool patchPxScene(physx::PxScene *scene) {
-	// PhysX 107.3-physx-5.6.1, Linux x86_64, gcc-11, with GPU, PUBLIC_RELEASE=0
-	//
-	// physx/source/physx/src/NpScene.h:747
-	// field mScene
-	// Type: Sc::Scene
-	// Offset: 1440 bytes
-	// Size: 5440 bytes, alignment 16 byte
-	//
-	// physx/source/simulationcontroller/include/ScScene.h:783
-	// field mFilterShader
-	// Type: PxSimulationFilterShader (aka PxFlags<physx::PxFilterFlag::Enum, unsigned short> (*)(unsigned int, physx::PxFilterData, unsigned int, physx::PxFilterData, PxFlags<physx::PxPairFlag::Enum, unsigned short> &, const void *, unsigned int))
-	// Offset: 1008 bytes
-	// Size: 8 bytes, alignment 8 bytes
-	//
-	// physx/source/simulationcontroller/include/ScScene.h:784
-	// field mFilterCallback
-	// Type: PxSimulationFilterCallback *
-	// Offset: 1016 bytes
-	// Size: 8 bytes, alignment 8 bytes
-	//
-	// physx/source/physx/src/NpPhysics.h:311
-	// field mSceneAndMaterialMutex
-	// Type: PxMutex (aka PxMutexT<>)
-	// Offset: 296 bytes
-	// Size: 8 bytes, alignment 8 bytes
-	//
-	// physx/source/physx/src/NpPhysics.h:286
-	// field mSceneArray
-	// Type: PxArray<NpScene *>
-	// Offset: 24 bytes
-	// Size: 16 bytes, alignment 8 bytes
-	constexpr size_t offset_mScene = 1440;
-	constexpr size_t offset_mFilterShader = offset_mScene + 1008;
-	constexpr size_t offset_mFilterCallback = offset_mScene + 1016;
-	constexpr size_t offset_mSceneAndMaterialMutex = 296;
-	constexpr size_t offset_mSceneArray = 24;
-
 	std::lock_guard<std::mutex> lock(g_mutex);
 
 	if (g_scene != nullptr) {
-		if (g_scene == scene) {
-			CARB_LOG_INFO("PxScene %p is already patched", scene);
-			return true;
-		}
-
-		// Check if previous scene is already released
-		auto &px = scene->getPhysics();
-		auto *mutex_ptr = reinterpret_cast<physx::PxMutex *>(
-		    reinterpret_cast<unsigned char *>(&px) +
-		    offset_mSceneAndMaterialMutex);
-		auto *scene_array_ptr = reinterpret_cast<physx::PxArray<void *> *>(
-		    reinterpret_cast<unsigned char *>(&px) + offset_mSceneArray);
-		{
-			physx::PxMutex::ScopedLock lock(*mutex_ptr);
-			if (scene_array_ptr->find(g_scene) != scene_array_ptr->end()) {
-				CARB_LOG_ERROR("Previous patched PxScene %p is still alive "
-				               "when patching new PxScene %p",
-				               g_scene, scene);
-				return false;
-			}
-		}
-		// Previous scene is released, we can clear the wrapped shader and callback
-		CARB_LOG_INFO("Previous patched PxScene %p is released", g_scene);
-		g_scene = nullptr;
-		if (g_shader_wrapped != nullptr) {
-			CARB_LOG_INFO(
-			    "Clearing previous wrapped PxSimulationFilterShader %p",
-			    g_shader_wrapped);
-			g_shader_wrapped = nullptr;
-		}
-		if (g_callback_wrapper != nullptr) {
-			CARB_LOG_INFO(
-			    "Destroying previous PxSimulationFilterCallbackWrapper %p",
-			    g_callback_wrapper);
-			delete g_callback_wrapper;
-			g_callback_wrapper = nullptr;
-		}
+		// Note g_scene can be the same as scene, but this doesn't mean they are the same object
+		// it might be another object allocated at the same address.
+		CARB_LOG_ERROR("Previous PxScene %p hasn't been unpatched yet when "
+		               "patching new PxScene %p",
+		               g_scene, scene);
+		return false;
 	}
 	assert(g_shader_wrapped == nullptr);
 	assert(g_callback_wrapper == nullptr);
 
 	scene->lockWrite();
 
-	auto *shader_ptr = reinterpret_cast<physx::PxSimulationFilterShader *>(
-	    reinterpret_cast<unsigned char *>(scene) + offset_mFilterShader);
-	auto **callback_ptr =
-	    reinterpret_cast<physx::PxSimulationFilterCallback **>(
-	        reinterpret_cast<unsigned char *>(scene) + offset_mFilterCallback);
+	auto *shader_ptr = locate_mFilterShader(scene);
+	auto **callback_ptr = locate_mFilterCallback(scene);
 
 	// Pre-patch checks
 	bool ok = true;
@@ -262,6 +223,49 @@ bool patchPxScene(physx::PxScene *scene) {
 	return ok;
 }
 
+bool unpatchPxScene(bool restoreCallbacks) {
+	std::lock_guard<std::mutex> lock(g_mutex);
+
+	if (g_scene == nullptr) {
+		return false;
+	}
+	assert(g_shader_wrapped != nullptr);
+	assert(g_callback_wrapper != nullptr);
+
+	if (restoreCallbacks) {
+		g_scene->lockWrite();
+		auto *shader_ptr = locate_mFilterShader(g_scene);
+		auto **callback_ptr = locate_mFilterCallback(g_scene);
+		if (*shader_ptr == &entry_SimulationFilterShader) {
+			*shader_ptr = g_shader_wrapped;
+			CARB_LOG_INFO("NpScene->mScene->mFilterShader restored, now %p",
+			              *shader_ptr);
+		} else {
+			CARB_LOG_WARN(
+			    "NpScene->mScene->mFilterShader changed since patched, "
+			    "not restoring, continuing");
+		} 
+		if (*callback_ptr == g_callback_wrapper) {
+			*callback_ptr = g_callback_wrapper->wrapped;
+			CARB_LOG_INFO(
+			    "NpScene->mScene->mFilterCallback restored, now %p",
+			    *callback_ptr);
+		} else {
+			CARB_LOG_WARN(
+			    "NpScene->mScene->mFilterCallback changed since patched, "
+			    "not restoring, continuing");
+		}
+		g_scene->unlockWrite();
+	}
+
+	delete g_callback_wrapper;
+	g_callback_wrapper = nullptr;
+	g_shader_wrapped = nullptr;
+	CARB_LOG_INFO("PxScene %p unpatched", g_scene);
+	g_scene = nullptr;
+	return true;
+}
+
 bool addContactExclusion(const physx::PxActor *a0, const physx::PxShape *s0,
                          const physx::PxActor *a1, const physx::PxShape *s1) {
 	std::lock_guard<std::mutex> lock(g_mutex);
@@ -269,8 +273,7 @@ bool addContactExclusion(const physx::PxActor *a0, const physx::PxShape *s0,
 		CARB_LOG_ERROR("No PxScene is patched");
 		return false;
 	}
-	g_callback_wrapper->exclusions.insert({a0, s0, a1, s1});
-	return true;
+	return g_callback_wrapper->exclusions.insert({a0, s0, a1, s1}).second;
 }
 
 bool removeContactExclusion(const physx::PxActor *a0, const physx::PxShape *s0,

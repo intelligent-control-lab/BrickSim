@@ -90,6 +90,7 @@ bool initLegoJointManager() {
 			g_lego = nullptr;
 			CARB_LOG_INFO("Lego state destroyed (allObjectsDestructionNotify)");
 		}
+		unpatchPxScene(true);
 	};
 	physxObjFullCb.stopCallbackWhenSimStopped = false;
 	g_physxObjFullSub =
