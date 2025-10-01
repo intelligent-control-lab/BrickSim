@@ -74,6 +74,7 @@ You must NOT:
 - Run global searches from filesystem root, or from the home directory, or other directories not listed above—they are too large—unless you first ask the user for approval.
 
 ## Collaboration Rules (How to Work With the User)
+- NEVER modify code unless the user explicitly asks (e.g., says "modify", "implement", "refactor", "add", or similar). Observations and diagnostics are fine; changes require explicit instruction.
 - Respect explicit decisions: do not change established values or designs (e.g., callback orders, algorithm choices) without strong evidence and prior approval.
 - No overdesign by default: avoid adding retries, background tasks, or new behaviors unless the user requests them. Propose ideas first; only implement after approval in a subsequent round.
 - Minimize unsolicited scope changes: keep edits surgical and aligned with the exact request; prefer proposing alternatives rather than implementing them.
@@ -97,8 +98,18 @@ You must NOT:
 
 - Assembly behavior
   - When two bricks assemble, their poses are adjusted to produce a “snap‑fit” effect. This removes small alignment errors within the threshold that permits assembly.
-  - After assembly, collisions between the upper brick and the lower brick’s `TopCollider` are excluded from physics simulation.
+  - After assembly, collisions between the upper brick's `BodyCollider` and the lower brick’s `TopCollider` are excluded from physics simulation.
   - The relative distance is adjusted so the bottom of the upper brick contacts the top of the lower brick’s `BodyCollider`. In this state, the lower brick’s `TopCollider` (studs) lies completely within the upper brick (with collisions disabled), mimicking studs entering holes.
+
+- Constraints & connections
+  - USD authoring: Each connection is an Xform prim `Conn_i_j` with:
+    - `lego_conn:enabled` (Bool); `lego_conn:body0`, `lego_conn:body1` (relationships to brick prims).
+    - `lego_conn:pos` (Float3) and `lego_conn:rot` (Quatf): relative transform T_parent_child from parent actor‑local origin to child actor‑local origin; positions are in stage units.
+  - Base constraint: Custom PhysX weld locking all 6 DOF. Anchors are in COM frames computed from the authored origin‑to‑origin transform:
+    - parentLocal (A_com → B_com) = (A_com → A_orig) × T_parent_child × (B_orig → B_com); childLocal = identity.
+  - Auxiliary constraints: Skip‑graph adds extra welds at graph distances 2^i (i=1..8) for stack stiffness; each aux transform is the composed transform along the path; recomputed on connect/disconnect.
+  - Contact filtering: While connected, collisions between parent `TopCollider` and child `BodyCollider` are excluded via a patched simulation filter; filtering is refreshed on affected actors.
+  - Lifecycle: Native joint manager listens to USD edits and PhysX object creation; creates/tears down constraints when both bodies exist in the same PhysX scene.
 
 ## Debugging
 - If `gdb` tool is available, you can use gdb to do interactive debugging.
