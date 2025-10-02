@@ -93,7 +93,10 @@ class PxSimulationFilterCallbackWrapper final
 		auto result =
 		    wrapped->pairFound(pairID, attributes0, filterData0, a0, s0,
 		                       attributes1, filterData1, a1, s1, pairFlags);
-		if (exclusions.contains({a0, s0, a1, s1})) {
+		if (exclusions.contains({a0, s0, a1, s1}) ||
+		    exclusions.contains({a0, nullptr, a1, nullptr}) ||
+		    exclusions.contains({a0, s0, a1, nullptr}) ||
+		    exclusions.contains({a0, nullptr, a1, s1})) {
 			result = physx::PxFilterFlag::eKILL;
 		}
 		return result;
@@ -244,12 +247,11 @@ bool unpatchPxScene(bool restoreCallbacks) {
 			CARB_LOG_WARN(
 			    "NpScene->mScene->mFilterShader changed since patched, "
 			    "not restoring, continuing");
-		} 
+		}
 		if (*callback_ptr == g_callback_wrapper) {
 			*callback_ptr = g_callback_wrapper->wrapped;
-			CARB_LOG_INFO(
-			    "NpScene->mScene->mFilterCallback restored, now %p",
-			    *callback_ptr);
+			CARB_LOG_INFO("NpScene->mScene->mFilterCallback restored, now %p",
+			              *callback_ptr);
 		} else {
 			CARB_LOG_WARN(
 			    "NpScene->mScene->mFilterCallback changed since patched, "

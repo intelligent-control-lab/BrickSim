@@ -201,8 +201,8 @@ class LegoGraph::Impl {
 
 	void setupConn_(ConnDesc &c) {
 		c.joint = createConstraint_(c.parent, c.child, c.tf);
-		if (!addContactExclusion(c.parent->actor, c.parent->top_collider,
-		                         c.child->actor, c.child->body_collider)) {
+		if (!addContactExclusion(c.parent->actor, nullptr, c.child->actor,
+		                         nullptr)) {
 			CARB_LOG_ERROR("Failed to add contact exclusion between %p and %p",
 			               c.parent->actor, c.child->actor);
 		}
@@ -210,8 +210,8 @@ class LegoGraph::Impl {
 
 	void releaseConn_(ConnDesc &c) {
 		c.joint->release();
-		if (!removeContactExclusion(c.parent->actor, c.parent->top_collider,
-		                            c.child->actor, c.child->body_collider)) {
+		if (!removeContactExclusion(c.parent->actor, nullptr, c.child->actor,
+		                            nullptr)) {
 			CARB_LOG_ERROR(
 			    "Failed to remove contact exclusion between %p and %p",
 			    c.parent->actor, c.child->actor);
