@@ -11,7 +11,7 @@ from .lego_schemes import BrickLength, PlateHeight, StudHeight
 from .assembler import Thresholds, parse_brick_path, path_for_brick, path_for_conn
 from .physx_c import buffer_from_ContactDataVector, buffer_from_ContactEventHeaderVector
 from .utils import get_physics_scene
-from .math_utils import pose_to_se3, inv_se3, se3_to_pose
+from .math_utils import pose_to_se3, inv_se3
 
 class AssemblyDetector:
     def __init__(self):
@@ -169,29 +169,32 @@ class AssemblyDetector:
         p1_snap = torch.round(p0_snap + torch.einsum("bij,bj->bi", R_snap, dim1[:,:2]))
         p_err = torch.norm(p0 - p0_snap, dim=1) * (BrickLength / self.mpu)
 
-        # Calculate adjusted relative pose
-        xy_snap = (p0_snap + (torch.einsum("bij,bj->bi", R_snap, dim1[:,:2]) - dim0[:,:2]) / 2) * (BrickLength / self.mpu)
-        relpose_snap = torch.zeros_like(rel_pose)
-        relpose_snap[:,:2,:2] = R_snap
-        relpose_snap[:, 2, 2] = 1.0
-        relpose_snap[:,:2, 3] = xy_snap
-        relpose_snap[:, 2, 3] = brick0_height
-        relpose_snap[:, 3, 3] = 1.0
-
-        # Calculate adjusted absolute poses
-        pose1_snap = torch.matmul(pose0, relpose_snap)
-
         # Calculate overlap
-        overlap_x = torch.clamp(
-            torch.clamp(torch.maximum(p0_snap[:,0], p1_snap[:,0]), max=dim0[:,0]) -
-            torch.clamp(torch.minimum(p0_snap[:,0], p1_snap[:,0]), min=0),
-            min=0
-        )
-        overlap_y = torch.clamp(
-            torch.clamp(torch.maximum(p0_snap[:,1], p1_snap[:,1]), max=dim0[:,1]) -
-            torch.clamp(torch.minimum(p0_snap[:,1], p1_snap[:,1]), min=0),
-            min=0
-        )
+        ov_start1 = torch.zeros_like(p0_snap)
+        ov_end1 = dim0[:, :2]
+        ov_start2 = torch.minimum(p0_snap, p1_snap)
+        ov_end2 = torch.maximum(p0_snap, p1_snap)
+        ov_start = torch.maximum(ov_start1, ov_start2)
+        ov_end = torch.minimum(ov_end1, ov_end2)
+        ov_mid = (ov_start + ov_end) / 2
+        overlap = torch.clamp(ov_end - ov_start, min=0)
+
+        # Calculate joint local transforms
+        T_parent_local = torch.zeros_like(rel_pose)
+        T_parent_local[:, :3, :3] = torch.eye(3, device=self.device)
+        T_parent_local[:, 3, 3] = 1.0
+        T_parent_local[:, :2, 3] = (ov_mid - dim0[:, :2] / 2) * (BrickLength / self.mpu)
+        T_parent_local[:, 2, 3] = brick0_height
+
+        T_child_local = torch.zeros_like(rel_pose)
+        R_snap_T = R_snap.transpose(1,2)
+        T_child_local[:, :2, :2] = R_snap_T
+        T_child_local[:, 2, 2] = 1.0
+        T_child_local[:, 3, 3] = 1.0
+        T_child_local[:, :2, 3] = torch.einsum("bij,bj->bi",
+            R_snap_T,
+            ov_mid - (ov_start2 + ov_end2) / 2
+        ) * (BrickLength / self.mpu)
 
         #### Filtering
         as_flag = \
@@ -201,22 +204,15 @@ class AssemblyDetector:
             (frc_z >= (Thresholds.RequiredForce / self.mpu / self.kpu)) & \
             (torch.abs(yaw_err) <= Thresholds.YawTolerance) & \
             (p_err <= (Thresholds.PositionTolerance / self.mpu)) & \
-            ((overlap_x > 0) & (overlap_y > 0))
-
-        #### Perform assembly
-
-        # Adjust poses
-        if as_flag.any():
-            idx_buf = rb1_id[as_flag]
-            pose_buf = pose.clone()
-            pose_buf[idx_buf] = se3_to_pose(pose1_snap[as_flag])
-            # self.rb_view.set_transforms(pose_buf.unsqueeze(-1), idx_buf)
+            ((overlap[:,0] > 0) & (overlap[:,1] > 0))
 
         # Create joints
-        for as_rb0, as_rb1, as_relpose in zip(
+        for as_rb0, as_rb1, as_tf0, as_tf1, as_ov in zip(
             rb0_id[as_flag].cpu(),
             rb1_id[as_flag].cpu(),
-            relpose_snap[as_flag].transpose(1,2).cpu(),
+            T_parent_local[as_flag].transpose(1,2).cpu(),
+            T_child_local[as_flag].transpose(1,2).cpu(),
+            (overlap[as_flag] * (BrickLength / self.mpu)).cpu(),
         ):
             path0 = self.rb_paths[as_rb0]
             path1 = self.rb_paths[as_rb1]
@@ -233,9 +229,13 @@ class AssemblyDetector:
             bond_prim: Usd.Prim = UsdGeom.Xform.Define(self.stage, joint_path).GetPrim()
             bond_prim.CreateRelationship("lego_conn:body0").AddTarget(path0)
             bond_prim.CreateRelationship("lego_conn:body1").AddTarget(path1)
-            M = Gf.Matrix4f(as_relpose.tolist())
-            bond_prim.CreateAttribute("lego_conn:pos", Sdf.ValueTypeNames.Float3).Set(M.ExtractTranslation())
-            bond_prim.CreateAttribute("lego_conn:rot", Sdf.ValueTypeNames.Quatf).Set(M.ExtractRotationQuat())
+            M0 = Gf.Matrix4f(as_tf0.tolist())
+            M1 = Gf.Matrix4f(as_tf1.tolist())
+            bond_prim.CreateAttribute("lego_conn:pos0", Sdf.ValueTypeNames.Float3).Set(M0.ExtractTranslation())
+            bond_prim.CreateAttribute("lego_conn:rot0", Sdf.ValueTypeNames.Quatf).Set(M0.ExtractRotationQuat())
+            bond_prim.CreateAttribute("lego_conn:pos1", Sdf.ValueTypeNames.Float3).Set(M1.ExtractTranslation())
+            bond_prim.CreateAttribute("lego_conn:rot1", Sdf.ValueTypeNames.Quatf).Set(M1.ExtractRotationQuat())
+            bond_prim.CreateAttribute("lego_conn:overlap_xy", Sdf.ValueTypeNames.Float2).Set(Gf.Vec2f(as_ov.tolist()))
             bond_prim.CreateAttribute("lego_conn:enabled", Sdf.ValueTypeNames.Bool).Set(True)
 
     def handle_contact_report(self, _contacts: ContactEventHeaderVector, _contact_data: ContactDataVector):

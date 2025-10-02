@@ -43,7 +43,8 @@ void LegoUsdBridge::onRigidCreated(physx::PxRigidActor *actor,
 		return;
 	}
 	bodies_[primPath] = actor;
-	if (!graph_.addRigidBody(actor, body_collider, top_collider)) {
+	if (!graph_.addRigidBody(actor, {.body_collider = body_collider,
+	                                 .top_collider = top_collider})) {
 		CARB_LOG_ERROR("Failed to add rigid body for prim %s",
 		               primPath.GetText());
 	}
@@ -124,7 +125,12 @@ void LegoUsdBridge::processPrimChanges() {
 				auto *ps = rb_parent->getScene();
 				if (ps == rb_child->getScene()) {
 					ps->lockWrite();
-					if (graph_.connect(rb_parent, rb_child, prim_info.tf)) {
+					if (graph_.connect(
+					        rb_parent, rb_child,
+					        {.T_parent_local = prim_info.T_parent_local,
+					         .T_child_local = prim_info.T_child_local,
+					         .overlap_xy = {prim_info.overlap_xy[0],
+					                        prim_info.overlap_xy[1]}})) {
 						conns_[path] =
 						    std::make_pair(prim_info.parent, prim_info.child);
 					} else {
@@ -175,7 +181,9 @@ void LegoUsdBridge::loadFromStage_() {
 				        brick_info.top_collider, omni::physx::ePTShape));
 				if (body_collider && top_collider) {
 					bodies_[path] = rb;
-					if (!graph_.addRigidBody(rb, body_collider, top_collider)) {
+					if (!graph_.addRigidBody(rb,
+					                         {.body_collider = body_collider,
+					                          .top_collider = top_collider})) {
 						CARB_LOG_ERROR("Failed to add rigid body for prim %s",
 						               path.GetText());
 					}
@@ -199,7 +207,11 @@ void LegoUsdBridge::loadFromStage_() {
 			auto *ps = rb_parent->getScene();
 			if (ps == rb_child->getScene()) {
 				ps->lockWrite();
-				if (graph_.connect(rb_parent, rb_child, conn.info.tf)) {
+				if (graph_.connect(rb_parent, rb_child,
+				                   {.T_parent_local = conn.info.T_parent_local,
+				                    .T_child_local = conn.info.T_child_local,
+				                    .overlap_xy = {conn.info.overlap_xy[0],
+				                                   conn.info.overlap_xy[1]}})) {
 					conns_[conn.path] =
 					    std::make_pair(conn.info.parent, conn.info.child);
 				} else {
@@ -257,14 +269,27 @@ bool LegoUsdBridge::getConnInfo_(const pxr::UsdPrim &prim,
 	out.parent = t0.front();
 	out.child = t1.front();
 
-	pxr::GfVec3f pos(0);
-	pxr::GfQuatf rot(1, 0, 0, 0);
-	prim.GetAttribute(LegoTokens->conn_pos).Get(&pos);
-	prim.GetAttribute(LegoTokens->conn_rot).Get(&rot);
-	out.tf = physx::PxTransform(
-	    physx::PxVec3(pos[0], pos[1], pos[2]),
-	    physx::PxQuat(rot.GetImaginary()[0], rot.GetImaginary()[1],
-	                  rot.GetImaginary()[2], rot.GetReal()));
+	pxr::GfVec3f pos0(0);
+	pxr::GfQuatf rot0(1, 0, 0, 0);
+	pxr::GfVec3f pos1(0);
+	pxr::GfQuatf rot1(1, 0, 0, 0);
+	prim.GetAttribute(LegoTokens->conn_pos0).Get(&pos0);
+	prim.GetAttribute(LegoTokens->conn_rot0).Get(&rot0);
+	prim.GetAttribute(LegoTokens->conn_pos1).Get(&pos1);
+	prim.GetAttribute(LegoTokens->conn_rot1).Get(&rot1);
+	out.T_parent_local = physx::PxTransform(
+	    physx::PxVec3(pos0[0], pos0[1], pos0[2]),
+	    physx::PxQuat(rot0.GetImaginary()[0], rot0.GetImaginary()[1],
+	                  rot0.GetImaginary()[2], rot0.GetReal()));
+	out.T_child_local = physx::PxTransform(
+	    physx::PxVec3(pos1[0], pos1[1], pos1[2]),
+	    physx::PxQuat(rot1.GetImaginary()[0], rot1.GetImaginary()[1],
+	                  rot1.GetImaginary()[2], rot1.GetReal()));
+
+	pxr::GfVec2f overlap_xy(0, 0);
+	prim.GetAttribute(LegoTokens->conn_overlap_xy).Get(&overlap_xy);
+	out.overlap_xy[0] = overlap_xy[0];
+	out.overlap_xy[1] = overlap_xy[1];
 	return true;
 }
 

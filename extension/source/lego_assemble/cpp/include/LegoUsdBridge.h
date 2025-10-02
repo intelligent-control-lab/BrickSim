@@ -35,7 +35,9 @@ class LegoUsdBridge {
 	struct ConnInfo {
 		pxr::SdfPath parent;
 		pxr::SdfPath child;
-		physx::PxTransform tf;
+		physx::PxTransform T_parent_local;
+		physx::PxTransform T_child_local;
+		float overlap_xy[2];
 	};
 	struct BrickInfo {
 		pxr::SdfPath top_collider;

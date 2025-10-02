@@ -10,16 +10,24 @@ namespace lego_assemble {
 
 class LegoGraph {
   public:
+	struct BrickInfo {
+		physx::PxShape *body_collider;
+		physx::PxShape *top_collider;
+	};
+	struct ConnInfo {
+		physx::PxTransform T_parent_local;
+		physx::PxTransform T_child_local;
+		float overlap_xy[2];
+	};
+
 	explicit LegoGraph(physx::PxPhysics *px);
 	LegoGraph(const LegoGraph &) = delete;
 	LegoGraph &operator=(const LegoGraph &) = delete;
 	~LegoGraph();
 
-	bool addRigidBody(physx::PxRigidActor *actor, physx::PxShape *body_collider,
-	                  physx::PxShape *top_collider);
+	bool addRigidBody(physx::PxRigidActor *actor, const BrickInfo &info);
 	bool removeRigidBody(physx::PxRigidActor *actor);
-	bool connect(physx::PxRigidActor *a, physx::PxRigidActor *b,
-	             const physx::PxTransform &T_a_b);
+	bool connect(physx::PxRigidActor *a, physx::PxRigidActor *b, const ConnInfo &info);
 	bool disconnect(physx::PxRigidActor *a, physx::PxRigidActor *b);
 	void clear();
 

@@ -43,7 +43,10 @@ class LegoGraph::Impl {
 		Constraint *joint;
 		BodyDesc *parent;
 		BodyDesc *child;
-		Transform tf; // T_parent_child
+		Transform tf;
+		Transform T_parent_local;
+		Transform T_child_local;
+		float overlap_xy[2]; // in stage units
 	};
 
 	explicit Impl(physx::PxPhysics *px)
@@ -59,15 +62,14 @@ class LegoGraph::Impl {
 		clear();
 	}
 
-	bool addRigidBody(RigidBody *actor, physx::PxShape *body_collider,
-	                  physx::PxShape *top_collider) {
+	bool addRigidBody(RigidBody *actor, const BrickInfo &info) {
 		if (bodies_.contains(actor)) {
 			return false;
 		}
 		BodyDesc desc;
 		desc.actor = actor;
-		desc.body_collider = body_collider;
-		desc.top_collider = top_collider;
+		desc.body_collider = info.body_collider;
+		desc.top_collider = info.top_collider;
 		bodies_[actor] = desc;
 		return true;
 	}
@@ -120,7 +122,7 @@ class LegoGraph::Impl {
 		return true;
 	}
 
-	bool connect(RigidBody *a, RigidBody *b, const Transform &T_a_b) {
+	bool connect(RigidBody *a, RigidBody *b, const ConnInfo &info) {
 		if (a == b) {
 			return false;
 		}
@@ -138,7 +140,11 @@ class LegoGraph::Impl {
 		ConnDesc c;
 		c.parent = da;
 		c.child = db;
-		c.tf = T_a_b;
+		c.tf = info.T_parent_local * info.T_child_local.getInverse();
+		c.T_parent_local = info.T_parent_local;
+		c.T_child_local = info.T_child_local;
+		c.overlap_xy[0] = info.overlap_xy[0];
+		c.overlap_xy[1] = info.overlap_xy[1];
 		setupConn_(c);
 		auto edge_key = std::make_pair(a, b);
 		conns_[edge_key] = c;
@@ -336,16 +342,15 @@ LegoGraph::LegoGraph(physx::PxPhysics *px)
 LegoGraph::~LegoGraph() = default;
 
 bool LegoGraph::addRigidBody(physx::PxRigidActor *actor,
-                             physx::PxShape *body_collider,
-                             physx::PxShape *top_collider) {
-	return impl_->addRigidBody(actor, body_collider, top_collider);
+                             const BrickInfo &info) {
+	return impl_->addRigidBody(actor, info);
 }
 bool LegoGraph::removeRigidBody(physx::PxRigidActor *actor) {
 	return impl_->removeRigidBody(actor);
 }
 bool LegoGraph::connect(physx::PxRigidActor *a, physx::PxRigidActor *b,
-                        const physx::PxTransform &T_a_b) {
-	return impl_->connect(a, b, T_a_b);
+                        const ConnInfo &info) {
+	return impl_->connect(a, b, info);
 }
 bool LegoGraph::disconnect(physx::PxRigidActor *a, physx::PxRigidActor *b) {
 	return impl_->disconnect(a, b);
