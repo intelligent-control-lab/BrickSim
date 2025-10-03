@@ -74,7 +74,7 @@ void LegoUsdBridge::enqueuePrimChange(const pxr::SdfPath &primPath) {
 	pendingChanges_.push_back(primPath);
 }
 
-void LegoUsdBridge::processPrimChanges() {
+void LegoUsdBridge::onPreStep() {
 	std::lock_guard lock(mutex_);
 	for (const auto &path : pendingChanges_) {
 		auto conn_it = conns_.find(path);
@@ -98,6 +98,11 @@ void LegoUsdBridge::processPrimChanges() {
 			} else {
 				auto *rb_parent = parent_it->second;
 				auto *rb_child = child_it->second;
+				if (!conn_rev_.erase({rb_parent, rb_child})) {
+					CARB_LOG_WARN(
+					    "Failed to remove reverse mapping for conn prim %s",
+					    path.GetText());
+				}
 				auto *ps = rb_parent->getScene();
 				if (ps == rb_child->getScene()) {
 					ps->lockWrite();
@@ -133,6 +138,7 @@ void LegoUsdBridge::processPrimChanges() {
 					                        prim_info.overlap_xy[1]}})) {
 						conns_[path] =
 						    std::make_pair(prim_info.parent, prim_info.child);
+						conn_rev_[{rb_parent, rb_child}] = path;
 					} else {
 						CARB_LOG_WARN(
 						    "Failed to connect bodies for conn prim %s",
@@ -214,6 +220,7 @@ void LegoUsdBridge::loadFromStage_() {
 				                                   conn.info.overlap_xy[1]}})) {
 					conns_[conn.path] =
 					    std::make_pair(conn.info.parent, conn.info.child);
+					conn_rev_[{rb_parent, rb_child}] = conn.path;
 				} else {
 					CARB_LOG_WARN("Failed to connect bodies for conn prim %s",
 					              conn.path.GetText());
@@ -291,6 +298,36 @@ bool LegoUsdBridge::getConnInfo_(const pxr::UsdPrim &prim,
 	out.overlap_xy[0] = overlap_xy[0];
 	out.overlap_xy[1] = overlap_xy[1];
 	return true;
+}
+
+void LegoUsdBridge::onPostStep() {
+	pxr::SdfChangeBlock _changes;
+	std::lock_guard lock(mutex_);
+	auto broken_conns = graph_.solveLimits();
+	auto layer = stage_->GetEditTarget().GetLayer();
+
+	for (const auto &[a, b] : broken_conns) {
+		auto it = conn_rev_.find({a, b});
+		if (it == conn_rev_.end()) {
+			CARB_LOG_WARN("Cannot find prim for broken connection [%p, %p]", a,
+			              b);
+			continue;
+		}
+		auto path = it->second;
+		auto attr = layer->GetAttributeAtPath(
+		    path.AppendProperty(LegoTokens->conn_enabled));
+		if (!attr) {
+			CARB_LOG_WARN("Cannot find attribute for broken connection prim %s",
+			              path.GetText());
+			continue;
+		}
+		if (!attr->SetDefaultValue(pxr::VtValue(false))) {
+			CARB_LOG_WARN("Failed to disable broken connection prim %s",
+			              path.GetText());
+		} else {
+			CARB_LOG_INFO("Disabled broken connection prim %s", path.GetText());
+		}
+	}
 }
 
 } // namespace lego_assemble

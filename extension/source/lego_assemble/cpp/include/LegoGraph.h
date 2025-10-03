@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <vector>
 
 #include <PxRigidActor.h>
 #include <PxShape.h>
@@ -29,6 +30,7 @@ class LegoGraph {
 	bool removeRigidBody(physx::PxRigidActor *actor);
 	bool connect(physx::PxRigidActor *a, physx::PxRigidActor *b, const ConnInfo &info);
 	bool disconnect(physx::PxRigidActor *a, physx::PxRigidActor *b);
+	std::vector<std::pair<physx::PxRigidActor *, physx::PxRigidActor *>> solveLimits();
 	void clear();
 
   private:

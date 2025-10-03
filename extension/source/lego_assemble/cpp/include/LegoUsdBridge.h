@@ -1,6 +1,8 @@
 #pragma once
 
 #include "LegoGraph.h"
+#include "SkipGraph.h"
+#include "utils.h"
 
 #include <mutex>
 #include <vector>
@@ -29,7 +31,8 @@ class LegoUsdBridge {
 	void onRigidDestroyed(physx::PxRigidActor *actor,
 	                      const pxr::SdfPath &primPath);
 	void enqueuePrimChange(const pxr::SdfPath &primPath);
-	void processPrimChanges();
+	void onPreStep();
+	void onPostStep();
 
   private:
 	struct ConnInfo {
@@ -49,6 +52,10 @@ class LegoUsdBridge {
 
 	pxr::SdfPathTable<physx::PxRigidActor *> bodies_;
 	pxr::SdfPathTable<std::pair<pxr::SdfPath, pxr::SdfPath>> conns_;
+	std::unordered_map<
+	    std::pair<physx::PxRigidActor *, physx::PxRigidActor *>, pxr::SdfPath,
+	    PairHash<physx::PxRigidActor *, std::hash<physx::PxRigidActor *>>>
+	    conn_rev_;
 	LegoGraph graph_;
 	std::vector<pxr::SdfPath> pendingChanges_;
 	std::mutex mutex_;

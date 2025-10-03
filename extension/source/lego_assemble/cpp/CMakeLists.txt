@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.5)
 
 project(lego_assemble_native LANGUAGES CXX)
 
@@ -6,10 +6,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Python and pybind11
 find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
 
 include(FetchContent)
+
 set(PYBIND11_VERSION 2.12.0)
 FetchContent_Declare(
   pybind11
@@ -17,6 +17,18 @@ FetchContent_Declare(
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(pybind11)
+
+set(EIGEN_VERSION 5.0.0)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
+set(EIGEN_BUILD_PKGCONFIG OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(eigen
+  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+  GIT_TAG        ${EIGEN_VERSION}
+  GIT_SHALLOW    TRUE
+  GIT_PROGRESS   TRUE
+)
+FetchContent_MakeAvailable(eigen) # defines Eigen3::Eigen
 
 # Build the Python extension module
 pybind11_add_module(_native
@@ -77,6 +89,7 @@ target_link_directories(_native PRIVATE
 
 target_compile_definitions(_native PRIVATE PX_PHYSX_STATIC_LIB)
 target_link_libraries(_native PRIVATE
+  Eigen3::Eigen
   PhysXExtensions_static_64
   PhysX_static_64
   PhysXPvdSDK_static_64

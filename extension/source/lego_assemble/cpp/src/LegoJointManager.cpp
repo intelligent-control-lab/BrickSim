@@ -24,6 +24,8 @@ static omni::physx::SubscriptionId g_physxObjFullSub =
     omni::physx::kInvalidSubscriptionId;
 static omni::physx::SubscriptionId g_preStepSub =
     omni::physx::kInvalidSubscriptionId;
+static omni::physx::SubscriptionId g_postStepSub =
+    omni::physx::kInvalidSubscriptionId;
 static omni::kit::StageUpdatePtr g_stageUpdate;
 static omni::kit::StageUpdateNode *g_stageUpdateNode = nullptr;
 
@@ -119,7 +121,19 @@ bool initLegoJointManager() {
 				        std::move(stageRef), px, g_physx);
 				    CARB_LOG_INFO("Lego state created (pre-step)");
 			    }
-			    g_lego->processPrimChanges();
+			    g_lego->onPreStep();
+		    },
+		    nullptr);
+	}
+
+	// ==== Subscribe to PhysX post-step event
+	if (g_postStepSub == omni::physx::kInvalidSubscriptionId) {
+		g_postStepSub = g_physx->subscribePhysicsOnStepEvents(
+		    false, 0,
+		    [](float elapsedTime, void *userData) {
+			    if (g_lego) {
+				    g_lego->onPostStep();
+			    }
 		    },
 		    nullptr);
 	}
@@ -182,6 +196,15 @@ bool deinitLegoJointManager() {
 	g_stageUpdate = nullptr;
 
 	if (g_physx) {
+		// ==== Unsubscribe from PhysX post-step event
+		if (g_postStepSub != omni::physx::kInvalidSubscriptionId) {
+			g_physx->unsubscribePhysicsOnStepEvents(g_postStepSub);
+			g_postStepSub = omni::physx::kInvalidSubscriptionId;
+		} else {
+			CARB_LOG_WARN("Post-step event not subscribed");
+			success = false;
+		}
+
 		// ==== Unsubscribe from PhysX pre-step event
 		if (g_preStepSub != omni::physx::kInvalidSubscriptionId) {
 			g_physx->unsubscribePhysicsOnStepEvents(g_preStepSub);
