@@ -233,21 +233,21 @@ class AssemblyDetector:
                 raise ValueError(f"Bricks are in different environments: {path0} and {path1}")
 
             joint_path = path_for_conn(brick_id0, brick_id1, env_id0)
-            if self.stage.GetPrimAtPath(joint_path).IsValid():
-                # Already assembled
-                continue
-
-            bond_prim: Usd.Prim = UsdGeom.Xform.Define(self.stage, joint_path).GetPrim()
-            bond_prim.CreateRelationship("lego_conn:body0").AddTarget(path0)
-            bond_prim.CreateRelationship("lego_conn:body1").AddTarget(path1)
-            M0 = Gf.Matrix4f(as_tf0.tolist())
-            M1 = Gf.Matrix4f(as_tf1.tolist())
-            bond_prim.CreateAttribute("lego_conn:pos0", Sdf.ValueTypeNames.Float3).Set(M0.ExtractTranslation())
-            bond_prim.CreateAttribute("lego_conn:rot0", Sdf.ValueTypeNames.Quatf).Set(M0.ExtractRotationQuat())
-            bond_prim.CreateAttribute("lego_conn:pos1", Sdf.ValueTypeNames.Float3).Set(M1.ExtractTranslation())
-            bond_prim.CreateAttribute("lego_conn:rot1", Sdf.ValueTypeNames.Quatf).Set(M1.ExtractRotationQuat())
-            bond_prim.CreateAttribute("lego_conn:overlap_xy", Sdf.ValueTypeNames.Float2).Set(Gf.Vec2f(as_ov.tolist()))
-            bond_prim.CreateAttribute("lego_conn:enabled", Sdf.ValueTypeNames.Bool).Set(True)
+            bond_prim: Usd.Prim = self.stage.GetPrimAtPath(joint_path)
+            if bond_prim.IsValid():
+                bond_prim.GetAttribute("lego_conn:enabled").Set(True)
+            else:
+                bond_prim = UsdGeom.Xform.Define(self.stage, joint_path).GetPrim()
+                bond_prim.CreateRelationship("lego_conn:body0").AddTarget(path0)
+                bond_prim.CreateRelationship("lego_conn:body1").AddTarget(path1)
+                M0 = Gf.Matrix4f(as_tf0.tolist())
+                M1 = Gf.Matrix4f(as_tf1.tolist())
+                bond_prim.CreateAttribute("lego_conn:pos0", Sdf.ValueTypeNames.Float3).Set(M0.ExtractTranslation())
+                bond_prim.CreateAttribute("lego_conn:rot0", Sdf.ValueTypeNames.Quatf).Set(M0.ExtractRotationQuat())
+                bond_prim.CreateAttribute("lego_conn:pos1", Sdf.ValueTypeNames.Float3).Set(M1.ExtractTranslation())
+                bond_prim.CreateAttribute("lego_conn:rot1", Sdf.ValueTypeNames.Quatf).Set(M1.ExtractRotationQuat())
+                bond_prim.CreateAttribute("lego_conn:overlap_xy", Sdf.ValueTypeNames.Float2).Set(Gf.Vec2f(as_ov.tolist()))
+                bond_prim.CreateAttribute("lego_conn:enabled", Sdf.ValueTypeNames.Bool).Set(True)
 
     def handle_contact_report(self, _contacts: ContactEventHeaderVector, _contact_data: ContactDataVector):
         if self.rb_view is None:
