@@ -642,44 +642,79 @@ class LegoGraph::Impl {
 		for (int k = 0; k < (int)keepB.size(); ++k)
 			th[keepB[k]] = th_red[k];
 
-		// ---- 8) Edge flows at alpha=1 and envelope check ----
+		// ---- 8) Edge flows at alpha=1 and envelope check (base + delta) ----
 		double alphaStar = std::numeric_limits<double>::infinity();
 		std::vector<double> ratio(E.size(),
 		                          std::numeric_limits<double>::infinity());
 		std::vector<char> isViolated(E.size(), 0);
 
 		for (size_t e = 0; e < E.size(); ++e) {
-			auto const &be = E[e];
-			int i = be.i, j = be.j;
+			const auto &be = E[e];
+			const int i = be.i, j = be.j;
 
-			// Fz (scalar)
-			double Fz = be.Kfz * (u[i] - u[j]);
+			// --- Elastic delta from aux removal (alpha = 1) ---
+			const double Fz_delta = be.Kfz * (u[i] - u[j]);
 
-			// Bending vector in component basis
-			Eigen::Vector2d thi(th[2 * i + 0], th[2 * i + 1]);
-			Eigen::Vector2d thj(th[2 * j + 0], th[2 * j + 1]);
-			Eigen::Vector2d dth = thi - thj; // potential difference
-			Eigen::Vector2d Tglob = be.KxyGlob * dth;
+			const Eigen::Vector2d thi(th[2 * i + 0], th[2 * i + 1]);
+			const Eigen::Vector2d thj(th[2 * j + 0], th[2 * j + 1]);
+			const Eigen::Vector2d dth = thi - thj;
+			const Eigen::Vector2d Tglob_delta = be.KxyGlob * dth;
 
-			// Rotate back to edge-local axes to apply (3/b)|Tx| + (3/a)|Ty|
-			double c = std::cos(-be.phi), s = std::sin(-be.phi);
+			const double c = std::cos(-be.phi), s = std::sin(-be.phi);
 			Eigen::Matrix2d Rm;
 			Rm << c, -s, s, c;
-			Eigen::Vector2d Tloc = Rm * Tglob;
-			double Tx_loc = Tloc[0], Ty_loc = Tloc[1];
+			const Eigen::Vector2d Tloc_delta = Rm * Tglob_delta;
+			double Tx_delta = Tloc_delta[0];
+			double Ty_delta = Tloc_delta[1];
+
+			// --- Measured base-constraint wrench (always) ---
+			double Fz_base = 0.0, Tx_base = 0.0, Ty_base = 0.0;
+			if (be.conn && be.conn->joint) {
+				physx::PxRigidActor *a0 = nullptr, *a1 = nullptr;
+				be.conn->joint->getActors(a0, a1);
+
+				physx::PxVec3 Fw(0.0f, 0.0f, 0.0f), Mw(0.0f, 0.0f, 0.0f);
+				be.conn->joint->getForce(Fw, Mw);
+
+				// Project world -> component canonical basis
+				Eigen::Vector3d Fcmp = Rcw * Eigen::Vector3d(Fw.x, Fw.y, Fw.z);
+				Eigen::Vector3d Mcmp = Rcw * Eigen::Vector3d(Mw.x, Mw.y, Mw.z);
+
+				// Orient along edge i->j (match delta's sign convention)
+				int sgn = 0;
+				if (a0 == nodeRev[i]->actor && a1 == nodeRev[j]->actor)
+					sgn = +1;
+				else if (a0 == nodeRev[j]->actor && a1 == nodeRev[i]->actor)
+					sgn = -1;
+				else
+					sgn = +1; // fallback
+
+				// Rotate bending to edge-local
+				const double cph = std::cos(-be.phi), sph = std::sin(-be.phi);
+				const double Tx_loc_base = cph * Mcmp.x() - sph * Mcmp.y();
+				const double Ty_loc_base = sph * Mcmp.x() + cph * Mcmp.y();
+
+				Fz_base = sgn * Fcmp.z();
+				Tx_base = sgn * Tx_loc_base;
+				Ty_base = sgn * Ty_loc_base;
+			}
+
+			// --- Base-only equivalent load to test ---
+			const double Fz_star = Fz_base + Fz_delta;
+			const double Tx_star = Tx_base + Tx_delta;
+			const double Ty_star = Ty_base + Ty_delta;
 
 			// Pressure consumption (per-edge)
-			double use = std::max(Fz, 0.0) + (3.0 / be.b) * std::abs(Tx_loc) +
-			             (3.0 / be.a) * std::abs(Ty_loc);
+			const double use = std::max(Fz_star, 0.0) +
+			                   (3.0 / be.b) * std::abs(Tx_star) +
+			                   (3.0 / be.a) * std::abs(Ty_star);
 
 			if (use > kTolZero) {
-				double r = be.N0 / use;
+				const double r = be.N0 / use;
 				ratio[e] = r;
+				alphaStar = std::min(alphaStar, r);
 				if (r < 1.0 - kViolTol) {
 					isViolated[e] = 1;
-					alphaStar = std::min(alphaStar, r);
-				} else {
-					alphaStar = std::min(alphaStar, r);
 				}
 			}
 		}
