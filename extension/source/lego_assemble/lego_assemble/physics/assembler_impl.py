@@ -4,7 +4,7 @@ import omni.usd
 import omni.physx
 from typing import Optional
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
-from pxr.PhysicsSchemaTools._physicsSchemaTools import sdfPathToInt
+from pxr.PhysicsSchemaTools._physicsSchemaTools import sdfPathToInt, intToSdfPath
 from omni.physx.bindings._physx import ContactEventType, ContactEventHeaderVector, ContactDataVector
 from omni.physics.tensors.impl.api import create_simulation_view, RigidBodyView
 from .lego_schemes import BrickLength, PlateHeight, StudHeight
@@ -47,6 +47,9 @@ class AssemblyDetector:
         self.sdf2rb_keys = sdf2rb_keys_[sdf2rb_order_]
         self.sdf2rb_values = sdf2rb_values_[sdf2rb_order_]
 
+        self.body_collider_id = torch.tensor([sdfPathToInt(p + "/BodyCollider") for p in self.rb_paths], dtype=torch.int64, device=self.device)
+        self.top_collider_id = torch.tensor([sdfPathToInt(p + "/TopCollider") for p in self.rb_paths], dtype=torch.int64, device=self.device)
+
         self.lego_dims = torch.tensor([self._get_brick_dimensions(p) for p in self.rb_paths], dtype=torch.int64, device=self.device)
 
     def check(self) -> bool:
@@ -82,11 +85,12 @@ class AssemblyDetector:
 
     def extract_brick_contacts(self, contacts: ContactEventHeaderVector, contact_data: ContactDataVector) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Extracts brick rigid body indicies and contact impulse vectors from a contact report.
+            Note same brick pair appears at most once in the output. The pair is ordered, and (rb0, rb1) and (rb1, rb0) may appear at the same time.
 
             Returns:
                 tuple[torch.Tensor, torch.Tensor, torch.Tensor]: A tuple containing:
-                - rb0_id (torch.Tensor): Rigid body indicies of the 1st brick in the contact pair in (N,) of type torch.int64.
-                - rb1_id (torch.Tensor): Rigid body indicies of the 2nd brick in the contact pair in (N,) of type torch.int64.
+                - rb0_id (torch.Tensor): Rigid body indicies of the 1st brick in the contact pair in (N,) of type torch.int64. This is the lower brick, offering TopCollider.
+                - rb1_id (torch.Tensor): Rigid body indicies of the 2nd brick in the contact pair in (N,) of type torch.int64. This is the upper brick, offering BodyCollider.
                 - impulse (torch.Tensor): Contact impulse vectors between the two bricks in (N, 3) of type torch.float32.
         """
         if len(contacts) == 0 or len(contact_data) == 0:
@@ -98,6 +102,8 @@ class AssemblyDetector:
         contacts_type = torch.from_numpy(np_contacts["type"]).to(self.device)
         contacts_actor0 = torch.from_numpy(np_contacts["actor0"]).to(dtype=torch.int64, device=self.device)
         contacts_actor1 = torch.from_numpy(np_contacts["actor1"]).to(dtype=torch.int64, device=self.device)
+        contacts_collider0 = torch.from_numpy(np_contacts["collider0"]).to(dtype=torch.int64, device=self.device)
+        contacts_collider1 = torch.from_numpy(np_contacts["collider1"]).to(dtype=torch.int64, device=self.device)
         rb0_id = self._sdf2rb_lookup(contacts_actor0)
         rb1_id = self._sdf2rb_lookup(contacts_actor1)
 
@@ -112,14 +118,30 @@ class AssemblyDetector:
 
         mask = (rb0_id >= 0) & (rb1_id >= 0) & (contacts_type != ContactEventType.CONTACT_LOST.value)
 
-        return rb0_id[mask], rb1_id[mask], impulse[mask]
+        f_rb0_id = rb0_id[mask]
+        f_rb1_id = rb1_id[mask]
+        f_impulse = impulse[mask]
+        f_contacts_collider0 = contacts_collider0[mask]
+        f_contacts_collider1 = contacts_collider1[mask]
+        f_is_body0 = (f_contacts_collider0 == self.body_collider_id[f_rb0_id])
+        f_is_body1 = (f_contacts_collider1 == self.body_collider_id[f_rb1_id])
+        f_is_top0 = (f_contacts_collider0 == self.top_collider_id[f_rb0_id])
+        f_is_top1 = (f_contacts_collider1 == self.top_collider_id[f_rb1_id])
+        f_order_ok = f_is_top0 & f_is_body1
+        f_order_swap = f_is_top1 & f_is_body0
+        f_to_keep = f_order_ok | f_order_swap
+
+        f_rb0_id_sw = torch.where(f_order_swap, f_rb1_id, f_rb0_id)
+        f_rb1_id_sw = torch.where(f_order_swap, f_rb0_id, f_rb1_id)
+        f_impulse_sw = torch.where(f_order_swap[:, None], -f_impulse, f_impulse)
+        return f_rb0_id_sw[f_to_keep], f_rb1_id_sw[f_to_keep], f_impulse_sw[f_to_keep]
 
     def handle_brick_contacts(self, rb0_id: torch.Tensor, rb1_id: torch.Tensor, frc: torch.Tensor):
         """ Filters brick contacts and process assembly events.
 
             Args:
-                rb0_id (torch.Tensor): Rigid body indicies of the 1st brick in the contact pair in (N,).
-                rb1_id (torch.Tensor): Rigid body indicies of the 2nd brick in the contact pair in (N,).
+                rb0_id (torch.Tensor): Rigid body indicies of the lower brick in the contact pair in (N,).
+                rb1_id (torch.Tensor): Rigid body indicies of the upper brick in the contact pair in (N,).
                 frc (torch.Tensor): Contact force vectors between the two bricks in (N, 3).
         """
         #### Prepare inputs
@@ -128,17 +150,6 @@ class AssemblyDetector:
         pose: torch.Tensor = self.rb_view.get_transforms()
         pose0 = pose_to_se3(pose[rb0_id])
         pose1 = pose_to_se3(pose[rb1_id])
-        rel_pose = torch.matmul(inv_se3(pose0), pose1)
-
-        # Ensure brick0 is always below brick1 -- brick0 is the one that offers studs
-        to_swap = rel_pose[:,2,3] < 0
-        rb0_id, rb1_id = \
-            torch.where(to_swap, rb1_id, rb0_id), \
-            torch.where(to_swap, rb0_id, rb1_id)
-        to_swap_ = to_swap[:,None,None]
-        pose0, pose1 = \
-            torch.where(to_swap_, pose1, pose0), \
-            torch.where(to_swap_, pose0, pose1)
         rel_pose = torch.matmul(inv_se3(pose0), pose1)
 
         # Get dimensions of bricks
