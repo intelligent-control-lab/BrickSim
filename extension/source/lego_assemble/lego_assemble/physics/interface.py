@@ -1,3 +1,4 @@
+import traceback
 import carb
 import omni.usd
 import omni.physx
@@ -108,7 +109,7 @@ class BrickPhysicsInterface:
 
         except Exception as e:
             # Throwing in a callback will crash the entire application
-            carb.log_error(f"Error in contact report handler: {e}")
+            carb.log_error(f"Error in contact report handler\n{traceback.format_exc()}")
 
     def _destroy(self):
         self.update_sub.unsubscribe()
