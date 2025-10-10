@@ -64,7 +64,7 @@ def construct_brick(stage: Usd.Stage, root_path: Sdf.Path, dimensions: Tuple[int
             real_dimensions[1] / mpu,
             real_dimensions[2] / mpu,
         ))
-        Sdf.AttributeSpec(bc, "xformOp:translate", Sdf.ValueTypeNames.Double3).default = Gf.Vec3f((
+        Sdf.AttributeSpec(bc, "xformOp:translate", Sdf.ValueTypeNames.Double3).default = Gf.Vec3d((
             0,
             0,
             real_dimensions[2] / 2 / mpu,
@@ -84,7 +84,7 @@ def construct_brick(stage: Usd.Stage, root_path: Sdf.Path, dimensions: Tuple[int
             real_dimensions[1] / mpu,
             StudHeight / mpu,
         ))
-        Sdf.AttributeSpec(tc, "xformOp:translate", Sdf.ValueTypeNames.Double3).default = Gf.Vec3f((
+        Sdf.AttributeSpec(tc, "xformOp:translate", Sdf.ValueTypeNames.Double3).default = Gf.Vec3d((
             0,
             0,
             (real_dimensions[2] + StudHeight / 2) / mpu,
@@ -102,7 +102,7 @@ def construct_brick(stage: Usd.Stage, root_path: Sdf.Path, dimensions: Tuple[int
             real_dimensions[1] / mpu,
             real_dimensions[2] / mpu,
         ))
-        Sdf.AttributeSpec(body, "xformOp:translate", Sdf.ValueTypeNames.Double3).default = Gf.Vec3f((
+        Sdf.AttributeSpec(body, "xformOp:translate", Sdf.ValueTypeNames.Double3).default = Gf.Vec3d((
             0,
             0,
             real_dimensions[2] / 2 / mpu,
@@ -120,7 +120,7 @@ def construct_brick(stage: Usd.Stage, root_path: Sdf.Path, dimensions: Tuple[int
                 x_offset = (i - (dimensions[0]-1)/2) * BrickLength
                 y_offset = (j - (dimensions[1]-1)/2) * BrickLength
                 z_offset = real_dimensions[2] + StudHeight/2
-                Sdf.AttributeSpec(stud, "xformOp:translate", Sdf.ValueTypeNames.Double3).default = Gf.Vec3f((
+                Sdf.AttributeSpec(stud, "xformOp:translate", Sdf.ValueTypeNames.Double3).default = Gf.Vec3d((
                     x_offset / mpu,
                     y_offset / mpu,
                     z_offset / mpu,
