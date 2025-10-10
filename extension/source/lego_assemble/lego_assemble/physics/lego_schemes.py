@@ -5,7 +5,6 @@ PlateHeight = 0.0032    # 3.2 mm per plate
 BrickHeightPerPlate = 3 # 1 brick height = 3 plates
 StudDiameter = 0.0048   # 4.8 mm stud diameter
 StudHeight = 0.0017     # 1.7 mm stud height
-Density = 1150          # kg/m^3
 
 # From https://rebrickable.com/colors/
 Colors = {
@@ -289,4 +288,10 @@ def to_real_dimensions(studs: Tuple[int, int, int]):
     return [studs[0] * BrickLength, studs[1] * BrickLength, studs[2] * PlateHeight]
 
 def compute_mass(studs: Tuple[int, int, int]):
-    return studs[0] * studs[1] * studs[2] * BrickLength * BrickLength * PlateHeight * Density
+    # Experimental formula to fit mass of arbitrary bricks
+    L, W, H = studs
+    bricks = H // 3
+    rem = H % 3
+    m_brick = 0.1523*(L*W) + 0.2498*(L+W) - 0.2485
+    m_plate = 0.10937*(L*W) + 0.05671*(L+W) - 0.02207
+    return (bricks*m_brick + rem*m_plate) / 1000
