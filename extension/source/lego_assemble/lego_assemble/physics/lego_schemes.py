@@ -277,7 +277,12 @@ Colors = {
 }
 
 def parse_color(name: str):
-    hex = Colors[name]
+    if name.startswith("#") and (len(name) == 7):
+        hex = name[1:]
+    elif name in Colors:
+        hex = Colors[name]
+    else:
+        raise ValueError(f"Unknown color name: {name}")
     return [int(hex[0:2], 16)/255, int(hex[2:4], 16)/255, int(hex[4:6], 16)/255]
 
 def to_real_dimensions(studs: Tuple[int, int, int]):
