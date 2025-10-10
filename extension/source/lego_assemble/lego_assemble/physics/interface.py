@@ -34,9 +34,10 @@ class BrickPhysicsInterface:
             if not stage.GetPrimAtPath(path).IsValid():
                 break
 
-        brick = spawner.create_brick(stage, path, dimensions, color_name)
+        spawner.create_brick(stage, path, dimensions, color_name)
+        brick = UsdGeom.Xform(stage.GetPrimAtPath(path))
         if env_id is not None:
-            add_to_collision_group(stage, env_id, brick.GetPath())
+            add_to_collision_group(stage, env_id, Sdf.Path(path))
         if pos is not None:
             physicsUtils.set_or_add_translate_op(brick, pos)
         if quat is not None:

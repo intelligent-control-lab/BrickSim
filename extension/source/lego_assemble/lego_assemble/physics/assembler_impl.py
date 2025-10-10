@@ -4,7 +4,7 @@ import omni.usd
 import omni.physx
 from typing import Optional
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
-from pxr.PhysicsSchemaTools._physicsSchemaTools import sdfPathToInt, intToSdfPath
+from pxr.PhysicsSchemaTools._physicsSchemaTools import sdfPathToInt
 from omni.physx.bindings._physx import ContactEventType, ContactEventHeaderVector, ContactDataVector
 from omni.physics.tensors.impl.api import create_simulation_view, RigidBodyView
 from .lego_schemes import BrickLength, PlateHeight, StudHeight
@@ -39,7 +39,7 @@ class AssemblyDetector:
             self.sim_view = None
             self.rb_view = None
             return
-        self.rb_paths = self.rb_view.prim_paths
+        self.rb_paths: list[str] = self.rb_view.prim_paths
 
         sdf2rb_keys_ = torch.tensor([sdfPathToInt(p) for p in self.rb_paths], dtype=torch.int64, device=self.device)
         sdf2rb_values_ = torch.arange(len(sdf2rb_keys_), dtype=torch.int64, device=self.device)
@@ -218,36 +218,80 @@ class AssemblyDetector:
             ((overlap[:,0] > 0) & (overlap[:,1] > 0))
 
         # Create joints
-        for as_rb0, as_rb1, as_tf0, as_tf1, as_ov in zip(
-            rb0_id[as_flag].cpu(),
-            rb1_id[as_flag].cpu(),
-            T_parent_local[as_flag].transpose(1,2).cpu(),
-            T_child_local[as_flag].transpose(1,2).cpu(),
-            (overlap[as_flag] * (BrickLength / self.mpu)).cpu(),
-        ):
-            path0 = self.rb_paths[as_rb0]
-            path1 = self.rb_paths[as_rb1]
-            brick_id0, env_id0 = parse_brick_path(path0)
-            brick_id1, env_id1 = parse_brick_path(path1)
-            if env_id0 != env_id1:
-                raise ValueError(f"Bricks are in different environments: {path0} and {path1}")
+        layer: Sdf.Layer = self.stage.GetEditTarget().GetLayer()
+        with Sdf.ChangeBlock():
+            for as_rb0, as_rb1, as_tf0, as_tf1, as_ov, as_p0, as_yaw in zip(
+                rb0_id[as_flag].cpu(),                                                      # Lower brick ID
+                rb1_id[as_flag].cpu(),                                                      # Upper brick ID
+                T_parent_local[as_flag].transpose(1,2).cpu(),                               # Column-major T_parent_local
+                T_child_local[as_flag].transpose(1,2).cpu(),                                # Column-major T_child_local
+                (overlap[as_flag] * (BrickLength / self.mpu)).cpu(),                        # X & Y Overlap in stage units
+                p0_snap[as_flag].to(torch.int32).cpu(),                                     # Offset in studs in int
+                (torch.round(rel_yaw[as_flag] / (torch.pi / 2)).to(torch.int32) & 3).cpu()  # Yaw index in 0,1,2,3
+            ):
+                path0: str = self.rb_paths[as_rb0]
+                path1: str = self.rb_paths[as_rb1]
+                brick_id0, env_id0 = parse_brick_path(path0)
+                brick_id1, env_id1 = parse_brick_path(path1)
+                if env_id0 != env_id1:
+                    raise ValueError(f"Bricks are in different environments: {path0} and {path1}")
 
-            joint_path = path_for_conn(brick_id0, brick_id1, env_id0)
-            bond_prim: Usd.Prim = self.stage.GetPrimAtPath(joint_path)
-            if bond_prim.IsValid():
-                bond_prim.GetAttribute("lego_conn:enabled").Set(True)
-            else:
-                bond_prim = UsdGeom.Xform.Define(self.stage, joint_path).GetPrim()
-                bond_prim.CreateRelationship("lego_conn:body0").AddTarget(path0)
-                bond_prim.CreateRelationship("lego_conn:body1").AddTarget(path1)
-                M0 = Gf.Matrix4f(as_tf0.tolist())
-                M1 = Gf.Matrix4f(as_tf1.tolist())
-                bond_prim.CreateAttribute("lego_conn:pos0", Sdf.ValueTypeNames.Float3).Set(M0.ExtractTranslation())
-                bond_prim.CreateAttribute("lego_conn:rot0", Sdf.ValueTypeNames.Quatf).Set(M0.ExtractRotationQuat())
-                bond_prim.CreateAttribute("lego_conn:pos1", Sdf.ValueTypeNames.Float3).Set(M1.ExtractTranslation())
-                bond_prim.CreateAttribute("lego_conn:rot1", Sdf.ValueTypeNames.Quatf).Set(M1.ExtractRotationQuat())
-                bond_prim.CreateAttribute("lego_conn:overlap_xy", Sdf.ValueTypeNames.Float2).Set(Gf.Vec2f(as_ov.tolist()))
-                bond_prim.CreateAttribute("lego_conn:enabled", Sdf.ValueTypeNames.Bool).Set(True)
+                conn_path = Sdf.Path(path_for_conn(brick_id0, brick_id1, env_id0))
+                conn_prim: Sdf.PrimSpec = layer.GetPrimAtPath(conn_path)
+                if not conn_prim:
+                    conn_prim = Sdf.CreatePrimInLayer(layer, conn_path)
+                    conn_prim.specifier = Sdf.SpecifierDef
+                    conn_prim.typeName = "Xform"
+
+                attr_body0: Sdf.RelationshipSpec = layer.GetRelationshipAtPath(conn_path.AppendProperty("lego_conn:body0"))
+                if not attr_body0:
+                    attr_body0 = Sdf.RelationshipSpec(conn_prim, "lego_conn:body0")
+                attr_body0.targetPathList.Append(Sdf.Path(path0))
+
+                attr_body1: Sdf.RelationshipSpec = layer.GetRelationshipAtPath(conn_path.AppendProperty("lego_conn:body1"))
+                if not attr_body1:
+                    attr_body1 = Sdf.RelationshipSpec(conn_prim, "lego_conn:body1")
+                attr_body1.targetPathList.Append(Sdf.Path(path1))
+
+                attr_offset_studs: Sdf.AttributeSpec = layer.GetAttributeAtPath(conn_path.AppendProperty("lego_conn:offset_studs"))
+                if not attr_offset_studs:
+                    attr_offset_studs = Sdf.AttributeSpec(conn_prim, "lego_conn:offset_studs", Sdf.ValueTypeNames.Int2)
+                attr_offset_studs.default = Gf.Vec2i(as_p0.tolist())
+
+                attr_yaw_index: Sdf.AttributeSpec = layer.GetAttributeAtPath(conn_path.AppendProperty("lego_conn:yaw_index"))
+                if not attr_yaw_index:
+                    attr_yaw_index = Sdf.AttributeSpec(conn_prim, "lego_conn:yaw_index", Sdf.ValueTypeNames.Int)
+                attr_yaw_index.default = int(as_yaw)
+
+                gf_tf0 = Gf.Matrix4f(as_tf0.tolist())
+                attr_pos0: Sdf.AttributeSpec = layer.GetAttributeAtPath(conn_path.AppendProperty("lego_conn:pos0"))
+                if not attr_pos0:
+                    attr_pos0 = Sdf.AttributeSpec(conn_prim, "lego_conn:pos0", Sdf.ValueTypeNames.Float3)
+                attr_pos0.default = gf_tf0.ExtractTranslation()
+                attr_rot0: Sdf.AttributeSpec = layer.GetAttributeAtPath(conn_path.AppendProperty("lego_conn:rot0"))
+                if not attr_rot0:
+                    attr_rot0 = Sdf.AttributeSpec(conn_prim, "lego_conn:rot0", Sdf.ValueTypeNames.Quatf)
+                attr_rot0.default = gf_tf0.ExtractRotationQuat()
+
+                gf_tf1 = Gf.Matrix4f(as_tf1.tolist())
+                attr_pos1: Sdf.AttributeSpec = layer.GetAttributeAtPath(conn_path.AppendProperty("lego_conn:pos1"))
+                if not attr_pos1:
+                    attr_pos1 = Sdf.AttributeSpec(conn_prim, "lego_conn:pos1", Sdf.ValueTypeNames.Float3)
+                attr_pos1.default = gf_tf1.ExtractTranslation()
+                attr_rot1: Sdf.AttributeSpec = layer.GetAttributeAtPath(conn_path.AppendProperty("lego_conn:rot1"))
+                if not attr_rot1:
+                    attr_rot1 = Sdf.AttributeSpec(conn_prim, "lego_conn:rot1", Sdf.ValueTypeNames.Quatf)
+                attr_rot1.default = gf_tf1.ExtractRotationQuat()
+
+                attr_overlap: Sdf.AttributeSpec = layer.GetAttributeAtPath(conn_path.AppendProperty("lego_conn:overlap_xy"))
+                if not attr_overlap:
+                    attr_overlap = Sdf.AttributeSpec(conn_prim, "lego_conn:overlap_xy", Sdf.ValueTypeNames.Float2)
+                attr_overlap.default = Gf.Vec2f(as_ov.tolist())
+
+                attr_enabled: Sdf.AttributeSpec = layer.GetAttributeAtPath(conn_path.AppendProperty("lego_conn:enabled"))
+                if not attr_enabled:
+                    attr_enabled = Sdf.AttributeSpec(conn_prim, "lego_conn:enabled", Sdf.ValueTypeNames.Bool)
+                attr_enabled.default = True
 
     def handle_contact_report(self, _contacts: ContactEventHeaderVector, _contact_data: ContactDataVector):
         if self.rb_view is None:
