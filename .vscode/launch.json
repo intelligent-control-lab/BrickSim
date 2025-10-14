@@ -19,7 +19,25 @@
       "program": "${workspaceRoot}/.venv/bin/python",
       "MIMode": "gdb",
       "miDebuggerPath": "${workspaceFolder}/scripts/gdb-wrapper.sh",
-      "processId": "${input:pid_kit}"
+      "processId": "${input:pid_kit}",
+      "setupCommands": [
+        {
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "text": "-gdb-set print asm-demangle on"
+        },
+        {
+          "text": "-gdb-set print demangle on"
+        },
+        {
+          "text": "-gdb-set demangle-style gnu-v3"
+        },
+        {
+          "text": "-gdb-set disassembly-flavor intel"
+        }
+      ]
     },
     {
       "name": "Python: Current File",
