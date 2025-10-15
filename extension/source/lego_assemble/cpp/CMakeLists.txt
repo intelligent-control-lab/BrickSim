@@ -77,6 +77,7 @@ target_link_directories(_native PRIVATE
   "${TARGET_DEPS_DIR}/carb_sdk_plugins/_build/linux-x86_64/release"
   "${TARGET_DEPS_DIR}/cuda/lib64"
   "${TARGET_DEPS_DIR}/nvtx/lib64"
+  "${TARGET_DEPS_DIR}/../linux-x86_64/release/extsbuild/omni.usd.core/bin"
 )
 
 target_compile_definitions(_native PRIVATE PX_PHYSX_STATIC_LIB)
@@ -89,12 +90,14 @@ target_link_libraries(_native PRIVATE
   PhysXCommon_static_64
   PhysXFoundation_static_64
   carb
+  omni.usd
   usd_usd
   usd_usdUtils
   usd_usdPhysics
   usd_sdf
   usd_tf
   usd_arch
+  physxSchema
 )
 
 # Allow the caller (setup.py) to override the output directory for the built module

@@ -22,7 +22,10 @@ using pxr::TfToken;
     ((brick_dimensions, "lego_brick:dimensions"))                              \
     ((brick_color, "lego_brick:color"))                                        \
     ((BodyCollider, "BodyCollider"))                                           \
-    ((TopCollider, "TopCollider"))
+    ((TopCollider, "TopCollider"))                                             \
+    ((Body, "Body"))                                                           \
+    ((Studs, "Studs"))                                                         \
+    ((StudPrototype, "StudPrototype"))
 // clang-format on
 
 TF_DECLARE_PUBLIC_TOKENS(LegoTokens, LEGO_TOKENS);

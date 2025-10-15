@@ -1,5 +1,3 @@
-from typing import Tuple
-
 BrickLength = 0.008     # 8 mm per stud
 PlateHeight = 0.0032    # 3.2 mm per plate
 BrickHeightPerPlate = 3 # 1 brick height = 3 plates
@@ -275,23 +273,11 @@ Colors = {
     "Opal Trans-Yellow": "F5CD2F",
 }
 
-def parse_color(name: str):
+def parse_color(name: str) -> tuple[int, int, int]:
     if name.startswith("#") and (len(name) == 7):
         hex = name[1:]
     elif name in Colors:
         hex = Colors[name]
     else:
         raise ValueError(f"Unknown color name: {name}")
-    return [int(hex[0:2], 16)/255, int(hex[2:4], 16)/255, int(hex[4:6], 16)/255]
-
-def to_real_dimensions(studs: Tuple[int, int, int]):
-    return [studs[0] * BrickLength, studs[1] * BrickLength, studs[2] * PlateHeight]
-
-def compute_mass(studs: Tuple[int, int, int]):
-    # Experimental formula to fit mass of arbitrary bricks
-    L, W, H = studs
-    bricks = H // 3
-    rem = H % 3
-    m_brick = 0.1523*(L*W) + 0.2498*(L+W) - 0.2485
-    m_plate = 0.10937*(L*W) + 0.05671*(L+W) - 0.02207
-    return (bricks*m_brick + rem*m_plate) / 1000
+    return (int(hex[0:2], 16), int(hex[2:4], 16), int(hex[4:6], 16))
