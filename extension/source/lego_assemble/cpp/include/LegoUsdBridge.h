@@ -1,7 +1,7 @@
 #pragma once
 
 #include "LegoGraph.h"
-#include "utils.h"
+#include "AlgorithmUtils.h"
 
 #include <mutex>
 #include <vector>
