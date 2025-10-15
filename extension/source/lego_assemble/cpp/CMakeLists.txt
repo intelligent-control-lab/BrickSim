@@ -30,16 +30,8 @@ FetchContent_Declare(eigen
 )
 FetchContent_MakeAvailable(eigen) # defines Eigen3::Eigen
 
-# Build the Python extension module
-pybind11_add_module(_native
-  src/LegoGraph.cpp
-  src/LegoJointManager.cpp
-  src/LegoTokens.cpp
-  src/LegoUsdBridge.cpp
-  src/LegoWeldConstraint.cpp
-  src/native.cpp
-  src/ScenePatcher.cpp
-)
+file(GLOB_RECURSE CXX_SRC "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+pybind11_add_module(_native ${CXX_SRC})
 
 # Workaround for childrenProxy.h:75:21: error: no member named '_Set' in 'SdfChildrenProxy<_View>'
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
