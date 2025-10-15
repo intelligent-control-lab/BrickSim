@@ -3,7 +3,7 @@ import carb
 import omni.usd
 import omni.physx
 import omni.physx.scripts.physicsUtils as physicsUtils
-from typing import Tuple, Optional
+from typing import Optional
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 from omni.physx.bindings._physx import ContactEventHeaderVector, ContactDataVector
 from . import spawner
@@ -23,7 +23,7 @@ class BrickPhysicsInterface:
             self.vectorized_detector.destroy()
             self.vectorized_detector = None
 
-    def create_brick(self, dimensions: Tuple[int, int, int], color_name: str, env_id: Optional[int] = None, pos: Gf.Vec3f = None, quat: Gf.Quatf = None) -> Tuple[UsdGeom.Xform, int]:
+    def create_brick(self, dimensions: tuple[int, int, int], color_name: str, env_id: Optional[int] = None, pos: Optional[tuple[float,float,float]] = None, quat: Optional[tuple[float,float,float,float]] = None) -> tuple[UsdGeom.Xform, int]:
         self.invalidate()
         stage: Usd.Stage = omni.usd.get_context().get_stage()
 
@@ -39,9 +39,9 @@ class BrickPhysicsInterface:
         if env_id is not None:
             add_to_collision_group(stage, env_id, Sdf.Path(path))
         if pos is not None:
-            physicsUtils.set_or_add_translate_op(brick, pos)
+            physicsUtils.set_or_add_translate_op(brick, Gf.Vec3f(*pos))
         if quat is not None:
-            physicsUtils.set_or_add_orient_op(brick, quat)
+            physicsUtils.set_or_add_orient_op(brick, Gf.Quatf(*quat))
         carb.log_info(f"Added brick {path} ({dimensions[0]}x{dimensions[1]}x{dimensions[2]}) {color_name}")
         return brick, brick_id
 

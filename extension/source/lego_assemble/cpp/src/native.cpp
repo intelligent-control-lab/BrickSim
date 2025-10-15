@@ -1,5 +1,6 @@
 #include "LegoBricks.h"
 #include "LegoJointManager.h"
+#include "LegoSerialization.h" // IWYU pragma: keep
 
 #include <omni/usd/UsdContextIncludes.h>
 
@@ -42,6 +43,18 @@ PYBIND11_MODULE(_native, m) {
 	    pybind11::arg("color"),
 	    "Create a brick prim at the specified path with given dimensions and "
 	    "color");
+
+	m.def(
+	    "export_lego_topology",
+	    [](std::string root_path) {
+		    auto stage = omni::usd::UsdContext::getContext()->getStage();
+		    auto topology = lego_assemble::exportLegoTopology(
+		        stage, pxr::SdfPath(root_path));
+		    nlohmann::ordered_json j = topology;
+		    return j.dump();
+	    },
+	    pybind11::arg("root_path"),
+	    "Export the lego topology under the specified root path");
 }
 // Declare as a Carbonite bindings module for Python so logging and builtins
 // are registered even when imported outside Kit, and to define CARB globals.

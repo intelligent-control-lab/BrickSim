@@ -1,3 +1,4 @@
+import carb
 import omni.ui
 import omni.physx
 import math
@@ -5,6 +6,7 @@ import lego_assemble.physics.lego_schemes as lego_schemes
 from lego_assemble.physics.interface import get_brick_physics_interface
 from .force_monitor import ForceMonitor
 from lego_assemble.physics.assembler import Thresholds
+from lego_assemble._native import export_lego_topology
 
 class LegoUI():
     def __init__(self):
@@ -47,6 +49,7 @@ class LegoUI():
                     omni.ui.Button("Add Brick", clicked_fn=self._add_brick_clicked)
                     omni.ui.Button("Reset Env", clicked_fn=self._reset_env_clicked)
                     omni.ui.Button("Save to USD", clicked_fn=self._save_to_usd)
+                    omni.ui.Button("Export", clicked_fn=self._export)
 
                 # Middle: thresholds (top) + inv mass/inertia scale settings (bottom)
                 with omni.ui.VStack(height=0, spacing=8):
@@ -128,3 +131,9 @@ class LegoUI():
         omni.physx.get_physx_interface().update_transformations(True, True, True, True)
         omni.physx.get_physx_interface().release_physics_objects()
         omni.physx.get_physx_interface().force_load_physics_from_usd()
+
+    def _export(self):
+        env_id_str = self._base_path_field.model.as_string
+        root_path = f"/World/envs/env_{env_id_str}" if env_id_str else "/World"
+        topology = export_lego_topology(root_path)
+        carb.log_info(f"Exported topology: {topology}")
