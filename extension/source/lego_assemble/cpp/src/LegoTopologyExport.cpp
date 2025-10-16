@@ -1,6 +1,5 @@
 #include "LegoBricks.h"
 #include "LegoTokens.h"
-#include "SdfUtils.h"
 
 #include <ranges>
 
@@ -8,6 +7,7 @@
 #include <pxr/usd/usd/prim.h>
 #include <pxr/usd/usd/relationship.h>
 #include <pxr/usd/usdGeom/metrics.h>
+#include <pxr/usd/usdGeom/xformable.h>
 
 namespace lego_assemble {
 
@@ -71,18 +71,19 @@ static bool parseConnection(const pxr::UsdPrim &prim,
 	return true;
 }
 
-static bool getPose(const pxr::UsdPrim &prim, pxr::GfVec3f &outPos,
-                    pxr::GfQuatf &outRot) {
-	pxr::GfVec3f pos;
-	if (!prim.GetAttribute(xformOpTranslate).Get(&pos)) {
+static bool getPose(const pxr::UsdPrim &prim, pxr::GfVec3d &outPos,
+                    pxr::GfQuatd &outRot) {
+	pxr::UsdGeomXformable xform(prim);
+	if (!xform) {
 		return false;
 	}
-	pxr::GfQuatf rot;
-	if (!prim.GetAttribute(xformOpOrient).Get(&rot)) {
+	pxr::GfMatrix4d mat;
+	bool resetsXformStack;
+	if (!xform.GetLocalTransformation(&mat, &resetsXformStack)) {
 		return false;
 	}
-	outPos = pos;
-	outRot = rot;
+	outPos = mat.ExtractTranslation();
+	outRot = mat.ExtractRotationQuat();
 	return true;
 }
 
@@ -117,7 +118,7 @@ struct DisjointSet {
 	}
 
 	auto roots() const {
-		return std::views::iota(0u, parent.size()) |
+		return std::views::iota(size_t(0), parent.size()) |
 		       std::views::filter([this](size_t x) { return parent[x] == x; });
 	}
 };
@@ -151,11 +152,11 @@ LegoTopology exportLegoTopology(const pxr::UsdStageRefPtr &stage,
 	}
 	auto mpu = pxr::UsdGeomGetStageMetersPerUnit(stage);
 	bool first = true;
-	pxr::GfVec3f pos0;
-	pxr::GfQuatf rot0inv;
+	pxr::GfVec3d pos0;
+	pxr::GfQuatd rot0inv;
 	for (int brickId : ds.roots()) {
-		pxr::GfVec3f pos;
-		pxr::GfQuatf rot;
+		pxr::GfVec3d pos;
+		pxr::GfQuatd rot;
 		if (!getPose(stage->GetPrimAtPath(id2path[brickId]), pos, rot)) {
 			continue;
 		}

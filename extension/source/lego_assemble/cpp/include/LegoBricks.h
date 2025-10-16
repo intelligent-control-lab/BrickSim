@@ -59,8 +59,8 @@ struct LegoTopology {
 	};
 	struct PoseHint {
 		BrickID brick;
-		std::array<float, 3> pos; // In meters
-		std::array<float, 4> rot; // Quaternion wxyz
+		std::array<double, 3> pos; // In meters
+		std::array<double, 4> rot; // Quaternion wxyz
 	};
 
 	std::vector<Brick> bricks;
