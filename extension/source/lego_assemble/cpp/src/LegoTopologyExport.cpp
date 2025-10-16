@@ -29,9 +29,10 @@ static bool parseBrick(const pxr::UsdPrim &prim, LegoTopology::Brick &out) {
 	return true;
 }
 
-static bool parseConnection(const pxr::UsdPrim &prim,
-                            const pxr::SdfPathTable<int> &path2id,
-                            LegoTopology::Connection &out) {
+static bool
+parseConnection(const pxr::UsdPrim &prim,
+                const pxr::SdfPathTable<LegoTopology::BrickID> &path2id,
+                LegoTopology::Connection &out) {
 	bool enabled;
 	if (!prim.GetAttribute(LegoTokens->conn_enabled).Get(&enabled) ||
 	    !enabled) {
@@ -87,16 +88,16 @@ static bool getPose(const pxr::UsdPrim &prim, pxr::GfVec3d &outPos,
 	return true;
 }
 
-struct DisjointSet {
-	std::vector<size_t> parent;
+template <std::unsigned_integral T = size_t> struct DisjointSet {
+	std::vector<T> parent;
 
-	DisjointSet(size_t n) : parent(n) {
-		for (size_t i = 0; i < n; i++) {
+	DisjointSet(T n) : parent(n) {
+		for (auto i = T(0); i < n; i++) {
 			parent[i] = i;
 		}
 	}
 
-	size_t find(size_t x) {
+	T find(T x) {
 		auto root = x;
 		while (parent[root] != root) {
 			root = parent[root];
@@ -109,7 +110,7 @@ struct DisjointSet {
 		return root;
 	}
 
-	void unite(size_t x, size_t y) {
+	void unite(T x, T y) {
 		auto rx = find(x);
 		auto ry = find(y);
 		if (rx != ry) {
@@ -118,16 +119,16 @@ struct DisjointSet {
 	}
 
 	auto roots() const {
-		return std::views::iota(size_t(0), parent.size()) |
-		       std::views::filter([this](size_t x) { return parent[x] == x; });
+		return std::views::iota(T(0), static_cast<T>(parent.size())) |
+		       std::views::filter([this](T x) { return parent[x] == x; });
 	}
 };
 
 LegoTopology exportLegoTopology(const pxr::UsdStageRefPtr &stage,
                                 const pxr::SdfPath &rootPath) {
 	LegoTopology result;
-	size_t bricksCnt = 0;
-	pxr::SdfPathTable<int> path2id;
+	LegoTopology::BrickID bricksCnt = 0;
+	pxr::SdfPathTable<LegoTopology::BrickID> path2id;
 	std::vector<pxr::SdfPath> id2path;
 	auto rootPrim = stage->GetPrimAtPath(rootPath);
 	if (!rootPrim) {
@@ -142,7 +143,7 @@ LegoTopology exportLegoTopology(const pxr::UsdStageRefPtr &stage,
 			id2path.push_back(child.GetPath());
 		}
 	}
-	DisjointSet ds(bricksCnt);
+	DisjointSet<LegoTopology::BrickID> ds(bricksCnt);
 	for (const auto &child : rootPrim.GetChildren()) {
 		LegoTopology::Connection conn;
 		if (parseConnection(child, path2id, conn)) {
@@ -154,7 +155,7 @@ LegoTopology exportLegoTopology(const pxr::UsdStageRefPtr &stage,
 	bool first = true;
 	pxr::GfVec3d pos0;
 	pxr::GfQuatd rot0inv;
-	for (int brickId : ds.roots()) {
+	for (auto brickId : ds.roots()) {
 		pxr::GfVec3d pos;
 		pxr::GfQuatd rot;
 		if (!getPose(stage->GetPrimAtPath(id2path[brickId]), pos, rot)) {
@@ -167,7 +168,7 @@ LegoTopology exportLegoTopology(const pxr::UsdStageRefPtr &stage,
 			pos0 = pos;
 			rot0inv = rot.GetInverse();
 			hint.pos = {0.0, 0.0, 0.0};
-			hint.rot = {1.0f, 0.0f, 0.0f, 0.0f};
+			hint.rot = {1.0, 0.0, 0.0, 0.0};
 		} else {
 			auto relPos = rot0inv.Transform(pos - pos0);
 			auto relPosMeters = relPos * mpu;
