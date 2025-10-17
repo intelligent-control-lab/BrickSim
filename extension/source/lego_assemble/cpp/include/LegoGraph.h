@@ -1,5 +1,7 @@
 #pragma once
 
+#include "LegoBricks.h"
+
 #include <memory>
 #include <vector>
 
@@ -12,6 +14,7 @@ namespace lego_assemble {
 class LegoGraph {
   public:
 	struct BrickInfo {
+		std::array<BrickUnit, 3> dimensions;
 		physx::PxShape *body_collider;
 		physx::PxShape *top_collider;
 	};

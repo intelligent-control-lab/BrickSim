@@ -39,8 +39,7 @@ class LegoGraph::Impl {
 		RigidBody *actor;
 		std::unordered_set<ConnDesc *> parents;  // this is child
 		std::unordered_set<ConnDesc *> children; // this is parent
-		Shape *body_collider;
-		Shape *top_collider;
+		BrickInfo info;
 	};
 	struct ConnDesc {
 		Constraint *joint;
@@ -71,8 +70,7 @@ class LegoGraph::Impl {
 		}
 		BodyDesc desc;
 		desc.actor = actor;
-		desc.body_collider = info.body_collider;
-		desc.top_collider = info.top_collider;
+		desc.info = info;
 		bodies_[actor] = desc;
 		return true;
 	}
