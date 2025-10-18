@@ -40,6 +40,13 @@ static PxSimulationEventCallbackProxy *g_eventCallback_proxy = nullptr;
 // Type: PxSimulationEventCallback *
 // Offset: 1216 bytes
 // Size: 8 bytes, alignment 8 bytes
+//
+// /home/yushijinhun/repos/PhysX/physx/source/physx/src/NpScene.h:653
+// field mElapsedTime
+// Type: PxReal (aka float)
+// Offset: 968 bytes
+// Size: 4 bytes, alignment 4 bytes
+// needed to transfer the elapsed time param from the user to the sim thread.
 static constexpr size_t offset_NpScene_mScene = 1440;
 static constexpr size_t offset_NpScene_mScene_mFilterShader =
     offset_NpScene_mScene + 1008;
@@ -47,6 +54,7 @@ static constexpr size_t offset_NpScene_mScene_mFilterCallback =
     offset_NpScene_mScene + 1016;
 static constexpr size_t offset_NpScene_mScene_mSimulationEventCallback =
     offset_NpScene_mScene + 1216;
+static constexpr size_t offset_NpScene_mElapsedTime = 968;
 static physx::PxSimulationFilterShader *
 locate_mFilterShader(physx::PxScene *scene) {
 	return reinterpret_cast<physx::PxSimulationFilterShader *>(
@@ -64,6 +72,10 @@ locate_mSimulationEventCallback(physx::PxScene *scene) {
 	return reinterpret_cast<physx::PxSimulationEventCallback **>(
 	    reinterpret_cast<unsigned char *>(scene) +
 	    offset_NpScene_mScene_mSimulationEventCallback);
+}
+static physx::PxReal *locate_mElapsedTime(physx::PxScene *scene) {
+	return reinterpret_cast<physx::PxReal *>(
+	    reinterpret_cast<unsigned char *>(scene) + offset_NpScene_mElapsedTime);
 }
 
 static physx::PxFilterFlags entry_SimulationFilterShader(
@@ -296,6 +308,10 @@ bool clearPxSimulationEventCallback() {
 		    "clearing, continuing");
 		return false;
 	}
+}
+
+physx::PxReal getElapsedTime(const physx::PxScene *scene) {
+	return *locate_mElapsedTime(const_cast<physx::PxScene *>(scene));
 }
 
 } // namespace lego_assemble

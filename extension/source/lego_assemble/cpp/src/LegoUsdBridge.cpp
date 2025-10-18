@@ -1,5 +1,6 @@
 #include "LegoUsdBridge.h"
 #include "LegoTokens.h"
+#include "SdfUtils.h"
 
 #include <PxScene.h>
 
@@ -7,6 +8,9 @@
 #include <pxr/usd/usd/prim.h>
 #include <pxr/usd/usd/primRange.h>
 #include <pxr/usd/usd/relationship.h>
+#include <pxr/usd/usdGeom/metrics.h>
+#include <pxr/usd/usdGeom/tokens.h>
+#include <pxr/usd/usdPhysics/metrics.h>
 
 namespace lego_assemble {
 
@@ -99,7 +103,10 @@ static bool getConnInfo(const pxr::UsdPrim &prim, ConnInfo &out) {
 
 LegoUsdBridge::LegoUsdBridge(pxr::UsdStageRefPtr stage, physx::PxPhysics *px,
                              omni::physx::IPhysx *omni_px)
-    : omni_px_(omni_px), stage_(std::move(stage)), graph_(px), current_time(0) {
+    : omni_px_(omni_px), stage_(std::move(stage)),
+      graph_(px, {.mpu = pxr::UsdGeomGetStageMetersPerUnit(stage_),
+                  .kpu = pxr::UsdPhysicsGetStageKilogramsPerUnit(stage_)}),
+      current_time(0) {
 
 	std::lock_guard lock(mutex_);
 
@@ -120,6 +127,7 @@ LegoUsdBridge::LegoUsdBridge(pxr::UsdStageRefPtr stage, physx::PxPhysics *px,
 			    omni_px_->getPhysXPtr(path, omni::physx::ePTActor));
 			if (rb) {
 				bodies_[path] = rb;
+				body_rev_[rb] = path;
 				if (!graph_.addRigidBody(rb, brick_info)) {
 					CARB_LOG_ERROR("Failed to add rigid body for prim %s",
 					               path.GetText());
@@ -185,6 +193,7 @@ void LegoUsdBridge::onRigidCreated(physx::PxRigidActor *actor,
 		return;
 	}
 	bodies_[primPath] = actor;
+	body_rev_[actor] = primPath;
 	if (!graph_.addRigidBody(actor, info)) {
 		CARB_LOG_ERROR("Failed to add rigid body for prim %s",
 		               primPath.GetText());
@@ -208,6 +217,7 @@ void LegoUsdBridge::onRigidDestroyed(physx::PxRigidActor *actor,
 	}
 	ps->unlockWrite();
 	bodies_.erase(it);
+	body_rev_.erase(actor);
 }
 
 void LegoUsdBridge::enqueuePrimChange(const pxr::SdfPath &primPath) {
@@ -304,14 +314,28 @@ void LegoUsdBridge::onPreStep() {
 	pendingChanges_.clear();
 }
 
+static pxr::SdfPath generateConnPath(const pxr::SdfPath &p0,
+                                     const pxr::SdfPath &p1) {
+	auto parent = p0.GetParentPath();
+	auto trySimplify = [&](const pxr::SdfPath &p) -> std::string {
+		auto name = p.GetName();
+		if (name.starts_with("Brick_")) {
+			return name.substr(6);
+		}
+		return name;
+	};
+	return parent.AppendChild(
+	    pxr::TfToken("Conn_" + trySimplify(p0) + "_" + trySimplify(p1)));
+}
+
 void LegoUsdBridge::onPostStep() {
 	constexpr static std::uint64_t kConnDebounceTime = 10;
 
+	auto layer = stage_->GetEditTarget().GetLayer();
 	pxr::SdfChangeBlock _changes;
 	std::lock_guard lock(mutex_);
-	auto broken_conns = graph_.solveLimits();
-	auto layer = stage_->GetEditTarget().GetLayer();
 
+	auto broken_conns = graph_.solveLimits();
 	for (const auto &[a, b] : broken_conns) {
 		auto it = conn_rev_.find({a, b});
 		if (it == conn_rev_.end()) {
@@ -341,7 +365,51 @@ void LegoUsdBridge::onPostStep() {
 		}
 	}
 
+	auto assembly_events = graph_.pollAssemblyEvents();
+	for (const auto &event : assembly_events) {
+		auto parent_it = body_rev_.find(event.parent);
+		if (parent_it == body_rev_.end()) {
+			CARB_LOG_WARN("Cannot find prim for assembled body %p",
+			              event.parent);
+			continue;
+		}
+		auto child_it = body_rev_.find(event.child);
+		if (child_it == body_rev_.end()) {
+			CARB_LOG_WARN("Cannot find prim for assembled body %p",
+			              event.child);
+			continue;
+		}
+		auto parent_path = parent_it->second;
+		auto child_path = child_it->second;
+		auto conn_path = generateConnPath(parent_path, child_path);
+
+		auto prim = pxr::SdfCreatePrimInLayer(layer, conn_path);
+		prim->SetSpecifier(pxr::SdfSpecifierDef);
+		prim->SetTypeName(pxr::UsdGeomTokens->Xform);
+
+		NewOrSetRelationship(prim, LegoTokens->conn_body0, parent_path);
+		NewOrSetRelationship(prim, LegoTokens->conn_body1, child_path);
+		NewOrSetAttr<pxr::GfVec2i>(prim, LegoTokens->conn_offset_studs,
+		                           event.offset_studs);
+		NewOrSetAttr<int>(prim, LegoTokens->conn_yaw_index, event.orientation);
+		NewOrSetAttr<pxr::GfVec3f>(prim, LegoTokens->conn_pos0,
+		                           ToGfVec3f(event.T_parent_local.p));
+		NewOrSetAttr<pxr::GfQuatf>(prim, LegoTokens->conn_rot0,
+		                           ToGfQuatf(event.T_parent_local.q));
+		NewOrSetAttr<pxr::GfVec3f>(prim, LegoTokens->conn_pos1,
+		                           ToGfVec3f(event.T_child_local.p));
+		NewOrSetAttr<pxr::GfQuatf>(prim, LegoTokens->conn_rot1,
+		                           ToGfQuatf(event.T_child_local.q));
+		NewOrSetAttr<pxr::GfVec2f>(prim, LegoTokens->conn_overlap_xy,
+		                           event.overlap_xy);
+		NewOrSetAttr<bool>(prim, LegoTokens->conn_enabled, true);
+	}
+
 	current_time++;
+}
+
+LegoGraph &LegoUsdBridge::getGraph() {
+	return graph_;
 }
 
 } // namespace lego_assemble

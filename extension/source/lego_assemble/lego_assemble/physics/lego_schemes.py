@@ -1,9 +1,3 @@
-BrickLength = 0.008     # 8 mm per stud
-PlateHeight = 0.0032    # 3.2 mm per plate
-BrickHeightPerPlate = 3 # 1 brick height = 3 plates
-StudDiameter = 0.0048   # 4.8 mm stud diameter
-StudHeight = 0.0017     # 1.7 mm stud height
-
 # From https://rebrickable.com/colors/
 Colors = {
     "Black": "05131D",

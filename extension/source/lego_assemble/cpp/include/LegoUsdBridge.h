@@ -1,7 +1,7 @@
 #pragma once
 
-#include "LegoGraph.h"
 #include "AlgorithmUtils.h"
+#include "LegoGraph.h"
 
 #include <mutex>
 #include <vector>
@@ -18,7 +18,8 @@ namespace lego_assemble {
 
 class LegoUsdBridge {
   public:
-	explicit LegoUsdBridge(pxr::UsdStageRefPtr stage, physx::PxPhysics *px, omni::physx::IPhysx *omni_px);
+	explicit LegoUsdBridge(pxr::UsdStageRefPtr stage, physx::PxPhysics *px,
+	                       omni::physx::IPhysx *omni_px);
 	LegoUsdBridge(const LegoUsdBridge &) = delete;
 	LegoUsdBridge &operator=(const LegoUsdBridge &) = delete;
 	~LegoUsdBridge();
@@ -30,6 +31,7 @@ class LegoUsdBridge {
 	void enqueuePrimChange(const pxr::SdfPath &primPath);
 	void onPreStep();
 	void onPostStep();
+	LegoGraph &getGraph();
 
   private:
 	struct ConnDesc {
@@ -44,6 +46,7 @@ class LegoUsdBridge {
 
 	pxr::SdfPathTable<physx::PxRigidActor *> bodies_;
 	pxr::SdfPathTable<ConnDesc> conns_;
+	std::unordered_map<physx::PxRigidActor *, pxr::SdfPath> body_rev_;
 	std::unordered_map<
 	    std::pair<physx::PxRigidActor *, physx::PxRigidActor *>, pxr::SdfPath,
 	    PairHash<physx::PxRigidActor *, std::hash<physx::PxRigidActor *>>>

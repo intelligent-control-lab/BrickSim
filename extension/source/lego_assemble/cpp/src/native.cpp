@@ -1,4 +1,5 @@
 #include "LegoBricks.h"
+#include "LegoGraph.h"
 #include "LegoJointManager.h"
 #include "LegoSerialization.h" // IWYU pragma: keep
 
@@ -55,6 +56,38 @@ PYBIND11_MODULE(_native, m) {
 	    },
 	    pybind11::arg("root_path"),
 	    "Export the lego topology under the specified root path");
+
+	using Thresholds = lego_assemble::LegoGraph::Thresholds;
+	pybind11::class_<Thresholds>(m, "LegoThresholds",
+	                             "Assembly detection thresholds.")
+	    .def(pybind11::init<>())
+	    .def_readwrite("distance_tolerance", &Thresholds::DistanceTolerance)
+	    .def_readwrite("max_penetration", &Thresholds::MaxPenetration)
+	    .def_readwrite("z_angle_tolerance", &Thresholds::ZAngleTolerance)
+	    .def_readwrite("required_force", &Thresholds::RequiredForce)
+	    .def_readwrite("yaw_tolerance", &Thresholds::YawTolerance)
+	    .def_readwrite("position_tolerance", &Thresholds::PositionTolerance)
+	    .def("__repr__", [](const Thresholds &t) {
+		    std::ostringstream os;
+		    os << "LegoThresholds(distance_tolerance=" << t.DistanceTolerance
+		       << ", max_penetration=" << t.MaxPenetration
+		       << ", z_angle_tolerance=" << t.ZAngleTolerance
+		       << ", required_force=" << t.RequiredForce
+		       << ", yaw_tolerance=" << t.YawTolerance
+		       << ", position_tolerance=" << t.PositionTolerance << ")";
+		    return os.str();
+	    });
+	m.def("set_lego_thresholds", &lego_assemble::setLegoThresholds,
+	      pybind11::arg("thresholds"),
+	      "Set the assembly detection thresholds.");
+	m.def(
+	    "get_lego_thresholds",
+	    []() {
+		    Thresholds out;
+		    lego_assemble::getLegoThresholds(out);
+		    return out;
+	    },
+	    "Get the assembly detection thresholds.");
 }
 // Declare as a Carbonite bindings module for Python so logging and builtins
 // are registered even when imported outside Kit, and to define CARB globals.

@@ -5,8 +5,7 @@ import math
 import lego_assemble.physics.lego_schemes as lego_schemes
 from lego_assemble.physics.interface import get_brick_physics_interface
 from .force_monitor import ForceMonitor
-from lego_assemble.physics.assembler import Thresholds
-from lego_assemble._native import export_lego_topology
+from lego_assemble._native import export_lego_topology, get_lego_thresholds, set_lego_thresholds
 
 class LegoUI():
     def __init__(self):
@@ -53,47 +52,49 @@ class LegoUI():
 
                 # Middle: thresholds (top) + inv mass/inertia scale settings (bottom)
                 with omni.ui.VStack(height=0, spacing=8):
+                    # Read current native thresholds and use them to initialize the UI
+                    _thr = get_lego_thresholds()
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Distance tol (m):", width=140)
                         self._dist_tol_field = omni.ui.FloatDrag(min=0.0, max=0.05)
-                        self._dist_tol_field.model.set_value(float(Thresholds.DistanceTolerance))
+                        self._dist_tol_field.model.set_value(float(_thr.distance_tolerance))
                         self._dist_tol_field.model.add_value_changed_fn(
-                            lambda m: setattr(Thresholds, "DistanceTolerance", float(m.as_float))
+                            lambda m: self._set_threshold("distance_tolerance", float(m.as_float))
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Max penetration (m):", width=140)
                         self._max_pen_field = omni.ui.FloatDrag(min=0.0, max=0.05)
-                        self._max_pen_field.model.set_value(float(Thresholds.MaxPenetration))
+                        self._max_pen_field.model.set_value(float(_thr.max_penetration))
                         self._max_pen_field.model.add_value_changed_fn(
-                            lambda m: setattr(Thresholds, "MaxPenetration", float(m.as_float))
+                            lambda m: self._set_threshold("max_penetration", float(m.as_float))
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Z angle tol (deg):", width=140)
                         self._zang_deg_field = omni.ui.FloatDrag(min=0.0, max=90.0)
-                        self._zang_deg_field.model.set_value(float(math.degrees(Thresholds.ZAngleTolerance)))
+                        self._zang_deg_field.model.set_value(float(math.degrees(_thr.z_angle_tolerance)))
                         self._zang_deg_field.model.add_value_changed_fn(
-                            lambda m: setattr(Thresholds, "ZAngleTolerance", math.radians(float(m.as_float)))
+                            lambda m: self._set_threshold("z_angle_tolerance", math.radians(float(m.as_float)))
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Required force (N):", width=140)
                         self._req_force_field = omni.ui.FloatDrag(min=0.0, max=10.0)
-                        self._req_force_field.model.set_value(float(Thresholds.RequiredForce))
+                        self._req_force_field.model.set_value(float(_thr.required_force))
                         self._req_force_field.model.add_value_changed_fn(
-                            lambda m: setattr(Thresholds, "RequiredForce", float(m.as_float))
+                            lambda m: self._set_threshold("required_force", float(m.as_float))
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Yaw tol (deg):", width=140)
                         self._yaw_deg_field = omni.ui.FloatDrag(min=0.0, max=180.0)
-                        self._yaw_deg_field.model.set_value(float(math.degrees(Thresholds.YawTolerance)))
+                        self._yaw_deg_field.model.set_value(float(math.degrees(_thr.yaw_tolerance)))
                         self._yaw_deg_field.model.add_value_changed_fn(
-                            lambda m: setattr(Thresholds, "YawTolerance", math.radians(float(m.as_float)))
+                            lambda m: self._set_threshold("yaw_tolerance", math.radians(float(m.as_float)))
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Position tol (m):", width=140)
                         self._pos_tol_field = omni.ui.FloatDrag(min=0.0, max=0.05)
-                        self._pos_tol_field.model.set_value(float(Thresholds.PositionTolerance))
+                        self._pos_tol_field.model.set_value(float(_thr.position_tolerance))
                         self._pos_tol_field.model.add_value_changed_fn(
-                            lambda m: setattr(Thresholds, "PositionTolerance", float(m.as_float))
+                            lambda m: self._set_threshold("position_tolerance", float(m.as_float))
                         )
 
                 # Right: monitoring column (delegated)
@@ -137,3 +138,8 @@ class LegoUI():
         root_path = f"/World/envs/env_{env_id_str}" if env_id_str else "/World"
         topology = export_lego_topology(root_path)
         carb.log_info(f"Exported topology: {topology}")
+
+    def _set_threshold(self, name: str, value: float):
+        thr = get_lego_thresholds()
+        setattr(thr, name, value)
+        set_lego_thresholds(thr)

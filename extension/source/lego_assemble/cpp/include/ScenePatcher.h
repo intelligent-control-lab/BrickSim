@@ -116,4 +116,6 @@ bool clearPxSimulationFilterCallback();
 bool setPxSimulationEventCallback(PxSimulationEventCallbackProxy *cb);
 bool clearPxSimulationEventCallback();
 
+physx::PxReal getElapsedTime(const physx::PxScene *scene);
+
 } // namespace lego_assemble

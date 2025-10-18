@@ -14,6 +14,7 @@
 
 namespace lego_assemble {
 
+static LegoGraph::Thresholds g_thresholds;
 static omni::physx::IPhysx *g_physx = nullptr;
 static std::unique_ptr<LegoUsdBridge> g_lego;
 static long int g_stageId = -1;
@@ -119,6 +120,7 @@ bool initLegoJointManager() {
 				    }
 				    g_lego = std::make_unique<LegoUsdBridge>(
 				        std::move(stageRef), px, g_physx);
+				    g_lego->getGraph().setThresholds(g_thresholds);
 				    CARB_LOG_INFO("Lego state created (pre-step)");
 			    }
 			    g_lego->onPreStep();
@@ -239,6 +241,17 @@ bool deinitLegoJointManager() {
 	g_lego = nullptr;
 	g_physx = nullptr;
 	return success;
+}
+
+void setLegoThresholds(const LegoGraph::Thresholds &thresholds) {
+	g_thresholds = thresholds;
+	if (g_lego) {
+		g_lego->getGraph().setThresholds(g_thresholds);
+	}
+}
+
+void getLegoThresholds(LegoGraph::Thresholds &out) {
+	out = g_thresholds;
 }
 
 } // namespace lego_assemble

@@ -4,12 +4,16 @@
 
 #include <array>
 #include <ranges>
-#include <string>
 #include <tuple>
 #include <type_traits>
 
 #include <pxr/usd/sdf/attributeSpec.h>
+#include <pxr/usd/sdf/primSpec.h>
+#include <pxr/usd/sdf/relationshipSpec.h>
 #include <pxr/usd/sdf/schema.h>
+
+#include <foundation/PxQuat.h>
+#include <foundation/PxVec3.h>
 
 namespace lego_assemble {
 
@@ -60,7 +64,7 @@ GfVecT ToGfVec(R &&r) {
 
 template <class T>
 pxr::SdfAttributeSpecHandle
-NewAttr(const pxr::SdfPrimSpecHandle &owner, const std::string &name,
+NewAttr(const pxr::SdfPrimSpecHandle &owner, const pxr::TfToken &name,
         const T &defaultValue, const pxr::TfToken &role = {},
         pxr::SdfVariability variability = pxr::SdfVariabilityVarying,
         bool custom = false) {
@@ -74,7 +78,7 @@ NewAttr(const pxr::SdfPrimSpecHandle &owner, const std::string &name,
 	    pxr::SdfAttributeSpec::New(owner, name, typeName, variability, custom);
 	if (attr && !attr->SetDefaultValue(std::move(vt))) {
 		CARB_LOG_FATAL("NewAttr: Failed to set default for '%s'.",
-		               name.c_str());
+		               name.GetText());
 	}
 	return attr;
 }
@@ -84,7 +88,7 @@ NewAttr(const pxr::SdfPrimSpecHandle &owner, const std::string &name,
 template <GfVecLike T, class R>
     requires RangeOf<R, typename T::ScalarType>
 pxr::SdfAttributeSpecHandle
-NewAttr(const pxr::SdfPrimSpecHandle &owner, const std::string &name,
+NewAttr(const pxr::SdfPrimSpecHandle &owner, const pxr::TfToken &name,
         R &&rangeLike, const pxr::TfToken &role = {},
         pxr::SdfVariability variability = pxr::SdfVariabilityVarying,
         bool custom = false) {
@@ -96,12 +100,60 @@ NewAttr(const pxr::SdfPrimSpecHandle &owner, const std::string &name,
 // but this overload keeps diagnostics nicer and avoids rare overload ties).
 template <GfVecLike T, class U>
 pxr::SdfAttributeSpecHandle
-NewAttr(const pxr::SdfPrimSpecHandle &owner, const std::string &name,
+NewAttr(const pxr::SdfPrimSpecHandle &owner, const pxr::TfToken &name,
         std::initializer_list<U> ilist, const pxr::TfToken &role = {},
         pxr::SdfVariability variability = pxr::SdfVariabilityVarying,
         bool custom = false) {
 	return NewAttr<T>(owner, name, ToGfVec<T>(ilist), role, variability,
 	                  custom);
+}
+
+// NewOrSetAttr
+template <class T>
+pxr::SdfAttributeSpecHandle
+NewOrSetAttr(const pxr::SdfPrimSpecHandle &owner, const pxr::TfToken &name,
+             const T &defaultValue, const pxr::TfToken &role = {},
+             pxr::SdfVariability variability = pxr::SdfVariabilityVarying,
+             bool custom = false) {
+	pxr::VtValue vt(defaultValue);
+	auto attr =
+	    owner->GetAttributeAtPath(owner->GetPath().AppendProperty(name));
+	if (!attr) {
+		auto typeName = pxr::SdfSchema::GetInstance().FindType(vt, role);
+		if (!typeName) {
+			CARB_LOG_FATAL(
+			    "NewOrSetAttr: No USD type registered for provided value.");
+			return {};
+		}
+		attr = pxr::SdfAttributeSpec::New(owner, name, typeName, variability,
+		                                  custom);
+	}
+	if (attr && !attr->SetDefaultValue(std::move(vt))) {
+		CARB_LOG_FATAL("NewOrSetAttr: Failed to set default for '%s'.",
+		               name.GetText());
+	}
+	return attr;
+}
+
+template <GfVecLike T, class R>
+    requires RangeOf<R, typename T::ScalarType>
+pxr::SdfAttributeSpecHandle
+NewOrSetAttr(const pxr::SdfPrimSpecHandle &owner, const pxr::TfToken &name,
+             R &&rangeLike, const pxr::TfToken &role = {},
+             pxr::SdfVariability variability = pxr::SdfVariabilityVarying,
+             bool custom = false) {
+	return NewOrSetAttr<T>(owner, name, ToGfVec<T>(std::forward<R>(rangeLike)),
+	                       role, variability, custom);
+}
+
+template <GfVecLike T, class U>
+pxr::SdfAttributeSpecHandle
+NewOrSetAttr(const pxr::SdfPrimSpecHandle &owner, const pxr::TfToken &name,
+             std::initializer_list<U> ilist, const pxr::TfToken &role = {},
+             pxr::SdfVariability variability = pxr::SdfVariabilityVarying,
+             bool custom = false) {
+	return NewOrSetAttr<T>(owner, name, ToGfVec<T>(ilist), role, variability,
+	                       custom);
 }
 
 // SetInfo for SdfSpec
@@ -111,9 +163,31 @@ void SetInfo(const pxr::SdfSpecHandle &spec, const pxr::TfToken &key,
 	spec->SetInfo(key, pxr::VtValue(value));
 }
 
+inline pxr::SdfRelationshipSpecHandle
+NewOrSetRelationship(const pxr::SdfPrimSpecHandle &owner,
+                     const pxr::TfToken &key, pxr::SdfPath target) {
+	auto rel =
+	    owner->GetRelationshipAtPath(owner->GetPath().AppendProperty(key));
+	if (rel) {
+		rel->GetTargetPathList().ClearEdits();
+	} else {
+		rel = pxr::SdfRelationshipSpec::New(owner, key);
+	}
+	rel->GetTargetPathList().Append(target);
+	return rel;
+}
+
 // XformOp names
 inline const pxr::TfToken xformOpTranslate("xformOp:translate");
 inline const pxr::TfToken xformOpOrient("xformOp:orient");
 inline const pxr::TfToken xformOpScale("xformOp:scale");
+
+// PhysX -> Gf conversions
+inline pxr::GfVec3f ToGfVec3f(const physx::PxVec3 &v) {
+	return pxr::GfVec3f(v.x, v.y, v.z);
+}
+inline pxr::GfQuatf ToGfQuatf(const physx::PxQuat &q) {
+	return pxr::GfQuatf(q.w, q.x, q.y, q.z);
+}
 
 } // namespace lego_assemble

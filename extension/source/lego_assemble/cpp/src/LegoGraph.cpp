@@ -1,7 +1,10 @@
 #include "LegoGraph.h"
 
 #include "AlgorithmUtils.h"
+#include "Eigen/Geometry"
+#include "LegoBricks.h"
 #include "LegoWeldConstraint.h"
+#include "MathUtils.h"
 #include "ScenePatcher.h"
 #include "SkipGraph.h"
 
@@ -52,19 +55,157 @@ class LegoGraph::Impl {
 		float overlap_xy[2]; // in stage units
 	};
 
-	explicit Impl(physx::PxPhysics *px)
-	    : px_(px),
-	      scheduler_(std::bind(&Impl::createAuxConstraint_, this,
-	                           std::placeholders::_1, std::placeholders::_2),
-	                 std::bind(&Impl::destroyAuxConstraint_, this,
-	                           std::placeholders::_1)) {
-		simFilter_ = std::make_unique<LegoSimulationFilterCallback>(this);
-		if (!setPxSimulationFilterCallback(simFilter_.get())) {
-			simFilter_ = nullptr;
+	class LegoSimulationFilterCallback
+	    : public PxSimulationFilterCallbackProxy {
+	  public:
+		LegoGraph::Impl *impl;
+		explicit LegoSimulationFilterCallback(LegoGraph::Impl *i) : impl(i) {}
+		LegoSimulationFilterCallback(const LegoSimulationFilterCallback &) =
+		    delete;
+		LegoSimulationFilterCallback &
+		operator=(const LegoSimulationFilterCallback &) = delete;
+
+		virtual physx::PxFilterFlags pairFound(
+		    physx::PxU64 pairID, physx::PxFilterObjectAttributes attributes0,
+		    physx::PxFilterData filterData0, const physx::PxActor *a0,
+		    const physx::PxShape *s0,
+		    physx::PxFilterObjectAttributes attributes1,
+		    physx::PxFilterData filterData1, const physx::PxActor *a1,
+		    const physx::PxShape *s1, physx::PxPairFlags &pairFlags) override {
+			auto result = PxSimulationFilterCallbackProxy::pairFound(
+			    pairID, attributes0, filterData0, a0, s0, attributes1,
+			    filterData1, a1, s1, pairFlags);
+			if (impl->contactExclusions.contains({a0, a1})) {
+				result = physx::PxFilterFlag::eKILL;
+			} else {
+				BodyDesc *body0 = nullptr;
+				BodyDesc *body1 = nullptr;
+				if (impl->resolveActor(a0, body0) &&
+				    impl->resolveActor(a1, body1)) {
+					if ((s0 == body0->info.top_collider &&
+					     s1 == body1->info.body_collider) ||
+					    (s0 == body0->info.body_collider &&
+					     s1 == body1->info.top_collider)) {
+						pairFlags |= physx::PxPairFlag::eCONTACT_EVENT_POSE;
+					}
+				}
+			}
+			return result;
 		}
-		simCallback_ = std::make_unique<LegoSimulationEventCallback>(this);
-		if (!setPxSimulationEventCallback(simCallback_.get())) {
-			simCallback_ = nullptr;
+	};
+
+	class LegoSimulationEventCallback : public PxSimulationEventCallbackProxy {
+	  public:
+		LegoGraph::Impl *impl;
+		explicit LegoSimulationEventCallback(LegoGraph::Impl *i) : impl(i) {}
+		LegoSimulationEventCallback(const LegoSimulationEventCallback &) =
+		    delete;
+		LegoSimulationEventCallback &
+		operator=(const LegoSimulationEventCallback &) = delete;
+
+		virtual void onContact(const physx::PxContactPairHeader &header,
+		                       const physx::PxContactPair *pairs,
+		                       physx::PxU32 nbPairs) {
+			PxSimulationEventCallbackProxy::onContact(header, pairs, nbPairs);
+
+			if (header.flags.isSet(
+			        physx::PxContactPairHeaderFlag::eREMOVED_ACTOR_0) ||
+			    header.flags.isSet(
+			        physx::PxContactPairHeaderFlag::eREMOVED_ACTOR_1)) {
+				return;
+			}
+			BodyDesc *body0 = nullptr;
+			BodyDesc *body1 = nullptr;
+			if (!impl->resolveActor(header.actors[0], body0) ||
+			    !impl->resolveActor(header.actors[1], body1)) {
+				return;
+			}
+			// Lookup global poses
+			physx::PxContactPairExtraDataIterator extraIt(
+			    header.extraDataStream, header.extraDataStreamSize);
+			const physx::PxContactPairPose *eventPose = nullptr;
+			bool extraHasNext = extraIt.nextItemSet();
+			// Iterate over contact pairs
+			for (physx::PxU32 i = 0; i < nbPairs; i++) {
+				while (extraHasNext && extraIt.contactPairIndex <= i) {
+					eventPose = extraIt.eventPose;
+					extraHasNext = extraIt.nextItemSet();
+				}
+				if (eventPose == nullptr) {
+					continue;
+				}
+				const auto &pair = pairs[i];
+				if (!pair.flags.isSet(
+				        physx::PxContactPairFlag::eINTERNAL_HAS_IMPULSES)) {
+					continue;
+				}
+				if (!pair.contactPatches) {
+					continue;
+				}
+				const auto &shape0 = pair.shapes[0];
+				const auto &shape1 = pair.shapes[1];
+				// body0 should be the lower brick, offering TopCollider
+				// body1 should be the upper brick, offering BodyCollider
+				bool toSwap = false;
+				if (shape0 == body0->info.top_collider &&
+				    shape1 == body1->info.body_collider) {
+				} else if (shape0 == body0->info.body_collider &&
+				           shape1 == body1->info.top_collider) {
+					toSwap = true;
+				} else {
+					continue;
+				}
+				// Sum up contact impulses
+				physx::PxVec3 totalImpulse(0, 0, 0);
+				const auto *patches =
+				    reinterpret_cast<const physx::PxContactPatch *>(
+				        pair.contactPatches);
+				for (physx::PxU32 j = 0; j < pair.patchCount; j++) {
+					const auto &patch = patches[j];
+					physx::PxReal patchImpulse = 0;
+					for (physx::PxU32 k = 0; k < patch.nbContacts; k++) {
+						patchImpulse +=
+						    pair.contactImpulses[patch.startContactIndex + k];
+					}
+					totalImpulse += patch.normal * patchImpulse;
+				}
+				const auto &pose0 = eventPose->globalPose[0];
+				const auto &pose1 = eventPose->globalPose[1];
+				if (toSwap) {
+					impl->processAssemblyContact(body1, pose1, body0, pose0,
+					                             -totalImpulse);
+				} else {
+					impl->processAssemblyContact(body0, pose0, body1, pose1,
+					                             totalImpulse);
+				}
+			}
+		}
+	};
+
+	physx::PxPhysics *px;
+	Config cfg;
+	Thresholds thresholds;
+	BodyMap bodies;
+	ConnMap conns;
+	Scheduler scheduler;
+	std::unique_ptr<LegoSimulationFilterCallback> simFilter;
+	std::unique_ptr<LegoSimulationEventCallback> simCallback;
+	std::unordered_set<UnorderedPair<const physx::PxActor *>> contactExclusions;
+	std::vector<AssemblyEvent> assemblyEvents;
+
+	explicit Impl(physx::PxPhysics *px_, const Config &cfg_)
+	    : px(px_), cfg(cfg_),
+	      scheduler(std::bind(&Impl::createAuxConstraint, this,
+	                          std::placeholders::_1, std::placeholders::_2),
+	                std::bind(&Impl::destroyAuxConstraint, this,
+	                          std::placeholders::_1)) {
+		simFilter = std::make_unique<LegoSimulationFilterCallback>(this);
+		if (!setPxSimulationFilterCallback(simFilter.get())) {
+			simFilter = nullptr;
+		}
+		simCallback = std::make_unique<LegoSimulationEventCallback>(this);
+		if (!setPxSimulationEventCallback(simCallback.get())) {
+			simCallback = nullptr;
 		}
 	}
 
@@ -72,30 +213,30 @@ class LegoGraph::Impl {
 	Impl &operator=(const Impl &) = delete;
 	~Impl() {
 		clear();
-		if (simCallback_) {
+		if (simCallback) {
 			clearPxSimulationEventCallback();
-			simCallback_ = nullptr;
+			simCallback = nullptr;
 		}
-		if (simFilter_) {
+		if (simFilter) {
 			clearPxSimulationFilterCallback();
-			simFilter_ = nullptr;
+			simFilter = nullptr;
 		}
 	}
 
 	bool addRigidBody(RigidBody *actor, const BrickInfo &info) {
-		if (bodies_.contains(actor)) {
+		if (bodies.contains(actor)) {
 			return false;
 		}
 		BodyDesc desc;
 		desc.actor = actor;
 		desc.info = info;
-		bodies_[actor] = desc;
+		bodies[actor] = desc;
 		return true;
 	}
 
 	bool removeRigidBody(RigidBody *actor) {
-		auto it = bodies_.find(actor);
-		if (it == bodies_.end()) {
+		auto it = bodies.find(actor);
+		if (it == bodies.end()) {
 			return false;
 		}
 		BodyDesc &desc = it->second;
@@ -105,14 +246,14 @@ class LegoGraph::Impl {
 				    "Inconsistent state when removing body %p, continuing",
 				    actor);
 			}
-			releaseConn_(*c);
-			if (!scheduler_.disconnect(c->parent, c->child)) {
+			releaseConn(*c);
+			if (!scheduler.disconnect(c->parent, c->child)) {
 				CARB_LOG_ERROR("Failed to remove edge between %p and %p from "
 				               "scheduler, continuing",
 				               c->parent->actor, c->child->actor);
 			}
 			auto edge_key = std::make_pair(c->parent->actor, c->child->actor);
-			if (!conns_.erase(edge_key)) {
+			if (!conns.erase(edge_key)) {
 				CARB_LOG_ERROR(
 				    "Failed to remove connection [%p, %p] from map, continuing",
 				    c->parent->actor, c->child->actor);
@@ -124,20 +265,20 @@ class LegoGraph::Impl {
 				    "Inconsistent state when removing body %p, continuing",
 				    actor);
 			}
-			releaseConn_(*c);
-			if (!scheduler_.disconnect(c->parent, c->child)) {
+			releaseConn(*c);
+			if (!scheduler.disconnect(c->parent, c->child)) {
 				CARB_LOG_ERROR("Failed to remove edge between %p and %p from "
 				               "scheduler, continuing",
 				               c->parent->actor, c->child->actor);
 			}
 			auto edge_key = std::make_pair(c->parent->actor, c->child->actor);
-			if (!conns_.erase(edge_key)) {
+			if (!conns.erase(edge_key)) {
 				CARB_LOG_ERROR(
 				    "Failed to remove connection [%p, %p] from map, continuing",
 				    c->parent->actor, c->child->actor);
 			}
 		}
-		bodies_.erase(it);
+		bodies.erase(it);
 		return true;
 	}
 
@@ -145,14 +286,14 @@ class LegoGraph::Impl {
 		if (a == b) {
 			return false;
 		}
-		auto ita = bodies_.find(a);
-		auto itb = bodies_.find(b);
-		if (ita == bodies_.end() || itb == bodies_.end()) {
+		auto ita = bodies.find(a);
+		auto itb = bodies.find(b);
+		if (ita == bodies.end() || itb == bodies.end()) {
 			return false;
 		}
 		BodyDesc *da = &ita->second;
 		BodyDesc *db = &itb->second;
-		if (find_conn_bidirectional_(a, b) != conns_.end()) {
+		if (findConnBidirectional(a, b) != conns.end()) {
 			return false;
 		}
 
@@ -164,12 +305,12 @@ class LegoGraph::Impl {
 		c.T_child_local = info.T_child_local;
 		c.overlap_xy[0] = info.overlap_xy[0];
 		c.overlap_xy[1] = info.overlap_xy[1];
-		setupConn_(c);
+		setupConn(c);
 		auto edge_key = std::make_pair(a, b);
-		conns_[edge_key] = c;
-		da->children.insert(&conns_[edge_key]);
-		db->parents.insert(&conns_[edge_key]);
-		if (!scheduler_.connect(da, db)) {
+		conns[edge_key] = c;
+		da->children.insert(&conns[edge_key]);
+		db->parents.insert(&conns[edge_key]);
+		if (!scheduler.connect(da, db)) {
 			CARB_LOG_ERROR(
 			    "Failed to add edge between %p and %p to scheduler, continuing",
 			    a, b);
@@ -183,21 +324,21 @@ class LegoGraph::Impl {
 		if (a == b) {
 			return false;
 		}
-		auto ita = bodies_.find(a);
-		auto itb = bodies_.find(b);
-		if (ita == bodies_.end() || itb == bodies_.end()) {
+		auto ita = bodies.find(a);
+		auto itb = bodies.find(b);
+		if (ita == bodies.end() || itb == bodies.end()) {
 			return false;
 		}
-		auto itc = find_conn_bidirectional_(a, b);
-		if (itc == conns_.end()) {
+		auto itc = findConnBidirectional(a, b);
+		if (itc == conns.end()) {
 			return false;
 		}
 
 		ConnDesc &c = itc->second;
 		c.parent->children.erase(&c);
 		c.child->parents.erase(&c);
-		releaseConn_(c);
-		if (!scheduler_.disconnect(c.parent, c.child)) {
+		releaseConn(c);
+		if (!scheduler.disconnect(c.parent, c.child)) {
 			CARB_LOG_ERROR("Failed to remove edge between %p and %p from "
 			               "scheduler, continuing",
 			               c.parent->actor, c.child->actor);
@@ -205,17 +346,17 @@ class LegoGraph::Impl {
 		c.child->actor->getScene()->resetFiltering(*c.child->actor);
 		CARB_LOG_INFO("Destroyed base constraint between %p and %p",
 		              c.parent->actor, c.child->actor);
-		conns_.erase(itc);
+		conns.erase(itc);
 		return true;
 	}
 
 	void clear() {
-		scheduler_.clear();
-		for (auto &[_, c] : conns_) {
-			releaseConn_(c);
+		scheduler.clear();
+		for (auto &[_, c] : conns) {
+			releaseConn(c);
 		}
-		conns_.clear();
-		bodies_.clear();
+		conns.clear();
+		bodies.clear();
 	}
 
 	std::vector<ConnDesc *> solveLimits() {
@@ -232,7 +373,7 @@ class LegoGraph::Impl {
 		    95000.0f; // N per (stage-unit^2); TODO: configure
 
 		// ---- Early out: nothing to do if no base connections ----
-		if (conns_.empty())
+		if (conns.empty())
 			return violated;
 
 		// ---- Helpers ----
@@ -274,8 +415,8 @@ class LegoGraph::Impl {
 		// Build unique node set from base connections
 		std::unordered_map<BodyDesc *, int> nodeIx;
 		std::vector<BodyDesc *> nodeRev;
-		nodeRev.reserve(conns_.size() * 2);
-		for (auto &kv : conns_) {
+		nodeRev.reserve(conns.size() * 2);
+		for (auto &kv : conns) {
 			ConnDesc &c = kv.second;
 			if (!nodeIx.count(c.parent)) {
 				nodeIx[c.parent] = int(nodeRev.size());
@@ -301,7 +442,7 @@ class LegoGraph::Impl {
 			Eigen::Vector3d z_world; // interface normal (graph-world)
 		};
 		std::vector<BaseEdge> E;
-		E.reserve(conns_.size());
+		E.reserve(conns.size());
 		// We'll also build an adjacency for CC detection
 		std::vector<std::vector<int>> adj(n);
 
@@ -316,7 +457,7 @@ class LegoGraph::Impl {
 		{
 			// Fill adjacency from base connections for the BFS of rotations
 			std::vector<std::vector<int>> g(n);
-			for (auto &kv : conns_) {
+			for (auto &kv : conns) {
 				ConnDesc &c = kv.second;
 				int ip = nodeIx[c.parent];
 				int ic = nodeIx[c.child];
@@ -338,7 +479,7 @@ class LegoGraph::Impl {
 						continue;
 					physx::PxTransform T_u_v;
 					bool ok =
-					    lookupGraphTransform_(nodeRev[u], nodeRev[v], T_u_v);
+					    lookupGraphTransform(nodeRev[u], nodeRev[v], T_u_v);
 					if (!ok) {
 						// If disconnected by mistake, keep identity; but this shouldn't happen inside a CC.
 						Rgw[v] = Rgw[u];
@@ -361,7 +502,7 @@ class LegoGraph::Impl {
 		    Rgw[nodeIx[rootBody]] * Eigen::Vector3d(0, 0, 1);
 
 		// Fill BaseEdge array
-		for (auto &kv : conns_) {
+		for (auto &kv : conns) {
 			ConnDesc &c = kv.second;
 			int ip = nodeIx[c.parent];
 			int ic = nodeIx[c.child];
@@ -567,7 +708,7 @@ class LegoGraph::Impl {
 		    Rroot_world.transpose(); // world -> component canonical basis
 
 		// The scheduler can tell us which aux pairs exist; we need to find the actual PxConstraint* for each pair to read forces
-		for (auto const &aux : scheduler_.aux_edges()) {
+		for (auto const &aux : scheduler.aux_edges()) {
 			BodyDesc *A = aux.first;
 			BodyDesc *B = aux.second;
 			// Ignore if either endpoint not in base-node set (we solve per base CC)
@@ -754,165 +895,26 @@ class LegoGraph::Impl {
 		return violated;
 	}
 
-  private:
-	class LegoSimulationFilterCallback
-	    : public PxSimulationFilterCallbackProxy {
-	  public:
-		LegoGraph::Impl *impl;
-		explicit LegoSimulationFilterCallback(LegoGraph::Impl *i) : impl(i) {}
-		LegoSimulationFilterCallback(const LegoSimulationFilterCallback &) =
-		    delete;
-		LegoSimulationFilterCallback &
-		operator=(const LegoSimulationFilterCallback &) = delete;
-
-		virtual physx::PxFilterFlags pairFound(
-		    physx::PxU64 pairID, physx::PxFilterObjectAttributes attributes0,
-		    physx::PxFilterData filterData0, const physx::PxActor *a0,
-		    const physx::PxShape *s0,
-		    physx::PxFilterObjectAttributes attributes1,
-		    physx::PxFilterData filterData1, const physx::PxActor *a1,
-		    const physx::PxShape *s1, physx::PxPairFlags &pairFlags) override {
-			auto result = PxSimulationFilterCallbackProxy::pairFound(
-			    pairID, attributes0, filterData0, a0, s0, attributes1,
-			    filterData1, a1, s1, pairFlags);
-			if (impl->contactExclusions_.contains({a0, a1})) {
-				result = physx::PxFilterFlag::eKILL;
-			}
-			return result;
-		}
-	};
-	class LegoSimulationEventCallback : public PxSimulationEventCallbackProxy {
-	  public:
-		LegoGraph::Impl *impl;
-		explicit LegoSimulationEventCallback(LegoGraph::Impl *i) : impl(i) {}
-		LegoSimulationEventCallback(const LegoSimulationEventCallback &) =
-		    delete;
-		LegoSimulationEventCallback &
-		operator=(const LegoSimulationEventCallback &) = delete;
-
-		virtual void onContact(const physx::PxContactPairHeader &header,
-		                       const physx::PxContactPair *pairs,
-		                       physx::PxU32 nbPairs) {
-			PxSimulationEventCallbackProxy::onContact(header, pairs, nbPairs);
-
-			if (header.flags.isSet(
-			        physx::PxContactPairHeaderFlag::eREMOVED_ACTOR_0) ||
-			    header.flags.isSet(
-			        physx::PxContactPairHeaderFlag::eREMOVED_ACTOR_1)) {
-				return;
-			}
-			BodyDesc *body0 = nullptr;
-			BodyDesc *body1 = nullptr;
-			if (!resolveActor(header.actors[0], body0) ||
-			    !resolveActor(header.actors[1], body1)) {
-				return;
-			}
-			bool foundForward = false;
-			bool foundBackward = false;
-			for (physx::PxU32 i = 0; i < nbPairs; i++) {
-				const auto &pair = pairs[i];
-				if (!pair.flags.isSet(
-				        physx::PxContactPairFlag::eINTERNAL_HAS_IMPULSES)) {
-					continue;
-				}
-				if (!pair.contactPatches) {
-					continue;
-				}
-				const auto &shape0 = pair.shapes[0];
-				const auto &shape1 = pair.shapes[1];
-				// body0 should be the lower brick, offering TopCollider
-				// body1 should be the upper brick, offering BodyCollider
-				bool toSwap = false;
-				if (shape0 == body0->info.top_collider &&
-				    shape1 == body1->info.body_collider) {
-				} else if (shape0 == body0->info.body_collider &&
-				           shape1 == body1->info.top_collider) {
-					toSwap = true;
-				} else {
-					continue;
-				}
-				// Sum up contact impulses
-				physx::PxVec3 totalImpulse(0, 0, 0);
-				const auto *patches =
-				    reinterpret_cast<const physx::PxContactPatch *>(
-				        pair.contactPatches);
-				for (physx::PxU32 j = 0; j < pair.patchCount; j++) {
-					const auto &patch = patches[j];
-					physx::PxReal patchImpulse = 0;
-					for (physx::PxU32 k = 0; k < patch.nbContacts; k++) {
-						patchImpulse +=
-						    pair.contactImpulses[patch.startContactIndex + k];
-					}
-					totalImpulse += patch.normal * patchImpulse;
-				}
-
-				if (toSwap) {
-					impl->processAssemblyContact_(body1, body0, -totalImpulse);
-					if (!foundBackward) {
-						foundBackward = true;
-					} else {
-						CARB_LOG_WARN("LegoSimulationEventCallback: multiple "
-						              "contact pairs "
-						              "found for bodies %p and %p (backward)",
-						              body0, body1);
-					}
-				} else {
-					impl->processAssemblyContact_(body0, body1, totalImpulse);
-					if (!foundForward) {
-						foundForward = true;
-					} else {
-						CARB_LOG_WARN("LegoSimulationEventCallback: multiple "
-						              "contact pairs "
-						              "found for bodies %p and %p (forward)",
-						              body0, body1);
-					}
-				}
-			}
-		}
-
-		bool resolveActor(physx::PxActor *actor, BodyDesc *&out) {
-			if (actor->getType() != physx::PxActorType::eRIGID_DYNAMIC) {
-				return false;
-			}
-			auto it =
-			    impl->bodies_.find(static_cast<physx::PxRigidBody *>(actor));
-			if (it == impl->bodies_.end()) {
-				return false;
-			}
-			out = &it->second;
-			return true;
-		}
-	};
-
-	physx::PxPhysics *px_;
-	BodyMap bodies_;
-	ConnMap conns_;
-	Scheduler scheduler_;
-	std::unique_ptr<LegoSimulationFilterCallback> simFilter_;
-	std::unique_ptr<LegoSimulationEventCallback> simCallback_;
-	std::unordered_set<UnorderedPair<const physx::PxActor *>>
-	    contactExclusions_;
-
-	void setupConn_(ConnDesc &c) {
-		c.joint = createConstraint_(c.parent, c.child, c.tf);
-		contactExclusions_.insert({c.parent->actor, c.child->actor});
+	void setupConn(ConnDesc &c) {
+		c.joint = createConstraint(c.parent, c.child, c.tf);
+		contactExclusions.insert({c.parent->actor, c.child->actor});
 	}
 
-	void releaseConn_(ConnDesc &c) {
+	void releaseConn(ConnDesc &c) {
 		c.joint->release();
-		contactExclusions_.erase({c.parent->actor, c.child->actor});
+		contactExclusions.erase({c.parent->actor, c.child->actor});
 	}
 
-	ConnMap::iterator find_conn_bidirectional_(RigidBody *a, RigidBody *b) {
-		auto it = conns_.find(std::make_pair(a, b));
-		if (it != conns_.end()) {
+	ConnMap::iterator findConnBidirectional(RigidBody *a, RigidBody *b) {
+		auto it = conns.find(std::make_pair(a, b));
+		if (it != conns.end()) {
 			return it;
 		}
-		return conns_.find(std::make_pair(b, a));
+		return conns.find(std::make_pair(b, a));
 	}
 
-	bool lookupGraphTransform_(const BodyDesc *a, const BodyDesc *b,
-	                           Transform &T_a_b) const {
+	bool lookupGraphTransform(const BodyDesc *a, const BodyDesc *b,
+	                          Transform &T_a_b) const {
 		if (a == nullptr || b == nullptr) {
 			return false;
 		}
@@ -969,17 +971,17 @@ class LegoGraph::Impl {
 		return false;
 	}
 
-	Constraint *createAuxConstraint_(BodyDesc *a, BodyDesc *b) {
+	Constraint *createAuxConstraint(BodyDesc *a, BodyDesc *b) {
 		Transform T_a_b;
-		if (!lookupGraphTransform_(a, b, T_a_b)) {
+		if (!lookupGraphTransform(a, b, T_a_b)) {
 			CARB_LOG_FATAL("Cannot find graph transform from %p to %p", a, b);
 			return nullptr;
 		}
 		CARB_LOG_INFO("Creating aux constraint between %p and %p", a, b);
-		return createConstraint_(a, b, T_a_b);
+		return createConstraint(a, b, T_a_b);
 	}
 
-	void destroyAuxConstraint_(Constraint *j) {
+	void destroyAuxConstraint(Constraint *j) {
 		if (!j) {
 			CARB_LOG_FATAL("Cannot destroy null constraint");
 			return;
@@ -988,7 +990,7 @@ class LegoGraph::Impl {
 		j->release();
 	}
 
-	Constraint *createConstraint_(BodyDesc *a, BodyDesc *b, Transform T_a_b) {
+	Constraint *createConstraint(BodyDesc *a, BodyDesc *b, Transform T_a_b) {
 		// PxConstraint shader uses body frames (COM frames) bA2w/bB2w.
 		// Our T_a_b (from Python) is defined between actor-local origins (bottom centers).
 		// Convert to COM-local frames so the weld aligns the intended anchor points.
@@ -1011,16 +1013,134 @@ class LegoGraph::Impl {
 		Transform childLocal(physx::PxIdentity);
 
 		return CreateLegoWeld(
-		    *px_, a->actor, b->actor,
+		    *px, a->actor, b->actor,
 		    {.parentLocal = parentLocal, .childLocal = childLocal});
 	}
 
-	void processAssemblyContact_(BodyDesc *body0, BodyDesc *body1,
-	                             physx::PxVec3 impulse) {}
+	bool resolveActor(const physx::PxActor *actor, BodyDesc *&out) {
+		if (actor->getType() != physx::PxActorType::eRIGID_DYNAMIC) {
+			return false;
+		}
+		auto it = bodies.find(
+		    const_cast<RigidBody *>(static_cast<const RigidBody *>(actor)));
+		if (it == bodies.end()) {
+			return false;
+		}
+		out = &it->second;
+		return true;
+	}
+
+	void processAssemblyContact(BodyDesc *body0, const Transform &pose0_px,
+	                            BodyDesc *body1, const Transform &pose1_px,
+	                            physx::PxVec3 impulse_px) {
+		using Eigen::Matrix2d;
+		using Eigen::Matrix3d;
+		using Eigen::Rotation2Dd;
+		using Eigen::Vector2d;
+		using Eigen::Vector3d;
+		using lego_assemble::round;
+		using std::abs;
+		using std::atan2;
+		using std::cos;
+		using std::round;
+		using std::sin;
+		using std::numbers::pi;
+
+		double dt = getElapsedTime(body0->actor->getScene());
+		Vector3d dim0 = arrayToEigen<double>(body0->info.dimensions);
+		Vector3d dim1 = arrayToEigen<double>(body1->info.dimensions);
+		Matrix3d R0 =
+		    pxQuatToEigen(pose0_px.q).cast<double>().toRotationMatrix();
+		Vector3d t0 = pxVec3ToEigen(pose0_px.p).cast<double>();
+		Matrix3d R1 =
+		    pxQuatToEigen(pose1_px.q).cast<double>().toRotationMatrix();
+		Vector3d t1 = pxVec3ToEigen(pose1_px.p).cast<double>();
+		Vector3d impulse =
+		    pxVec3ToEigen(impulse_px).cast<double>(); // From 2nd to 1st
+
+		auto rel_R = R0.transpose() * R1;
+		auto rel_t = R0.transpose() * (t1 - t0);
+
+		// Calculate relative distance
+		auto brick0_height = dim0(2) * (PlateHeight / cfg.mpu);
+		auto rel_dist = rel_t(2) - (brick0_height + (StudHeight / cfg.mpu));
+
+		// Calculate projected force along brick0's z-axis
+		auto fz = impulse.dot(R0.col(2)) / dt;
+
+		// Calculate snapped yaw & yaw error
+		auto rel_yaw = atan2(rel_R(1, 0), rel_R(0, 0));
+		auto yaw_snap = round(rel_yaw / (pi / 2)) * (pi / 2);
+		auto R_snap = Rotation2Dd(yaw_snap).toRotationMatrix();
+		auto yaw_err = rel_yaw - yaw_snap;
+
+		// Calculate snapped position in grid coordinates & position error
+		auto grid_scale = BrickLength / cfg.mpu;
+		auto p0 =
+		    rel_t.head<2>() / grid_scale +
+		    (dim0.head<2>() - rel_R.topLeftCorner<2, 2>() * dim1.head<2>()) / 2;
+		auto p0_snap = round(p0);
+		auto p1_snap = round(p0_snap + R_snap * dim1.head<2>());
+		auto p_err = (p0 - p0_snap).norm() * grid_scale;
+
+		// Calculate overlap
+		auto ov_start1 = Vector2d::Zero();
+		auto ov_end1 = dim0.head<2>();
+		auto ov_start2 = p0_snap.cwiseMin(p1_snap);
+		auto ov_end2 = p0_snap.cwiseMax(p1_snap);
+		auto ov_start = ov_start1.cwiseMax(ov_start2);
+		auto ov_end = ov_end1.cwiseMin(ov_end2);
+		auto ov_mid = (ov_start + ov_end) / 2;
+		auto overlap = (ov_end - ov_start).cwiseMax(Vector2d::Zero());
+
+		// Calculate joint local transforms
+		Matrix3d T_parent_local_R = Matrix3d::Identity();
+		Vector3d T_parent_local_t;
+		T_parent_local_t.head<2>() = (ov_mid - dim0.head<2>() / 2) * grid_scale;
+		T_parent_local_t(2) = brick0_height;
+
+		Matrix2d R_snap_T = R_snap.transpose();
+		Matrix3d T_child_local_R = Matrix3d::Identity();
+		T_child_local_R.topLeftCorner<2, 2>() = R_snap_T;
+		Vector3d T_child_local_t = Vector3d::Zero();
+		T_child_local_t.head<2>() =
+		    R_snap_T * (ov_mid - (ov_start2 + ov_end2) / 2) * grid_scale;
+
+		// Filtering
+		bool accept = (rel_dist <= (thresholds.DistanceTolerance / cfg.mpu)) &&
+		              (rel_dist >= -(thresholds.MaxPenetration / cfg.mpu)) &&
+		              (rel_R(2, 2) > cos(thresholds.ZAngleTolerance)) &&
+		              (fz <= -(thresholds.RequiredForce / cfg.mpu / cfg.kpu)) &&
+		              (abs(yaw_err) <= thresholds.YawTolerance) &&
+		              (p_err <= (thresholds.PositionTolerance / cfg.mpu)) &&
+		              ((overlap(0) > 0) && (overlap(1) > 0));
+		if (!accept) {
+			return;
+		}
+		if (findConnBidirectional(body0->actor, body1->actor) != conns.end()) {
+			return;
+		}
+
+		BrickOrientation orientation = static_cast<BrickOrientation>(
+		    static_cast<int8_t>(round(rel_yaw / (pi / 2))) & int8_t(3));
+		assemblyEvents.push_back({
+		    .parent = body0->actor,
+		    .child = body1->actor,
+		    .offset_studs = {static_cast<BrickUnit>(p0_snap(0)),
+		                     static_cast<BrickUnit>(p0_snap(1))},
+		    .orientation = orientation,
+		    .T_parent_local =
+		        eigenToPxTransform<float>(T_parent_local_R, T_parent_local_t),
+		    .T_child_local =
+		        eigenToPxTransform<float>(T_child_local_R, T_child_local_t),
+		    .overlap_xy = {static_cast<float>(overlap(0) * grid_scale),
+		                   static_cast<float>(overlap(1) * grid_scale)},
+		});
+	}
 };
 
-LegoGraph::LegoGraph(physx::PxPhysics *px)
-    : impl_(std::make_unique<Impl>(px)) {}
+LegoGraph::LegoGraph(physx::PxPhysics *px, const Config &config)
+    : impl_(std::make_unique<Impl>(px, config)) {}
 LegoGraph::~LegoGraph() = default;
 
 bool LegoGraph::addRigidBody(physx::PxRigidActor *actor,
@@ -1047,7 +1167,18 @@ LegoGraph::solveLimits() {
 	}
 	return res;
 }
+std::vector<LegoGraph::AssemblyEvent> LegoGraph::pollAssemblyEvents() {
+	auto result = std::move(impl_->assemblyEvents);
+	impl_->assemblyEvents.clear();
+	return result;
+}
 void LegoGraph::clear() {
 	impl_->clear();
+}
+void LegoGraph::getThresholds(Thresholds &out) const {
+	out = impl_->thresholds;
+}
+void LegoGraph::setThresholds(const Thresholds &in) {
+	impl_->thresholds = in;
 }
 }; // namespace lego_assemble

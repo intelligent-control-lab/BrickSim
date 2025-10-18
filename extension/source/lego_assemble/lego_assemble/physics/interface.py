@@ -1,30 +1,18 @@
-import traceback
 import carb
 import omni.usd
-import omni.physx
 import omni.physx.scripts.physicsUtils as physicsUtils
 from typing import Optional
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
-from omni.physx.bindings._physx import ContactEventHeaderVector, ContactDataVector
-from . import spawner
-from .assembler_impl import AssemblyDetector, BrickTracker
+from lego_assemble._native import create_brick
+from lego_assemble.physics.lego_schemes import parse_color
 from .assembler import path_for_brick
-from .utils import get_physics_scene, add_to_collision_group
+from .utils import add_to_collision_group
 
 class BrickPhysicsInterface:
     def __init__(self):
-        self.update_sub = omni.physx.get_physx_simulation_interface().subscribe_contact_report_events(self._on_contact_report)
-        self.vectorized_detector: Optional[AssemblyDetector] = None
-        self.tracker: Optional[BrickTracker] = None
         self.uniqueifier = 0 # Global monotonically-increasing brick id
 
-    def invalidate(self):
-        if self.vectorized_detector is not None:
-            self.vectorized_detector.destroy()
-            self.vectorized_detector = None
-
     def create_brick(self, dimensions: tuple[int, int, int], color_name: str, env_id: Optional[int] = None, pos: Optional[tuple[float,float,float]] = None, quat: Optional[tuple[float,float,float,float]] = None) -> tuple[UsdGeom.Xform, int]:
-        self.invalidate()
         stage: Usd.Stage = omni.usd.get_context().get_stage()
 
         while True:
@@ -34,7 +22,7 @@ class BrickPhysicsInterface:
             if not stage.GetPrimAtPath(path).IsValid():
                 break
 
-        spawner.create_brick(path, dimensions, color_name)
+        create_brick(path, dimensions, parse_color(color_name))
         brick = UsdGeom.Xform(stage.GetPrimAtPath(path))
         if env_id is not None:
             add_to_collision_group(stage, env_id, Sdf.Path(path))
@@ -46,7 +34,6 @@ class BrickPhysicsInterface:
         return brick, brick_id
 
     def reset_env(self, env_id: Optional[int] = None):
-        self.invalidate()
         stage: Usd.Stage = omni.usd.get_context().get_stage()
 
         root_path = f"/World/envs/env_{env_id}" if env_id is not None else "/World"
@@ -73,50 +60,6 @@ class BrickPhysicsInterface:
 
         carb.log_info(f"Resetting bricks in env {env_id}")
 
-    def get_tracker(self, num_envs: int, num_trackings: int) -> BrickTracker:
-        self._ensure_vectorized_detector()
-
-        if self.tracker is None:
-            self.tracker = BrickTracker(num_envs, num_trackings)
-            self.tracker.set_backend(self.vectorized_detector)
-        else:
-            if (self.tracker.num_envs, self.tracker.num_types) != (num_envs, num_trackings):
-                raise RuntimeError(f"BrickTracker has been initialized with a different config ({self.tracker.brick_ids.shape})")
-
-        return self.tracker
-
-    def _ensure_vectorized_detector(self) -> Optional[AssemblyDetector]:
-        if (self.vectorized_detector is None) or (not self.vectorized_detector.check()):
-            current_stage: Usd.Stage = omni.usd.get_context().get_stage()
-            if (current_stage is None) or (get_physics_scene(current_stage) is None):
-                # Not ready to initialize now
-                return None
-            omni.physx.get_physx_interface().force_load_physics_from_usd()
-            self.vectorized_detector = AssemblyDetector()
-            if self.tracker is not None:
-                self.tracker.set_backend(self.vectorized_detector)
-            carb.log_info(f"Brick assembly detector reloaded")
-
-    def _on_contact_report(self, contacts: ContactEventHeaderVector, contact_data: ContactDataVector):
-        try:
-            if not omni.physx.get_physx_interface().is_running():
-                return
-
-            self._ensure_vectorized_detector()
-            if self.vectorized_detector is None:
-                return
-
-            self.vectorized_detector.handle_contact_report(contacts, contact_data)
-
-        except Exception as e:
-            # Throwing in a callback will crash the entire application
-            carb.log_error(f"Error in contact report handler\n{traceback.format_exc()}")
-
-    def _destroy(self):
-        self.update_sub.unsubscribe()
-        if self.vectorized_detector is not None:
-            self.vectorized_detector.destroy()
-
 _brick_physics_interface = None
 
 def get_brick_physics_interface() -> BrickPhysicsInterface:
@@ -137,5 +80,4 @@ def deinit_brick_physics_interface():
     global _brick_physics_interface
     if _brick_physics_interface is None:
         raise RuntimeError("BrickPhysicsInterface is not initialized.")
-    _brick_physics_interface._destroy()
     _brick_physics_interface = None
