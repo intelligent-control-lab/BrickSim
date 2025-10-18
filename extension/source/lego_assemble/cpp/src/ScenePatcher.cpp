@@ -1,189 +1,19 @@
 #include "ScenePatcher.h"
 
 #include <cassert>
-#include <unordered_set>
 
 #include <carb/logging/Log.h>
 
-#include <PxSimulationEventCallback.h>
+#include <PxScene.h>
 
 namespace lego_assemble {
-
-struct CollisionExcludePair {
-	const physx::PxActor *a0;
-	const physx::PxShape *s0;
-	const physx::PxActor *a1;
-	const physx::PxShape *s1;
-
-	CollisionExcludePair(const physx::PxActor *A0, const physx::PxShape *S0,
-	                     const physx::PxActor *A1, const physx::PxShape *S1) {
-		std::less<const void *> less;
-		const bool swap_needed = less(static_cast<const void *>(A1),
-		                              static_cast<const void *>(A0)) ||
-		                         (!(less(static_cast<const void *>(A0),
-		                                 static_cast<const void *>(A1)) ||
-		                            less(static_cast<const void *>(A1),
-		                                 static_cast<const void *>(A0))) &&
-		                          less(static_cast<const void *>(S1),
-		                               static_cast<const void *>(S0)));
-
-		if (swap_needed) {
-			a0 = A1;
-			s0 = S1;
-			a1 = A0;
-			s1 = S0;
-		} else {
-			a0 = A0;
-			s0 = S0;
-			a1 = A1;
-			s1 = S1;
-		}
-	}
-
-	bool operator==(const CollisionExcludePair &o) const {
-		return (a0 == o.a0 && s0 == o.s0 && a1 == o.a1 && s1 == o.s1) ||
-		       (a0 == o.a1 && s0 == o.s1 && a1 == o.a0 && s1 == o.s0);
-	}
-
-	struct Hasher {
-		static std::size_t hashPtr(const void *p) {
-			return std::hash<const void *>{}(p);
-		}
-		static std::size_t mix(std::size_t seed, std::size_t v) {
-			seed ^= v + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
-			return seed;
-		}
-		static std::size_t hashSide(const physx::PxActor *a,
-		                            const physx::PxShape *s) {
-			std::size_t seed = 0;
-			seed = mix(seed, hashPtr(a));
-			seed = mix(seed, hashPtr(s));
-			return seed;
-		}
-		std::size_t operator()(const CollisionExcludePair &p) const {
-			const std::size_t h0 = hashSide(p.a0, p.s0);
-			const std::size_t h1 = hashSide(p.a1, p.s1);
-			return h0 ^ h1; // commutative
-		}
-	};
-};
-
-class PxSimulationFilterCallbackWrapper final
-    : public physx::PxSimulationFilterCallback {
-  public:
-	physx::PxSimulationFilterCallback *const wrapped;
-	std::unordered_set<CollisionExcludePair, CollisionExcludePair::Hasher>
-	    exclusions;
-
-	explicit PxSimulationFilterCallbackWrapper(
-	    physx::PxSimulationFilterCallback *wrapped)
-	    : wrapped(wrapped) {}
-	virtual ~PxSimulationFilterCallbackWrapper() override {
-		// mFilterCallback is not owned by ScScene, do not delete it here.
-	}
-	PxSimulationFilterCallbackWrapper(
-	    const PxSimulationFilterCallbackWrapper &) = delete;
-	PxSimulationFilterCallbackWrapper &
-	operator=(const PxSimulationFilterCallbackWrapper &) = delete;
-
-	virtual physx::PxFilterFlags pairFound(
-	    physx::PxU64 pairID, physx::PxFilterObjectAttributes attributes0,
-	    physx::PxFilterData filterData0, const physx::PxActor *a0,
-	    const physx::PxShape *s0, physx::PxFilterObjectAttributes attributes1,
-	    physx::PxFilterData filterData1, const physx::PxActor *a1,
-	    const physx::PxShape *s1, physx::PxPairFlags &pairFlags) override {
-		auto result =
-		    wrapped->pairFound(pairID, attributes0, filterData0, a0, s0,
-		                       attributes1, filterData1, a1, s1, pairFlags);
-		if (exclusions.contains({a0, s0, a1, s1}) ||
-		    exclusions.contains({a0, nullptr, a1, nullptr}) ||
-		    exclusions.contains({a0, s0, a1, nullptr}) ||
-		    exclusions.contains({a0, nullptr, a1, s1})) {
-			result = physx::PxFilterFlag::eKILL;
-		}
-		return result;
-	}
-
-	virtual void pairLost(physx::PxU64 pairID,
-	                      physx::PxFilterObjectAttributes attributes0,
-	                      physx::PxFilterData filterData0,
-	                      physx::PxFilterObjectAttributes attributes1,
-	                      physx::PxFilterData filterData1,
-	                      bool objectRemoved) override {
-		wrapped->pairLost(pairID, attributes0, filterData0, attributes1,
-		                  filterData1, objectRemoved);
-	}
-
-	virtual bool statusChange(physx::PxU64 &pairID,
-	                          physx::PxPairFlags &pairFlags,
-	                          physx::PxFilterFlags &filterFlags) override {
-		return wrapped->statusChange(pairID, pairFlags, filterFlags);
-	}
-};
-
-class PxSimulationEventCallbackWrapper final
-    : public physx::PxSimulationEventCallback {
-  public:
-	physx::PxSimulationEventCallback *const wrapped;
-	explicit PxSimulationEventCallbackWrapper(
-	    physx::PxSimulationEventCallback *wrapped)
-	    : wrapped(wrapped) {}
-	virtual ~PxSimulationEventCallbackWrapper() override {
-		// mSimulationEventCallback is not owned by ScScene, do not delete it here
-	}
-	PxSimulationEventCallbackWrapper(const PxSimulationEventCallbackWrapper &) =
-	    delete;
-	PxSimulationEventCallbackWrapper &
-	operator=(const PxSimulationEventCallbackWrapper &) = delete;
-
-	virtual void onConstraintBreak(physx::PxConstraintInfo *constraints,
-	                               physx::PxU32 count) override {
-		if (wrapped) {
-			wrapped->onConstraintBreak(constraints, count);
-		}
-	}
-
-	virtual void onWake(physx::PxActor **actors, physx::PxU32 count) override {
-		if (wrapped) {
-			wrapped->onWake(actors, count);
-		}
-	}
-
-	virtual void onSleep(physx::PxActor **actors, physx::PxU32 count) override {
-		if (wrapped) {
-			wrapped->onSleep(actors, count);
-		}
-	}
-
-	virtual void onContact(const physx::PxContactPairHeader &pairHeader,
-	                       const physx::PxContactPair *pairs,
-	                       physx::PxU32 nbPairs) override {
-		if (wrapped) {
-			wrapped->onContact(pairHeader, pairs, nbPairs);
-		}
-	}
-
-	virtual void onTrigger(physx::PxTriggerPair *pairs,
-	                       physx::PxU32 count) override {
-		if (wrapped) {
-			wrapped->onTrigger(pairs, count);
-		}
-	}
-
-	virtual void onAdvance(const physx::PxRigidBody *const *bodyBuffer,
-	                       const physx::PxTransform *poseBuffer,
-	                       const physx::PxU32 count) override {
-		if (wrapped) {
-			wrapped->onAdvance(bodyBuffer, poseBuffer, count);
-		}
-	}
-};
 
 static std::mutex g_mutex;
 static physx::PxScene *g_scene = nullptr;
 static physx::PxSimulationFilterShader g_filterShader_wrapped = nullptr;
-static PxSimulationFilterCallbackWrapper *g_filterCallback_wrapper = nullptr;
-static PxSimulationEventCallbackWrapper *g_event_callback_wrapper = nullptr;
+static PxSimulationFilterShaderProxy g_filterShader_proxy = nullptr;
+static PxSimulationFilterCallbackProxy *g_filterCallback_proxy = nullptr;
+static PxSimulationEventCallbackProxy *g_eventCallback_proxy = nullptr;
 
 // PhysX 107.3-physx-5.6.1, Linux x86_64, gcc-11, with GPU, PUBLIC_RELEASE=0
 //
@@ -242,14 +72,19 @@ static physx::PxFilterFlags entry_SimulationFilterShader(
     physx::PxFilterObjectAttributes attributes1,
     physx::PxFilterData filterData1, physx::PxPairFlags &pairFlags,
     const void *constantBlock, physx::PxU32 constantBlockSize) {
-	return g_filterShader_wrapped(attributes0, filterData0, attributes1,
-	                              filterData1, pairFlags, constantBlock,
-	                              constantBlockSize);
+	if (g_filterShader_proxy) {
+		return g_filterShader_proxy(
+		    g_filterShader_wrapped, attributes0, filterData0, attributes1,
+		    filterData1, pairFlags, constantBlock, constantBlockSize);
+	} else {
+		return g_filterShader_wrapped(attributes0, filterData0, attributes1,
+		                              filterData1, pairFlags, constantBlock,
+		                              constantBlockSize);
+	}
 }
 
 bool patchPxScene(physx::PxScene *scene) {
 	std::lock_guard<std::mutex> lock(g_mutex);
-
 	if (g_scene != nullptr) {
 		// Note g_scene can be the same as scene, but this doesn't mean they are the same object
 		// it might be another object allocated at the same address.
@@ -258,14 +93,9 @@ bool patchPxScene(physx::PxScene *scene) {
 		               g_scene, scene);
 		return false;
 	}
-	assert(g_filterShader_wrapped == nullptr);
-	assert(g_filterCallback_wrapper == nullptr);
-
 	scene->lockWrite();
 
 	auto *filterShader_ptr = locate_mFilterShader(scene);
-	auto **filterCallback_ptr = locate_mFilterCallback(scene);
-	auto **simulationEventCallback_ptr = locate_mSimulationEventCallback(scene);
 
 	// Pre-patch checks
 	bool ok = true;
@@ -276,10 +106,6 @@ bool patchPxScene(physx::PxScene *scene) {
 		ok = false;
 		CARB_LOG_ERROR("NpScene->mScene->mFilterShader already patched");
 	}
-	if (*filterCallback_ptr == nullptr) {
-		ok = false;
-		CARB_LOG_ERROR("NpScene->mScene->mFilterCallback is null");
-	}
 
 	// Perform patching
 	if (ok) {
@@ -289,25 +115,10 @@ bool patchPxScene(physx::PxScene *scene) {
 		CARB_LOG_INFO(
 		    "NpScene->mScene->mFilterShader patched, original %p, now %p",
 		    g_filterShader_wrapped, *filterShader_ptr);
-
-		g_filterCallback_wrapper =
-		    new PxSimulationFilterCallbackWrapper(*filterCallback_ptr);
-		*filterCallback_ptr = g_filterCallback_wrapper;
-		CARB_LOG_INFO(
-		    "NpScene->mScene->mFilterCallback patched, original %p, now %p",
-		    g_filterCallback_wrapper->wrapped, *filterCallback_ptr);
-		g_event_callback_wrapper =
-		    new PxSimulationEventCallbackWrapper(*simulationEventCallback_ptr);
-		*simulationEventCallback_ptr = g_event_callback_wrapper;
-		CARB_LOG_INFO("NpScene->mScene->mSimulationEventCallback patched, "
-		              "original %p, now %p",
-		              g_event_callback_wrapper->wrapped,
-		              *simulationEventCallback_ptr);
 	}
 
 	scene->unlockWrite();
-
-	return ok;
+	return true;
 }
 
 bool unpatchPxScene(bool restoreCallbacks) {
@@ -316,15 +127,12 @@ bool unpatchPxScene(bool restoreCallbacks) {
 	if (g_scene == nullptr) {
 		return false;
 	}
-	assert(g_filterShader_wrapped != nullptr);
-	assert(g_filterCallback_wrapper != nullptr);
 
 	if (restoreCallbacks) {
 		g_scene->lockWrite();
 		auto *filterShader_ptr = locate_mFilterShader(g_scene);
-		auto **filterCallback_ptr = locate_mFilterCallback(g_scene);
-		auto **simulationEventCallback_ptr =
-		    locate_mSimulationEventCallback(g_scene);
+		auto *filterCallback_ptr = locate_mFilterCallback(g_scene);
+		auto *eventCallback_ptr = locate_mSimulationEventCallback(g_scene);
 		if (*filterShader_ptr == &entry_SimulationFilterShader) {
 			*filterShader_ptr = g_filterShader_wrapped;
 			CARB_LOG_INFO("NpScene->mScene->mFilterShader restored, now %p",
@@ -334,57 +142,160 @@ bool unpatchPxScene(bool restoreCallbacks) {
 			    "NpScene->mScene->mFilterShader changed since patched, "
 			    "not restoring, continuing");
 		}
-		if (*filterCallback_ptr == g_filterCallback_wrapper) {
-			*filterCallback_ptr = g_filterCallback_wrapper->wrapped;
-			CARB_LOG_INFO("NpScene->mScene->mFilterCallback restored, now %p",
-			              *filterCallback_ptr);
-		} else {
-			CARB_LOG_WARN(
-			    "NpScene->mScene->mFilterCallback changed since patched, "
-			    "not restoring, continuing");
+		if (g_filterCallback_proxy != nullptr) {
+			if (*filterCallback_ptr == g_filterCallback_proxy) {
+				*filterCallback_ptr = g_filterCallback_proxy->wrapped;
+				g_filterCallback_proxy->setWrapped(nullptr);
+				CARB_LOG_INFO(
+				    "NpScene->mScene->mFilterCallback restored, now %p",
+				    *filterCallback_ptr);
+			} else {
+				CARB_LOG_WARN(
+				    "NpScene->mScene->mFilterCallback changed since patched, "
+				    "not restoring, continuing");
+			}
 		}
-		if (*simulationEventCallback_ptr == g_event_callback_wrapper) {
-			*simulationEventCallback_ptr = g_event_callback_wrapper->wrapped;
-			CARB_LOG_INFO(
-			    "NpScene->mScene->mSimulationEventCallback restored, now %p",
-			    *simulationEventCallback_ptr);
-		} else {
-			CARB_LOG_WARN("NpScene->mScene->mSimulationEventCallback changed "
-			              "since patched, "
-			              "not restoring, continuing");
+		if (g_eventCallback_proxy != nullptr) {
+			if (*eventCallback_ptr == g_eventCallback_proxy) {
+				*eventCallback_ptr = g_eventCallback_proxy->wrapped;
+				g_eventCallback_proxy->setWrapped(nullptr);
+				CARB_LOG_INFO("NpScene->mScene->mSimulationEventCallback "
+				              "restored, now %p",
+				              *eventCallback_ptr);
+			} else {
+				CARB_LOG_WARN(
+				    "NpScene->mScene->mSimulationEventCallback changed "
+				    "since patched, "
+				    "not restoring, continuing");
+			}
 		}
 		g_scene->unlockWrite();
 	}
 
-	delete g_filterCallback_wrapper;
-	g_filterCallback_wrapper = nullptr;
 	g_filterShader_wrapped = nullptr;
-	delete g_event_callback_wrapper;
-	g_event_callback_wrapper = nullptr;
+	g_filterShader_proxy = nullptr;
+	g_filterCallback_proxy = nullptr;
+	g_eventCallback_proxy = nullptr;
 	CARB_LOG_INFO("PxScene %p unpatched", g_scene);
 	g_scene = nullptr;
 	return true;
 }
 
-bool addContactExclusion(const physx::PxActor *a0, const physx::PxShape *s0,
-                         const physx::PxActor *a1, const physx::PxShape *s1) {
+bool setPxSimulationFilterShader(PxSimulationFilterShaderProxy cb) {
 	std::lock_guard<std::mutex> lock(g_mutex);
-	if (g_filterCallback_wrapper == nullptr) {
-		CARB_LOG_ERROR("No PxScene is patched");
+	if (g_scene == nullptr) {
+		CARB_LOG_ERROR("No PxScene patched");
 		return false;
 	}
-	return g_filterCallback_wrapper->exclusions.insert({a0, s0, a1, s1}).second;
+	if (g_filterShader_proxy != nullptr) {
+		CARB_LOG_ERROR("PxSimulationFilterShaderProxy already set");
+		return false;
+	}
+	g_filterShader_proxy = std::move(cb);
+	CARB_LOG_INFO("PxSimulationFilterShaderProxy set");
+	return true;
 }
-
-bool removeContactExclusion(const physx::PxActor *a0, const physx::PxShape *s0,
-                            const physx::PxActor *a1,
-                            const physx::PxShape *s1) {
+bool clearPxSimulationFilterShader() {
 	std::lock_guard<std::mutex> lock(g_mutex);
-	if (g_filterCallback_wrapper == nullptr) {
-		CARB_LOG_ERROR("No PxScene is patched");
+	if (g_scene == nullptr) {
+		CARB_LOG_ERROR("No PxScene patched");
 		return false;
 	}
-	return g_filterCallback_wrapper->exclusions.erase({a0, s0, a1, s1}) > 0;
+	if (g_filterShader_proxy == nullptr) {
+		CARB_LOG_ERROR("PxSimulationFilterShaderProxy not set");
+		return false;
+	}
+	g_filterShader_proxy = nullptr;
+	CARB_LOG_INFO("PxSimulationFilterShaderProxy cleared");
+	return true;
+}
+bool setPxSimulationFilterCallback(PxSimulationFilterCallbackProxy *cb) {
+	std::lock_guard<std::mutex> lock(g_mutex);
+	if (g_scene == nullptr) {
+		CARB_LOG_ERROR("No PxScene patched");
+		return false;
+	}
+	if (g_filterCallback_proxy != nullptr) {
+		CARB_LOG_ERROR("PxSimulationFilterCallbackProxy already set");
+		return false;
+	}
+	auto *filterCallback_ptr = locate_mFilterCallback(g_scene);
+	cb->setWrapped(*filterCallback_ptr);
+	*filterCallback_ptr = cb;
+	g_filterCallback_proxy = cb;
+	CARB_LOG_INFO("PxSimulationFilterCallbackProxy set, now %p",
+	              *filterCallback_ptr);
+	return true;
+}
+bool clearPxSimulationFilterCallback() {
+	std::lock_guard<std::mutex> lock(g_mutex);
+	if (g_scene == nullptr) {
+		CARB_LOG_ERROR("No PxScene patched");
+		return false;
+	}
+	if (g_filterCallback_proxy == nullptr) {
+		CARB_LOG_ERROR("PxSimulationFilterCallbackProxy not set");
+		return false;
+	}
+	auto *filterCallback_ptr = locate_mFilterCallback(g_scene);
+	if (*filterCallback_ptr == g_filterCallback_proxy) {
+		*filterCallback_ptr = g_filterCallback_proxy->wrapped;
+		g_filterCallback_proxy->setWrapped(nullptr);
+		g_filterCallback_proxy = nullptr;
+		CARB_LOG_INFO("PxSimulationFilterCallbackProxy cleared, now %p",
+		              *filterCallback_ptr);
+		return true;
+	} else {
+		CARB_LOG_WARN(
+		    "NpScene->mScene->mFilterCallback changed since set, not clearing, "
+		    "continuing");
+		return false;
+	}
+}
+bool setPxSimulationEventCallback(PxSimulationEventCallbackProxy *cb) {
+	std::lock_guard<std::mutex> lock(g_mutex);
+	if (g_scene == nullptr) {
+		CARB_LOG_ERROR("No PxScene patched");
+		return false;
+	}
+	if (g_eventCallback_proxy != nullptr) {
+		CARB_LOG_ERROR("PxSimulationEventCallbackProxy already set");
+		return false;
+	}
+	auto *simulationEventCallback_ptr =
+	    locate_mSimulationEventCallback(g_scene);
+	cb->setWrapped(*simulationEventCallback_ptr);
+	*simulationEventCallback_ptr = cb;
+	g_eventCallback_proxy = cb;
+	CARB_LOG_INFO("PxSimulationEventCallbackProxy set, now %p",
+	              *simulationEventCallback_ptr);
+	return true;
+}
+bool clearPxSimulationEventCallback() {
+	std::lock_guard<std::mutex> lock(g_mutex);
+	if (g_scene == nullptr) {
+		CARB_LOG_ERROR("No PxScene patched");
+		return false;
+	}
+	if (g_eventCallback_proxy == nullptr) {
+		CARB_LOG_ERROR("PxSimulationEventCallbackProxy not set");
+		return false;
+	}
+	auto *simulationEventCallback_ptr =
+	    locate_mSimulationEventCallback(g_scene);
+	if (*simulationEventCallback_ptr == g_eventCallback_proxy) {
+		*simulationEventCallback_ptr = g_eventCallback_proxy->wrapped;
+		g_eventCallback_proxy->setWrapped(nullptr);
+		g_eventCallback_proxy = nullptr;
+		CARB_LOG_INFO("PxSimulationEventCallbackProxy cleared, now %p",
+		              *simulationEventCallback_ptr);
+		return true;
+	} else {
+		CARB_LOG_WARN(
+		    "NpScene->mScene->mSimulationEventCallback changed since set, not "
+		    "clearing, continuing");
+		return false;
+	}
 }
 
 } // namespace lego_assemble
