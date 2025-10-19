@@ -194,23 +194,22 @@ static void constructBrickClass(const pxr::UsdStageRefPtr &stage,
 // * Moving prototypes to "/_BrickPrototypes" makes them sort after "/World"
 //   (ASCII 'W'=0x57, ''=0x5F). The first root becomes the /World instance (a Def Xform), which
 //   passes DefaultPredicate, so loadPhysicsFromPrimitive runs the heavy path and creates the rigid.
-static const pxr::TfToken BricksPrototypesPath("/_BrickPrototypes");
+static const pxr::SdfPath BricksPrototypesPath("/_BrickPrototypes");
 static pxr::SdfPath ensureBrickClass(const pxr::UsdStageRefPtr &stage,
                                      const std::array<BrickUnit, 3> &dimensions,
                                      const BrickColor &color) {
 	auto layer = stage->GetEditTarget().GetLayer();
 
-	pxr::SdfPath classRootPath(BricksPrototypesPath);
-	if (!layer->GetPrimAtPath(classRootPath)) {
+	if (!layer->GetPrimAtPath(BricksPrototypesPath)) {
 		pxr::SdfChangeBlock _changes;
-		auto classRoot = pxr::SdfCreatePrimInLayer(layer, classRootPath);
+		auto classRoot = pxr::SdfCreatePrimInLayer(layer, BricksPrototypesPath);
 		classRoot->SetSpecifier(pxr::SdfSpecifierDef);
 	}
 
 	auto brickName =
 	    std::format("Brick_{0}x{1}x{2}_{3:02x}{4:02x}{5:02x}", dimensions[0],
 	                dimensions[1], dimensions[2], color[0], color[1], color[2]);
-	auto brickPath = classRootPath.AppendChild(pxr::TfToken(brickName));
+	auto brickPath = BricksPrototypesPath.AppendChild(pxr::TfToken(brickName));
 	if (!layer->GetPrimAtPath(brickPath)) {
 		constructBrickClass(stage, brickPath, dimensions, color);
 	}

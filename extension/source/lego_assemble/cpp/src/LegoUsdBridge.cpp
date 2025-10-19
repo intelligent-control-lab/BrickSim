@@ -1,4 +1,5 @@
 #include "LegoUsdBridge.h"
+#include "BrickNaming.h"
 #include "LegoTokens.h"
 #include "SdfUtils.h"
 
@@ -314,20 +315,6 @@ void LegoUsdBridge::onPreStep() {
 	pendingChanges_.clear();
 }
 
-static pxr::SdfPath generateConnPath(const pxr::SdfPath &p0,
-                                     const pxr::SdfPath &p1) {
-	auto parent = p0.GetParentPath();
-	auto trySimplify = [&](const pxr::SdfPath &p) -> std::string {
-		auto name = p.GetName();
-		if (name.starts_with("Brick_")) {
-			return name.substr(6);
-		}
-		return name;
-	};
-	return parent.AppendChild(
-	    pxr::TfToken("Conn_" + trySimplify(p0) + "_" + trySimplify(p1)));
-}
-
 void LegoUsdBridge::onPostStep() {
 	constexpr static std::uint64_t kConnDebounceTime = 10;
 
@@ -381,7 +368,7 @@ void LegoUsdBridge::onPostStep() {
 		}
 		auto parent_path = parent_it->second;
 		auto child_path = child_it->second;
-		auto conn_path = generateConnPath(parent_path, child_path);
+		auto conn_path = safeConnPathForBricks(parent_path, child_path);
 
 		auto prim = pxr::SdfCreatePrimInLayer(layer, conn_path);
 		prim->SetSpecifier(pxr::SdfSpecifierDef);

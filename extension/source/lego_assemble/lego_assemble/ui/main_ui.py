@@ -1,11 +1,13 @@
 import carb
 import omni.ui
+import omni.usd
 import omni.physx
 import math
+import omni.physx.scripts.physicsUtils as physicsUtils
 import lego_assemble.physics.lego_schemes as lego_schemes
-from lego_assemble.physics.interface import get_brick_physics_interface
-from .force_monitor import ForceMonitor
-from lego_assemble._native import export_lego_topology, get_lego_thresholds, set_lego_thresholds
+from pxr import Gf, UsdGeom
+from lego_assemble.ui.force_monitor import ForceMonitor
+from lego_assemble._native import export_lego_topology, get_lego_thresholds, set_lego_thresholds, allocate_brick, deallocate_all_bricks_in_env
 
 class LegoUI():
     def __init__(self):
@@ -115,18 +117,19 @@ class LegoUI():
         pos_z = self._pos_z_field.model.as_float
 
         env_id_str = self._base_path_field.model.as_string
-        env_id = int(env_id_str) if env_id_str else None
-        get_brick_physics_interface().create_brick(
+        env_id = int(env_id_str) if env_id_str else -1
+        brick_id, brick_path = allocate_brick(
             dimensions=(width, length, height),
-            color_name=color,
+            color=lego_schemes.parse_color(color),
             env_id=env_id,
-            pos=(pos_x, pos_y, pos_z),
         )
+        prim = omni.usd.get_context().get_stage().GetPrimAtPath(brick_path)
+        physicsUtils.set_or_add_translate_op(UsdGeom.Xformable(prim), Gf.Vec3f(pos_x, pos_y, pos_z))
 
     def _reset_env_clicked(self):
         env_id_str = self._base_path_field.model.as_string
-        env_id = int(env_id_str) if env_id_str else None
-        get_brick_physics_interface().reset_env(env_id)
+        env_id = int(env_id_str) if env_id_str else -1
+        deallocate_all_bricks_in_env(env_id)
 
     def _save_to_usd(self):
         omni.physx.get_physx_interface().update_transformations(True, True, True, True)

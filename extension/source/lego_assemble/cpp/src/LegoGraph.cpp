@@ -1,8 +1,6 @@
 #include "LegoGraph.h"
-
 #include "AlgorithmUtils.h"
-#include "Eigen/Geometry"
-#include "LegoBricks.h"
+#include "BrickSpecs.h"
 #include "LegoWeldConstraint.h"
 #include "MathUtils.h"
 #include "ScenePatcher.h"

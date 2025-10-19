@@ -1,3 +1,4 @@
+#include "BrickAllocator.h"
 #include "BrickSpawner.h"
 #include "LegoGraph.h"
 #include "LegoJointManager.h"
@@ -44,6 +45,37 @@ PYBIND11_MODULE(_native, m) {
 	    pybind11::arg("color"),
 	    "Create a brick prim at the specified path with given dimensions and "
 	    "color");
+
+	m.def(
+	    "allocate_brick",
+	    [](std::array<lego_assemble::BrickUnit, 3> dimensions,
+	       lego_assemble::BrickColor color, lego_assemble::EnvId env_id) {
+		    auto stage = omni::usd::UsdContext::getContext()->getStage();
+		    auto [brick_id, path] =
+		        lego_assemble::allocateBrick(stage, dimensions, color, env_id);
+		    return std::make_tuple(brick_id, path.GetString());
+	    },
+	    pybind11::arg("dimensions"), pybind11::arg("color"),
+	    pybind11::arg("env_id"),
+	    "Allocate a new brick in the specified environment with given "
+	    "dimensions and color. Returns the allocated brick ID and its path.");
+	m.def(
+	    "deallocate_brick",
+	    [](lego_assemble::EnvId env_id, lego_assemble::BrickId brick_id) {
+		    auto stage = omni::usd::UsdContext::getContext()->getStage();
+		    return lego_assemble::deallocateBrick(stage, env_id, brick_id);
+	    },
+	    pybind11::arg("env_id"), pybind11::arg("brick_id"),
+	    "Deallocate the specified brick from the given environment. Returns "
+	    "true if successful.");
+	m.def(
+	    "deallocate_all_bricks_in_env",
+	    [](lego_assemble::EnvId env_id) {
+		    auto stage = omni::usd::UsdContext::getContext()->getStage();
+		    lego_assemble::deallocateAllBricksInEnv(stage, env_id);
+	    },
+	    pybind11::arg("env_id"),
+	    "Deallocate all bricks in the specified environment.");
 
 	m.def(
 	    "export_lego_topology",

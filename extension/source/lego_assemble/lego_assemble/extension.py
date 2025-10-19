@@ -1,23 +1,17 @@
 import carb
 import omni.ext
 from lego_assemble import _native
-from lego_assemble.physics.interface import init_brick_physics_interface, deinit_brick_physics_interface
 
 class LegoExtension(omni.ext.IExt):
     def on_startup(self, ext_id):
         if not _native.init_natives():
             carb.log_error("Failed to initialize native components")
-
-        self.brick_physics = init_brick_physics_interface()
-
+            return
         self._init_ui()
 
     def on_shutdown(self):
         if self._ui is not None:
             self._ui.destroy()
-
-        deinit_brick_physics_interface()
-
         if not _native.deinit_natives():
             carb.log_error("Failed to deinitialize native components")
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "LegoBricks.h"
+#include "BrickSpecs.h"
 
 #include <memory>
 #include <numbers>
