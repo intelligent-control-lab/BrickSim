@@ -1,4 +1,4 @@
-#include "LegoSerialization.h"
+#include "LegoTopologySerialization.h"
 
 namespace lego_assemble {
 

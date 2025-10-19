@@ -1,5 +1,5 @@
-#include "LegoBricks.h"
 #include "LegoTokens.h"
+#include "LegoTopology.h"
 
 #include <ranges>
 

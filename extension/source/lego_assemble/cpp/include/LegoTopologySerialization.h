@@ -1,6 +1,6 @@
 #pragma once
 
-#include "LegoBricks.h"
+#include "LegoTopology.h"
 
 #include <nlohmann/json.hpp>
 

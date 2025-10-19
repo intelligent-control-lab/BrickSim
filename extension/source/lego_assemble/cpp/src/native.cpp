@@ -1,7 +1,7 @@
-#include "LegoBricks.h"
+#include "BrickSpawner.h"
 #include "LegoGraph.h"
 #include "LegoJointManager.h"
-#include "LegoSerialization.h" // IWYU pragma: keep
+#include "LegoTopologySerialization.h" // IWYU pragma: keep
 
 #include <omni/usd/UsdContextIncludes.h>
 

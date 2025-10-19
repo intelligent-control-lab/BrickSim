@@ -1,4 +1,4 @@
-#include "LegoBricks.h"
+#include "BrickSpawner.h"
 #include "LegoTokens.h"
 #include "SdfUtils.h"
 
@@ -175,7 +175,6 @@ static void constructBrickClass(const pxr::UsdStageRefPtr &stage,
 	NewAttr<pxr::VtIntArray>(studs, pxr::UsdGeomTokens->protoIndices,
 	                         pxr::VtIntArray(positions.size(), 0));
 }
-
 
 // This path MUST be sorted after /World due to Omni PhysX's bug.
 // Defected functions:

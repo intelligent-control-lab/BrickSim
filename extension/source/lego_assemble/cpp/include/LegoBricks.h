@@ -2,14 +2,10 @@
 
 #include <array>
 #include <cstdint>
-#include <vector>
-
-#include <pxr/usd/sdf/path.h>
-#include <pxr/usd/usd/stage.h>
 
 namespace lego_assemble {
 
-using BrickUnit = int32_t;
+using BrickUnit = std::int32_t;
 
 constexpr double BrickLength = 0.008;        // 8 mm per stud
 constexpr double PlateHeight = 0.0032;       // 3.2 mm per plate
@@ -35,44 +31,13 @@ constexpr double brickMassInKg(const std::array<BrickUnit, 3> &dimensions) {
 	return (bricks * m_brick + rem * m_plate) / 1000;
 }
 
-using BrickColor = std::array<uint8_t, 3>; // RGB
+using BrickColor = std::array<std::uint8_t, 3>; // RGB
 
-enum BrickOrientation : int8_t {
+enum BrickOrientation : std::int8_t {
 	DEG_0 = 0,
 	DEG_90 = 1,
 	DEG_180 = 2,
 	DEG_270 = 3,
 };
-
-struct LegoTopology {
-	using BrickID = uint32_t;
-	struct Brick {
-		BrickID id;
-		std::array<BrickUnit, 3> dimensions;
-		BrickColor color;
-	};
-	struct Connection {
-		BrickID parent;
-		BrickID child;
-		std::array<BrickUnit, 2> offset;
-		BrickOrientation orientation;
-	};
-	struct PoseHint {
-		BrickID brick;
-		std::array<double, 3> pos; // In meters
-		std::array<double, 4> rot; // Quaternion wxyz
-	};
-
-	std::vector<Brick> bricks;
-	std::vector<Connection> connections;
-	std::vector<PoseHint> pose_hints;
-};
-
-void createBrick(const pxr::UsdStageRefPtr &stage, const pxr::SdfPath &path,
-                 const std::array<BrickUnit, 3> &dimensions,
-                 const BrickColor &color);
-
-LegoTopology exportLegoTopology(const pxr::UsdStageRefPtr &stage,
-                                const pxr::SdfPath &rootPath);
 
 } // namespace lego_assemble
