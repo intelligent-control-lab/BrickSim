@@ -217,9 +217,9 @@ static pxr::SdfPath ensureBrickClass(const pxr::UsdStageRefPtr &stage,
 	return brickPath;
 }
 
-void createBrick(const pxr::UsdStageRefPtr &stage, const pxr::SdfPath &path,
-                 const std::array<BrickUnit, 3> &dimensions,
-                 const BrickColor &color) {
+void createBrickPrim(const pxr::UsdStageRefPtr &stage, const pxr::SdfPath &path,
+                     const std::array<BrickUnit, 3> &dimensions,
+                     const BrickColor &color) {
 	auto layer = stage->GetEditTarget().GetLayer();
 	pxr::SdfChangeBlock _changes;
 	auto classPath = ensureBrickClass(stage, dimensions, color);

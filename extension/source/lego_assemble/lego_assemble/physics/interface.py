@@ -3,7 +3,7 @@ import omni.usd
 import omni.physx.scripts.physicsUtils as physicsUtils
 from typing import Optional
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
-from lego_assemble._native import create_brick
+from lego_assemble._native import create_brick_prim
 from lego_assemble.physics.lego_schemes import parse_color
 from .assembler import path_for_brick
 from .utils import add_to_collision_group
@@ -22,7 +22,7 @@ class BrickPhysicsInterface:
             if not stage.GetPrimAtPath(path).IsValid():
                 break
 
-        create_brick(path, dimensions, parse_color(color_name))
+        create_brick_prim(path, dimensions, parse_color(color_name))
         brick = UsdGeom.Xform(stage.GetPrimAtPath(path))
         if env_id is not None:
             add_to_collision_group(stage, env_id, Sdf.Path(path))

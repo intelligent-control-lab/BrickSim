@@ -33,12 +33,12 @@ PYBIND11_MODULE(_native, m) {
 	    "Destroy native C++ components");
 
 	m.def(
-	    "create_brick",
+	    "create_brick_prim",
 	    [](std::string path, std::array<lego_assemble::BrickUnit, 3> dimensions,
 	       lego_assemble::BrickColor color) {
 		    auto stage = omni::usd::UsdContext::getContext()->getStage();
-		    lego_assemble::createBrick(stage, pxr::SdfPath(path), dimensions,
-		                               color);
+		    lego_assemble::createBrickPrim(stage, pxr::SdfPath(path),
+		                                   dimensions, color);
 	    },
 	    pybind11::arg("path"), pybind11::arg("dimensions"),
 	    pybind11::arg("color"),
