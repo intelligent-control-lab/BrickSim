@@ -91,4 +91,4 @@ PYBIND11_MODULE(_native, m) {
 }
 // Declare as a Carbonite bindings module for Python so logging and builtins
 // are registered even when imported outside Kit, and to define CARB globals.
-CARB_BINDINGS("lego_assemble._native", "python")
+CARB_BINDINGS("lego_assemble", "python")
