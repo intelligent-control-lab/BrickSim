@@ -3,9 +3,9 @@ import omni.ui
 import omni.usd
 import omni.physx
 import math
-import omni.physx.scripts.physicsUtils as physicsUtils
-import lego_assemble.physics.lego_schemes as lego_schemes
+import omni.physx.scripts.physicsUtils as physicsUtils 
 from pxr import Gf, UsdGeom
+from lego_assemble.colors import parse_color, Colors
 from lego_assemble.ui.force_monitor import ForceMonitor
 from lego_assemble._native import export_lego_topology, get_lego_thresholds, set_lego_thresholds, allocate_brick, deallocate_all_bricks_in_env
 
@@ -33,7 +33,7 @@ class LegoUI():
                         self._dim_z_field.model.set_value(3)
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Color:", width=100)
-                        self._color_options = list(lego_schemes.Colors.keys())
+                        self._color_options = list(Colors.keys())
                         self._color_combo = omni.ui.ComboBox(self._color_options.index("Pink"), *self._color_options)
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Env id:", width=100)
@@ -120,7 +120,7 @@ class LegoUI():
         env_id = int(env_id_str) if env_id_str else -1
         brick_id, brick_path = allocate_brick(
             dimensions=(width, length, height),
-            color=lego_schemes.parse_color(color),
+            color=parse_color(color),
             env_id=env_id,
         )
         prim = omni.usd.get_context().get_stage().GetPrimAtPath(brick_path)
