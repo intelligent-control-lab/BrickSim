@@ -1,0 +1,9 @@
+--- a/omni/String.inl
++++ b/omni/String.inl_
+@@ -3341,7 +3341,7 @@ inline std::basic_istream<char, std::char_traits<char>>& getline(std::basic_istr
+         input.setstate(err);
+     }
+ 
+-    return input;
++    return static_cast<std::basic_istream<char, std::char_traits<char>>&>(input);
+ }

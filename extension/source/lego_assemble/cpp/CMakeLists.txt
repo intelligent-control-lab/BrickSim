@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.5)
 
 project(lego_assemble_native LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -33,11 +33,6 @@ FetchContent_MakeAvailable(eigen) # defines Eigen3::Eigen
 file(GLOB_RECURSE CXX_SRC "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 pybind11_add_module(_native ${CXX_SRC})
 
-# Workaround for childrenProxy.h:75:21: error: no member named '_Set' in 'SdfChildrenProxy<_View>'
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  target_compile_options(_native PRIVATE -fdelayed-template-parsing -Wno-delayed-template-parsing-in-cxx20)
-endif()
-
 # IsaacSim target-deps configuration
 if(NOT DEFINED TARGET_DEPS_DIR)
   if(DEFINED ENV{ISAACSIM_TARGET_DEPS})
@@ -51,6 +46,28 @@ if(NOT IS_DIRECTORY "${TARGET_DEPS_DIR}")
   message(FATAL_ERROR "TARGET_DEPS_DIR does not exist: ${TARGET_DEPS_DIR}")
 endif()
 message(STATUS "IsaacSim target-deps: ${TARGET_DEPS_DIR}")
+
+# Patching SDK to workaround bugs in header files
+find_program(PATCH_EXECUTABLE patch REQUIRED)
+message(STATUS "Found patch command: ${PATCH_EXECUTABLE}")
+add_custom_target(patch_sdk_usd ALL
+    COMMAND ${PATCH_EXECUTABLE}
+            --input="${CMAKE_CURRENT_SOURCE_DIR}/sdk_patches/usd_include.patch"
+            --forward
+            -p1
+            --directory="${TARGET_DEPS_DIR}/usd/release/include"
+            --backup || (exit 0)
+    COMMENT "Applying USD include patch"
+)
+add_custom_target(patch_sdk_kit ALL
+    COMMAND ${PATCH_EXECUTABLE}
+            --input="${CMAKE_CURRENT_SOURCE_DIR}/sdk_patches/kit_include.patch"
+            --forward
+            -p1
+            --directory="${TARGET_DEPS_DIR}/../linux-x86_64/release/kit/dev/include"
+            --backup || (exit 0)
+    COMMENT "Applying kit include patch"
+)
 
 target_include_directories(_native PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/include"
