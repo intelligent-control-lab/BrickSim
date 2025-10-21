@@ -51,3 +51,6 @@ else
 fi
 
 echo "Built module(s) in: $OUT"
+
+cd "$BUILD"
+ctest

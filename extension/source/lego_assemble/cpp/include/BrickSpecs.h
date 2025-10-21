@@ -21,9 +21,7 @@ brickDimensionsToMeters(const std::array<BrickUnit, 3> &dimensions) {
 
 constexpr double brickMassInKg(const std::array<BrickUnit, 3> &dimensions) {
 	// Experimental formula to fit mass of arbitrary bricks
-	int L = dimensions[0];
-	int W = dimensions[1];
-	int H = dimensions[2];
+	auto [L, W, H] = dimensions;
 	int bricks = H / 3;
 	int rem = H % 3;
 	double m_brick = 0.1523 * (L * W) + 0.2498 * (L + W) - 0.2485;

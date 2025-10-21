@@ -1,6 +1,6 @@
 #pragma once
 
-#include "AlgorithmUtils.h"
+#include <lego_assemble/Utils/PairHelpers.h>
 
 #include <algorithm>
 #include <cassert>
@@ -35,7 +35,8 @@ template <
     class Cmp = std::less<V>     // comparator for stable ordering (min)
     >
     requires EdgeCreateFn<CreateEdge, V, Handle> &&
-             EdgeDestroyFn<DestroyEdge, Handle> && LessLike<Cmp, V>
+             EdgeDestroyFn<DestroyEdge, Handle> &&
+             std::strict_weak_order<Cmp, V, V>
 class NoOpSkipGraphScheduler {
   public:
 	using Vertex = V;
@@ -152,7 +153,8 @@ template <
     class Cmp = std::less<V>     // comparator for stable ordering (min)
     >
     requires EdgeCreateFn<CreateEdge, V, Handle> &&
-             EdgeDestroyFn<DestroyEdge, Handle> && LessLike<Cmp, V>
+             EdgeDestroyFn<DestroyEdge, Handle> &&
+             std::strict_weak_order<Cmp, V, V>
 class SimpleSkipGraphScheduler {
   public:
 	using Vertex = V;

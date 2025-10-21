@@ -1,3 +1,5 @@
+#include <lego_assemble/Utils/Conversions.h>
+
 #include "LegoTokens.h"
 #include "LegoTopology.h"
 
@@ -20,12 +22,8 @@ static bool parseBrick(const pxr::UsdPrim &prim, LegoTopology::Brick &out) {
 	if (!prim.GetAttribute(LegoTokens->brick_color).Get(&color)) {
 		return false;
 	}
-	out.dimensions[0] = dimensions[0];
-	out.dimensions[1] = dimensions[1];
-	out.dimensions[2] = dimensions[2];
-	out.color[0] = color[0];
-	out.color[1] = color[1];
-	out.color[2] = color[2];
+	out.dimensions = as_array<BrickUnit, 3>(dimensions);
+	out.color = as<BrickColor>(color);
 	return true;
 }
 
@@ -66,8 +64,7 @@ parseConnection(const pxr::UsdPrim &prim,
 	}
 	out.parent = id0_it->second;
 	out.child = id1_it->second;
-	out.offset[0] = offset_studs[0];
-	out.offset[1] = offset_studs[1];
+	out.offset = as_array<BrickUnit, 2>(offset_studs);
 	out.orientation = static_cast<BrickOrientation>(yaw_index);
 	return true;
 }
@@ -173,9 +170,8 @@ LegoTopology exportLegoTopology(const pxr::UsdStageRefPtr &stage,
 			auto relPos = rot0inv.Transform(pos - pos0);
 			auto relPosMeters = relPos * mpu;
 			auto relRot = rot0inv * rot;
-			hint.pos = {relPosMeters[0], relPosMeters[1], relPosMeters[2]};
-			hint.rot = {relRot.GetReal(), relRot.GetImaginary()[0],
-			            relRot.GetImaginary()[1], relRot.GetImaginary()[2]};
+			hint.pos = as_array<double, 3>(relPosMeters);
+			hint.rot = as_array<double>(relRot);
 		}
 		result.pose_hints.push_back(std::move(hint));
 	}

@@ -120,3 +120,27 @@ target_link_libraries(_native PRIVATE
 # Allow the caller (setup.py) to override the output directory for the built module
 set(EXT_OUTPUT_DIR "${CMAKE_BINARY_DIR}" CACHE PATH "Directory to place the built python extension")
 set_target_properties(_native PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${EXT_OUTPUT_DIR}")
+
+# Tests
+enable_testing()
+
+add_executable(TestConversions tests/TestConversions.cpp)
+target_include_directories(TestConversions PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/include"
+)
+target_include_directories(TestConversions SYSTEM PRIVATE
+  "${TARGET_DEPS_DIR}/usd/release/include"
+  "${TARGET_DEPS_DIR}/usd/release/include/boost"
+  "${TARGET_DEPS_DIR}/physx/include"
+)
+target_link_directories(TestConversions PRIVATE
+  "${TARGET_DEPS_DIR}/usd/release/lib"
+  "${TARGET_DEPS_DIR}/physx/bin/linux.x86_64/checked"
+)
+target_compile_definitions(TestConversions PRIVATE PX_PHYSX_STATIC_LIB)
+target_link_libraries(TestConversions PRIVATE
+  Eigen3::Eigen
+  PhysX_static_64
+  usd_gf
+)
+add_test(NAME TestConversions COMMAND TestConversions)

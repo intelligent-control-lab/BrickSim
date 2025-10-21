@@ -1,6 +1,7 @@
+#include <lego_assemble/Utils/SdfHelpers.h>
+
 #include "BrickSpawner.h"
 #include "LegoTokens.h"
-#include "SdfUtils.h"
 
 #include <format>
 
@@ -41,11 +42,11 @@ static void constructBrickClass(const pxr::UsdStageRefPtr &stage,
 	            pxr::PhysxSchemaTokens->PhysxContactReportAPI,
 	        }));
 	SetInfo(root, pxr::SdfFieldKeys->Kind, pxr::KindTokens->component);
-	NewAttr<pxr::GfVec3i>(root, LegoTokens->brick_dimensions, dimensions);
-	NewAttr<pxr::GfVec3i>(root, LegoTokens->brick_color, color);
-	NewAttr<float>(root, pxr::PhysxSchemaTokens->physxContactReportThreshold,
+	SetAttr<pxr::GfVec3i>(root, LegoTokens->brick_dimensions, dimensions);
+	SetAttr<pxr::GfVec3i>(root, LegoTokens->brick_color, color);
+	SetAttr<float>(root, pxr::PhysxSchemaTokens->physxContactReportThreshold,
 	               0.0f);
-	NewAttr<bool>(root, pxr::UsdPhysicsTokens->physicsRigidBodyEnabled, true);
+	SetAttr<bool>(root, pxr::UsdPhysicsTokens->physicsRigidBodyEnabled, true);
 
 	auto bodyCollider = pxr::SdfCreatePrimInLayer(
 	    layer, root_path.AppendChild(LegoTokens->BodyCollider));
@@ -56,26 +57,26 @@ static void constructBrickClass(const pxr::UsdStageRefPtr &stage,
 	            pxr::UsdPhysicsTokens->PhysicsCollisionAPI,
 	            pxr::UsdPhysicsTokens->PhysicsMassAPI,
 	        }));
-	NewAttr<double>(bodyCollider, pxr::UsdGeomTokens->size, 1.0);
-	NewAttr<pxr::TfToken>(bodyCollider, pxr::UsdGeomTokens->visibility,
+	SetAttr<double>(bodyCollider, pxr::UsdGeomTokens->size, 1.0);
+	SetAttr<pxr::TfToken>(bodyCollider, pxr::UsdGeomTokens->visibility,
 	                      pxr::UsdGeomTokens->invisible);
-	NewAttr<pxr::GfVec3f>(bodyCollider, xformOpScale,
+	SetAttr<pxr::GfVec3f>(bodyCollider, xformOpScale,
 	                      {
 	                          realDimensions[0] / mpu,
 	                          realDimensions[1] / mpu,
 	                          realDimensions[2] / mpu,
 	                      });
-	NewAttr<pxr::GfVec3d>(bodyCollider, xformOpTranslate,
+	SetAttr<pxr::GfVec3d>(bodyCollider, xformOpTranslate,
 	                      {
 	                          0.0,
 	                          0.0,
 	                          realDimensions[2] / 2 / mpu,
 	                      });
-	NewAttr<pxr::VtTokenArray>(bodyCollider, pxr::UsdGeomTokens->xformOpOrder,
+	SetAttr<pxr::VtTokenArray>(bodyCollider, pxr::UsdGeomTokens->xformOpOrder,
 	                           {xformOpTranslate, xformOpScale});
-	NewAttr<bool>(bodyCollider, pxr::UsdPhysicsTokens->physicsCollisionEnabled,
+	SetAttr<bool>(bodyCollider, pxr::UsdPhysicsTokens->physicsCollisionEnabled,
 	              true);
-	NewAttr<float>(bodyCollider, pxr::UsdPhysicsTokens->physicsMass,
+	SetAttr<float>(bodyCollider, pxr::UsdPhysicsTokens->physicsMass,
 	               brickMassInKg(dimensions) / kpu);
 
 	auto topCollider = pxr::SdfCreatePrimInLayer(
@@ -87,65 +88,65 @@ static void constructBrickClass(const pxr::UsdStageRefPtr &stage,
 	            pxr::UsdPhysicsTokens->PhysicsCollisionAPI,
 	            pxr::UsdPhysicsTokens->PhysicsMassAPI,
 	        }));
-	NewAttr<double>(topCollider, pxr::UsdGeomTokens->size, 1.0);
-	NewAttr<pxr::TfToken>(topCollider, pxr::UsdGeomTokens->visibility,
+	SetAttr<double>(topCollider, pxr::UsdGeomTokens->size, 1.0);
+	SetAttr<pxr::TfToken>(topCollider, pxr::UsdGeomTokens->visibility,
 	                      pxr::UsdGeomTokens->invisible);
-	NewAttr<pxr::GfVec3f>(topCollider, xformOpScale,
+	SetAttr<pxr::GfVec3f>(topCollider, xformOpScale,
 	                      {
 	                          realDimensions[0] / mpu,
 	                          realDimensions[1] / mpu,
 	                          StudHeight / mpu,
 	                      });
-	NewAttr<pxr::GfVec3d>(topCollider, xformOpTranslate,
+	SetAttr<pxr::GfVec3d>(topCollider, xformOpTranslate,
 	                      {
 	                          0.0,
 	                          0.0,
 	                          (realDimensions[2] + StudHeight / 2) / mpu,
 	                      });
-	NewAttr<pxr::VtTokenArray>(topCollider, pxr::UsdGeomTokens->xformOpOrder,
+	SetAttr<pxr::VtTokenArray>(topCollider, pxr::UsdGeomTokens->xformOpOrder,
 	                           {xformOpTranslate, xformOpScale});
-	NewAttr<bool>(topCollider, pxr::UsdPhysicsTokens->physicsCollisionEnabled,
+	SetAttr<bool>(topCollider, pxr::UsdPhysicsTokens->physicsCollisionEnabled,
 	              true);
-	NewAttr<float>(topCollider, pxr::UsdPhysicsTokens->physicsMass, 0.0f);
+	SetAttr<float>(topCollider, pxr::UsdPhysicsTokens->physicsMass, 0.0f);
 
 	auto body = pxr::SdfCreatePrimInLayer(
 	    layer, root_path.AppendChild(LegoTokens->Body));
 	body->SetSpecifier(pxr::SdfSpecifierDef);
 	body->SetTypeName(pxr::UsdGeomTokens->Cube);
-	NewAttr<double>(body, pxr::UsdGeomTokens->size, 1.0);
-	NewAttr<pxr::GfVec3f>(body, xformOpScale,
+	SetAttr<double>(body, pxr::UsdGeomTokens->size, 1.0);
+	SetAttr<pxr::GfVec3f>(body, xformOpScale,
 	                      {
 	                          realDimensions[0] / mpu,
 	                          realDimensions[1] / mpu,
 	                          realDimensions[2] / mpu,
 	                      });
-	NewAttr<pxr::GfVec3d>(body, xformOpTranslate,
+	SetAttr<pxr::GfVec3d>(body, xformOpTranslate,
 	                      {
 	                          0.0,
 	                          0.0,
 	                          realDimensions[2] / 2 / mpu,
 	                      });
-	NewAttr<pxr::VtTokenArray>(body, pxr::UsdGeomTokens->xformOpOrder,
+	SetAttr<pxr::VtTokenArray>(body, pxr::UsdGeomTokens->xformOpOrder,
 	                           {xformOpTranslate, xformOpScale});
-	NewAttr<pxr::VtArray<pxr::GfVec3f>>(
-	    body, pxr::UsdGeomTokens->primvarsDisplayColor,
-	    {{fColor[0], fColor[1], fColor[2]}}, pxr::SdfValueRoleNames->Color);
+	SetAttr<pxr::VtVec3fArray>(body, pxr::UsdGeomTokens->primvarsDisplayColor,
+	                           {as<pxr::GfVec3f>(fColor)},
+	                           pxr::SdfValueRoleNames->Color);
 
 	auto studPrototypePath = root_path.AppendChild(LegoTokens->StudPrototype);
 	auto studPrototype = pxr::SdfCreatePrimInLayer(layer, studPrototypePath);
 	studPrototype->SetSpecifier(pxr::SdfSpecifierClass);
 	studPrototype->SetTypeName(pxr::UsdGeomTokens->Cylinder);
-	NewAttr<double>(studPrototype, pxr::UsdGeomTokens->height, 1.0);
-	NewAttr<pxr::VtVec3fArray>(
+	SetAttr<double>(studPrototype, pxr::UsdGeomTokens->height, 1.0);
+	SetAttr<pxr::VtVec3fArray>(
 	    studPrototype, pxr::UsdGeomTokens->primvarsDisplayColor,
-	    {{fColor[0], fColor[1], fColor[2]}}, pxr::SdfValueRoleNames->Color);
-	NewAttr<pxr::GfVec3f>(studPrototype, xformOpScale,
+	    {as<pxr::GfVec3f>(fColor)}, pxr::SdfValueRoleNames->Color);
+	SetAttr<pxr::GfVec3f>(studPrototype, xformOpScale,
 	                      {
 	                          StudDiameter / 2.0 / mpu,
 	                          StudDiameter / 2.0 / mpu,
 	                          StudHeight / mpu,
 	                      });
-	NewAttr<pxr::VtTokenArray>(studPrototype, pxr::UsdGeomTokens->xformOpOrder,
+	SetAttr<pxr::VtTokenArray>(studPrototype, pxr::UsdGeomTokens->xformOpOrder,
 	                           {xformOpTranslate, xformOpScale});
 
 	pxr::VtVec3fArray positions;
@@ -170,9 +171,9 @@ static void constructBrickClass(const pxr::UsdStageRefPtr &stage,
 	pxr::SdfRelationshipSpec::New(studs, pxr::UsdGeomTokens->prototypes)
 	    ->GetTargetPathList()
 	    .Add(studPrototypePath);
-	NewAttr<pxr::VtVec3fArray>(studs, pxr::UsdGeomTokens->positions, positions,
+	SetAttr<pxr::VtVec3fArray>(studs, pxr::UsdGeomTokens->positions, positions,
 	                           pxr::SdfValueRoleNames->Point);
-	NewAttr<pxr::VtIntArray>(studs, pxr::UsdGeomTokens->protoIndices,
+	SetAttr<pxr::VtIntArray>(studs, pxr::UsdGeomTokens->protoIndices,
 	                         pxr::VtIntArray(positions.size(), 0));
 }
 

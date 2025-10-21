@@ -1,6 +1,7 @@
 #pragma once
 
-#include "AlgorithmUtils.h"
+#include <lego_assemble/Utils/PairHelpers.h>
+
 #include "LegoGraph.h"
 
 #include <mutex>
@@ -47,9 +48,8 @@ class LegoUsdBridge {
 	pxr::SdfPathTable<physx::PxRigidActor *> bodies_;
 	pxr::SdfPathTable<ConnDesc> conns_;
 	std::unordered_map<physx::PxRigidActor *, pxr::SdfPath> body_rev_;
-	std::unordered_map<
-	    std::pair<physx::PxRigidActor *, physx::PxRigidActor *>, pxr::SdfPath,
-	    PairHash<physx::PxRigidActor *, std::hash<physx::PxRigidActor *>>>
+	std::unordered_map<std::pair<physx::PxRigidActor *, physx::PxRigidActor *>,
+	                   pxr::SdfPath, PairHash<physx::PxRigidActor *>>
 	    conn_rev_;
 	LegoGraph graph_;
 	std::vector<pxr::SdfPath> pendingChanges_;

@@ -1,10 +1,13 @@
-#include "LegoGraph.h"
-#include "AlgorithmUtils.h"
+#include <lego_assemble/Utils/Algorithm.h>
+#include <lego_assemble/Utils/Conversions.h>
+#include <lego_assemble/Utils/PairHelpers.h>
+#include <lego_assemble/Utils/SkipGraph.h>
+#include <lego_assemble/Utils/UnorderedPair.h>
+
 #include "BrickSpecs.h"
+#include "LegoGraph.h"
 #include "LegoWeldConstraint.h"
-#include "MathUtils.h"
 #include "ScenePatcher.h"
-#include "SkipGraph.h"
 
 #include <deque>
 #include <unordered_map>
@@ -34,8 +37,7 @@ class LegoGraph::Impl {
 	using BodyMap = std::unordered_map<RigidBody *, BodyDesc>;
 	using ConnMap =
 	    std::unordered_map<std::pair<RigidBody *, RigidBody *>, ConnDesc,
-	                       PairHash<RigidBody *, std::hash<RigidBody *>>,
-	                       PairEq<RigidBody *, std::equal_to<RigidBody *>>>;
+	                       PairHash<RigidBody *>, PairEq<RigidBody *>>;
 
 	struct BodyDesc {
 		RigidBody *actor;
@@ -50,7 +52,7 @@ class LegoGraph::Impl {
 		Transform tf;
 		Transform T_parent_local;
 		Transform T_child_local;
-		float overlap_xy[2]; // in stage units
+		std::array<float, 2> overlap_xy; // in stage units
 	};
 
 	class LegoSimulationFilterCallback
@@ -140,8 +142,7 @@ class LegoGraph::Impl {
 				if (!pair.contactPatches) {
 					continue;
 				}
-				const auto &shape0 = pair.shapes[0];
-				const auto &shape1 = pair.shapes[1];
+				const auto &[shape0, shape1] = pair.shapes;
 				// body0 should be the lower brick, offering TopCollider
 				// body1 should be the upper brick, offering BodyCollider
 				bool toSwap = false;
@@ -167,8 +168,7 @@ class LegoGraph::Impl {
 					}
 					totalImpulse += patch.normal * patchImpulse;
 				}
-				const auto &pose0 = eventPose->globalPose[0];
-				const auto &pose1 = eventPose->globalPose[1];
+				const auto &[pose0, pose1] = eventPose->globalPose;
 				if (toSwap) {
 					impl->processAssemblyContact(body1, pose1, body0, pose0,
 					                             -totalImpulse);
@@ -301,8 +301,7 @@ class LegoGraph::Impl {
 		c.tf = info.T_parent_local * info.T_child_local.getInverse();
 		c.T_parent_local = info.T_parent_local;
 		c.T_child_local = info.T_child_local;
-		c.overlap_xy[0] = info.overlap_xy[0];
-		c.overlap_xy[1] = info.overlap_xy[1];
+		c.overlap_xy = info.overlap_xy;
 		setupConn(c);
 		auto edge_key = std::make_pair(a, b);
 		conns[edge_key] = c;
@@ -374,17 +373,6 @@ class LegoGraph::Impl {
 		if (conns.empty())
 			return violated;
 
-		// ---- Helpers ----
-		auto pxQuatToEigen = [](const physx::PxQuat &q) -> Eigen::Matrix3d {
-			physx::PxMat33 R(q);
-			Eigen::Matrix3d M;
-			// PxMat33 stores columns column0..2
-			M.col(0) = Eigen::Vector3d(R.column0.x, R.column0.y, R.column0.z);
-			M.col(1) = Eigen::Vector3d(R.column1.x, R.column1.y, R.column1.z);
-			M.col(2) = Eigen::Vector3d(R.column2.x, R.column2.y, R.column2.z);
-			return M;
-		};
-
 		auto getConstraintBetween = [](RigidBody *A,
 		                               RigidBody *B) -> Constraint * {
 			if (!A || !B)
@@ -446,8 +434,8 @@ class LegoGraph::Impl {
 
 		// ---- Pick a root per connected component (we'll fill later). For now pick a global root candidate. ----
 		BodyDesc *rootBody = nodeRev[0];
-		Eigen::Matrix3d Rroot_world =
-		    pxQuatToEigen(rootBody->actor->getGlobalPose().q);
+		auto Rroot_world =
+		    as<Eigen::Matrix3d>(rootBody->actor->getGlobalPose().q);
 
 		// ---- Build graph-world rotations Rgw for every node using your graph transforms ----
 		// We do a BFS from the chosen rootBody over the base graph using your lookupGraphTransform_
@@ -482,7 +470,7 @@ class LegoGraph::Impl {
 						// If disconnected by mistake, keep identity; but this shouldn't happen inside a CC.
 						Rgw[v] = Rgw[u];
 					} else {
-						Eigen::Matrix3d R_uv = pxQuatToEigen(T_u_v.q);
+						auto R_uv = as<Eigen::Matrix3d>(T_u_v.q);
 						Rgw[v] = Rgw[u] * R_uv; // compose along base graph
 					}
 					vis[v] = 1;
@@ -525,8 +513,7 @@ class LegoGraph::Impl {
 
 			// interface frame in parent local: use T_parent_local rotation
 			Eigen::Matrix3d R_parent_gw = Rgw[ip];
-			Eigen::Matrix3d R_joint_parentLocal =
-			    pxQuatToEigen(c.T_parent_local.q);
+			auto R_joint_parentLocal = as<Eigen::Matrix3d>(c.T_parent_local.q);
 			Eigen::Matrix3d R_joint_world = R_parent_gw * R_joint_parentLocal;
 
 			Eigen::Vector3d z_world =
@@ -1036,7 +1023,6 @@ class LegoGraph::Impl {
 		using Eigen::Rotation2Dd;
 		using Eigen::Vector2d;
 		using Eigen::Vector3d;
-		using lego_assemble::round;
 		using std::abs;
 		using std::atan2;
 		using std::cos;
@@ -1045,16 +1031,11 @@ class LegoGraph::Impl {
 		using std::numbers::pi;
 
 		double dt = getElapsedTime(body0->actor->getScene());
-		Vector3d dim0 = arrayToEigen<double>(body0->info.dimensions);
-		Vector3d dim1 = arrayToEigen<double>(body1->info.dimensions);
-		Matrix3d R0 =
-		    pxQuatToEigen(pose0_px.q).cast<double>().toRotationMatrix();
-		Vector3d t0 = pxVec3ToEigen(pose0_px.p).cast<double>();
-		Matrix3d R1 =
-		    pxQuatToEigen(pose1_px.q).cast<double>().toRotationMatrix();
-		Vector3d t1 = pxVec3ToEigen(pose1_px.p).cast<double>();
-		Vector3d impulse =
-		    pxVec3ToEigen(impulse_px).cast<double>(); // From 2nd to 1st
+		auto dim0 = as<Vector3d>(body0->info.dimensions);
+		auto dim1 = as<Vector3d>(body1->info.dimensions);
+		auto [R0, t0] = as_pose_rt<eigen_tag, double>(pose0_px);
+		auto [R1, t1] = as_pose_rt<eigen_tag, double>(pose1_px);
+		auto impulse = as<Vector3d>(impulse_px); // From 2nd to 1st
 
 		auto rel_R = R0.transpose() * R1;
 		auto rel_t = R0.transpose() * (t1 - t0);
@@ -1077,8 +1058,9 @@ class LegoGraph::Impl {
 		auto p0 =
 		    rel_t.head<2>() / grid_scale +
 		    (dim0.head<2>() - rel_R.topLeftCorner<2, 2>() * dim1.head<2>()) / 2;
-		auto p0_snap = round(p0);
-		auto p1_snap = round(p0_snap + R_snap * dim1.head<2>());
+		auto p0_snap = p0.array().round().matrix();
+		auto p1_snap =
+		    (p0_snap + R_snap * dim1.head<2>()).array().round().matrix();
 		auto p_err = (p0 - p0_snap).norm() * grid_scale;
 
 		// Calculate overlap
@@ -1124,13 +1106,12 @@ class LegoGraph::Impl {
 		assemblyEvents.push_back({
 		    .parent = body0->actor,
 		    .child = body1->actor,
-		    .offset_studs = {static_cast<BrickUnit>(p0_snap(0)),
-		                     static_cast<BrickUnit>(p0_snap(1))},
+		    .offset_studs = as_array<BrickUnit, 2>(p0_snap),
 		    .orientation = orientation,
 		    .T_parent_local =
-		        eigenToPxTransform<float>(T_parent_local_R, T_parent_local_t),
+		        as<physx::PxTransform>(T_parent_local_R, T_parent_local_t),
 		    .T_child_local =
-		        eigenToPxTransform<float>(T_child_local_R, T_child_local_t),
+		        as<physx::PxTransform>(T_child_local_R, T_child_local_t),
 		    .overlap_xy = {static_cast<float>(overlap(0) * grid_scale),
 		                   static_cast<float>(overlap(1) * grid_scale)},
 		});

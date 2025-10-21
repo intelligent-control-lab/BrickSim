@@ -1,7 +1,8 @@
-#include "LegoUsdBridge.h"
+#include <lego_assemble/Utils/SdfHelpers.h>
+
 #include "BrickNaming.h"
 #include "LegoTokens.h"
-#include "SdfUtils.h"
+#include "LegoUsdBridge.h"
 
 #include <PxScene.h>
 
@@ -40,11 +41,7 @@ static bool getBrickInfo(omni::physx::IPhysx *omni_px, const pxr::UsdPrim &prim,
 	if (!top_collider)
 		return false;
 
-	out.dimensions = {
-	    static_cast<BrickUnit>(dimensions[0]),
-	    static_cast<BrickUnit>(dimensions[1]),
-	    static_cast<BrickUnit>(dimensions[2]),
-	};
+	out.dimensions = as_array<BrickUnit, 3>(dimensions);
 	out.body_collider = body_collider;
 	out.top_collider = top_collider;
 	return true;
@@ -55,7 +52,7 @@ struct ConnInfo {
 	pxr::SdfPath child;
 	physx::PxTransform T_parent_local;
 	physx::PxTransform T_child_local;
-	float overlap_xy[2];
+	std::array<float, 2> overlap_xy;
 };
 
 static bool getConnInfo(const pxr::UsdPrim &prim, ConnInfo &out) {
@@ -86,19 +83,12 @@ static bool getConnInfo(const pxr::UsdPrim &prim, ConnInfo &out) {
 	prim.GetAttribute(LegoTokens->conn_rot0).Get(&rot0);
 	prim.GetAttribute(LegoTokens->conn_pos1).Get(&pos1);
 	prim.GetAttribute(LegoTokens->conn_rot1).Get(&rot1);
-	out.T_parent_local = physx::PxTransform(
-	    physx::PxVec3(pos0[0], pos0[1], pos0[2]),
-	    physx::PxQuat(rot0.GetImaginary()[0], rot0.GetImaginary()[1],
-	                  rot0.GetImaginary()[2], rot0.GetReal()));
-	out.T_child_local = physx::PxTransform(
-	    physx::PxVec3(pos1[0], pos1[1], pos1[2]),
-	    physx::PxQuat(rot1.GetImaginary()[0], rot1.GetImaginary()[1],
-	                  rot1.GetImaginary()[2], rot1.GetReal()));
+	out.T_parent_local = as<physx::PxTransform>(rot0, pos0);
+	out.T_child_local = as<physx::PxTransform>(rot1, pos1);
 
 	pxr::GfVec2f overlap_xy(0, 0);
 	prim.GetAttribute(LegoTokens->conn_overlap_xy).Get(&overlap_xy);
-	out.overlap_xy[0] = overlap_xy[0];
-	out.overlap_xy[1] = overlap_xy[1];
+	out.overlap_xy = as_array<float, 2>(overlap_xy);
 	return true;
 }
 
@@ -152,8 +142,7 @@ LegoUsdBridge::LegoUsdBridge(pxr::UsdStageRefPtr stage, physx::PxPhysics *px,
 				if (graph_.connect(rb_parent, rb_child,
 				                   {.T_parent_local = conn.info.T_parent_local,
 				                    .T_child_local = conn.info.T_child_local,
-				                    .overlap_xy = {conn.info.overlap_xy[0],
-				                                   conn.info.overlap_xy[1]}})) {
+				                    .overlap_xy = conn.info.overlap_xy})) {
 					conns_[conn.path] = {
 					    .parent_path = conn.info.parent,
 					    .child_path = conn.info.child,
@@ -286,8 +275,7 @@ void LegoUsdBridge::onPreStep() {
 					        rb_parent, rb_child,
 					        {.T_parent_local = prim_info.T_parent_local,
 					         .T_child_local = prim_info.T_child_local,
-					         .overlap_xy = {prim_info.overlap_xy[0],
-					                        prim_info.overlap_xy[1]}})) {
+					         .overlap_xy = prim_info.overlap_xy})) {
 						conns_[path] = {
 						    .parent_path = prim_info.parent,
 						    .child_path = prim_info.child,
@@ -374,22 +362,22 @@ void LegoUsdBridge::onPostStep() {
 		prim->SetSpecifier(pxr::SdfSpecifierDef);
 		prim->SetTypeName(pxr::UsdGeomTokens->Xform);
 
-		NewOrSetRelationship(prim, LegoTokens->conn_body0, parent_path);
-		NewOrSetRelationship(prim, LegoTokens->conn_body1, child_path);
-		NewOrSetAttr<pxr::GfVec2i>(prim, LegoTokens->conn_offset_studs,
-		                           event.offset_studs);
-		NewOrSetAttr<int>(prim, LegoTokens->conn_yaw_index, event.orientation);
-		NewOrSetAttr<pxr::GfVec3f>(prim, LegoTokens->conn_pos0,
-		                           ToGfVec3f(event.T_parent_local.p));
-		NewOrSetAttr<pxr::GfQuatf>(prim, LegoTokens->conn_rot0,
-		                           ToGfQuatf(event.T_parent_local.q));
-		NewOrSetAttr<pxr::GfVec3f>(prim, LegoTokens->conn_pos1,
-		                           ToGfVec3f(event.T_child_local.p));
-		NewOrSetAttr<pxr::GfQuatf>(prim, LegoTokens->conn_rot1,
-		                           ToGfQuatf(event.T_child_local.q));
-		NewOrSetAttr<pxr::GfVec2f>(prim, LegoTokens->conn_overlap_xy,
-		                           event.overlap_xy);
-		NewOrSetAttr<bool>(prim, LegoTokens->conn_enabled, true);
+		SetRelationship(prim, LegoTokens->conn_body0, parent_path);
+		SetRelationship(prim, LegoTokens->conn_body1, child_path);
+		SetAttr<pxr::GfVec2i>(prim, LegoTokens->conn_offset_studs,
+		                      event.offset_studs);
+		SetAttr<int>(prim, LegoTokens->conn_yaw_index, event.orientation);
+		SetAttr<pxr::GfVec3f>(prim, LegoTokens->conn_pos0,
+		                      event.T_parent_local.p);
+		SetAttr<pxr::GfQuatf>(prim, LegoTokens->conn_rot0,
+		                      event.T_parent_local.q);
+		SetAttr<pxr::GfVec3f>(prim, LegoTokens->conn_pos1,
+		                      event.T_child_local.p);
+		SetAttr<pxr::GfQuatf>(prim, LegoTokens->conn_rot1,
+		                      event.T_child_local.q);
+		SetAttr<pxr::GfVec2f>(prim, LegoTokens->conn_overlap_xy,
+		                      event.overlap_xy);
+		SetAttr<bool>(prim, LegoTokens->conn_enabled, true);
 	}
 
 	current_time++;
