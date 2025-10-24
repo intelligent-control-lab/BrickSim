@@ -61,13 +61,13 @@
             "absolute"
           ],
           "pattern": {
-            "regexp": "__________",
+            "regexp": "a^",
             "file": 1,
             "message": 1
           },
           "background": {
             "activeOnStart": true,
-            "beginsPattern": "__________",
+            "beginsPattern": ".",
             "endsPattern": "Waiting for debugger to connect"
           }
         }
