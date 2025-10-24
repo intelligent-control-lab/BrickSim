@@ -1,37 +1,10 @@
+import std;
+import lego_assemble.utils.conversions;
+import lego_assemble.vendor.physx;
+import lego_assemble.vendor.pxr;
+import lego_assemble.vendor.eigen;
+
 #include <cassert>
-#include <cmath>
-#include <iostream>
-
-#include <lego_assemble/Utils/Conversions.h>
-
-// ==== Pull in concrete library types we instantiate in this TU ====
-#include <Eigen/Dense>
-#include <Eigen/Geometry>
-
-#include <foundation/PxMat33.h>
-#include <foundation/PxMat34.h>
-#include <foundation/PxMat44.h>
-#include <foundation/PxQuat.h>
-#include <foundation/PxTransform.h>
-#include <foundation/PxVec2.h>
-#include <foundation/PxVec3.h>
-#include <foundation/PxVec4.h>
-
-#include <pxr/base/gf/matrix2d.h>
-#include <pxr/base/gf/matrix2f.h>
-#include <pxr/base/gf/matrix3d.h>
-#include <pxr/base/gf/matrix3f.h>
-#include <pxr/base/gf/matrix4d.h>
-#include <pxr/base/gf/matrix4f.h>
-#include <pxr/base/gf/quatd.h>
-#include <pxr/base/gf/quatf.h>
-#include <pxr/base/gf/transform.h>
-#include <pxr/base/gf/vec2d.h>
-#include <pxr/base/gf/vec2f.h>
-#include <pxr/base/gf/vec3d.h>
-#include <pxr/base/gf/vec3f.h>
-#include <pxr/base/gf/vec4d.h>
-#include <pxr/base/gf/vec4f.h>
 
 using namespace lego_assemble;
 

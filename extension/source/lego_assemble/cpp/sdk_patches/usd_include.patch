@@ -74,3 +74,30 @@
 +
  
  #endif //PXR_USD_USD_SCHEMA_REGISTRY_H
+--- a/tbb/task.h
++++ b/tbb/task.h
+@@ -376,7 +376,11 @@ private:
+ public:
+     enum kind_type {
+         isolated,
+-        bound
++        bound,
++        binding_completed,
++        detached,
++        dying,
++        binding_required = bound
+     };
+ 
+     enum traits_type {
+@@ -586,11 +590,6 @@ private:
+     friend class task;
+     friend class internal::allocate_root_with_context_proxy;
+ 
+-    static const kind_type binding_required = bound;
+-    static const kind_type binding_completed = kind_type(bound+1);
+-    static const kind_type detached = kind_type(binding_completed+1);
+-    static const kind_type dying = kind_type(detached+1);
+-
+     //! Propagates any state change detected to *this, and as an optimisation possibly also upward along the heritage line.
+     template <typename T>
+     void propagate_task_group_state ( T task_group_context::*mptr_state, task_group_context& src, T new_state );

@@ -1,0 +1,108 @@
+module;
+
+#include <pxr/base/gf/matrix2d.h>
+#include <pxr/base/gf/matrix2f.h>
+#include <pxr/base/gf/matrix3d.h>
+#include <pxr/base/gf/matrix3f.h>
+#include <pxr/base/gf/matrix4d.h>
+#include <pxr/base/gf/matrix4f.h>
+#include <pxr/base/gf/quatd.h>
+#include <pxr/base/gf/quatf.h>
+#include <pxr/base/gf/traits.h>
+#include <pxr/base/gf/transform.h>
+#include <pxr/base/gf/vec2d.h>
+#include <pxr/base/gf/vec2f.h>
+#include <pxr/base/gf/vec3d.h>
+#include <pxr/base/gf/vec3f.h>
+#include <pxr/base/gf/vec4d.h>
+#include <pxr/base/gf/vec4f.h>
+#include <pxr/base/tf/staticTokens.h>
+
+// Order matters, this must be included before other USD headers
+#include <pxr/usd/usd/schemaRegistry.h>
+
+#include <pxr/usd/kind/registry.h>
+#include <pxr/usd/sdf/attributeSpec.h>
+#include <pxr/usd/sdf/path.h>
+#include <pxr/usd/sdf/pathTable.h>
+#include <pxr/usd/sdf/primSpec.h>
+#include <pxr/usd/sdf/relationshipSpec.h>
+#include <pxr/usd/sdf/schema.h>
+#include <pxr/usd/usd/prim.h>
+#include <pxr/usd/usd/primRange.h>
+#include <pxr/usd/usd/stage.h>
+#include <pxr/usd/usd/tokens.h>
+#include <pxr/usd/usdGeom/metrics.h>
+#include <pxr/usd/usdGeom/tokens.h>
+#include <pxr/usd/usdGeom/xformOp.h>
+#include <pxr/usd/usdGeom/xformable.h>
+#include <pxr/usd/usdPhysics/metrics.h>
+#include <pxr/usd/usdPhysics/tokens.h>
+#include <pxr/usd/usdUtils/stageCache.h>
+
+#include <physxSchema/tokens.h>
+
+export module lego_assemble.vendor.pxr;
+export namespace pxr {
+using pxr::GfIsGfMatrix;
+using pxr::GfIsGfQuat;
+using pxr::GfIsGfVec;
+using pxr::GfMatrix2d;
+using pxr::GfMatrix2f;
+using pxr::GfMatrix3d;
+using pxr::GfMatrix3f;
+using pxr::GfMatrix4d;
+using pxr::GfMatrix4f;
+using pxr::GfQuatd;
+using pxr::GfQuatf;
+using pxr::GfTransform;
+using pxr::GfVec2d;
+using pxr::GfVec2f;
+using pxr::GfVec2i;
+using pxr::GfVec3d;
+using pxr::GfVec3f;
+using pxr::GfVec3i;
+using pxr::GfVec4d;
+using pxr::GfVec4f;
+using pxr::GfVec4i;
+using pxr::KindTokens;
+using pxr::PhysxSchemaTokens;
+using pxr::SdfAttributeSpec;
+using pxr::SdfAttributeSpecHandle;
+using pxr::SdfChangeBlock;
+using pxr::SdfCreatePrimInLayer;
+using pxr::SdfFieldKeys;
+using pxr::SdfLayerHandle;
+using pxr::SdfPath;
+using pxr::SdfPathTable;
+using pxr::SdfPathVector;
+using pxr::SdfPrimSpecHandle;
+using pxr::SdfRelationshipSpec;
+using pxr::SdfRelationshipSpecHandle;
+using pxr::SdfSchema;
+using pxr::SdfSpecHandle;
+using pxr::SdfSpecifierClass;
+using pxr::SdfSpecifierDef;
+using pxr::SdfTokenListOp;
+using pxr::SdfValueRoleNames;
+using pxr::SdfValueTypeNames;
+using pxr::SdfVariability;
+using pxr::SdfVariabilityUniform;
+using pxr::SdfVariabilityVarying;
+using pxr::TfStaticData;
+using pxr::TfToken;
+using pxr::UsdGeomGetStageMetersPerUnit;
+using pxr::UsdGeomTokens;
+using pxr::UsdGeomXformable;
+using pxr::UsdPhysicsGetStageKilogramsPerUnit;
+using pxr::UsdPhysicsTokens;
+using pxr::UsdPrim;
+using pxr::UsdStageCache;
+using pxr::UsdStageRefPtr;
+using pxr::UsdTokens;
+using pxr::UsdUtilsStageCache;
+using pxr::VtIntArray;
+using pxr::VtTokenArray;
+using pxr::VtValue;
+using pxr::VtVec3fArray;
+} // namespace pxr

@@ -7,4 +7,4 @@ source ${ISAACSIM_DIR}/setup_python_env.sh
 python_exe=${PYTHONEXE:-"${ISAACSIM_DIR}/kit/python/bin/python3"}
 export RESOURCE_NAME="IsaacSim"
 export LD_PRELOAD=$ISAACSIM_DIR/kit/libcarb.so
-export ISAACSIM_TARGET_DEPS="/path/to/IsaacSim/_build/target-deps" # <--- Edit this path
+export ISAACSIM_BUILD_DIR="/path/to/IsaacSim/_build" # <--- Edit this path

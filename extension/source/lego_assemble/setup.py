@@ -40,19 +40,19 @@ class CMakeBuild(build_ext):
             self.build_extension(ext)
 
     def build_extension(self, ext: CMakeExtension):
-        # Require a single env var that points to IsaacSim's target-deps tree.
-        # Example: export ISAACSIM_TARGET_DEPS=/home/you/IsaacSim/_build/target-deps
+        # Require a single env var that points to IsaacSim's build dir.
+        # Example: export ISAACSIM_BUILD_DIR=/home/you/IsaacSim/_build
         env = os.environ.copy()
         env["CC"] = "clang"
         env["CXX"] = "clang++"
         env["NVCC_CCBIN"] = "gcc-11"
-        target_deps = env.get("ISAACSIM_TARGET_DEPS")
-        if not target_deps:
+        isaacsim_build_dir = env.get("ISAACSIM_BUILD_DIR")
+        if not isaacsim_build_dir:
             raise RuntimeError(
-                "ISAACSIM_TARGET_DEPS is not set. Please export ISAACSIM_TARGET_DEPS to your IsaacSim _build/target-deps directory."
+                "ISAACSIM_BUILD_DIR is not set. Please export ISAACSIM_BUILD_DIR to your IsaacSim _build directory."
             )
-        if not pathlib.Path(target_deps).is_dir():
-            raise RuntimeError(f"ISAACSIM_TARGET_DEPS does not exist: {target_deps}")
+        if not pathlib.Path(isaacsim_build_dir).is_dir():
+            raise RuntimeError(f"ISAACSIM_BUILD_DIR does not exist: {isaacsim_build_dir}")
 
         ext_fullpath = pathlib.Path(self.get_ext_fullpath(ext.name))
         extdir = ext_fullpath.parent.resolve()
@@ -65,7 +65,7 @@ class CMakeBuild(build_ext):
             "-G", "Ninja",
             f"-DCMAKE_BUILD_TYPE={cfg}",
             f"-DEXT_OUTPUT_DIR={extdir}",
-            f"-DTARGET_DEPS_DIR={target_deps}",
+            f"-DISAACSIM_BUILD_DIR={isaacsim_build_dir}",
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         ]
 
