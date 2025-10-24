@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 4.1)
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "d0edc3af-4c50-42ea-a356-e2862fe7a444")
 
 project(lego_assemble_native LANGUAGES CXX)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -34,41 +35,13 @@ FetchContent_Declare(eigen
 )
 FetchContent_MakeAvailable(eigen) # defines Eigen3::Eigen
 
-# IsaacSim target-deps configuration
-if(NOT DEFINED ISAACSIM_BUILD_DIR)
-  if(DEFINED ENV{ISAACSIM_BUILD_DIR})
-    set(ISAACSIM_BUILD_DIR "$ENV{ISAACSIM_BUILD_DIR}")
-  endif()
-endif()
-if(NOT DEFINED ISAACSIM_BUILD_DIR)
-  message(FATAL_ERROR "ISAACSIM_BUILD_DIR is not set. Point it to your IsaacSim _build directory.")
-endif()
-if(NOT IS_DIRECTORY "${ISAACSIM_BUILD_DIR}")
-  message(FATAL_ERROR "ISAACSIM_BUILD_DIR does not exist: ${ISAACSIM_BUILD_DIR}")
-endif()
-message(STATUS "IsaacSim build dir: ${ISAACSIM_BUILD_DIR}")
+include(FetchIsaacDeps)
+isaacsim_fetch_all_deps()
 
-# Patching SDK to workaround bugs in header files
-find_program(PATCH_EXECUTABLE patch REQUIRED)
-message(STATUS "Found patch command: ${PATCH_EXECUTABLE}")
-add_custom_target(patch_sdk_usd ALL
-    COMMAND ${PATCH_EXECUTABLE}
-            --input="${CMAKE_CURRENT_SOURCE_DIR}/sdk_patches/usd_include.patch"
-            --forward
-            -p1
-            --directory="${ISAACSIM_BUILD_DIR}/target-deps/usd/release/include"
-            --backup || (exit 0)
-    COMMENT "Applying USD include patch"
-)
-add_custom_target(patch_sdk_kit ALL
-    COMMAND ${PATCH_EXECUTABLE}
-            --input="${CMAKE_CURRENT_SOURCE_DIR}/sdk_patches/kit_include.patch"
-            --forward
-            -p1
-            --directory="${ISAACSIM_BUILD_DIR}/linux-x86_64/release/kit/dev/include"
-            --backup || (exit 0)
-    COMMENT "Applying kit include patch"
-)
+include(SdkPatches)
+set(SDK_PATCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/sdk_patches")
+apply_sdk_patch_once(patch_usd "${ISAACSIM_USD_INCLUDE}" "${SDK_PATCH_DIR}/usd_include.patch" 1)
+apply_sdk_patch_once(patch_kit "${ISAACSIM_KIT_INCLUDE}" "${SDK_PATCH_DIR}/kit_include.patch" 1)
 
 file(GLOB_RECURSE CXX_MODULE_IFACES "${CMAKE_CURRENT_SOURCE_DIR}/modules/*.cppm")
 add_library(lego_assemble_modules STATIC)
@@ -78,28 +51,29 @@ target_sources(lego_assemble_modules PUBLIC
   BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/modules"
   FILES ${CXX_MODULE_IFACES}
 )
+add_dependencies(lego_assemble_modules patch_usd_patch patch_kit_patch)
 target_include_directories(lego_assemble_modules SYSTEM PUBLIC
-  "${ISAACSIM_BUILD_DIR}/linux-x86_64/release/kit/dev/include"
-  "${ISAACSIM_BUILD_DIR}/target-deps/carb_sdk_plugins/include"
-  "${ISAACSIM_BUILD_DIR}/target-deps/cuda/include"
-  "${ISAACSIM_BUILD_DIR}/target-deps/omni_client_library/include"
-  "${ISAACSIM_BUILD_DIR}/target-deps/omni_physics/release/include"
-  "${ISAACSIM_BUILD_DIR}/target-deps/physx/include"
-  "${ISAACSIM_BUILD_DIR}/target-deps/python/include/python3.11"
-  "${ISAACSIM_BUILD_DIR}/target-deps/usd_ext_physics/release/include"
-  "${ISAACSIM_BUILD_DIR}/target-deps/usd/release/include"
-  "${ISAACSIM_BUILD_DIR}/target-deps/usd/release/include/boost"
+  "${ISAACSIM_KIT_INCLUDE}"
+  "${ISAACSIM_CARB_INCLUDE}"
+  "${ISAACSIM_CUDA_INCLUDE}"
+  "${ISAACSIM_OMNI_CLIENT_INCLUDE}"
+  "${ISAACSIM_OMNI_PHYSICS_INCLUDE}"
+  "${ISAACSIM_PHYSX_INCLUDE}"
+  "${ISAACSIM_PYTHON_INCLUDE}"
+  "${ISAACSIM_USD_EXT_PHYSICS_INCLUDE}"
+  "${ISAACSIM_USD_INCLUDE}"
+  "${ISAACSIM_USD_BOOST_INCLUDE}"
 )
 target_link_directories(lego_assemble_modules PUBLIC
-  "${ISAACSIM_BUILD_DIR}/linux-x86_64/release/extsbuild/omni.usd.core/bin"
-  "${ISAACSIM_BUILD_DIR}/linux-x86_64/release/extscache/omni.usd.schema.audio-0.0.0+b0a86421.lx64.r.cp311/lib"
-  "${ISAACSIM_BUILD_DIR}/target-deps/carb_sdk_plugins/_build/linux-x86_64/release"
-  "${ISAACSIM_BUILD_DIR}/target-deps/cuda/lib64"
-  "${ISAACSIM_BUILD_DIR}/target-deps/nvtx/lib64"
-  "${ISAACSIM_BUILD_DIR}/target-deps/physx/bin/linux.x86_64/checked"
-  "${ISAACSIM_BUILD_DIR}/target-deps/python/lib"
-  "${ISAACSIM_BUILD_DIR}/target-deps/usd_ext_physics/release/lib"
-  "${ISAACSIM_BUILD_DIR}/target-deps/usd/release/lib"
+  "${ISAACSIM_OMNI_USD_CORE_LIBDIR}"
+  "${ISAACSIM_OMNI_USD_SCHEMA_AUDIO_LIBDIR}"
+  "${ISAACSIM_CARB_LIBDIR}"
+  "${ISAACSIM_CUDA_LIBDIR}"
+  "${ISAACSIM_NVTX_LIBDIR}"
+  "${ISAACSIM_PHYSX_LIBDIR}"
+  "${ISAACSIM_PYTHON_LIBDIR}"
+  "${ISAACSIM_USD_EXT_PHYSICS_LIBDIR}"
+  "${ISAACSIM_USD_LIBDIR}"
 )
 target_link_libraries(lego_assemble_modules PUBLIC
   Eigen3::Eigen

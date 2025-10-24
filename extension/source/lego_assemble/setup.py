@@ -4,7 +4,6 @@ import os
 import pathlib
 import shutil
 import subprocess
-import sys
 from typing import List
 
 import toml
@@ -40,20 +39,9 @@ class CMakeBuild(build_ext):
             self.build_extension(ext)
 
     def build_extension(self, ext: CMakeExtension):
-        # Require a single env var that points to IsaacSim's build dir.
-        # Example: export ISAACSIM_BUILD_DIR=/home/you/IsaacSim/_build
         env = os.environ.copy()
-        env["CC"] = "clang"
-        env["CXX"] = "clang++"
-        env["NVCC_CCBIN"] = "gcc-11"
-        isaacsim_build_dir = env.get("ISAACSIM_BUILD_DIR")
-        if not isaacsim_build_dir:
-            raise RuntimeError(
-                "ISAACSIM_BUILD_DIR is not set. Please export ISAACSIM_BUILD_DIR to your IsaacSim _build directory."
-            )
-        if not pathlib.Path(isaacsim_build_dir).is_dir():
-            raise RuntimeError(f"ISAACSIM_BUILD_DIR does not exist: {isaacsim_build_dir}")
-
+        env["CC"] = "clang-22"
+        env["CXX"] = "clang++-22"
         ext_fullpath = pathlib.Path(self.get_ext_fullpath(ext.name))
         extdir = ext_fullpath.parent.resolve()
 
@@ -65,7 +53,6 @@ class CMakeBuild(build_ext):
             "-G", "Ninja",
             f"-DCMAKE_BUILD_TYPE={cfg}",
             f"-DEXT_OUTPUT_DIR={extdir}",
-            f"-DISAACSIM_BUILD_DIR={isaacsim_build_dir}",
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         ]
 

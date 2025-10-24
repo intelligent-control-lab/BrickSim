@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-export CC=clang CXX=clang++ NVCC_CCBIN=gcc-11
+export CC=clang-22 CXX=clang++-22
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
@@ -29,7 +29,6 @@ fi
 cmake -S "$SRC" -B "$BUILD" \
   -DCMAKE_BUILD_TYPE=Debug \
   -DEXT_OUTPUT_DIR="$OUT" \
-  -DTARGET_DEPS_DIR="$ISAACSIM_TARGET_DEPS" \
   -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
   -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
   -DCMAKE_COLOR_DIAGNOSTICS=ON \
