@@ -1,7 +1,7 @@
 import math
 import omni.ui
 import omni.usd
-import omni.kit.app
+import omni.kit.app #type: ignore
 import omni.timeline
 from collections import deque
 from pxr import Usd, UsdPhysics

@@ -13,13 +13,12 @@
       "preLaunchTask": "Launch IsaacSim",
     },
     {
-      "name": "C++: Attach kit",
+      "name": "C++: Attach IsaacSim",
       "type": "cppdbg",
       "request": "attach",
       "program": "${workspaceRoot}/.venv/bin/python",
       "MIMode": "gdb",
-      "miDebuggerPath": "${workspaceFolder}/scripts/gdb-wrapper.sh",
-      "processId": "${input:pid_kit}",
+      "processId": "${input:pid_isaacsim}",
       "setupCommands": [
         {
           "text": "-enable-pretty-printing",
@@ -69,7 +68,7 @@
       "name": "Debug C++ & Python",
       "configurations": [
         "Python: Attach 5678",
-        "C++: Attach kit"
+        "C++: Attach IsaacSim"
       ],
       "stopAll": true,
       "preLaunchTask": "Launch IsaacSim"
@@ -77,11 +76,11 @@
   ],
   "inputs": [
     {
-      "id": "pid_kit",
+      "id": "pid_isaacsim",
       "type": "command",
       "command": "shellCommand.execute",
       "args": {
-        "command": "pgrep -nx kit",
+        "command": "pgrep -nx isaacsim",
         "useFirstResult": true
       }
     }

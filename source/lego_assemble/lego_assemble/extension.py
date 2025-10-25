@@ -1,5 +1,5 @@
 import carb
-import omni.ext
+import omni.ext #type: ignore
 from lego_assemble import _native
 
 class LegoExtension(omni.ext.IExt):

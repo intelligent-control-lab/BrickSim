@@ -6,11 +6,9 @@ export CC=clang-22 CXX=clang++-22
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
 
-source "$ROOT_DIR/.venv/bin/activate"
-
-SRC="$ROOT_DIR/extension/source/lego_assemble/cpp"
+SRC="$ROOT_DIR/source/lego_assemble/cpp"
 BUILD="$SRC/.build/Debug"
-OUT="$ROOT_DIR/extension/source/lego_assemble/lego_assemble"
+OUT="$ROOT_DIR/source/lego_assemble/lego_assemble"
 
 mkdir -p "$BUILD"
 

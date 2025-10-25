@@ -3,22 +3,19 @@ set -eo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
-
 source "$ROOT_DIR/.venv/bin/activate"
 
-KIT_BIN="$ROOT_DIR/isaacsim/kit/kit"
-APP_CFG="isaacsim/apps/isaacsim.exp.full.kit"
+EXPERIENCE="isaacsim.exp.full"
 
 DEBUG_HOST="${DEBUG_HOST:-127.0.0.1}"
 DEBUG_PORT="${DEBUG_PORT:-5678}"
-WAIT_FOR_CLIENT="${WAIT_FOR_CLIENT:-true}"
+WAIT_FOR_CLIENT="${WAIT_FOR_CLIENT:-false}"
 
 STAGE_PATH="${STAGE_PATH:-$ROOT_DIR/resources/demo.usd}"
 
-exec "$KIT_BIN" "$APP_CFG" \
-  --ext-folder "$ROOT_DIR/isaacsim/apps" \
+exec isaacsim "$EXPERIENCE" \
   --ext-folder "$ROOT_DIR/IsaacLab/source" \
-  --ext-folder "$ROOT_DIR/extension/source" \
+  --ext-folder "$ROOT_DIR/source" \
   --enable lego_assemble \
   --enable omni.kit.debug.python \
   --/exts/omni.kit.debug.python/mode=listen \
@@ -30,4 +27,3 @@ exec "$KIT_BIN" "$APP_CFG" \
   --/crashreporter/enabled=false \
   --exec "open_stage.py $STAGE_PATH" \
   -v
-

@@ -11,11 +11,16 @@ set(CMAKE_CXX_MODULE_STD ON)
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+include(FetchContent)
+include(FetchIsaacDeps)
+isaacsim_fetch_all_deps()
+
+# Link against Isaac Sim's bundled Python
+set(Python3_EXECUTABLE "${ISAACSIM_PYTHON}/bin/python3.11" CACHE FILEPATH "Python interpreter for pybind11" FORCE)
 find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
 
-include(FetchContent)
-
 set(PYBIND11_VERSION 2.12.0)
+set(PYBIND11_FINDPYTHON ON CACHE BOOL "Use CMake FindPython in pybind11")
 FetchContent_Declare(
   pybind11
   URL https://github.com/pybind/pybind11/archive/refs/tags/v${PYBIND11_VERSION}.tar.gz
@@ -35,9 +40,6 @@ FetchContent_Declare(eigen
 )
 FetchContent_MakeAvailable(eigen) # defines Eigen3::Eigen
 
-include(FetchIsaacDeps)
-isaacsim_fetch_all_deps()
-
 include(SdkPatches)
 set(SDK_PATCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/sdk_patches")
 apply_sdk_patch_once(patch_usd "${ISAACSIM_USD_INCLUDE}" "${SDK_PATCH_DIR}/usd_include.patch" 1)
@@ -55,7 +57,6 @@ add_dependencies(lego_assemble_modules patch_usd_patch patch_kit_patch)
 target_include_directories(lego_assemble_modules SYSTEM PUBLIC
   "${ISAACSIM_KIT_INCLUDE}"
   "${ISAACSIM_CARB_INCLUDE}"
-  "${ISAACSIM_CUDA_INCLUDE}"
   "${ISAACSIM_OMNI_CLIENT_INCLUDE}"
   "${ISAACSIM_OMNI_PHYSICS_INCLUDE}"
   "${ISAACSIM_PHYSX_INCLUDE}"
@@ -68,8 +69,6 @@ target_link_directories(lego_assemble_modules PUBLIC
   "${ISAACSIM_OMNI_USD_CORE_LIBDIR}"
   "${ISAACSIM_OMNI_USD_SCHEMA_AUDIO_LIBDIR}"
   "${ISAACSIM_CARB_LIBDIR}"
-  "${ISAACSIM_CUDA_LIBDIR}"
-  "${ISAACSIM_NVTX_LIBDIR}"
   "${ISAACSIM_PHYSX_LIBDIR}"
   "${ISAACSIM_PYTHON_LIBDIR}"
   "${ISAACSIM_USD_EXT_PHYSICS_LIBDIR}"

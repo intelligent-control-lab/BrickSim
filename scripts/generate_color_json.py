@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Usage: ./scripts/generate_color_json.py --input=resources/lego_colors_20250311.csv --output=extension/source/lego_assemble/lego_assemble/colors.json
+# Usage: ./scripts/generate_color_json.py --input=resources/lego_colors_20250311.csv --output=source/lego_assemble/lego_assemble/colors.json
 # From https://rebrickable.com/colors/
 
 import argparse

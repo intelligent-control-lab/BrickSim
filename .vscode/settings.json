@@ -3,13 +3,10 @@
         "**/*.egg-info": true,
         "**/.thumbs": true,
         "**/.build": true,
-        "IsaacLab/_isaac_sim": true,
         "logs": true,
         "outputs": true,
     },
     "files.watcherExclude": {
-        "isaacsim": true,
-        "IsaacLab/_isaac_sim": true,
         "logs": true,
         "outputs": true,
     },
@@ -18,7 +15,7 @@
     },
     "python.analysis.languageServerMode": "full",
     "clangd.arguments": [
-        "--compile-commands-dir=${workspaceFolder}/extension/source/lego_assemble/cpp"
+        "--compile-commands-dir=${workspaceFolder}/source/lego_assemble/cpp"
     ],
     "C_Cpp.intelliSenseEngine": "disabled",
     "debug.onTaskErrors": "debugAnyway"

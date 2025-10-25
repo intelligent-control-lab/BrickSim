@@ -1,34 +1,28 @@
 # AGENTS.md
 
-Isaac Sim 5.0 extension for simulating LEGO bricks and their assembly. This repository supports a research project.
+Isaac Sim 5.1 extension for simulating LEGO bricks and their assembly. This repository supports a research project.
 
 ## Codebase Structure
 ```
 .
-├─ .venv/                 # Project virtualenv; bin/activate customized to add Isaac Sim paths/env
-├─ extension/
-│  ├─ source/             # Extension source
-│  │  ├─ lego_assemble/   # Python package
-│  │  ├─ cpp/             # C++ code
-│  │  └─ .gitignore       # Extension-specific gitignore
-│  └─ scripts/            # Scripts for conducting research experiments
-├─ isaacsim/              # Isaac Sim app (git-ignored)
+├─ .venv/                 # Project virtualenv
+├─ source/                # Extension source
+│  ├─ lego_assemble/      # Python package
+│  ├─ cpp/                # C++ code
+│  └─ .gitignore          # Extension-specific gitignore
+├─ demos/                 # Demos for conducting research experiments
 ├─ IsaacLab/              # IsaacLab submodule
-│  └─ _isaac_sim/         # Symlink to ./isaacsim/
 ├─ resources/             # USD files and other assets
 ├─ scripts/
-│  ├─ venv-activate-addon.sh.template  # Snippet appended to venv activate
-│  ├─ build_fast_debug.sh               # Invokes CMake to build C++ code
-│  └─ launch_isaacsim.sh                # Launches Isaac Sim for debugging
+│  ├─ build_debug.sh      # Invokes CMake to build C++ code
+│  └─ launch_isaacsim.sh  # Launches Isaac Sim for debugging
 └─ .vscode/               # VS Code workspace settings
-../IsaacSim/              # IsaacSim source
-../PhysX/                 # PhysX source
+../IsaacSim/              # IsaacSim source checkout (optional; for dev purpose)
+../PhysX/                 # PhysX source checkout (optional; for dev purpose)
 ```
 
 ## Build & Test
-1. Only if you modified the C++ code, run `scripts/build_fast_debug.sh` to build and sanity‑check.
-2. Scripts under `scripts/` auto‑activate the virtualenv (they use `/usr/bin/env bash`), so you don’t need to source `.venv` when running them.
-3. If you run commands manually (e.g., Python modules), ensure the virtualenv is active (`source .venv/bin/activate`) unless your shell already has it.
+1. Only if you modified the C++ code, run `scripts/build_debug.sh` to build and sanity‑check.
 
 ## Coding Style
 1. Fail fast: if something might error and we can’t recover, let it error. Don’t add catch‑and‑rethrow or cosmetic error handling—keep code concise.
@@ -44,23 +38,22 @@ Isaac Sim 5.0 extension for simulating LEGO bricks and their assembly. This repo
 4. Less code > more code: avoid unnecessary abstractions and boilerplate.
 
 ## APIs & Docs
-- Isaac Sim 5.0 is partially open‑sourced.
+- Isaac Sim 5.1 is partially open‑sourced.
   - Python is open‑sourced.
   - Some C++ is open; other parts are closed or header‑only.
 - Treat online docs as potentially stale; verify against local Isaac Sim code.
 - When blocked, consult local sources.
 - Isaac Sim source code lives at `../IsaacSim` (relative to this project directory).
-- PhysX source checkout lives at `../PhysX` (relative to this project directory). The version is 107.3-physx-5.6.1, which is used by current Isaac Sim build.
+- PhysX source checkout lives at `../PhysX` (relative to this project directory).
 
 ### Where to Look / How to Inspect
-1. Consult anything under `../IsaacSim` and `../PhysX`.
-2. Dependent libraries are under `../IsaacSim/_build` (many in `../IsaacSim/_build/target-deps`).
-3. Use `rg` (ripgrep) or similar to search symbols in headers or even binary files.
-4. Decompile/disassemble/reverse‑engineer binaries when source is unavailable.
-5. Many dirs are symlinks created by repoman; they may point outside the tree. Follow them, and enable following links in searches.
-6. If you are looking for Isaac Sim's source, search in `../IsaacSim/`, which contains its source checkout. Don't search in `isaacsim/` or `IsaacLab/_isaac_sim/`, where there is only binary and headers.
-7. If you are looking for PhysX's source, search in `../PhysX/`, which contains its full source. `../IsaacSim/` doesn't contain PhysX's source.
-8. Omni PhysX is not open-source, so do reverse engineering (disassemble / decompile) on its binaries. You can find the binaries by performing `find -L ../IsaacSim '*.so'` with `grep` to filter what you are looking for.
+1. If you need to know something about Isaac Sim or PhysX, consult `../IsaacSim` and `../PhysX`.
+2. Use `rg` (ripgrep) or similar to search symbols in headers or even binary files.
+3. Decompile/disassemble/reverse‑engineer binaries when source is unavailable.
+4. Many dirs are symlinks created by repoman; they may point outside the tree. Follow them, and enable following links in searches.
+5. If you are looking for Isaac Sim's source, search in `../IsaacSim/`, which contains its source checkout.
+6. If you are looking for PhysX's source, search in `../PhysX/`, which contains its full source. `../IsaacSim/` doesn't contain PhysX's source.
+7. Omni PhysX is not open-source, so do reverse engineering (disassemble / decompile) on its binaries. You can find the binaries by performing `find -L ../IsaacSim '*.so'` with `grep` to filter what you are looking for.
 
 ## Safety
 You may operate in:

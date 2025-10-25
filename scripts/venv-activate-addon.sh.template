@@ -1,9 +1,0 @@
-export PYTHONEXE="$VIRTUAL_ENV/bin/python"
-ISAACSIM_DIR=$(realpath $VIRTUAL_ENV/../isaacsim)
-export CARB_APP_PATH=$ISAACSIM_DIR/kit
-export ISAAC_PATH=$ISAACSIM_DIR
-export EXP_PATH=$ISAACSIM_DIR/apps
-source ${ISAACSIM_DIR}/setup_python_env.sh
-python_exe=${PYTHONEXE:-"${ISAACSIM_DIR}/kit/python/bin/python3"}
-export RESOURCE_NAME="IsaacSim"
-export LD_PRELOAD=$ISAACSIM_DIR/kit/libcarb.so
