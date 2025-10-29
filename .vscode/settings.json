@@ -15,7 +15,8 @@
     },
     "python.analysis.languageServerMode": "full",
     "clangd.arguments": [
-        "--compile-commands-dir=${workspaceFolder}/source/lego_assemble/cpp"
+        "--compile-commands-dir=${workspaceFolder}/source/lego_assemble/cpp",
+        "--header-insertion=never",
     ],
     "C_Cpp.intelliSenseEngine": "disabled",
     "debug.onTaskErrors": "debugAnyway"
