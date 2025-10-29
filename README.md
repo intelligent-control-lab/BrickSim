@@ -4,15 +4,15 @@
 
 ### Prerequisites
 
-- Toolchain: clang-22, CMake >= 4.1.2, Python 3.11, ninja, ccache
+- Toolchain: clang-22, CMake >= 4.1.2, Python 3.11, ninja
 
 For Debian / Ubuntu, clang and CMake can be installed from upstream repositories:
 - clang-22: follow instructions at https://apt.llvm.org/
 - CMake: follow instructions at https://apt.kitware.com/
 
-Ninja and ccache can be installed with APT:
+Ninja can be installed with APT:
 ```bash
-sudo apt install ninja-build ccache
+sudo apt install ninja-build
 ```
 
 ### Clone

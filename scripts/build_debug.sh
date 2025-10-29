@@ -19,9 +19,9 @@ if command -v ninja >/dev/null 2>&1; then
 fi
 
 CCACHE_ARGS=()
-if command -v ccache >/dev/null 2>&1; then
-  CCACHE_ARGS=("-DCMAKE_C_COMPILER_LAUNCHER=ccache" "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
-fi
+# if command -v ccache >/dev/null 2>&1; then
+#   CCACHE_ARGS=("-DCMAKE_C_COMPILER_LAUNCHER=ccache" "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
+# fi
 
 # Always (re)configure to ensure compile_commands.json is regenerated
 cmake -S "$SRC" -B "$BUILD" \
