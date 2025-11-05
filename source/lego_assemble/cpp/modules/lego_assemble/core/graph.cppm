@@ -196,6 +196,40 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 	using ConnBundleStore =
 	    std::pmr::unordered_map<ConnectionEndpoint, ConnBundleWrapper>;
 
+	template <class Self, class P>
+	    requires PartTypeList::template
+	contains<P> static constexpr bool HasOnPartAdded = requires(
+	    std::remove_cvref_t<Self> self, PartId pid, PartWrapper<P> &pw) {
+		{ self.template on_part_added<P>(pid, pw) } -> std::same_as<void>;
+	};
+
+	template <class Self, class P>
+	    requires PartTypeList::template
+	contains<P> static constexpr bool HasOnPartRemoving = requires(
+	    std::remove_cvref_t<Self> self, PartId pid, PartWrapper<P> &pw) {
+		{ self.template on_part_removing<P>(pid, pw) } -> std::same_as<void>;
+	};
+
+	template <class Self>
+	static constexpr bool HasOnConnected = requires(
+	    std::remove_cvref_t<Self> self, ConnSegId csid, const ConnSegRef &csref,
+	    const InterfaceSpec &stud_spec, const InterfaceSpec &hole_spec,
+	    ConnSegWrapper &csw, ConnectionBundle &bundle) {
+		{
+			self.on_connected(csid, csref, stud_spec, hole_spec, csw, bundle)
+		} -> std::same_as<void>;
+	};
+
+	template <class Self>
+	static constexpr bool HasOnDisconnecting =
+	    requires(std::remove_cvref_t<Self> self, ConnSegId csid,
+	             const ConnSegRef &csref, ConnSegWrapper &csw,
+	             ConnectionBundle &bundle) {
+		    {
+			    self.on_disconnecting(csid, csref, csw, bundle)
+		    } -> std::same_as<void>;
+	    };
+
 	explicit LegoGraph(
 	    std::pmr::memory_resource *r = std::pmr::get_default_resource())
 	    : res_{r}, parts_{r}, conn_segs_{r}, conn_bundles_(r),
@@ -274,50 +308,57 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 	              true) &&
 	             std::constructible_from<PartWrapper<P>, PWArgs...,
 	                                     std::pmr::memory_resource *>)
-	bool add_part(std::tuple<PEKArgs...> &&keys, PWArgs &&...args) {
-		PartId id = next_part_id_;
-		DgVertexId dgid{dynamic_graph_.add_vertex()};
-		if (!parts_.template emplace<PartWrapper<P>>(
+	bool add_part(this auto &&self, std::tuple<PEKArgs...> &&keys,
+	              PWArgs &&...args) {
+		PartId id = self.next_part_id_;
+		DgVertexId dgid{self.dynamic_graph_.add_vertex()};
+		if (!self.parts_.template emplace<PartWrapper<P>>(
 		        std::tuple_cat(std::make_tuple(id, dgid),
 		                       std::forward<std::tuple<PEKArgs...>>(keys)),
-		        std::forward<PWArgs>(args)..., res_)) {
+		        std::forward<PWArgs>(args)..., self.res_)) {
 			// rollback
-			dynamic_graph_.erase_vertex(dgid.value());
+			self.dynamic_graph_.erase_vertex(dgid.value());
 			return false;
 		}
-		next_part_id_++;
+		self.next_part_id_++;
+		call_on_part_added<P>(std::forward<decltype(self)>(self), id);
 		return true;
 	}
 
 	template <class PK>
 	    requires(PartKeys::template contains<PK>)
-	bool remove_part(const PK &key) {
-		const PartId *pid_ptr = parts_.template project_key<PK, PartId>(key);
+	bool remove_part(this auto &&self, const PK &key) {
+		const PartId *pid_ptr =
+		    self.parts_.template project_key<PK, PartId>(key);
 		if (!pid_ptr) {
 			return false;
 		}
 		PartId pid = *pid_ptr;
 
-		// Remove from dynamic graph
-		const DgVertexId *dgid =
-		    parts_.template project_key<PartId, DgVertexId>(pid);
-		if (!(dgid && dynamic_graph_.erase_vertex(dgid->value()))) {
-			std::unreachable();
-		}
-
 		// Remove connections
-		bool visited = parts_.visit(pid, [&](auto &pw) {
+		bool visited = self.parts_.visit(pid, [&]<class P>(PartWrapper<P> &pw) {
+			call_on_part_removing<P>(std::forward<decltype(self)>(self), pid,
+			                         pw);
+
+			// Remove from dynamic graph
+			const DgVertexId *dgid =
+			    self.parts_.template project_key<PartId, DgVertexId>(pid);
+			if (!(dgid && self.dynamic_graph_.erase_vertex(dgid->value()))) {
+				std::unreachable();
+			}
+
 			for (ConnSegId csid : pw.incomings()) {
 				// Delete from the other side
 				// This is hole, so other side is stud
 				const ConnSegRef *csref_ptr =
-				    conn_segs_.template project<ConnSegId, ConnSegRef>(csid);
+				    self.conn_segs_.template project<ConnSegId, ConnSegRef>(
+				        csid);
 				if (!csref_ptr) {
 					std::unreachable();
 				}
 				const auto &[stud_if_ref, hole_if_ref] = *csref_ptr;
 				const auto &[stud_pid, stud_ifid] = stud_if_ref;
-				bool visited = parts_.visit(stud_pid, [&](auto &stud_pw) {
+				bool visited = self.parts_.visit(stud_pid, [&](auto &stud_pw) {
 					if (!stud_pw.outgoings().remove(csid)) {
 						std::unreachable();
 					}
@@ -325,7 +366,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 				if (!visited) {
 					std::unreachable();
 				}
-				if (!conn_segs_.erase_by_key(csid)) {
+				if (!self.conn_segs_.erase_by_key(csid)) {
 					std::unreachable();
 				}
 			}
@@ -333,13 +374,14 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 				// Delete from the other side
 				// This is stud, so other side is hole
 				const ConnSegRef *csref_ptr =
-				    conn_segs_.template project<ConnSegId, ConnSegRef>(csid);
+				    self.conn_segs_.template project<ConnSegId, ConnSegRef>(
+				        csid);
 				if (!csref_ptr) {
 					std::unreachable();
 				}
 				const auto &[stud_if_ref, hole_if_ref] = *csref_ptr;
 				const auto &[hole_pid, hole_ifid] = hole_if_ref;
-				bool visited = parts_.visit(hole_pid, [&](auto &hole_pw) {
+				bool visited = self.parts_.visit(hole_pid, [&](auto &hole_pw) {
 					if (!hole_pw.incomings().remove(csid)) {
 						std::unreachable();
 					}
@@ -347,12 +389,12 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 				if (!visited) {
 					std::unreachable();
 				}
-				if (!conn_segs_.erase_by_key(csid)) {
+				if (!self.conn_segs_.erase_by_key(csid)) {
 					std::unreachable();
 				}
 			}
 			for (PartId npid : pw.neighbor_parts()) {
-				bool visited = parts_.visit(npid, [&](auto &npw) {
+				bool visited = self.parts_.visit(npid, [&](auto &npw) {
 					if (!npw.neighbor_parts().remove(pid)) {
 						std::unreachable();
 					}
@@ -360,7 +402,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 				if (!visited) {
 					std::unreachable();
 				}
-				if (!conn_bundles_.erase({pid, npid})) {
+				if (!self.conn_bundles_.erase({pid, npid})) {
 					std::unreachable();
 				}
 			}
@@ -370,7 +412,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		}
 
 		// Finally remove the part itself
-		if (!parts_.erase_by_key(key)) {
+		if (!self.parts_.erase_by_key(key)) {
 			std::unreachable();
 		}
 		return true;
@@ -392,14 +434,17 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 	             ((std::same_as<CSEKs, std::remove_cvref_t<CSEKArgs>>) && ... &&
 	              true) &&
 	             std::constructible_from<ConnSegWrapper, CSWArgs...>)
-	bool connect(const InterfaceRef &stud_if, const InterfaceRef &hole_if,
-	             std::tuple<CSEKArgs...> &&keys, CSWArgs &&...args) {
+	bool connect(this auto &&self, const InterfaceRef &stud_if,
+	             const InterfaceRef &hole_if, std::tuple<CSEKArgs...> &&keys,
+	             CSWArgs &&...args) {
 		ConnSegRef csref{stud_if, hole_if};
-		if (conn_segs_.contains(csref)) {
+		if (self.conn_segs_.contains(csref)) {
 			return false;
 		}
-		std::optional<InterfaceSpec> stud_spec = get_interface_spec(stud_if);
-		std::optional<InterfaceSpec> hole_spec = get_interface_spec(hole_if);
+		std::optional<InterfaceSpec> stud_spec =
+		    self.get_interface_spec(stud_if);
+		std::optional<InterfaceSpec> hole_spec =
+		    self.get_interface_spec(hole_if);
 		if (!stud_spec || !hole_spec) {
 			return false;
 		}
@@ -419,8 +464,8 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		    csw.wrapped().compute_transform(*stud_spec, *hole_spec));
 
 		ConnectionEndpoint conn_endpoint{stud_pid, hole_pid};
-		auto conn_bundle_it = conn_bundles_.find(conn_endpoint);
-		bool bundle_exists = conn_bundle_it != conn_bundles_.end();
+		auto conn_bundle_it = self.conn_bundles_.find(conn_endpoint);
+		bool bundle_exists = conn_bundle_it != self.conn_bundles_.end();
 		if (bundle_exists) {
 			auto &bundle = conn_bundle_it->second.wrapped();
 			Transformd existent_direct_transform =
@@ -430,7 +475,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 				return false;
 			}
 		}
-		auto existent_transform = lookup_transform(stud_pid, hole_pid);
+		auto existent_transform = self.lookup_transform(stud_pid, hole_pid);
 		if (existent_transform) {
 			if (!SE3d{}.almost_equal(*existent_transform, new_transform)) {
 				return false;
@@ -440,18 +485,18 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			std::unreachable();
 		}
 
-		ConnSegId csid = next_conn_seg_id_;
-		if (!conn_segs_.insert(
+		ConnSegId csid = self.next_conn_seg_id_;
+		if (!self.conn_segs_.insert(
 		        std::tuple_cat(std::make_tuple(csid, csref),
 		                       std::forward<std::tuple<CSEKArgs...>>(keys)),
 		        std::move(csw))) {
 			return false;
 		}
-		next_conn_seg_id_++;
+		self.next_conn_seg_id_++;
 
 		if (!bundle_exists) {
-			auto [new_it, inserted] =
-			    conn_bundles_.emplace(conn_endpoint, ConnBundleWrapper(res_));
+			auto [new_it, inserted] = self.conn_bundles_.emplace(
+			    conn_endpoint, ConnBundleWrapper(self.res_));
 			if (!inserted) {
 				std::unreachable();
 			}
@@ -466,12 +511,12 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			}
 
 			const DgVertexId *stud_dgid_ptr =
-			    parts_.template project_key<PartId, DgVertexId>(stud_pid);
+			    self.parts_.template project_key<PartId, DgVertexId>(stud_pid);
 			const DgVertexId *hole_dgid_ptr =
-			    parts_.template project_key<PartId, DgVertexId>(hole_pid);
+			    self.parts_.template project_key<PartId, DgVertexId>(hole_pid);
 			if (stud_dgid_ptr && hole_dgid_ptr) {
-				if (!dynamic_graph_.add_edge(stud_dgid_ptr->value(),
-				                             hole_dgid_ptr->value())) {
+				if (!self.dynamic_graph_.add_edge(stud_dgid_ptr->value(),
+				                                  hole_dgid_ptr->value())) {
 					std::unreachable();
 				}
 			} else {
@@ -483,7 +528,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			std::unreachable();
 		}
 
-		bool stud_visited = parts_.visit(stud_pid, [&](auto &stud_pw) {
+		bool stud_visited = self.parts_.visit(stud_pid, [&](auto &stud_pw) {
 			if (!stud_pw.outgoings().add(csid)) {
 				std::unreachable();
 			}
@@ -497,7 +542,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			std::unreachable();
 		}
 
-		bool hole_visited = parts_.visit(hole_pid, [&](auto &hole_pw) {
+		bool hole_visited = self.parts_.visit(hole_pid, [&](auto &hole_pw) {
 			if (!hole_pw.incomings().add(csid)) {
 				std::unreachable();
 			}
@@ -510,21 +555,23 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		if (!hole_visited) {
 			std::unreachable();
 		}
+		call_on_connected(std::forward<decltype(self)>(self), csid, csref,
+		                  *stud_spec, *hole_spec, bundle);
 		return true;
 	}
 
 	template <class ConnId>
 	    requires(ConnSegKeys::template contains<ConnId>)
-	bool disconnect(const ConnId &conn_id) {
+	bool disconnect(this auto &&self, const ConnId &conn_id) {
 		const ConnSegRef *csref_ptr =
-		    conn_segs_.template project<ConnId, ConnSegRef>(conn_id);
+		    self.conn_segs_.template project<ConnId, ConnSegRef>(conn_id);
 		if (!csref_ptr) {
 			return false;
 		}
 		const ConnSegRef &csref = *csref_ptr;
 
 		const ConnSegId *csid_ptr =
-		    conn_segs_.template project<ConnId, ConnSegId>(conn_id);
+		    self.conn_segs_.template project<ConnId, ConnSegId>(conn_id);
 		if (!csid_ptr) {
 			std::unreachable();
 		}
@@ -535,26 +582,30 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		const auto &[hole_pid, hole_ifid] = hole_if_ref;
 
 		ConnectionEndpoint conn_endpoint{stud_pid, hole_pid};
-		auto conn_bundle_it = conn_bundles_.find(conn_endpoint);
-		if (conn_bundle_it == conn_bundles_.end()) {
+		auto conn_bundle_it = self.conn_bundles_.find(conn_endpoint);
+		if (conn_bundle_it == self.conn_bundles_.end()) {
 			std::unreachable();
 		}
 		ConnectionBundle &bundle = conn_bundle_it->second.wrapped();
+
+		call_on_disconnecting(std::forward<decltype(self)>(self), csid, csref,
+		                      bundle);
+
 		if (!bundle.conn_seg_ids.remove(csid)) {
 			std::unreachable();
 		}
 		bool part_disconnected = bundle.conn_seg_ids.empty();
 		if (part_disconnected) {
-			if (!conn_bundles_.erase(conn_endpoint)) {
+			if (!self.conn_bundles_.erase(conn_endpoint)) {
 				std::unreachable();
 			}
 			const DgVertexId *stud_dgid_ptr =
-			    parts_.template project_key<PartId, DgVertexId>(stud_pid);
+			    self.parts_.template project_key<PartId, DgVertexId>(stud_pid);
 			const DgVertexId *hole_dgid_ptr =
-			    parts_.template project_key<PartId, DgVertexId>(hole_pid);
+			    self.parts_.template project_key<PartId, DgVertexId>(hole_pid);
 			if (stud_dgid_ptr && hole_dgid_ptr) {
-				if (!dynamic_graph_.erase_edge(stud_dgid_ptr->value(),
-				                               hole_dgid_ptr->value())) {
+				if (!self.dynamic_graph_.erase_edge(stud_dgid_ptr->value(),
+				                                    hole_dgid_ptr->value())) {
 					std::unreachable();
 				}
 			} else {
@@ -562,7 +613,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			}
 		}
 
-		bool stud_visited = parts_.visit(stud_pid, [&](auto &stud_pw) {
+		bool stud_visited = self.parts_.visit(stud_pid, [&](auto &stud_pw) {
 			if (!stud_pw.outgoings().remove(csid)) {
 				std::unreachable();
 			}
@@ -576,7 +627,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			std::unreachable();
 		}
 
-		bool hole_visited = parts_.visit(hole_pid, [&](auto &hole_pw) {
+		bool hole_visited = self.parts_.visit(hole_pid, [&](auto &hole_pw) {
 			if (!hole_pw.incomings().remove(csid)) {
 				std::unreachable();
 			}
@@ -590,7 +641,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			std::unreachable();
 		}
 
-		if (!conn_segs_.erase_by_key(csid)) {
+		if (!self.conn_segs_.erase_by_key(csid)) {
 			std::unreachable();
 		}
 		return true;
@@ -604,6 +655,59 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 	ConnSegId next_conn_seg_id_ = 0;
 	ConnBundleStore conn_bundles_;
 	DynamicGraph dynamic_graph_;
+
+  private:
+	template <class P>
+	    requires PartTypeList::template
+	contains<P> static void call_on_part_added(auto &&self, PartId id) {
+		if constexpr (HasOnPartAdded<decltype(self), P>) {
+			PartWrapper<P> *pw_ptr =
+			    self.parts_.template get<PartWrapper<P>>(id);
+			if (!pw_ptr) {
+				std::unreachable();
+			}
+			std::forward<decltype(self)>(self).template on_part_added<P>(
+			    id, *pw_ptr);
+		}
+	}
+
+	template <class P>
+	    requires PartTypeList::template
+	contains<P> static void call_on_part_removing(auto &&self, PartId id,
+	                                              PartWrapper<P> &pw) {
+		if constexpr (HasOnPartRemoving<decltype(self), P>) {
+			std::forward<decltype(self)>(self).template on_part_removing<P>(id,
+			                                                                pw);
+		}
+	}
+
+	static void call_on_connected(auto &&self, ConnSegId csid,
+	                              const ConnSegRef &csref,
+	                              const InterfaceSpec &stud_spec,
+	                              const InterfaceSpec &hole_spec,
+	                              ConnectionBundle &bundle) {
+		if constexpr (HasOnConnected<decltype(self)>) {
+			ConnSegWrapper *csw_ptr = self.conn_segs_.find(csid);
+			if (!csw_ptr) {
+				std::unreachable();
+			}
+			std::forward<decltype(self)>(self).on_connected(
+			    csid, csref, stud_spec, hole_spec, *csw_ptr, bundle);
+		}
+	}
+
+	static void call_on_disconnecting(auto &&self, ConnSegId csid,
+	                                  const ConnSegRef &csref,
+	                                  ConnectionBundle &bundle) {
+		if constexpr (HasOnDisconnecting<decltype(self)>) {
+			ConnSegWrapper *csw_ptr = self.conn_segs_.find(csid);
+			if (!csw_ptr) {
+				std::unreachable();
+			}
+			std::forward<decltype(self)>(self).on_disconnecting(
+			    csid, csref, *csw_ptr, bundle);
+		}
+	}
 };
 
 } // namespace lego_assemble
