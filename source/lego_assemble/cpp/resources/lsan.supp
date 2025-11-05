@@ -1,0 +1,2 @@
+leak:Tf_RegistryManagerImpl
+leak:.*Tf_RegistryManagerImpl::AddRegistrationFunction

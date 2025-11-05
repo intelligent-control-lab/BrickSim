@@ -50,7 +50,7 @@ scripts/launch_isaacsim.sh
 
 ### Debug builds
 ```bash
-scripts/build_debug.sh
+scripts/build.sh
 ```
 This script produces a Debug build of the C++ extension. It runs fast and is suitable for development.
 

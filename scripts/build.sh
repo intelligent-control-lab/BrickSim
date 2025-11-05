@@ -6,8 +6,10 @@ export CC=clang-22 CXX=clang++-22
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
 
+BUILD_PROFILE=${1:-Debug}  # or Release, RelWithDebInfo, MinSizeRel
+
 SRC="$ROOT_DIR/source/lego_assemble/cpp"
-BUILD="$SRC/.build/Debug"
+BUILD="$SRC/.build/${BUILD_PROFILE}"
 OUT="$ROOT_DIR/source/lego_assemble/lego_assemble"
 
 mkdir -p "$BUILD"
@@ -25,7 +27,7 @@ CCACHE_ARGS=()
 
 # Always (re)configure to ensure compile_commands.json is regenerated
 cmake -S "$SRC" -B "$BUILD" \
-  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_BUILD_TYPE=${BUILD_PROFILE} \
   -DEXT_OUTPUT_DIR="$OUT" \
   -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
   -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
@@ -50,4 +52,4 @@ fi
 echo "Built module(s) in: $OUT"
 
 cd "$BUILD"
-ctest
+ctest --output-on-failure

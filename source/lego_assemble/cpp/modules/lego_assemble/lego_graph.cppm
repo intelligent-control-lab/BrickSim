@@ -1128,8 +1128,8 @@ class LegoGraph::Impl {
 		auto ov_end2 = p0_snap.cwiseMax(p1_snap);
 		auto ov_start = ov_start1.cwiseMax(ov_start2);
 		auto ov_end = ov_end1.cwiseMin(ov_end2);
-		auto ov_mid = (ov_start + ov_end) / 2;
-		auto overlap = (ov_end - ov_start).cwiseMax(Vector2d::Zero());
+		auto ov_mid = ((ov_start + ov_end) / 2).eval();
+		auto overlap = (ov_end - ov_start).cwiseMax(Vector2d::Zero()).eval();
 
 		// Calculate joint local transforms
 		Matrix3d T_parent_local_R = Matrix3d::Identity();

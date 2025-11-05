@@ -11,6 +11,17 @@ set(CMAKE_CXX_MODULE_STD ON)
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+set(SAN_CFLAGS
+  "-fsanitize=address,undefined,leak"
+  "-fno-omit-frame-pointer"
+  "-fsanitize-address-use-after-scope"
+  "-UNDEBUG"
+)
+set(SAN_LDFLAGS "-fsanitize=address,undefined,leak")
+# LeakSanitizer suppressions for known third-party singletons (USD Tf registry)
+set(LSAN_SUPPRESSIONS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/resources/lsan.supp")
+set(SAN_ENV "LSAN_OPTIONS=suppressions=${LSAN_SUPPRESSIONS_FILE};ASAN_OPTIONS=fast_unwind_on_malloc=0")
+
 include(FetchContent)
 include(FetchIsaacDeps)
 isaacsim_fetch_all_deps()
@@ -101,6 +112,8 @@ target_link_libraries(lego_assemble_modules PUBLIC
   physxSchema
   omniAudioSchema
 )
+target_compile_options(lego_assemble_modules PRIVATE $<$<CONFIG:DEBUG>:${SAN_CFLAGS}>)
+target_link_options(lego_assemble_modules PRIVATE $<$<CONFIG:DEBUG>:${SAN_LDFLAGS}>)
 
 add_library(_native MODULE)
 target_sources(_native PRIVATE
@@ -110,6 +123,8 @@ target_sources(_native PRIVATE
 )
 target_link_libraries(_native PRIVATE lego_assemble_modules pybind11::module)
 pybind11_extension(_native)
+target_compile_options(_native PRIVATE $<$<CONFIG:DEBUG>:${SAN_CFLAGS}>)
+target_link_options(_native PRIVATE $<$<CONFIG:DEBUG>:${SAN_LDFLAGS}>)
 
 # Allow the caller (setup.py) to override the output directory for the built module
 set(EXT_OUTPUT_DIR "${CMAKE_BINARY_DIR}" CACHE PATH "Directory to place the built python extension")
@@ -118,6 +133,25 @@ set_target_properties(_native PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${EXT_OUTPUT_
 # Tests
 enable_testing()
 
-add_executable(TestConversions tests/TestConversions.cpp)
-target_link_libraries(TestConversions PRIVATE lego_assemble_modules)
-add_test(NAME TestConversions COMMAND TestConversions)
+function(add_lego_test TEST_NAME)
+  add_executable(${TEST_NAME} ${ARGN})
+  target_link_libraries(${TEST_NAME} PRIVATE lego_assemble_modules)
+  target_compile_options(${TEST_NAME} PRIVATE ${SAN_CFLAGS})
+  target_link_options(${TEST_NAME} PRIVATE ${SAN_LDFLAGS})
+  add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+  set_tests_properties(${TEST_NAME} PROPERTIES ENVIRONMENT
+    "LSAN_OPTIONS=suppressions=${LSAN_SUPPRESSIONS_FILE};ASAN_OPTIONS=fast_unwind_on_malloc=0"
+  )
+endfunction()
+
+add_lego_test(TestConversions tests/TestConversions.cpp)
+add_lego_test(TestPolyStore tests/TestPolyStore.cpp)
+add_lego_test(TestPolyStore2 tests/TestPolyStore2.cpp)
+add_lego_test(TestBrickSpecs tests/TestBrickSpecs.cpp)
+add_lego_test(TestMultiKeySet tests/TestMultiKeySet.cpp)
+add_lego_test(TestMultiKeyMap tests/TestMultiKeyMap.cpp)
+add_lego_test(TestDynamicGraph tests/TestDynamicGraph.cpp)
+add_lego_test(TestLegoGraph tests/TestLegoGraph.cpp)
+add_lego_test(TestLegoGraphPMR tests/TestLegoGraphPMR.cpp)
+add_lego_test(TestLegoGraphSelfConnect tests/TestLegoGraphSelfConnect.cpp)
+add_lego_test(TestLegoGraphMultiSegEdge tests/TestLegoGraphMultiSegEdge.cpp)

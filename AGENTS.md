@@ -2,6 +2,8 @@
 
 Isaac Sim 5.1 extension for simulating LEGO bricks and their assembly. This repository supports a research project.
 
+> IMPORTANT NOTICE: This project is undergoing refactor. This file is NOT up-to-date.
+
 ## Codebase Structure
 ```
 .

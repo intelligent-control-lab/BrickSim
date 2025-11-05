@@ -2,12 +2,29 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Build Extension (Fast Debug)",
+      "label": "Build Extension (Debug)",
       "type": "shell",
       "command": "bash",
       "args": [
         "-lc",
-        "${workspaceFolder}/scripts/build_debug.sh"
+        "${workspaceFolder}/scripts/build.sh"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Build Extension (Release)",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "${workspaceFolder}/scripts/build.sh Release"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -59,7 +76,7 @@
           }
         }
       ],
-      "dependsOn": "Build Extension (Fast Debug)"
+      "dependsOn": "Build Extension (Debug)"
     }
   ]
 }

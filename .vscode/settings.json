@@ -2,7 +2,6 @@
     "files.exclude": {
         "**/*.egg-info": true,
         "**/.thumbs": true,
-        "**/.build": true,
         "logs": true,
         "outputs": true,
     },
@@ -19,5 +18,6 @@
         "--header-insertion=never",
     ],
     "C_Cpp.intelliSenseEngine": "disabled",
-    "debug.onTaskErrors": "debugAnyway"
+    "debug.onTaskErrors": "debugAnyway",
+    "cmake.sourceDirectory": "/home/yushijinhun/repos/lego-robot/source/lego_assemble/cpp"
 }
