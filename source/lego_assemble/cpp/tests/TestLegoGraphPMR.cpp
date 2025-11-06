@@ -47,7 +47,7 @@ int main() {
     // arena itself doesn't touch the default PMR (which is FailResource).
     std::pmr::unsynchronized_pool_resource arena{
         std::pmr::pool_options{}, std::pmr::new_delete_resource()};
-    using G = LegoGraph<PartList<CustomPart>>;
+    using G = SimpleLegoGraph<PartList<CustomPart>>;
     G g(&arena);
 
     // Part A (pid 0): one stud and one hole

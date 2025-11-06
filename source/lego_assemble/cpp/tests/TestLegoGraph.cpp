@@ -57,7 +57,7 @@ static InterfaceSpec mk_hole(InterfaceId id, BrickUnit L, BrickUnit W,
                          .pose = pose};
 }
 
-using G = LegoGraph<PartList<CustomPart>>; // single-type graph (CustomPart)
+using G = SimpleLegoGraph<PartList<CustomPart>>; // single-type graph (CustomPart)
 
 // Build a tiny graph with two parts (pid 0 and 1) and optional third isolated
 static void build_three_parts(G &g) {

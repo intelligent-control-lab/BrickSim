@@ -16,7 +16,7 @@ static InterfaceSpec hole(InterfaceId id) {
 }
 
 int main() {
-    using G = LegoGraph<PartList<CustomPart>>;
+    using G = SimpleLegoGraph<PartList<CustomPart>>;
     G g;
 
     // A and B each with two studs and two holes

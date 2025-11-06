@@ -68,7 +68,7 @@ static void build_three_parts(Graph &g) {
 static InterfaceRef IR(PartId pid, InterfaceId iid) { return {pid, iid}; }
 
 // ---------------- Hook-capturing test subclass ----------------
-struct HookGraph : private G {
+struct HookGraph final : public G {
     using PW = SimplePartWrapper<CustomPart>;
     using CSW = SimpleWrapper<ConnectionSegment>;
 
@@ -78,11 +78,9 @@ struct HookGraph : private G {
   public:
     // Re-expose selected base APIs for the tests while preventing upcast
     using G::add_part;
+    using G::remove_part;
     using G::connect;
     using G::disconnect;
-    using G::remove_part;
-    using G::connection_segments;
-    using G::connection_bundles;
 
     // Counters and observations
     int added_calls = 0;

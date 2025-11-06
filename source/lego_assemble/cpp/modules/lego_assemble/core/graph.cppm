@@ -302,6 +302,26 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		}
 	}
 
+	std::optional<InterfaceSpec>
+	get_interface_spec(const InterfaceRef &iref) const {
+		const auto &[part_id, interface_id] = iref;
+		std::optional<InterfaceSpec> result;
+		parts_.visit(part_id, [&](const auto &pw) {
+			const auto &part = pw.wrapped();
+			result = get_interface_at(part, interface_id);
+		});
+		return result;
+	}
+
+  protected:
+	std::pmr::memory_resource *res_;
+	PartStore parts_;
+	PartId next_part_id_ = 0;
+	ConnSegStore conn_segs_;
+	ConnSegId next_conn_seg_id_ = 0;
+	ConnBundleStore conn_bundles_;
+	DynamicGraph dynamic_graph_;
+
 	template <class P, class... PEKArgs, class... PWArgs>
 	    requires(in_pack<P, Ps...> && sizeof...(PEKArgs) == sizeof...(PEKs) &&
 	             ((std::same_as<PEKs, std::remove_cvref_t<PEKArgs>>) && ... &&
@@ -416,17 +436,6 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			std::unreachable();
 		}
 		return true;
-	}
-
-	std::optional<InterfaceSpec>
-	get_interface_spec(const InterfaceRef &iref) const {
-		const auto &[part_id, interface_id] = iref;
-		std::optional<InterfaceSpec> result;
-		parts_.visit(part_id, [&](const auto &pw) {
-			const auto &part = pw.wrapped();
-			result = get_interface_at(part, interface_id);
-		});
-		return result;
 	}
 
 	template <class... CSEKArgs, class... CSWArgs>
@@ -647,15 +656,6 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		return true;
 	}
 
-  protected:
-	std::pmr::memory_resource *res_;
-	PartStore parts_;
-	PartId next_part_id_ = 0;
-	ConnSegStore conn_segs_;
-	ConnSegId next_conn_seg_id_ = 0;
-	ConnBundleStore conn_bundles_;
-	DynamicGraph dynamic_graph_;
-
   private:
 	template <class P>
 	    requires PartTypeList::template
@@ -708,6 +708,43 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			    csid, csref, *csw_ptr, bundle);
 		}
 	}
+};
+
+// Subclasses of LegoGraph must be final
+// Re-export protected APIs as public as needed
+// This prevents upcast to base class reference then calling "deducing this" functions
+// which would fail to invoke subclass implementations
+export template <
+    class Ps, template <class> class PartWrapper = SimplePartWrapper,
+    template <class, class> class PartUnderlyingStorage = pmr_vector_storage,
+    class PartExtraKeys = type_list<>, class PartExtraKeysHash = type_list<>,
+    class PartExtraKeysEq = type_list<>,
+    class ConnSegWrapper = SimpleWrapper<ConnectionSegment>,
+    class ConnSegExtraKeys = type_list<>,
+    class ConnSegExtraKeysHash = type_list<>,
+    class ConnSegExtraKeysEq = type_list<>,
+    class ConnBundleWrapper = SimpleWrapper<ConnectionBundle>,
+    class DynamicGraph = HolmDeLichtenbergThorup>
+class SimpleLegoGraph final
+    : public LegoGraph<Ps, PartWrapper, PartUnderlyingStorage, PartExtraKeys,
+                       PartExtraKeysHash, PartExtraKeysEq, ConnSegWrapper,
+                       ConnSegExtraKeys, ConnSegExtraKeysHash,
+                       ConnSegExtraKeysEq, ConnBundleWrapper, DynamicGraph> {
+  public:
+	using Base =
+	    LegoGraph<Ps, PartWrapper, PartUnderlyingStorage, PartExtraKeys,
+	              PartExtraKeysHash, PartExtraKeysEq, ConnSegWrapper,
+	              ConnSegExtraKeys, ConnSegExtraKeysHash, ConnSegExtraKeysEq,
+	              ConnBundleWrapper, DynamicGraph>;
+
+	explicit SimpleLegoGraph(
+	    std::pmr::memory_resource *r = std::pmr::get_default_resource())
+	    : Base(r) {}
+
+	using Base::add_part;
+	using Base::connect;
+	using Base::disconnect;
+	using Base::remove_part;
 };
 
 } // namespace lego_assemble
