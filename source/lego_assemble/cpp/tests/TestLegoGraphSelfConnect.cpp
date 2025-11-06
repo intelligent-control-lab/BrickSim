@@ -23,9 +23,9 @@ int main() {
     std::initializer_list<InterfaceSpec> ifs{stud(10), hole(20)};
     assert(g.add_part<CustomPart>(std::tuple<>{}, 0.1, BrickColor{0, 0, 0}, ifs));
 
-    // Self-connection must be rejected gracefully (return false), not crash
+    // Self-connection must be rejected gracefully (no value), not crash
     ConnectionSegment cs{};
-    bool ok = g.connect(InterfaceRef{0, 10}, InterfaceRef{0, 20}, std::tuple<>{}, cs);
-    assert(ok == false && "Self-connection should be rejected");
+    auto ok = g.connect(InterfaceRef{0, 10}, InterfaceRef{0, 20}, std::tuple<>{}, cs);
+    assert(!ok && "Self-connection should be rejected");
     return 0;
 }

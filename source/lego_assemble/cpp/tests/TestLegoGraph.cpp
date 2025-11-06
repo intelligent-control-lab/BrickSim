@@ -66,7 +66,7 @@ static void build_three_parts(G &g) {
                                                      mk_stud(12, 2, 2),
                                                      mk_hole(20, 2, 2),
                                                      mk_hole(22, 2, 2)};
-    [[maybe_unused]] bool ok0 =
+    [[maybe_unused]] auto ok0 =
         g.add_part<CustomPart>(std::tuple<>{}, 0.1, BrickColor{255, 0, 0},
                                ifs0);
     assert(ok0);
@@ -76,7 +76,7 @@ static void build_three_parts(G &g) {
                                                      mk_stud(13, 2, 2),
                                                      mk_hole(21, 2, 2),
                                                      mk_hole(23, 2, 2)};
-    [[maybe_unused]] bool ok1 =
+    [[maybe_unused]] auto ok1 =
         g.add_part<CustomPart>(std::tuple<>{}, 0.2, BrickColor{0, 255, 0},
                                ifs1);
     assert(ok1);
@@ -84,7 +84,7 @@ static void build_three_parts(G &g) {
     // Part 2: isolated; only a stud(12)
     auto ifs2 = std::initializer_list<InterfaceSpec>{mk_stud(30, 1, 1),
                                                      mk_hole(31, 1, 1)};
-    [[maybe_unused]] bool ok2 =
+    [[maybe_unused]] auto ok2 =
         g.add_part<CustomPart>(std::tuple<>{}, 0.3, BrickColor{0, 0, 255},
                                ifs2);
     assert(ok2);
@@ -147,27 +147,27 @@ static void test_connect_branches_and_bundle() {
 
     // Wrong types: stud/hole reversed → false
     ConnectionSegment cs0; // default offset(0,0), yaw=0
-    bool r_wrong = g.connect(IR(0, 20), IR(1, 11), std::tuple<>{}, cs0);
+    auto r_wrong = g.connect(IR(0, 20), IR(1, 11), std::tuple<>{}, cs0);
     assert(!r_wrong);
 
     // Missing iface on either side → false
-    bool r_miss1 = g.connect(IR(0, 999), IR(1, 21), std::tuple<>{}, cs0);
-    bool r_miss2 = g.connect(IR(0, 10), IR(1, 999), std::tuple<>{}, cs0);
+    auto r_miss1 = g.connect(IR(0, 999), IR(1, 21), std::tuple<>{}, cs0);
+    auto r_miss2 = g.connect(IR(0, 10), IR(1, 999), std::tuple<>{}, cs0);
     assert(!r_miss1 && !r_miss2);
 
     // First valid connect (stud 0:10 -> hole 1:21). Bundle does not exist yet.
-    bool r1 = g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs0);
+    auto r1 = g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs0);
     assert(r1);
 
     // Duplicate same segment (same (stud,hole)) → guarded by conn_segs_.contains → false
-    bool r_dup_seg = g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs0);
+    auto r_dup_seg = g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs0);
     assert(!r_dup_seg);
 
     // Bundle exists now for endpoint {0,1}; attempt another segment between
     // the same endpoint but different interface pair and different transform.
     ConnectionSegment cs_diff;
     cs_diff.offset = Eigen::Vector2i{1, 0}; // different from default (0,0)
-    bool r_diff_T = g.connect(IR(0, 12), IR(1, 23), std::tuple<>{}, cs_diff);
+    auto r_diff_T = g.connect(IR(0, 12), IR(1, 23), std::tuple<>{}, cs_diff);
     assert(!r_diff_T); // rejected by bundle-exists with mismatched transform
 
 
@@ -377,7 +377,7 @@ static void test_remove_part_variants() {
 
     // Connect 0 -> 1 then remove 0; ensures all adjacency and bundles cleaned
     ConnectionSegment cs0; // identity transform
-    [[maybe_unused]] bool ok = g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs0);
+    [[maybe_unused]] auto ok = g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs0);
     assert(ok);
     assert(g.connection_segments().size() == 1);
     assert(g.connection_bundles().size() == 1);

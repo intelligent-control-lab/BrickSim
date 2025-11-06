@@ -40,9 +40,9 @@ static void build_three_parts(Graph &g) {
                                                      mk_stud(12, 2, 2),
                                                      mk_hole(20, 2, 2),
                                                      mk_hole(22, 2, 2)};
-    [[maybe_unused]] bool ok0 =
+    [[maybe_unused]] auto ok0 =
         g.template add_part<CustomPart>(std::tuple<>{}, 0.1, BrickColor{255, 0, 0},
-                               ifs0);
+                                        ifs0);
     assert(ok0);
 
     // Part 1
@@ -50,17 +50,17 @@ static void build_three_parts(Graph &g) {
                                                      mk_stud(13, 2, 2),
                                                      mk_hole(21, 2, 2),
                                                      mk_hole(23, 2, 2)};
-    [[maybe_unused]] bool ok1 =
+    [[maybe_unused]] auto ok1 =
         g.template add_part<CustomPart>(std::tuple<>{}, 0.2, BrickColor{0, 255, 0},
-                               ifs1);
+                                        ifs1);
     assert(ok1);
 
     // Part 2: isolated
     auto ifs2 = std::initializer_list<InterfaceSpec>{mk_stud(30, 1, 1),
                                                      mk_hole(31, 1, 1)};
-    [[maybe_unused]] bool ok2 =
+    [[maybe_unused]] auto ok2 =
         g.template add_part<CustomPart>(std::tuple<>{}, 0.3, BrickColor{0, 0, 255},
-                               ifs2);
+                                        ifs2);
     assert(ok2);
 }
 
