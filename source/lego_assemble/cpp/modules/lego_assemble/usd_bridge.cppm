@@ -2,7 +2,7 @@ export module lego_assemble.usd_bridge;
 
 import std;
 import lego_assemble.brick_naming;
-import lego_assemble.tokens;
+import lego_assemble.usd.tokens;
 import lego_assemble.brick_specs;
 import lego_assemble.lego_graph;
 import lego_assemble.utils.pair;

@@ -1,4 +1,4 @@
-export module lego_assemble.weld_constraint;
+export module lego_assemble.physx.weld_constraint;
 
 import std;
 import lego_assemble.vendor.physx;
@@ -7,7 +7,7 @@ using namespace physx;
 
 namespace lego_assemble {
 
-export struct LegoWeldData {
+export struct WeldConstraintData {
 	physx::PxTransform parentLocal; // joint frame in parent actor local space
 	physx::PxTransform childLocal;  // joint frame in child actor local space
 };
@@ -118,8 +118,8 @@ static PxU32 WeldSolverPrep(Px1DConstraint *constraints,
                             const void *constantBlock, const PxTransform &bA2w,
                             const PxTransform &bB2w, bool useExtendedLimits,
                             PxVec3p &cA2wOut, PxVec3p &cB2wOut) {
-	const LegoWeldData &data =
-	    *reinterpret_cast<const LegoWeldData *>(constantBlock);
+	const WeldConstraintData &data =
+	    *reinterpret_cast<const WeldConstraintData *>(constantBlock);
 
 	PxTransform32 cA2w, cB2w;
 	computeJointFrames(cA2w, cB2w, bA2w, bB2w, data.parentLocal,
@@ -148,9 +148,9 @@ static PxConstraintShaderTable gWeldShaders = {
 
 // ---------------- Connector ----------------
 
-class LegoWeldConnector : public PxConstraintConnector {
+class WeldConstraintConnector : public PxConstraintConnector {
   public:
-	LegoWeldData data{};
+	WeldConstraintData data{};
 	PxConstraint *constraint{nullptr};
 	PxRigidActor *actors[2]{};
 
@@ -192,15 +192,16 @@ class LegoWeldConnector : public PxConstraintConnector {
 
 // ---------------- Factory ----------------
 
-export PxConstraint *CreateLegoWeld(PxPhysics &physics, PxRigidActor *a,
-                                    PxRigidActor *b, LegoWeldData data) {
-	auto *conn = new LegoWeldConnector();
+export PxConstraint *createWeldConstraint(PxPhysics &physics, PxRigidActor *a,
+                                          PxRigidActor *b,
+                                          WeldConstraintData data) {
+	auto *conn = new WeldConstraintConnector();
 	conn->actors[0] = a;
 	conn->actors[1] = b;
 	conn->data = std::move(data);
 
 	PxConstraint *c = physics.createConstraint(a, b, *conn, gWeldShaders,
-	                                           sizeof(LegoWeldData));
+	                                           sizeof(WeldConstraintData));
 	conn->connectToConstraint(c);
 	return c;
 }

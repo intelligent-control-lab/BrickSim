@@ -2,7 +2,7 @@ module;
 
 #include <pxr/base/tf/staticTokens.h>
 
-export module lego_assemble.tokens;
+export module lego_assemble.usd.tokens;
 
 namespace lego_assemble {
 

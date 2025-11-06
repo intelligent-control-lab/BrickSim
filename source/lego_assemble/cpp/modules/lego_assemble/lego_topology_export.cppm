@@ -2,7 +2,7 @@ export module lego_assemble.lego_topology_export;
 
 import std;
 import lego_assemble.lego_topology;
-import lego_assemble.tokens;
+import lego_assemble.usd.tokens;
 import lego_assemble.brick_specs;
 import lego_assemble.utils.conversions;
 import lego_assemble.vendor.pxr;

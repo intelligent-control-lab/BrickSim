@@ -1,7 +1,7 @@
-export module lego_assemble.brick_spawner;
+export module lego_assemble.usd.brick_spawner;
 
 import std;
-import lego_assemble.brick_specs;
+import lego_assemble.core.specs;
 import lego_assemble.usd.tokens;
 import lego_assemble.utils.conversions;
 import lego_assemble.utils.sdf;
@@ -11,11 +11,16 @@ namespace lego_assemble {
 
 static void constructBrickClass(const pxr::UsdStageRefPtr &stage,
                                 const pxr::SdfPath &root_path,
-                                const std::array<BrickUnit, 3> &dimensions,
-                                const BrickColor &color) {
+                                const BrickPart &part) {
 	auto mpu = pxr::UsdGeomGetStageMetersPerUnit(stage);
 	auto kpu = pxr::UsdPhysicsGetStageKilogramsPerUnit(stage);
-	auto realDimensions = brickDimensionsToMeters(dimensions);
+	std::array<BrickUnit, 3> dimensions{part.L, part.W, part.H};
+	std::array<double, 3> realDimensions{
+	    dimensions[0] * BrickUnitLength,
+	    dimensions[1] * BrickUnitLength,
+	    dimensions[2] * PlateUnitHeight,
+	};
+	BrickColor color = part.color();
 	std::array<float, 3> fColor = {
 	    color[0] / 255.0f,
 	    color[1] / 255.0f,
@@ -70,7 +75,7 @@ static void constructBrickClass(const pxr::UsdStageRefPtr &stage,
 	SetAttr<bool>(bodyCollider, pxr::UsdPhysicsTokens->physicsCollisionEnabled,
 	              true);
 	SetAttr<float>(bodyCollider, pxr::UsdPhysicsTokens->physicsMass,
-	               brickMassInKg(dimensions) / kpu);
+	               part.mass() / kpu);
 
 	auto topCollider = pxr::SdfCreatePrimInLayer(
 	    layer, root_path.AppendChild(LegoTokens->TopCollider));
@@ -146,8 +151,8 @@ static void constructBrickClass(const pxr::UsdStageRefPtr &stage,
 	positions.resize(dimensions[0] * dimensions[1]);
 	for (int i = 0; i < dimensions[0]; i++) {
 		for (int j = 0; j < dimensions[1]; j++) {
-			double x_offset = (i - (dimensions[0] - 1) / 2.0) * BrickLength;
-			double y_offset = (j - (dimensions[1] - 1) / 2.0) * BrickLength;
+			double x_offset = (i - (dimensions[0] - 1) / 2.0) * BrickUnitLength;
+			double y_offset = (j - (dimensions[1] - 1) / 2.0) * BrickUnitLength;
 			double z_offset = realDimensions[2] + StudHeight / 2.0;
 			positions[i * dimensions[1] + j] = {
 			    static_cast<float>(x_offset / mpu),
@@ -190,8 +195,7 @@ static void constructBrickClass(const pxr::UsdStageRefPtr &stage,
 //   passes DefaultPredicate, so loadPhysicsFromPrimitive runs the heavy path and creates the rigid.
 static const pxr::SdfPath BricksPrototypesPath("/_BrickPrototypes");
 static pxr::SdfPath ensureBrickClass(const pxr::UsdStageRefPtr &stage,
-                                     const std::array<BrickUnit, 3> &dimensions,
-                                     const BrickColor &color) {
+                                     const BrickPart &part) {
 	auto layer = stage->GetEditTarget().GetLayer();
 
 	if (!layer->GetPrimAtPath(BricksPrototypesPath)) {
@@ -200,23 +204,22 @@ static pxr::SdfPath ensureBrickClass(const pxr::UsdStageRefPtr &stage,
 		classRoot->SetSpecifier(pxr::SdfSpecifierDef);
 	}
 
+	auto color = part.color();
 	auto brickName =
-	    std::format("Brick_{0}x{1}x{2}_{3:02x}{4:02x}{5:02x}", dimensions[0],
-	                dimensions[1], dimensions[2], color[0], color[1], color[2]);
+	    std::format("Brick_{0}x{1}x{2}_{3:02x}{4:02x}{5:02x}", part.L, part.W,
+	                part.H, color[0], color[1], color[2]);
 	auto brickPath = BricksPrototypesPath.AppendChild(pxr::TfToken(brickName));
 	if (!layer->GetPrimAtPath(brickPath)) {
-		constructBrickClass(stage, brickPath, dimensions, color);
+		constructBrickClass(stage, brickPath, part);
 	}
 	return brickPath;
 }
 
 export void createBrickPrim(const pxr::UsdStageRefPtr &stage,
-                            const pxr::SdfPath &path,
-                            const std::array<BrickUnit, 3> &dimensions,
-                            const BrickColor &color) {
+                            const pxr::SdfPath &path, const BrickPart &part) {
 	auto layer = stage->GetEditTarget().GetLayer();
 	pxr::SdfChangeBlock _changes;
-	auto classPath = ensureBrickClass(stage, dimensions, color);
+	auto classPath = ensureBrickClass(stage, part);
 	auto prim = pxr::SdfCreatePrimInLayer(layer, path);
 	prim->SetSpecifier(pxr::SdfSpecifierDef);
 	prim->GetInheritPathList().Add(classPath);

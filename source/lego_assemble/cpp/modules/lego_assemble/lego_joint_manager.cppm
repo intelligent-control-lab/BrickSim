@@ -3,7 +3,7 @@ export module lego_assemble.lego_joint_manager;
 import std;
 import lego_assemble.lego_graph;
 import lego_assemble.usd_bridge;
-import lego_assemble.scene_patcher;
+import lego_assemble.physx.scene_patcher;
 import lego_assemble.vendor.physx;
 import lego_assemble.vendor.carb;
 import lego_assemble.vendor.pxr;

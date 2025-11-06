@@ -1,4 +1,4 @@
-export module lego_assemble.scene_patcher;
+export module lego_assemble.physx.scene_patcher;
 
 import std;
 import lego_assemble.vendor.carb;

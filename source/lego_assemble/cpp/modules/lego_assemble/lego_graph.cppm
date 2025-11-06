@@ -2,8 +2,8 @@ export module lego_assemble.lego_graph;
 
 import std;
 import lego_assemble.brick_specs;
-import lego_assemble.scene_patcher;
-import lego_assemble.weld_constraint;
+import lego_assemble.physx.scene_patcher;
+import lego_assemble.physx.weld_constraint;
 import lego_assemble.vendor.carb;
 import lego_assemble.vendor.eigen;
 import lego_assemble.vendor.physx;
@@ -1055,7 +1055,7 @@ class LegoGraph::Impl {
 		Transform parentLocal = A_com2o * T_a_b * B_o2com;
 		Transform childLocal(physx::PxIdentity);
 
-		return CreateLegoWeld(
+		return createWeldConstraint(
 		    *px, a->actor, b->actor,
 		    {.parentLocal = parentLocal, .childLocal = childLocal});
 	}
