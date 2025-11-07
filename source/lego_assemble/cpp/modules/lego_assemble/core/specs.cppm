@@ -147,21 +147,25 @@ export constexpr double brickMassInKg(BrickUnit L, BrickUnit W, PlateUnit H) {
 	return (bricks * m_brick + rem * m_plate) / 1000;
 }
 
-export struct BrickPart {
+export class BrickPart final {
+  public:
 	using InterfaceIds = InterfaceIdList<0, 1>;
 
-	BrickUnit L;
-	BrickUnit W;
-	PlateUnit H;
-	BrickColor color_;
+	BrickPart(BrickUnit L, BrickUnit W, PlateUnit H, BrickColor color)
+	    : L_(L), W_(W), H_(H), color_(color) {}
 
-	BrickPart(BrickUnit l, BrickUnit w, PlateUnit h, BrickColor c)
-	    : L(l), W(w), H(h), color_(c) {}
-
-	double mass() const {
-		return brickMassInKg(L, W, H);
+	BrickUnit L() const {
+		return L_;
 	}
-
+	BrickUnit W() const {
+		return W_;
+	}
+	PlateUnit H() const {
+		return H_;
+	}
+	double mass() const {
+		return brickMassInKg(L_, W_, H_);
+	}
 	BrickColor color() const {
 		return color_;
 	}
@@ -169,42 +173,42 @@ export struct BrickPart {
 		if constexpr (Id == 0) {
 			return {.id = 0,
 			        .type = InterfaceType::Hole,
-			        .L = L,
-			        .W = W,
+			        .L = L_,
+			        .W = W_,
 			        .pose = {{1.0, 0.0, 0.0, 0.0},
 			                 {
-			                     -((L * BrickUnitLength) / 2.0),
-			                     -((W * BrickUnitLength) / 2.0),
+			                     -((L_ * BrickUnitLength) / 2.0),
+			                     -((W_ * BrickUnitLength) / 2.0),
 			                     0.0,
 			                 }}};
 		} else if constexpr (Id == 1) {
 			return {.id = 1,
 			        .type = InterfaceType::Stud,
-			        .L = L,
-			        .W = W,
+			        .L = L_,
+			        .W = W_,
 			        .pose = {{1.0, 0.0, 0.0, 0.0},
 			                 {
-			                     -((L * BrickUnitLength) / 2.0),
-			                     -((W * BrickUnitLength) / 2.0),
-			                     H * PlateUnitHeight,
+			                     -((L_ * BrickUnitLength) / 2.0),
+			                     -((W_ * BrickUnitLength) / 2.0),
+			                     H_ * PlateUnitHeight,
 			                 }}};
 		} else {
 			static_assert(Id < 2, "Invalid interface id");
 		}
 	}
+
+  private:
+	BrickUnit L_;
+	BrickUnit W_;
+	PlateUnit H_;
+	BrickColor color_;
 };
 static_assert(PartWithFixedInterfaces<BrickPart>);
 
 // ==== Definition of Custom Part ====
 
-export struct CustomPart {
-	double mass_{};
-	BrickColor color_{};
-	std::pmr::vector<InterfaceSpec> interfaces_{};
-
-	CustomPart(std::pmr::memory_resource *r = std::pmr::get_default_resource())
-	    : interfaces_{r} {}
-
+export struct CustomPart final {
+  public:
 	CustomPart(double mass, BrickColor color,
 	           std::initializer_list<InterfaceSpec> ifs,
 	           std::pmr::memory_resource *r = std::pmr::get_default_resource())
@@ -228,6 +232,11 @@ export struct CustomPart {
 		}
 		return nullptr;
 	}
+
+  private:
+	double mass_;
+	BrickColor color_;
+	std::pmr::vector<InterfaceSpec> interfaces_;
 };
 static_assert(PartWithDynamicInterfaces<CustomPart>);
 

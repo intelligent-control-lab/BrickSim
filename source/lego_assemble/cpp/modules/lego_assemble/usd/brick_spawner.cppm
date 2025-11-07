@@ -14,7 +14,7 @@ static void constructBrickClass(const pxr::UsdStageRefPtr &stage,
                                 const BrickPart &part) {
 	auto mpu = pxr::UsdGeomGetStageMetersPerUnit(stage);
 	auto kpu = pxr::UsdPhysicsGetStageKilogramsPerUnit(stage);
-	std::array<BrickUnit, 3> dimensions{part.L, part.W, part.H};
+	std::array<BrickUnit, 3> dimensions{part.L(), part.W(), part.H()};
 	std::array<double, 3> realDimensions{
 	    dimensions[0] * BrickUnitLength,
 	    dimensions[1] * BrickUnitLength,
@@ -206,8 +206,8 @@ static pxr::SdfPath ensureBrickClass(const pxr::UsdStageRefPtr &stage,
 
 	auto color = part.color();
 	auto brickName =
-	    std::format("Brick_{0}x{1}x{2}_{3:02x}{4:02x}{5:02x}", part.L, part.W,
-	                part.H, color[0], color[1], color[2]);
+	    std::format("Brick_{0}x{1}x{2}_{3:02x}{4:02x}{5:02x}", part.L(),
+	                part.W(), part.H(), color[0], color[1], color[2]);
 	auto brickPath = BricksPrototypesPath.AppendChild(pxr::TfToken(brickName));
 	if (!layer->GetPrimAtPath(brickPath)) {
 		constructBrickClass(stage, brickPath, part);
