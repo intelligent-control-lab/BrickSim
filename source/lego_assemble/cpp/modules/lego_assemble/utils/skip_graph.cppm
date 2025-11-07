@@ -27,19 +27,20 @@ class NoOpSkipGraphScheduler {
   public:
 	using Vertex = V;
 	using EdgeKey = std::pair<V, V>;
-	using AdjSet = std::unordered_set<V, Hash, Eq>;
-	using AdjMap = std::unordered_map<V, AdjSet, Hash, Eq>;
-	using HandleMap =
-	    std::unordered_map<EdgeKey, Handle, PairHash<V, Hash>, PairEq<V, Eq>>;
+	using AdjSet = std::pmr::unordered_set<V, Hash, Eq>;
+	using AdjMap = std::pmr::unordered_map<V, AdjSet, Hash, Eq>;
+	using HandleMap = std::pmr::unordered_map<EdgeKey, Handle,
+	                                          PairHash<V, Hash>, PairEq<V, Eq>>;
 
-	NoOpSkipGraphScheduler(CreateEdge create_edge, DestroyEdge destroy_edge,
-	                       Hash h = Hash{}, Eq e = Eq{}, Cmp cmp = Cmp{})
-	    : eq_(std::move(e)), cmp_(std::move(cmp)) {}
+	NoOpSkipGraphScheduler(
+	    CreateEdge create_edge, DestroyEdge destroy_edge,
+	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
+	    : base_adj_{mr} {}
 
 	~NoOpSkipGraphScheduler() {}
 
 	bool connect(const V &a, const V &b) {
-		if (eq_(a, b))
+		if (Eq{}(a, b))
 			return false;
 		bool inserted = add_base_adj_(a, b);
 		if (!inserted)
@@ -48,7 +49,7 @@ class NoOpSkipGraphScheduler {
 	}
 
 	bool disconnect(const V &a, const V &b) {
-		if (eq_(a, b))
+		if (Eq{}(a, b))
 			return false;
 		bool removed = remove_base_adj_(a, b);
 		if (!removed)
@@ -56,12 +57,8 @@ class NoOpSkipGraphScheduler {
 		return true;
 	}
 
-	std::vector<EdgeKey> aux_edges() const {
-		return {};
-	}
-
-	const AdjMap &base_adjacency() const noexcept {
-		return base_adj_;
+	auto aux_edges() const {
+		return std::ranges::empty_view<const EdgeKey>{};
 	}
 
 	void clear() {
@@ -109,8 +106,6 @@ class NoOpSkipGraphScheduler {
 	}
 
   private:
-	Eq eq_;
-	Cmp cmp_;
 	AdjMap base_adj_;
 };
 
@@ -126,15 +121,16 @@ class SimpleSkipGraphScheduler {
   public:
 	using Vertex = V;
 	using EdgeKey = std::pair<V, V>;
-	using AdjSet = std::unordered_set<V, Hash, Eq>;
-	using AdjMap = std::unordered_map<V, AdjSet, Hash, Eq>;
-	using HandleMap =
-	    std::unordered_map<EdgeKey, Handle, PairHash<V, Hash>, PairEq<V, Eq>>;
+	using AdjSet = std::pmr::unordered_set<V, Hash, Eq>;
+	using AdjMap = std::pmr::unordered_map<V, AdjSet, Hash, Eq>;
+	using HandleMap = std::pmr::unordered_map<EdgeKey, Handle,
+	                                          PairHash<V, Hash>, PairEq<V, Eq>>;
 
-	SimpleSkipGraphScheduler(CreateEdge create_edge, DestroyEdge destroy_edge,
-	                         Hash h = Hash{}, Eq e = Eq{}, Cmp cmp = Cmp{})
+	SimpleSkipGraphScheduler(
+	    CreateEdge create_edge, DestroyEdge destroy_edge,
+	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
 	    : create_(std::move(create_edge)), destroy_(std::move(destroy_edge)),
-	      hash_(std::move(h)), eq_(std::move(e)), cmp_(std::move(cmp)) {}
+	      mr_(mr), base_adj_(mr), aux_adj_(mr), aux_handles_(mr) {}
 
 	~SimpleSkipGraphScheduler() {
 		if (DestroyEdgesOnDestruct)
@@ -142,7 +138,7 @@ class SimpleSkipGraphScheduler {
 	}
 
 	bool connect(const V &a, const V &b) {
-		if (eq_(a, b))
+		if (Eq{}(a, b))
 			return false;
 		bool inserted = add_base_adj_(a, b);
 		if (!inserted)
@@ -152,7 +148,7 @@ class SimpleSkipGraphScheduler {
 	}
 
 	bool disconnect(const V &a, const V &b) {
-		if (eq_(a, b))
+		if (Eq{}(a, b))
 			return false;
 		bool removed = remove_base_adj_(a, b);
 		if (!removed)
@@ -161,19 +157,8 @@ class SimpleSkipGraphScheduler {
 		return true;
 	}
 
-	std::vector<EdgeKey> aux_edges() const {
-		std::vector<EdgeKey> out;
-		out.reserve(aux_handles_.size());
-		for (auto const &[e, _] : aux_handles_)
-			out.push_back(e);
-		return out;
-	}
-
-	const AdjMap &base_adjacency() const noexcept {
-		return base_adj_;
-	}
-	const AdjMap &aux_adjacency() const noexcept {
-		return aux_adj_;
+	auto aux_edges() const {
+		return std::views::keys(aux_handles_);
 	}
 
 	void clear() {
@@ -186,7 +171,7 @@ class SimpleSkipGraphScheduler {
 
   private:
 	EdgeKey canon_(const V &u, const V &v) const {
-		if (cmp_(v, u))
+		if (Cmp{}(v, u))
 			return {v, u};
 		return {u, v};
 	}
@@ -230,49 +215,44 @@ class SimpleSkipGraphScheduler {
 		return true;
 	}
 
-	std::vector<V> vertex_set_() const {
-		std::vector<V> verts;
+	std::pmr::vector<V> vertex_set_() const {
+		std::pmr::vector<V> verts(mr_);
 		verts.reserve(base_adj_.size() * 2);
 		for (auto const &[u, nbrs] : base_adj_) {
 			verts.push_back(u);
 			for (auto const &v : nbrs)
 				verts.push_back(v);
 		}
-		std::sort(verts.begin(), verts.end(),
-		          [&](auto const &x, auto const &y) { return cmp_(x, y); });
-		verts.erase(std::unique(verts.begin(), verts.end(),
-		                        [&](auto const &x, auto const &y) {
-			                        return eq_(x, y);
-		                        }),
-		            verts.end());
+		std::sort(verts.begin(), verts.end(), Cmp{});
+		verts.erase(std::unique(verts.begin(), verts.end(), Eq{}), verts.end());
 		return verts;
 	}
 
 	void recompute_aux_() {
 		const AdjMap old_aux = aux_adj_;
-		std::unordered_set<EdgeKey, PairHash<V, Hash>, PairEq<V, Eq>>
-		    desired_aux;
-		std::vector<int> targets;
+		std::pmr::unordered_set<EdgeKey, PairHash<V, Hash>, PairEq<V, Eq>>
+		    desired_aux(mr_);
+		std::pmr::vector<int> targets(mr_);
 		targets.reserve(static_cast<std::size_t>(K));
 		for (int i = 1; i <= K; ++i)
 			targets.push_back(1 << i);
 		const int maxd = targets.back();
 		auto verts = vertex_set_();
 		for (const V &s : verts) {
-			std::unordered_map<V, int, Hash, Eq> dist;
+			std::pmr::unordered_map<V, int, Hash, Eq> dist(mr_);
 			dist.emplace(s, 0);
-			std::deque<V> q;
+			std::pmr::deque<V> q(mr_);
 			q.push_back(s);
-			std::unordered_map<int, std::vector<V>> cand;
+			std::pmr::unordered_map<int, std::pmr::vector<V>> cand(mr_);
 			for (int d : targets)
-				cand.emplace(d, std::vector<V>{});
+				cand.emplace(d, std::pmr::vector<V>(mr_));
 			while (!q.empty()) {
 				V u = q.front();
 				q.pop_front();
 				int d = dist[u];
 				if (d > 0 && d <= maxd) {
 					auto it = cand.find(d);
-					if (it != cand.end() && !eq_(u, s))
+					if (it != cand.end() && !Eq{}(u, s))
 						it->second.push_back(u);
 				}
 				if (d == maxd)
@@ -294,11 +274,7 @@ class SimpleSkipGraphScheduler {
 				const auto &lst = it->second;
 				V chosen;
 				if (Stable) {
-					chosen =
-					    *std::min_element(lst.begin(), lst.end(),
-					                      [&](auto const &x, auto const &y) {
-						                      return cmp_(x, y);
-					                      });
+					chosen = *std::min_element(lst.begin(), lst.end(), Cmp{});
 				} else {
 					const auto ia = old_aux.find(s);
 					if (ia != old_aux.end()) {
@@ -306,7 +282,7 @@ class SimpleSkipGraphScheduler {
 						bool found = false;
 						for (auto const &x : lst) {
 							if (ia->second.contains(x)) {
-								if (!found || cmp_(x, best)) {
+								if (!found || Cmp{}(x, best)) {
 									best = x;
 									found = true;
 								}
@@ -315,20 +291,14 @@ class SimpleSkipGraphScheduler {
 						if (found)
 							chosen = best;
 						else
-							chosen = *std::min_element(
-							    lst.begin(), lst.end(),
-							    [&](auto const &x, auto const &y) {
-								    return cmp_(x, y);
-							    });
+							chosen = *std::min_element(lst.begin(), lst.end(),
+							                           Cmp{});
 					} else {
-						chosen = *std::min_element(
-						    lst.begin(), lst.end(),
-						    [&](auto const &x, auto const &y) {
-							    return cmp_(x, y);
-						    });
+						chosen =
+						    *std::min_element(lst.begin(), lst.end(), Cmp{});
 					}
 				}
-				if (!eq_(s, chosen))
+				if (!Eq{}(s, chosen))
 					desired_aux.insert(canon_(s, chosen));
 			}
 		}
@@ -368,9 +338,7 @@ class SimpleSkipGraphScheduler {
   private:
 	CreateEdge create_;
 	DestroyEdge destroy_;
-	Hash hash_;
-	Eq eq_;
-	Cmp cmp_;
+	std::pmr::memory_resource *mr_;
 	AdjMap base_adj_;
 	AdjMap aux_adj_;
 	HandleMap aux_handles_;
