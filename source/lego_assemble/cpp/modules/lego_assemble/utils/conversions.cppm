@@ -947,6 +947,31 @@ export template <class Tag, class S, transform_like From>
 	return {as<mat_of_t<Tag, S, 3, 3>>(X), as<mat_of_t<Tag, S, 3, 1>>(X)};
 }
 
+// ---- pair<T1,T2> detection ----
+export template <class T> struct pair_traits {
+	static constexpr bool valid = false;
+};
+export template <class A, class B> struct pair_traits<std::pair<A, B>> {
+	static constexpr bool valid = true;
+	using first_type = A;
+	using second_type = B;
+};
+export template <class T>
+concept pair_like = pair_traits<T>::valid;
+
+// ---- Transform -> pair<Quat, Vec3> ----
+// Enables: as<std::pair<Eigen::Quaterniond, Eigen::Vector3d>>(px)
+export template <class To, transform_like From>
+    requires pair_like<To> && quat_like<typename pair_traits<To>::first_type> &&
+             mat_like<typename pair_traits<To>::second_type> &&
+             (mat_rows_v<typename pair_traits<To>::second_type> == 3) &&
+             (mat_cols_v<typename pair_traits<To>::second_type> == 1)
+[[nodiscard]] constexpr To as(const From &X) {
+	using QTo = typename pair_traits<To>::first_type;
+	using VTo = typename pair_traits<To>::second_type;
+	return To{as<QTo>(X), as<VTo>(X)};
+}
+
 export template <class To, class From>
 concept as_convertible = requires(From &&f) {
 	{ as<To>(std::forward<From>(f)) } -> std::same_as<To>;

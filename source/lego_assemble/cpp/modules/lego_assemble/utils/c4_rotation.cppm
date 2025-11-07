@@ -12,6 +12,19 @@ export enum class YawC4 : std::int8_t {
 	DEG_270 = 3,
 };
 
+export constexpr YawC4 nearest_c4(double a, double &out_remainder) {
+	constexpr double h = std::numbers::pi / 2;
+	long long k = std::llround(a / h);
+	out_remainder = a - k * h;
+	int idx = static_cast<int>((k % 4 + 4) % 4);
+	return static_cast<YawC4>(idx);
+}
+
+export constexpr YawC4 nearest_c4(double a) {
+	double _;
+	return nearest_c4(a, _);
+}
+
 export constexpr YawC4 c4_inverse(YawC4 q) {
 	switch (q) {
 	case YawC4::DEG_0:

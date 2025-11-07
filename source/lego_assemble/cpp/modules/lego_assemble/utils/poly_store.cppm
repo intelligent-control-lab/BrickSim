@@ -299,14 +299,14 @@ class PolyStore<type_list<Ks...>, type_list<Ts...>, Storage, type_list<Hs...>,
   private:
 	// runtime -> compile-time dispatch over type index
 	template <class F, std::size_t... Is>
-	static bool dispatch_by_type_impl_(std::uint32_t t, F &&fn,
-	                                   std::index_sequence<Is...>) {
-		bool done = false;
-		(void)std::initializer_list<int>{
-		    (t == Is ? (fn(std::integral_constant<std::size_t, Is>{}),
-		                done = true, 0)
-		             : 0)...};
-		return done;
+	static bool dispatch_by_type_impl_(std::uint32_t t, F &&f,
+	                                   std::index_sequence<Is...>) noexcept {
+		auto &&g = f; // avoid accidentally moving f multiple times
+		return ((t == Is ? (std::invoke(
+		                        g, std::integral_constant<std::size_t, Is>{}),
+		                    true)
+		                 : false) ||
+		        ...);
 	}
 	template <class F> static bool dispatch_by_type_(std::uint32_t t, F &&fn) {
 		return dispatch_by_type_impl_(

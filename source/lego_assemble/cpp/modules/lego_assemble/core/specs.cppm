@@ -147,7 +147,7 @@ export constexpr double brickMassInKg(BrickUnit L, BrickUnit W, PlateUnit H) {
 	return (bricks * m_brick + rem * m_plate) / 1000;
 }
 
-export class BrickPart final {
+export class BrickPart {
   public:
 	using InterfaceIds = InterfaceIdList<0, 1>;
 
@@ -207,7 +207,7 @@ static_assert(PartWithFixedInterfaces<BrickPart>);
 
 // ==== Definition of Custom Part ====
 
-export struct CustomPart final {
+export struct CustomPart {
   public:
 	CustomPart(double mass, BrickColor color,
 	           std::initializer_list<InterfaceSpec> ifs,
