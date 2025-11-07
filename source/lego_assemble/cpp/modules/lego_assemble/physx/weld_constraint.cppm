@@ -17,14 +17,6 @@ static void applyNeighborhood(PxTransform32 &a, PxTransform32 &b) {
 		b.q = -b.q;
 }
 
-static void computeJointFrames(PxTransform32 &cA2w, PxTransform32 &cB2w,
-                               const PxTransform &bA2w, const PxTransform &bB2w,
-                               const PxTransform &parentLocal,
-                               const PxTransform &childLocal) {
-	cA2w = PxTransform32(bA2w.transform(parentLocal));
-	cB2w = PxTransform32(bB2w.transform(childLocal));
-}
-
 static void computeJacobianAxes(PxVec3 row[3], const PxQuat &qa,
                                 const PxQuat &qb) {
 	float wa = qa.w, wb = qb.w;
@@ -110,8 +102,6 @@ static PxU32 prepareLockedAxes(Px1DConstraint *rows, const PxQuat &qA,
 	return 6;
 }
 
-// ---------------- Shader functions (public PhysX API) ----------------
-
 static PxU32 WeldSolverPrep(Px1DConstraint *constraints,
                             PxVec3p &body0WorldOffset, PxU32 maxConstraints,
                             PxConstraintInvMassScale &invMassScale,
@@ -122,15 +112,13 @@ static PxU32 WeldSolverPrep(Px1DConstraint *constraints,
 	    *reinterpret_cast<const WeldConstraintData *>(constantBlock);
 
 	PxTransform32 cA2w, cB2w;
-	computeJointFrames(cA2w, cB2w, bA2w, bB2w, data.parentLocal,
-	                   data.childLocal);
+	cA2w = PxTransform32(bA2w.transform(data.parentLocal));
+	cB2w = PxTransform32(bB2w.transform(data.childLocal));
 	applyNeighborhood(cA2w, cB2w);
 
 	PxVec3 ra = cB2w.p - bA2w.p;
 	body0WorldOffset = ra; // PhysX requires this offset
 	PxVec3 rb = cB2w.p - bB2w.p;
-
-	PxU32 n = 0;
 
 	PxVec3 raAdj, rbAdj;
 	PxU32 count =
@@ -144,17 +132,14 @@ static PxU32 WeldSolverPrep(Px1DConstraint *constraints,
 static PxConstraintShaderTable gWeldShaders = {
     .solverPrep = &WeldSolverPrep,
     .visualize = nullptr,
-    .flag = PxConstraintFlag::eCOLLISION_ENABLED};
-
-// ---------------- Connector ----------------
+    .flag = PxConstraintFlag::eCOLLISION_ENABLED,
+};
 
 class WeldConstraintConnector : public PxConstraintConnector {
   public:
 	WeldConstraintData data{};
 	PxConstraint *constraint{nullptr};
-	PxRigidActor *actors[2]{};
 
-	// required interface
 	void *prepareData() override {
 		return &data;
 	}
@@ -165,9 +150,7 @@ class WeldConstraintConnector : public PxConstraintConnector {
 	void onComShift(PxU32) override {}
 	void onOriginShift(const PxVec3 &) override {}
 	void *getExternalReference(PxU32 &typeID) override {
-		// If you want onConstraintBreak() to identify this as a "joint", use the joint ext id.
-		typeID = PxConstraintExtIDs::
-		    eJOINT; // from extensions header; OK to use for IDs
+		typeID = PxConstraintExtIDs::eJOINT;
 		return nullptr;
 	}
 	PxBase *getSerializable() override {
@@ -190,20 +173,21 @@ class WeldConstraintConnector : public PxConstraintConnector {
 	}
 };
 
-// ---------------- Factory ----------------
-
 export PxConstraint *createWeldConstraint(PxPhysics &physics, PxRigidActor *a,
                                           PxRigidActor *b,
                                           WeldConstraintData data) {
+	// TODO: allocate in PhysX's memory pool
 	auto *conn = new WeldConstraintConnector();
-	conn->actors[0] = a;
-	conn->actors[1] = b;
-	conn->data = std::move(data);
-
-	PxConstraint *c = physics.createConstraint(a, b, *conn, gWeldShaders,
-	                                           sizeof(WeldConstraintData));
-	conn->connectToConstraint(c);
-	return c;
+	try {
+		conn->data = std::move(data);
+		PxConstraint *c = physics.createConstraint(a, b, *conn, gWeldShaders,
+		                                           sizeof(WeldConstraintData));
+		conn->connectToConstraint(c);
+		return c;
+	} catch (...) {
+		delete conn;
+		throw;
+	}
 }
 
 } // namespace lego_assemble
