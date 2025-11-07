@@ -106,14 +106,12 @@ PYBIND11_MODULE(_native, m) {
 	    .def_readwrite("yaw_tolerance", &Thresholds::YawTolerance)
 	    .def_readwrite("position_tolerance", &Thresholds::PositionTolerance)
 	    .def("__repr__", [](const Thresholds &t) {
-		    std::ostringstream os;
-		    os << "LegoThresholds(distance_tolerance=" << t.DistanceTolerance
-		       << ", max_penetration=" << t.MaxPenetration
-		       << ", z_angle_tolerance=" << t.ZAngleTolerance
-		       << ", required_force=" << t.RequiredForce
-		       << ", yaw_tolerance=" << t.YawTolerance
-		       << ", position_tolerance=" << t.PositionTolerance << ")";
-		    return os.str();
+		    return std::format(
+		        "LegoThresholds(distance_tolerance={}, max_penetration={}, "
+		        "z_angle_tolerance={}, required_force={}, yaw_tolerance={}, "
+		        "position_tolerance={})",
+		        t.DistanceTolerance, t.MaxPenetration, t.ZAngleTolerance,
+		        t.RequiredForce, t.YawTolerance, t.PositionTolerance);
 	    });
 	m.def("set_lego_thresholds", &lego_assemble::setLegoThresholds,
 	      pybind11::arg("thresholds"),

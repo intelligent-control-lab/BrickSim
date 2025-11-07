@@ -14,6 +14,24 @@ export constexpr EnvId kNoEnv = -1;
 static const pxr::SdfPath WorldPath("/World");
 static const pxr::SdfPath EnvRootPath("/World/envs");
 
+template <class Int> std::optional<Int> parse_int(std::string_view sv) {
+	Int value{};
+	const char *first = sv.data();
+	const char *last = sv.data() + sv.size();
+	auto [ptr, ec] = std::from_chars(first, last, value, 10);
+	if (ec == std::errc{} && ptr == last) {
+		return value; // parsed all characters successfully
+	}
+	return std::nullopt;
+}
+
+bool eat_prefix(std::string_view &sv, std::string_view prefix) {
+	if (!sv.starts_with(prefix))
+		return false;
+	sv.remove_prefix(prefix.size());
+	return true;
+}
+
 export pxr::SdfPath pathForEnv(EnvId env_id) {
 	if (env_id == kNoEnv) {
 		return WorldPath;
@@ -38,26 +56,22 @@ export std::optional<EnvId> envIdFromPath(const pxr::SdfPath &path) {
 	if (path.GetParentPath() != EnvRootPath) {
 		return std::nullopt;
 	}
-	auto name = path.GetName();
-	if (!name.starts_with("env_")) {
+	// Assume GetName() yields std::string (same as your original code).
+	auto name_str = path.GetName();
+	std::string_view name{name_str};
+
+	if (!eat_prefix(name, "env_")) {
 		return std::nullopt;
 	}
-	try {
-		return std::stoi(name.substr(4));
-	} catch (const std::exception &) {
-		return std::nullopt;
-	}
+	return parse_int<EnvId>(name);
 }
 
-export std::optional<BrickId> brickIdFromName(const std::string &name) {
-	if (!name.starts_with("Brick_")) {
+export std::optional<BrickId> brickIdFromName(const std::string &name_in) {
+	std::string_view name{name_in};
+	if (!eat_prefix(name, "Brick_")) {
 		return std::nullopt;
 	}
-	try {
-		return std::stoll(name.substr(6));
-	} catch (const std::exception &) {
-		return std::nullopt;
-	}
+	return parse_int<BrickId>(name);
 }
 
 export std::optional<std::tuple<EnvId, BrickId>>
@@ -66,8 +80,8 @@ brickIdFromPath(const pxr::SdfPath &path) {
 	if (!env_id) {
 		return std::nullopt;
 	}
-	auto name = path.GetName();
-	auto brick_id = brickIdFromName(name);
+	auto name_str = path.GetName();
+	auto brick_id = brickIdFromName(name_str);
 	if (!brick_id) {
 		return std::nullopt;
 	}
@@ -84,22 +98,28 @@ export pxr::SdfPath pathForConn(EnvId env_id, BrickId brick0, BrickId brick1) {
 }
 
 export std::optional<std::tuple<BrickId, BrickId>>
-connFromName(const std::string &name) {
-	if (!name.starts_with("Conn_")) {
+connFromName(const std::string &name_in) {
+	std::string_view sv{name_in};
+	if (!eat_prefix(sv, "Conn_")) {
 		return std::nullopt;
 	}
-	auto rest = name.substr(5);
-	auto delim_pos = rest.find('_');
-	if (delim_pos == std::string::npos) {
+
+	// Split on '_' without substr: make two string_views by indices.
+	const auto delim_pos = sv.find('_');
+	if (delim_pos == std::string_view::npos) {
 		return std::nullopt;
 	}
-	try {
-		auto brick0 = std::stoll(rest.substr(0, delim_pos));
-		auto brick1 = std::stoll(rest.substr(delim_pos + 1));
-		return {{brick0, brick1}};
-	} catch (const std::exception &) {
+	std::string_view a{sv.data(), delim_pos};
+	std::string_view b{sv.data() + delim_pos + 1, sv.size() - (delim_pos + 1)};
+
+	auto brick0 = parse_int<BrickId>(a);
+	if (!brick0)
 		return std::nullopt;
-	}
+	auto brick1 = parse_int<BrickId>(b);
+	if (!brick1)
+		return std::nullopt;
+
+	return {{*brick0, *brick1}};
 }
 
 export std::optional<std::tuple<EnvId, BrickId, BrickId>>
@@ -108,8 +128,8 @@ connFromPath(const pxr::SdfPath &path) {
 	if (!env_id) {
 		return std::nullopt;
 	}
-	auto name = path.GetName();
-	auto conn_ids = connFromName(name);
+	auto name_str = path.GetName();
+	auto conn_ids = connFromName(name_str);
 	if (!conn_ids) {
 		return std::nullopt;
 	}
@@ -131,12 +151,18 @@ export pxr::SdfPath safeConnPathForBricks(const pxr::SdfPath &brick0,
 		log_warn("Bricks %s and %s have different parents!", brick0.GetText(),
 		         brick1.GetText());
 	}
-	auto name0 = brick0.GetName();
-	auto name1 = brick1.GetName();
+
+	// Use views to possibly drop the "Brick_" prefix without allocations.
+	auto name0_str = brick0.GetName();
+	auto name1_str = brick1.GetName();
+	std::string_view name0{name0_str};
+	std::string_view name1{name1_str};
+
 	if (name0.starts_with("Brick_") && name1.starts_with("Brick_")) {
-		name0 = name0.substr(6);
-		name1 = name1.substr(6);
+		name0.remove_prefix(6);
+		name1.remove_prefix(6);
 	}
+
 	auto conn_name = std::format("Conn_{}_{}", name0, name1);
 	return brick0_parent.AppendChild(pxr::TfToken(conn_name));
 }

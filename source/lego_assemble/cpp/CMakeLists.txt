@@ -112,6 +112,7 @@ target_link_libraries(lego_assemble_modules PUBLIC
   physxSchema
   omniAudioSchema
 )
+target_include_directories(lego_assemble_modules BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
 target_compile_options(lego_assemble_modules PRIVATE $<$<CONFIG:DEBUG>:${SAN_CFLAGS}>)
 target_link_options(lego_assemble_modules PRIVATE $<$<CONFIG:DEBUG>:${SAN_LDFLAGS}>)
 
@@ -133,6 +134,9 @@ set_target_properties(_native PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${EXT_OUTPUT_
 # Tests
 enable_testing()
 
+include(AbiCheck)
+lego_add_abi_check(_native)
+
 function(add_lego_test TEST_NAME)
   add_executable(${TEST_NAME} ${ARGN})
   target_link_libraries(${TEST_NAME} PRIVATE lego_assemble_modules)
@@ -142,6 +146,7 @@ function(add_lego_test TEST_NAME)
   set_tests_properties(${TEST_NAME} PROPERTIES ENVIRONMENT
     "LSAN_OPTIONS=suppressions=${LSAN_SUPPRESSIONS_FILE};ASAN_OPTIONS=fast_unwind_on_malloc=0"
   )
+  lego_add_abi_check(${TEST_NAME})
 endfunction()
 
 add_lego_test(TestConversions tests/TestConversions.cpp)
@@ -157,3 +162,18 @@ add_lego_test(TestLegoGraphSelfConnect tests/TestLegoGraphSelfConnect.cpp)
 add_lego_test(TestLegoGraphMultiSegEdge tests/TestLegoGraphMultiSegEdge.cpp)
 add_lego_test(TestLegoGraphHooks tests/TestLegoGraphHooks.cpp)
 add_lego_test(TestPhysicsGraph tests/TestPhysicsGraph.cpp)
+
+# Ensure the CMake-provided std modules provider compiles <iostream>
+# with the "no-symver" path by overriding bits/c++config.h just for
+# the provider target (avoid bleeding into user targets).
+foreach(_lvl IN ITEMS 26 23)
+  if (TARGET "__CMAKE::CXX${_lvl}")
+    get_target_property(_real "__CMAKE::CXX${_lvl}" ALIASED_TARGET)
+    if (_real)
+      target_include_directories(${_real} BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
+    endif()
+  endif()
+  if (TARGET "__cmake_cxx${_lvl}")
+    target_include_directories("__cmake_cxx${_lvl}" BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
+  endif()
+endforeach()
