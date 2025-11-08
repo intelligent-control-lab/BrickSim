@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-export CC=clang-22 CXX=clang++-22
-
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
+
+# Setup toolchain environment
+"$ROOT_DIR/scripts/setup_toolchain.sh" && source "$ROOT_DIR/_toolchain/env.sh"
 
 BUILD_PROFILE=${1:-Debug}  # or Release, RelWithDebInfo, MinSizeRel
 
@@ -20,11 +21,6 @@ if command -v ninja >/dev/null 2>&1; then
   GEN_ARGS=("-G" "Ninja")
 fi
 
-CCACHE_ARGS=()
-# if command -v ccache >/dev/null 2>&1; then
-#   CCACHE_ARGS=("-DCMAKE_C_COMPILER_LAUNCHER=ccache" "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
-# fi
-
 # Always (re)configure to ensure compile_commands.json is regenerated
 cmake -S "$SRC" -B "$BUILD" \
   -DCMAKE_BUILD_TYPE=${BUILD_PROFILE} \
@@ -33,8 +29,7 @@ cmake -S "$SRC" -B "$BUILD" \
   -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
   -DCMAKE_COLOR_DIAGNOSTICS=ON \
   -Wno-deprecated \
-  "${GEN_ARGS[@]}" \
-  "${CCACHE_ARGS[@]}"
+  "${GEN_ARGS[@]}"
 
 # Copy compile_commands.json to the C++ source dir for clangd/IDE
 if [[ -f "$BUILD/compile_commands.json" ]]; then

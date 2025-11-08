@@ -28,7 +28,7 @@ endfunction()
 
 function(_isaacsim_extract ARCHIVE OUT_DIR)
   _isaacsim_ensure_dir("${OUT_DIR}")
-  find_program(SEVENZIP NAMES 7z 7zz REQUIRED)
+  find_program(SEVENZIP NAMES 7zz REQUIRED)
   # Use a stamp file to avoid repeated extraction
   set(stamp "${OUT_DIR}/.extracted")
   if(EXISTS "${stamp}")
