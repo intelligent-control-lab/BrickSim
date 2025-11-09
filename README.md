@@ -3,11 +3,14 @@
 ## Build
 
 ### Prerequisites
-Requires Ubuntu 22.04+ or other distributions satisfying GLIBC > 2.35.
+Requires Ubuntu 22.04+ or other distributions satisfying:
+ * GLIBC > 2.35
+ * GLIBCXX_3.4.30
+ * CXXABI_1.3.13
 
 Install build requirements (for Debian / Ubuntu):
 ```bash
-sudo apt install build-essential wget
+sudo apt install build-essential wget python3.11-full
 ```
 
 ### Clone
@@ -36,7 +39,7 @@ CMAKE_POLICY_VERSION_MINIMUM=3.5 ./IsaacLab/isaaclab.sh --install
 ### Build & Install This Extension
 ```bash
 scripts/build.sh
-pip install -e source/lego_assemble -v
+pip install -e exts/lego_assemble -v
 ```
 
 ### Launch Isaac Sim
