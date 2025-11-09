@@ -18,16 +18,14 @@ LLVM_SHA256="82cc1d93c95c544f6c7231efd9f5a0a3602082c4fb4d9dddc8ba8e425ded6e9c"
 GCC_DIRNAME="gcc-15.2.0-7ubuntu1_amd64"
 GCC_VER="15"
 GCC_DEB_URLS=(
-    "https://snapshot.ubuntu.com/ubuntu/20251108T100000Z/pool/main/g/gcc-15/libstdc++6_15.2.0-7ubuntu1_amd64.deb"
     "https://snapshot.ubuntu.com/ubuntu/20251108T100000Z/pool/main/g/gcc-15/libstdc++-15-dev_15.2.0-7ubuntu1_amd64.deb"
-    "https://snapshot.ubuntu.com/ubuntu/20251108T100000Z/pool/main/g/gcc-15/libgcc-s1_15.2.0-7ubuntu1_amd64.deb"
     "https://snapshot.ubuntu.com/ubuntu/20251108T100000Z/pool/main/g/gcc-15/libgcc-15-dev_15.2.0-7ubuntu1_amd64.deb"
+    "https://snapshot.ubuntu.com/ubuntu/20251108T100000Z/pool/main/g/glibc/libc6-dev_2.39-0ubuntu8_amd64.deb"
 )
 GCC_DEB_SHA256S=(
-    "ecc83c57050728d10bb37540180b47913833a3a18772c00abc0f081c019dea11"
     "c3e207a04665c0a3be55ce44cf8a6bd2d1f77972ab7ac25683c41ae731f9ca47"
-    "a40f827aab9343475066d63739014ee0aba240d750dda7e2714543b6ec89a327"
     "75a4a840031b1d03a52a51baaef09a9ffa16c933a6a350b48e1217cd3167dd26"
+    "1f03b79223d9cf1a6ed3a648f6942619dcb97b2884dba8fd12e262b6771e247a"
 )
 
 ####
@@ -142,11 +140,10 @@ if [[ -z "\${LEGO_TC_DIR:-}" ]]; then
     export PATH="\$LEGO_TC_DIR/$CMAKE_DIRNAME/bin:\$LEGO_TC_DIR/$P7ZIP_DIRNAME:\$LEGO_TC_DIR/$NINJA_DIRNAME:\$LEGO_TC_DIR/$LLVM_DIRNAME/bin:\$PATH"
     export CC="clang"
     export CXX="clang++"
-    export LDFLAGS="\${LDFLAGS:+\$LDFLAGS }-fuse-ld=lld"
     export CCC_OVERRIDE_OPTIONS="\${CCC_OVERRIDE_OPTIONS:+\$CCC_OVERRIDE_OPTIONS }# ^--gcc-install-dir=\$LEGO_TC_DIR/$GCC_DIRNAME/usr/lib/gcc/x86_64-linux-gnu/$GCC_VER"
-    export CCC_OVERRIDE_OPTIONS="\${CCC_OVERRIDE_OPTIONS:+\$CCC_OVERRIDE_OPTIONS }# ^--gcc-install-dir=\$LEGO_TC_DIR/$GCC_DIRNAME/usr/lib/gcc/x86_64-linux-gnu/$GCC_VER ^-stdlib=libstdc++"
-    export LIBRARY_PATH="\$LEGO_TC_DIR/$GCC_DIRNAME/usr/lib/x86_64-linux-gnu"
     export CMAKE_CXX_STDLIB_MODULES_JSON="\$LEGO_TC_DIR/$GCC_DIRNAME/usr/lib/gcc/x86_64-linux-gnu/$GCC_VER/libstdc++.modules.json"
-    export CMAKE_TRY_COMPILE_TARGET_TYPE="STATIC_LIBRARY"
+    export CXXFLAGS="\${CXXFLAGS:+\$CXXFLAGS } -nostdlib++"
+    export LDFLAGS="\${LDFLAGS:+\$LDFLAGS }-fuse-ld=lld -L/usr/lib/x86_64-linux-gnu -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu -Wl,-Bdynamic -l:libstdc++.so.6"
+    export CPLUS_INCLUDE_PATH="\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include/c++/$GCC_VER:\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include/x86_64-linux-gnu/c++/$GCC_VER:\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include:\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include/x86_64-linux-gnu\${CPLUS_INCLUDE_PATH:+:\$CPLUS_INCLUDE_PATH}"
 fi
 EOF

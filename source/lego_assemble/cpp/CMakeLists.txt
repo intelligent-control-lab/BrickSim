@@ -57,6 +57,9 @@ FetchContent_Declare(eigen
 )
 FetchContent_MakeAvailable(eigen) # defines Eigen3::Eigen
 
+FetchContent_Declare(nlohmann_json URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz)
+FetchContent_MakeAvailable(nlohmann_json)
+
 include(SdkPatches)
 set(SDK_PATCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/sdk_patches")
 apply_sdk_patch_once(patch_usd "${ISAACSIM_USD_INCLUDE}" "${SDK_PATCH_DIR}/usd_include.patch" 1)
@@ -93,6 +96,7 @@ target_link_directories(lego_assemble_modules PUBLIC
 )
 target_link_libraries(lego_assemble_modules PUBLIC
   Eigen3::Eigen
+  nlohmann_json::nlohmann_json
   python3.11
   boost_python311
   PhysX_static_64
