@@ -159,7 +159,7 @@ fi
 EOF
 
 ### Generate CMakePresets.json
-cat > "$ROOT_DIR/source/lego_assemble/cpp/CMakePresets.json" <<JSON
+cat > "$ROOT_DIR/native/CMakePresets.json" <<JSON
 {
     "version": 8,
     "configurePresets": [
@@ -181,14 +181,14 @@ cat > "$ROOT_DIR/source/lego_assemble/cpp/CMakePresets.json" <<JSON
                 "CMAKE_CXX_COMPILER_AR": "llvm-ar",
                 "CMAKE_CXX_COMPILER_RANLIB": "llvm-ranlib",
                 "CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS": "clang-scan-deps",
-                "CMAKE_CXX_FLAGS": "-nostdlib++ --gcc-install-dir=\${sourceDir}/../../../_toolchain/$GCC_DIRNAME/usr/lib/gcc/x86_64-linux-gnu/$GCC_VER",
+                "CMAKE_CXX_FLAGS": "-nostdlib++ --gcc-install-dir=\${sourceDir}/../_toolchain/$GCC_DIRNAME/usr/lib/gcc/x86_64-linux-gnu/$GCC_VER",
                 "CMAKE_EXE_LINKER_FLAGS": "-fuse-ld=lld -L/usr/lib/x86_64-linux-gnu -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu -Wl,-Bdynamic -l:libstdc++.so.6",
                 "CMAKE_SHARED_LINKER_FLAGS": "-fuse-ld=lld -L/usr/lib/x86_64-linux-gnu -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu -Wl,-Bdynamic -l:libstdc++.so.6",
                 "CMAKE_MODULE_LINKER_FLAGS": "-fuse-ld=lld -L/usr/lib/x86_64-linux-gnu -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu -Wl,-Bdynamic -l:libstdc++.so.6"
             },
             "environment": {
-                "PATH": "\${sourceDir}/../../../_toolchain/$CMAKE_DIRNAME/bin:\${sourceDir}/../../../_toolchain/$P7ZIP_DIRNAME:\${sourceDir}/../../../_toolchain/$NINJA_DIRNAME:\${sourceDir}/../../../_toolchain/$LLVM_DIRNAME/bin:\$penv{PATH}",
-                "CPLUS_INCLUDE_PATH": "\${sourceDir}/../../../_toolchain/$GCC_DIRNAME/usr/include/c++/$GCC_VER:\${sourceDir}/../../../_toolchain/$GCC_DIRNAME/usr/include/x86_64-linux-gnu/c++/$GCC_VER:\${sourceDir}/../../../_toolchain/$GCC_DIRNAME/usr/include:\${sourceDir}/../../../_toolchain/$GCC_DIRNAME/usr/include/x86_64-linux-gnu"
+                "PATH": "\${sourceDir}/../_toolchain/$CMAKE_DIRNAME/bin:\${sourceDir}/../_toolchain/$P7ZIP_DIRNAME:\${sourceDir}/../_toolchain/$NINJA_DIRNAME:\${sourceDir}/../_toolchain/$LLVM_DIRNAME/bin:\$penv{PATH}",
+                "CPLUS_INCLUDE_PATH": "\${sourceDir}/../_toolchain/$GCC_DIRNAME/usr/include/c++/$GCC_VER:\${sourceDir}/../_toolchain/$GCC_DIRNAME/usr/include/x86_64-linux-gnu/c++/$GCC_VER:\${sourceDir}/../_toolchain/$GCC_DIRNAME/usr/include:\${sourceDir}/../_toolchain/$GCC_DIRNAME/usr/include/x86_64-linux-gnu"
             }
         }
     ],

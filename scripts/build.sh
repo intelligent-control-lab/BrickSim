@@ -9,7 +9,7 @@ ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
 
 BUILD_PROFILE=${1:-Debug}  # or Release, RelWithDebInfo, MinSizeRel
 
-SRC="$ROOT_DIR/source/lego_assemble/cpp"
+SRC="$ROOT_DIR/native"
 BUILD="$SRC/.build/${BUILD_PROFILE}"
 
 mkdir -p "$BUILD"
@@ -20,7 +20,7 @@ cmake -S "$SRC" -B "$BUILD" \
   -G Ninja
 cmake --build "$BUILD" --parallel
 
-cp -v "$BUILD/"_native.*.so "source/lego_assemble/lego_assemble/"
+cp -v "$BUILD/"_native.*.so "exts/lego_assemble/lego_assemble/"
 
 cd "$BUILD"
 ctest --output-on-failure

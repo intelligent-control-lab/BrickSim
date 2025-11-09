@@ -15,7 +15,7 @@ STAGE_PATH="${STAGE_PATH:-$ROOT_DIR/resources/demo.usd}"
 
 exec isaacsim "$EXPERIENCE" \
   --ext-folder "$ROOT_DIR/IsaacLab/source" \
-  --ext-folder "$ROOT_DIR/source" \
+  --ext-folder "$ROOT_DIR/exts" \
   --enable lego_assemble \
   --enable omni.kit.debug.python \
   --/exts/omni.kit.debug.python/mode=listen \

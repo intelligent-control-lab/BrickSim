@@ -1,82 +1,82 @@
 {
-  "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "Build Extension (Debug)",
-      "type": "shell",
-      "command": "bash",
-      "args": [
-        "-lc",
-        "${workspaceFolder}/scripts/build.sh"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": [],
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      }
-    },
-    {
-      "label": "Build Extension (Release)",
-      "type": "shell",
-      "command": "bash",
-      "args": [
-        "-lc",
-        "${workspaceFolder}/scripts/build.sh Release"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": [],
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      }
-    },
-    {
-      "label": "Launch IsaacSim",
-      "type": "shell",
-      "command": "bash",
-      "args": [
-        "-lc",
-        "${workspaceFolder}/scripts/launch_isaacsim.sh"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}",
-        "env": {
-          "WAIT_FOR_CLIENT": "true"
-        }
-      },
-      "isBackground": true,
-      "presentation": {
-        "echo": true,
-        "reveal": "always",
-        "focus": false,
-        "panel": "dedicated",
-        "showReuseMessage": true,
-        "clear": true
-      },
-      "problemMatcher": [
+    "version": "2.0.0",
+    "tasks": [
         {
-          "owner": "custom",
-          "fileLocation": [
-            "absolute"
-          ],
-          "pattern": {
-            "regexp": "a^",
-            "file": 1,
-            "message": 1
-          },
-          "background": {
-            "activeOnStart": true,
-            "beginsPattern": "a^",
-            "endsPattern": "Waiting for debugger to connect"
-          }
+            "label": "Build Extension (Debug)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-lc",
+                "${workspaceFolder}/scripts/build.sh"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Build Extension (Release)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-lc",
+                "${workspaceFolder}/scripts/build.sh Release"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Launch IsaacSim",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-lc",
+                "${workspaceFolder}/scripts/launch_isaacsim.sh"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "WAIT_FOR_CLIENT": "true"
+                }
+            },
+            "isBackground": true,
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "dedicated",
+                "showReuseMessage": true,
+                "clear": true
+            },
+            "problemMatcher": [
+                {
+                    "owner": "custom",
+                    "fileLocation": [
+                        "absolute"
+                    ],
+                    "pattern": {
+                        "regexp": "a^",
+                        "file": 1,
+                        "message": 1
+                    },
+                    "background": {
+                        "activeOnStart": true,
+                        "beginsPattern": "a^",
+                        "endsPattern": "Waiting for debugger to connect"
+                    }
+                }
+            ],
+            "dependsOn": "Build Extension (Debug)"
         }
-      ],
-      "dependsOn": "Build Extension (Debug)"
-    }
-  ]
+    ]
 }

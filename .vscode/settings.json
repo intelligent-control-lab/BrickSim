@@ -16,12 +16,12 @@
     "C_Cpp.intelliSenseEngine": "disabled",
     "debug.onTaskErrors": "debugAnyway",
     "cmake.cmakePath": "${workspaceFolder}/_toolchain/cmake-4.2.0-rc2-linux-x86_64/bin/cmake",
-    "cmake.sourceDirectory": "${workspaceFolder}/source/lego_assemble/cpp",
+    "cmake.sourceDirectory": "${workspaceFolder}/native",
     "cmake.useCMakePresets": "always",
     "cmake.revealLog": "never",
     "clangd.path": "${workspaceFolder}/_toolchain/llvm-22+0246f33/bin/clangd",
     "clangd.arguments": [
-        "--compile-commands-dir=${workspaceFolder}/source/lego_assemble/cpp/.build/dev",
+        "--compile-commands-dir=${workspaceFolder}/native/.build/dev",
         "--header-insertion=never",
     ],
 }

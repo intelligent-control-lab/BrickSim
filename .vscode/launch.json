@@ -1,88 +1,88 @@
 {
-  "version": "0.2.0",
-  "configurations": [
-    {
-      "name": "Python: Attach 5678",
-      "type": "debugpy",
-      "request": "attach",
-      "connect": {
-        "host": "localhost",
-        "port": 5678
-      },
-      "justMyCode": false,
-      "preLaunchTask": "Launch IsaacSim",
-    },
-    {
-      "name": "C++: Attach IsaacSim",
-      "type": "cppdbg",
-      "request": "attach",
-      "program": "${workspaceRoot}/.venv/bin/python",
-      "MIMode": "gdb",
-      "processId": "${input:pid_isaacsim}",
-      "setupCommands": [
+    "version": "0.2.0",
+    "configurations": [
         {
-          "text": "-enable-pretty-printing",
-          "ignoreFailures": true
+            "name": "Python: Attach 5678",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            },
+            "justMyCode": false,
+            "preLaunchTask": "Launch IsaacSim",
         },
         {
-          "text": "-gdb-set print asm-demangle on"
+            "name": "C++: Attach IsaacSim",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "${workspaceRoot}/.venv/bin/python",
+            "MIMode": "gdb",
+            "processId": "${input:pid_isaacsim}",
+            "setupCommands": [
+                {
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "text": "-gdb-set print asm-demangle on"
+                },
+                {
+                    "text": "-gdb-set print demangle on"
+                },
+                {
+                    "text": "-gdb-set demangle-style gnu-v3"
+                },
+                {
+                    "text": "-gdb-set disassembly-flavor intel"
+                }
+            ]
         },
         {
-          "text": "-gdb-set print demangle on"
+            "name": "Python: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
         },
         {
-          "text": "-gdb-set demangle-style gnu-v3"
+            "name": "Train LiftBrick",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/demos/skrl_train.py",
+            "args": [
+                "--task",
+                "Lego-LiftBrick-v0",
+                "--num_envs",
+                "32"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
         },
+    ],
+    "compounds": [
         {
-          "text": "-gdb-set disassembly-flavor intel"
+            "name": "Debug C++ & Python",
+            "configurations": [
+                "Python: Attach 5678",
+                "C++: Attach IsaacSim"
+            ],
+            "stopAll": true,
+            "preLaunchTask": "Launch IsaacSim"
         }
-      ]
-    },
-    {
-      "name": "Python: Current File",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${file}",
-      "console": "integratedTerminal",
-      "justMyCode": false,
-      "cwd": "${workspaceFolder}",
-    },
-    {
-      "name": "Train LiftBrick",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${workspaceFolder}/extension/scripts/skrl_train.py",
-      "args": [
-        "--task",
-        "Lego-LiftBrick-v0",
-        "--num_envs",
-        "32"
-      ],
-      "console": "integratedTerminal",
-      "justMyCode": false,
-      "cwd": "${workspaceFolder}",
-    },
-  ],
-  "compounds": [
-    {
-      "name": "Debug C++ & Python",
-      "configurations": [
-        "Python: Attach 5678",
-        "C++: Attach IsaacSim"
-      ],
-      "stopAll": true,
-      "preLaunchTask": "Launch IsaacSim"
-    }
-  ],
-  "inputs": [
-    {
-      "id": "pid_isaacsim",
-      "type": "command",
-      "command": "shellCommand.execute",
-      "args": {
-        "command": "pgrep -nx isaacsim",
-        "useFirstResult": true
-      }
-    }
-  ]
+    ],
+    "inputs": [
+        {
+            "id": "pid_isaacsim",
+            "type": "command",
+            "command": "shellCommand.execute",
+            "args": {
+                "command": "pgrep -nx isaacsim",
+                "useFirstResult": true
+            }
+        }
+    ]
 }

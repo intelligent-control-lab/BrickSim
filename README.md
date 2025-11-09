@@ -3,16 +3,11 @@
 ## Build
 
 ### Prerequisites
+Requires Ubuntu 22.04+ or other distributions satisfying GLIBC > 2.35.
 
-- Toolchain: clang-22, CMake >= 4.1.2, Python 3.11, ninja
-
-For Debian / Ubuntu, clang and CMake can be installed from upstream repositories:
-- clang-22: follow instructions at https://apt.llvm.org/
-- CMake: follow instructions at https://apt.kitware.com/
-
-Ninja can be installed with APT:
+Install build requirements (for Debian / Ubuntu):
 ```bash
-sudo apt install ninja-build
+sudo apt install build-essential wget
 ```
 
 ### Clone
@@ -40,6 +35,7 @@ CMAKE_POLICY_VERSION_MINIMUM=3.5 ./IsaacLab/isaaclab.sh --install
 
 ### Build & Install This Extension
 ```bash
+scripts/build.sh
 pip install -e source/lego_assemble -v
 ```
 
@@ -47,10 +43,3 @@ pip install -e source/lego_assemble -v
 ```bash
 scripts/launch_isaacsim.sh
 ```
-
-### Debug builds
-```bash
-scripts/build.sh
-```
-This script produces a Debug build of the C++ extension. It runs fast and is suitable for development.
-

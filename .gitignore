@@ -1,9 +1,8 @@
+__pycache__/
+_toolchain/
+.cache/
+.thumbs
 .venv/
+*.egg-info/
 logs/
 outputs/
-.thumbs
-*.egg-info/
-__pycache__/
-.cache/
-build/
-_toolchain/
