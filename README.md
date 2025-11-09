@@ -5,8 +5,8 @@
 ### Prerequisites
 Requires Ubuntu 22.04+ or other distributions satisfying:
  * GLIBC > 2.35
- * GLIBCXX_3.4.30
- * CXXABI_1.3.13
+ * GLIBCXX > 3.4.30
+ * CXXABI > 1.3.13
 
 Install build requirements (for Debian / Ubuntu):
 ```bash
