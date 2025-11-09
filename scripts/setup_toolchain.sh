@@ -12,19 +12,16 @@ NINJA_URL="https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-
 NINJA_FILENAME="ninja-v1.13.1-linux.zip"
 NINJA_SHA256="0830252db77884957a1a4b87b05a1e2d9b5f658b8367f82999a941884cbe0238"
 
-CLANG_URL="https://commondatastorage.googleapis.com/chromium-browser-clang/Linux_x64/clang-llvmorg-22-init-12326-g8a5f1533-2.tar.xz"
-CLANG_SHA256="5a1b3c6739beb69aec58c4131cb6030e913a1ab48c9a340df7df6c570c74f228"
-
-CLANGD_URL="https://commondatastorage.googleapis.com/chromium-browser-clang/Linux_x64/clangd-llvmorg-22-init-12326-g8a5f1533-2.tar.xz"
-CLANGD_SHA256="de327789b1b64bf8f4c2c08c0dfff0c818068f0dfa452fbb3bb975355a9b2873"
+LLVM_URL="https://www.cs.cmu.edu/~haoweiw/llvm-22+0246f33.tar.xz"
+LLVM_SHA256="82cc1d93c95c544f6c7231efd9f5a0a3602082c4fb4d9dddc8ba8e425ded6e9c"
 
 GCC_DIRNAME="gcc-15.2.0-7ubuntu1_amd64"
 GCC_VER="15"
 GCC_DEB_URLS=(
-    "https://launchpad.net/ubuntu/+source/gcc-15/15.2.0-7ubuntu1/+build/31404623/+files/libstdc++6_15.2.0-7ubuntu1_amd64.deb"
-    "https://launchpad.net/ubuntu/+source/gcc-15/15.2.0-7ubuntu1/+build/31404623/+files/libstdc++-15-dev_15.2.0-7ubuntu1_amd64.deb"
-    "https://launchpad.net/ubuntu/+source/gcc-15/15.2.0-7ubuntu1/+build/31404623/+files/libgcc-s1_15.2.0-7ubuntu1_amd64.deb"
-    "https://launchpad.net/ubuntu/+source/gcc-15/15.2.0-7ubuntu1/+build/31404623/+files/libgcc-15-dev_15.2.0-7ubuntu1_amd64.deb"
+    "https://snapshot.ubuntu.com/ubuntu/20251108T100000Z/pool/main/g/gcc-15/libstdc++6_15.2.0-7ubuntu1_amd64.deb"
+    "https://snapshot.ubuntu.com/ubuntu/20251108T100000Z/pool/main/g/gcc-15/libstdc++-15-dev_15.2.0-7ubuntu1_amd64.deb"
+    "https://snapshot.ubuntu.com/ubuntu/20251108T100000Z/pool/main/g/gcc-15/libgcc-s1_15.2.0-7ubuntu1_amd64.deb"
+    "https://snapshot.ubuntu.com/ubuntu/20251108T100000Z/pool/main/g/gcc-15/libgcc-15-dev_15.2.0-7ubuntu1_amd64.deb"
 )
 GCC_DEB_SHA256S=(
     "ecc83c57050728d10bb37540180b47913833a3a18772c00abc0f081c019dea11"
@@ -88,34 +85,19 @@ if [[ ! -d "$NINJA_DIR" ]]; then
     "$P7ZIP_BIN" x "$NINJA_ARCHIVE_PATH" -o"$NINJA_DIR" -y
 fi
 
-### Setup clang
-CLANG_DIRNAME="$(basename "$CLANG_URL" .tar.xz)"
-CLANG_DIR="$TC_DIR/$CLANG_DIRNAME"
-if [[ ! -d "$CLANG_DIR" ]]; then
-    CLANG_ARCHIVE_PATH="$TC_DOWNLOADS_DIR/$(basename "$CLANG_URL")"
-    [ -f "$CLANG_ARCHIVE_PATH" ] || wget -O "$CLANG_ARCHIVE_PATH" "$CLANG_URL"
-    CLANG_SHA256_ACTUAL=$(sha256sum "$CLANG_ARCHIVE_PATH" | awk '{print $1}')
-    if [[ "$CLANG_SHA256_ACTUAL" != "$CLANG_SHA256" ]]; then
-        echo "Clang download is corrupted (expected SHA256: $CLANG_SHA256, actual: $CLANG_SHA256_ACTUAL)"
+### Setup llvm
+LLVM_DIRNAME="$(basename "$LLVM_URL" .tar.xz)"
+LLVM_DIR="$TC_DIR/$LLVM_DIRNAME"
+if [[ ! -d "$LLVM_DIR" ]]; then
+    LLVM_ARCHIVE_PATH="$TC_DOWNLOADS_DIR/$(basename "$LLVM_URL")"
+    [ -f "$LLVM_ARCHIVE_PATH" ] || wget -O "$LLVM_ARCHIVE_PATH" "$LLVM_URL"
+    LLVM_SHA256_ACTUAL=$(sha256sum "$LLVM_ARCHIVE_PATH" | awk '{print $1}')
+    if [[ "$LLVM_SHA256_ACTUAL" != "$LLVM_SHA256" ]]; then
+        echo "LLVM download is corrupted (expected SHA256: $LLVM_SHA256, actual: $LLVM_SHA256_ACTUAL)"
         exit 1
     fi
-    mkdir -p "$CLANG_DIR"
-    tar -xJf "$CLANG_ARCHIVE_PATH" -C "$CLANG_DIR"
-fi
-
-### Setup clangd
-CLANGD_DIRNAME="$(basename "$CLANGD_URL" .tar.xz)"
-CLANGD_DIR="$TC_DIR/$CLANGD_DIRNAME"
-if [[ ! -d "$CLANGD_DIR" ]]; then
-    CLANGD_ARCHIVE_PATH="$TC_DOWNLOADS_DIR/$(basename "$CLANGD_URL")"
-    [ -f "$CLANGD_ARCHIVE_PATH" ] || wget -O "$CLANGD_ARCHIVE_PATH" "$CLANGD_URL"
-    CLANGD_SHA256_ACTUAL=$(sha256sum "$CLANGD_ARCHIVE_PATH" | awk '{print $1}')
-    if [[ "$CLANGD_SHA256_ACTUAL" != "$CLANGD_SHA256" ]]; then
-        echo "Clangd download is corrupted (expected SHA256: $CLANGD_SHA256, actual: $CLANGD_SHA256_ACTUAL)"
-        exit 1
-    fi
-    mkdir -p "$CLANGD_DIR"
-    tar -xJf "$CLANGD_ARCHIVE_PATH" -C "$CLANGD_DIR"
+    mkdir -p "$LLVM_DIR"
+    tar -xJf "$LLVM_ARCHIVE_PATH" -C "$LLVM_DIR" --strip-components=1
 fi
 
 ### Setup gcc
@@ -157,7 +139,7 @@ ENV_SH_PATH="$TC_DIR/env.sh"
 cat > "$ENV_SH_PATH" << EOF
 if [[ -z "\${LEGO_TC_DIR:-}" ]]; then
     export LEGO_TC_DIR="\$(dirname -- "\$(realpath -- "\${BASH_SOURCE[0]}")")"
-    export PATH="\$LEGO_TC_DIR/$CMAKE_DIRNAME/bin:\$LEGO_TC_DIR/$P7ZIP_DIRNAME:\$LEGO_TC_DIR/$NINJA_DIRNAME:\$LEGO_TC_DIR/$CLANG_DIRNAME/bin:\$LEGO_TC_DIR/$CLANGD_DIRNAME/bin:\$PATH"
+    export PATH="\$LEGO_TC_DIR/$CMAKE_DIRNAME/bin:\$LEGO_TC_DIR/$P7ZIP_DIRNAME:\$LEGO_TC_DIR/$NINJA_DIRNAME:\$LEGO_TC_DIR/$LLVM_DIRNAME/bin:\$PATH"
     export CC="clang"
     export CXX="clang++"
     export LDFLAGS="\${LDFLAGS:+\$LDFLAGS }-fuse-ld=lld"
@@ -165,5 +147,6 @@ if [[ -z "\${LEGO_TC_DIR:-}" ]]; then
     export CCC_OVERRIDE_OPTIONS="\${CCC_OVERRIDE_OPTIONS:+\$CCC_OVERRIDE_OPTIONS }# ^--gcc-install-dir=\$LEGO_TC_DIR/$GCC_DIRNAME/usr/lib/gcc/x86_64-linux-gnu/$GCC_VER ^-stdlib=libstdc++"
     export LIBRARY_PATH="\$LEGO_TC_DIR/$GCC_DIRNAME/usr/lib/x86_64-linux-gnu"
     export CMAKE_CXX_STDLIB_MODULES_JSON="\$LEGO_TC_DIR/$GCC_DIRNAME/usr/lib/gcc/x86_64-linux-gnu/$GCC_VER/libstdc++.modules.json"
+    export CMAKE_TRY_COMPILE_TARGET_TYPE="STATIC_LIBRARY"
 fi
 EOF
