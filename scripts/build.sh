@@ -11,40 +11,16 @@ BUILD_PROFILE=${1:-Debug}  # or Release, RelWithDebInfo, MinSizeRel
 
 SRC="$ROOT_DIR/source/lego_assemble/cpp"
 BUILD="$SRC/.build/${BUILD_PROFILE}"
-OUT="$ROOT_DIR/source/lego_assemble/lego_assemble"
 
 mkdir -p "$BUILD"
-
-# Generator and ccache preferences
-GEN_ARGS=()
-if command -v ninja >/dev/null 2>&1; then
-  GEN_ARGS=("-G" "Ninja")
-fi
-
-# Always (re)configure to ensure compile_commands.json is regenerated
 cmake -S "$SRC" -B "$BUILD" \
   -DCMAKE_BUILD_TYPE=${BUILD_PROFILE} \
-  -DEXT_OUTPUT_DIR="$OUT" \
-  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-  -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
   -DCMAKE_COLOR_DIAGNOSTICS=ON \
   -Wno-deprecated \
-  "${GEN_ARGS[@]}"
+  -G Ninja
+cmake --build "$BUILD" --parallel
 
-# Copy compile_commands.json to the C++ source dir for clangd/IDE
-if [[ -f "$BUILD/compile_commands.json" ]]; then
-  cp -f "$BUILD/compile_commands.json" "$SRC/compile_commands.json"
-fi
-
-# Build with parallel jobs (defaults to all cores if not set)
-JOBS=${CMAKE_BUILD_PARALLEL_LEVEL:-}
-if [[ -n "$JOBS" ]]; then
-  cmake --build "$BUILD" --parallel "$JOBS"
-else
-  cmake --build "$BUILD" --parallel
-fi
-
-echo "Built module(s) in: $OUT"
+cp -v "$BUILD/"_native.*.so "source/lego_assemble/lego_assemble/"
 
 cd "$BUILD"
 ctest --output-on-failure

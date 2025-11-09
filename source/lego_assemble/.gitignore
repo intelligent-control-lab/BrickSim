@@ -1,4 +1,5 @@
 cpp/.build/
 cpp/_deps/
 cpp/compile_commands.json
+cpp/CMakePresets.json
 lego_assemble/_native.*.so

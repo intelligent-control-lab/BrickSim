@@ -138,12 +138,65 @@ cat > "$ENV_SH_PATH" << EOF
 if [[ -z "\${LEGO_TC_DIR:-}" ]]; then
     export LEGO_TC_DIR="\$(dirname -- "\$(realpath -- "\${BASH_SOURCE[0]}")")"
     export PATH="\$LEGO_TC_DIR/$CMAKE_DIRNAME/bin:\$LEGO_TC_DIR/$P7ZIP_DIRNAME:\$LEGO_TC_DIR/$NINJA_DIRNAME:\$LEGO_TC_DIR/$LLVM_DIRNAME/bin:\$PATH"
-    export CC="clang"
-    export CXX="clang++"
+    export CC="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/clang"
+    export CXX="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/clang++"
+    export AR="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-ar"
+    export RANLIB="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-ranlib"
+    export NM="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-nm"
+    export STRIP="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-strip"
+    export OBJCOPY="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-objcopy"
+    export OBJDUMP="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-objdump"
+    export READELF="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-readelf"
+    export ADDR2LINE="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-addr2line"
+    export CMAKE_CXX_COMPILER_AR="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-ar"
+    export CMAKE_CXX_COMPILER_RANLIB="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-ranlib"
+    export CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/clang-scan-deps"
     export CCC_OVERRIDE_OPTIONS="\${CCC_OVERRIDE_OPTIONS:+\$CCC_OVERRIDE_OPTIONS }# ^--gcc-install-dir=\$LEGO_TC_DIR/$GCC_DIRNAME/usr/lib/gcc/x86_64-linux-gnu/$GCC_VER"
-    export CMAKE_CXX_STDLIB_MODULES_JSON="\$LEGO_TC_DIR/$GCC_DIRNAME/usr/lib/gcc/x86_64-linux-gnu/$GCC_VER/libstdc++.modules.json"
     export CXXFLAGS="\${CXXFLAGS:+\$CXXFLAGS } -nostdlib++"
     export LDFLAGS="\${LDFLAGS:+\$LDFLAGS }-fuse-ld=lld -L/usr/lib/x86_64-linux-gnu -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu -Wl,-Bdynamic -l:libstdc++.so.6"
     export CPLUS_INCLUDE_PATH="\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include/c++/$GCC_VER:\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include/x86_64-linux-gnu/c++/$GCC_VER:\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include:\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include/x86_64-linux-gnu\${CPLUS_INCLUDE_PATH:+:\$CPLUS_INCLUDE_PATH}"
 fi
 EOF
+
+### Generate CMakePresets.json
+cat > "$ROOT_DIR/source/lego_assemble/cpp/CMakePresets.json" <<JSON
+{
+    "version": 8,
+    "configurePresets": [
+        {
+            "name": "dev",
+            "generator": "Ninja",
+            "binaryDir": "\${sourceDir}/.build/\${presetName}",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "CMAKE_AR": "llvm-ar",
+                "CMAKE_RANLIB": "llvm-ranlib",
+                "CMAKE_NM": "llvm-nm",
+                "CMAKE_STRIP": "llvm-strip",
+                "CMAKE_OBJCOPY": "llvm-objcopy",
+                "CMAKE_OBJDUMP": "llvm-objdump",
+                "CMAKE_READELF": "llvm-readelf",
+                "CMAKE_ADDR2LINE": "llvm-addr2line",
+                "CMAKE_CXX_COMPILER_AR": "llvm-ar",
+                "CMAKE_CXX_COMPILER_RANLIB": "llvm-ranlib",
+                "CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS": "clang-scan-deps",
+                "CMAKE_CXX_FLAGS": "-nostdlib++ --gcc-install-dir=\${sourceDir}/../../../_toolchain/$GCC_DIRNAME/usr/lib/gcc/x86_64-linux-gnu/$GCC_VER",
+                "CMAKE_EXE_LINKER_FLAGS": "-fuse-ld=lld -L/usr/lib/x86_64-linux-gnu -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu -Wl,-Bdynamic -l:libstdc++.so.6",
+                "CMAKE_SHARED_LINKER_FLAGS": "-fuse-ld=lld -L/usr/lib/x86_64-linux-gnu -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu -Wl,-Bdynamic -l:libstdc++.so.6",
+                "CMAKE_MODULE_LINKER_FLAGS": "-fuse-ld=lld -L/usr/lib/x86_64-linux-gnu -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu -Wl,-Bdynamic -l:libstdc++.so.6"
+            },
+            "environment": {
+                "PATH": "\${sourceDir}/../../../_toolchain/$CMAKE_DIRNAME/bin:\${sourceDir}/../../../_toolchain/$P7ZIP_DIRNAME:\${sourceDir}/../../../_toolchain/$NINJA_DIRNAME:\${sourceDir}/../../../_toolchain/$LLVM_DIRNAME/bin:\$penv{PATH}",
+                "CPLUS_INCLUDE_PATH": "\${sourceDir}/../../../_toolchain/$GCC_DIRNAME/usr/include/c++/$GCC_VER:\${sourceDir}/../../../_toolchain/$GCC_DIRNAME/usr/include/x86_64-linux-gnu/c++/$GCC_VER:\${sourceDir}/../../../_toolchain/$GCC_DIRNAME/usr/include:\${sourceDir}/../../../_toolchain/$GCC_DIRNAME/usr/include/x86_64-linux-gnu"
+            }
+        }
+    ],
+    "buildPresets": [
+        { "name": "dev", "configurePreset": "dev" }
+    ],
+    "testPresets": [
+        { "name": "dev", "configurePreset": "dev" }
+    ]
+}
+JSON

@@ -1,11 +1,16 @@
 cmake_minimum_required(VERSION 4.2)
 
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "d0edc3af-4c50-42ea-a356-e2862fe7a444")
-if(NOT DEFINED CMAKE_CXX_STDLIB_MODULES_JSON AND DEFINED ENV{CMAKE_CXX_STDLIB_MODULES_JSON})
-  set(CMAKE_CXX_STDLIB_MODULES_JSON "$ENV{CMAKE_CXX_STDLIB_MODULES_JSON}" CACHE FILEPATH "Path to stdlib modules metadata JSON" FORCE)
+
+# Allow overriding from environment variables
+if(DEFINED ENV{CMAKE_CXX_COMPILER_AR})
+  set(CMAKE_CXX_COMPILER_AR "$ENV{CMAKE_CXX_COMPILER_AR}" CACHE FILEPATH "" FORCE)
 endif()
-if(NOT DEFINED CMAKE_TRY_COMPILE_TARGET_TYPE AND DEFINED ENV{CMAKE_TRY_COMPILE_TARGET_TYPE})
-  set(CMAKE_TRY_COMPILE_TARGET_TYPE "$ENV{CMAKE_TRY_COMPILE_TARGET_TYPE}" CACHE STRING "Try compile target type" FORCE)
+if(DEFINED ENV{CMAKE_CXX_COMPILER_RANLIB})
+  set(CMAKE_CXX_COMPILER_RANLIB "$ENV{CMAKE_CXX_COMPILER_RANLIB}" CACHE FILEPATH "" FORCE)
+endif()
+if(DEFINED ENV{CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS})
+  set(CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS "$ENV{CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS}" CACHE FILEPATH "" FORCE)
 endif()
 
 project(lego_assemble_native LANGUAGES CXX)
@@ -16,6 +21,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_MODULE_STD ON)
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
 
 set(SAN_CFLAGS
   "-fsanitize=address,undefined,leak"
@@ -23,7 +29,9 @@ set(SAN_CFLAGS
   "-fsanitize-address-use-after-scope"
   "-UNDEBUG"
 )
-set(SAN_LDFLAGS "-fsanitize=address,undefined,leak")
+set(SAN_LDFLAGS
+  "-fsanitize=address,undefined,leak"
+)
 # LeakSanitizer suppressions for known third-party singletons (USD Tf registry)
 set(LSAN_SUPPRESSIONS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/resources/lsan.supp")
 set(SAN_ENV "LSAN_OPTIONS=suppressions=${LSAN_SUPPRESSIONS_FILE};ASAN_OPTIONS=fast_unwind_on_malloc=0")
@@ -123,8 +131,8 @@ target_link_libraries(lego_assemble_modules PUBLIC
   omniAudioSchema
 )
 target_include_directories(lego_assemble_modules BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
-target_compile_options(lego_assemble_modules PRIVATE $<$<CONFIG:DEBUG>:${SAN_CFLAGS}>)
-target_link_options(lego_assemble_modules PRIVATE $<$<CONFIG:DEBUG>:${SAN_LDFLAGS}>)
+# target_compile_options(lego_assemble_modules PRIVATE $<$<CONFIG:DEBUG>:${SAN_CFLAGS}>)
+# target_link_options(lego_assemble_modules PRIVATE $<$<CONFIG:DEBUG>:${SAN_LDFLAGS}>)
 
 add_library(_native MODULE)
 target_sources(_native PRIVATE
@@ -134,12 +142,6 @@ target_sources(_native PRIVATE
 )
 target_link_libraries(_native PRIVATE lego_assemble_modules pybind11::module)
 pybind11_extension(_native)
-target_compile_options(_native PRIVATE $<$<CONFIG:DEBUG>:${SAN_CFLAGS}>)
-target_link_options(_native PRIVATE $<$<CONFIG:DEBUG>:${SAN_LDFLAGS}>)
-
-# Allow the caller (setup.py) to override the output directory for the built module
-set(EXT_OUTPUT_DIR "${CMAKE_BINARY_DIR}" CACHE PATH "Directory to place the built python extension")
-set_target_properties(_native PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${EXT_OUTPUT_DIR}")
 
 # Tests
 enable_testing()
