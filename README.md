@@ -10,7 +10,7 @@ Requires Ubuntu 22.04+ or other distributions satisfying:
 
 Install build requirements (for Debian / Ubuntu):
 ```bash
-sudo apt install build-essential wget python3.11-full
+sudo apt install build-essential wget python3.11-full xz-utils zstd
 ```
 
 ### Clone
