@@ -1,6 +1,7 @@
 export module lego_assemble.brick_naming;
 
 import std;
+import lego_assemble.utils.strings;
 import lego_assemble.vendor.carb;
 import lego_assemble.vendor.pxr;
 
@@ -13,24 +14,6 @@ export constexpr EnvId kNoEnv = -1;
 
 static const pxr::SdfPath WorldPath("/World");
 static const pxr::SdfPath EnvRootPath("/World/envs");
-
-template <class Int> std::optional<Int> parse_int(std::string_view sv) {
-	Int value{};
-	const char *first = sv.data();
-	const char *last = sv.data() + sv.size();
-	auto [ptr, ec] = std::from_chars(first, last, value, 10);
-	if (ec == std::errc{} && ptr == last) {
-		return value; // parsed all characters successfully
-	}
-	return std::nullopt;
-}
-
-bool eat_prefix(std::string_view &sv, std::string_view prefix) {
-	if (!sv.starts_with(prefix))
-		return false;
-	sv.remove_prefix(prefix.size());
-	return true;
-}
 
 export pxr::SdfPath pathForEnv(EnvId env_id) {
 	if (env_id == kNoEnv) {

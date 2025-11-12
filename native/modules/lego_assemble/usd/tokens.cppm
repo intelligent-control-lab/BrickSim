@@ -11,6 +11,22 @@ using pxr::TfToken;
 
 // clang-format off
 #define LEGO_TOKENS                                                            \
+    ((ConnStud, "lego:conn_stud"))                                             \
+    ((ConnHole, "lego:conn_hole"))                                             \
+    ((ConnStudInterface, "lego:conn_stud_interface"))                          \
+    ((ConnHoleInterface, "lego:conn_hole_interface"))                          \
+    ((ConnOffset, "lego:conn_offset"))                                         \
+    ((ConnYaw, "lego:conn_yaw"))                                               \
+    ((PartKind, "lego:part_kind"))                                             \
+    ((PartKindBrick, "brick"))                                                 \
+    ((BrickDimensions, "lego:brick_dimensions"))                               \
+    ((BrickColor, "lego:brick_color"))                                         \
+    ((BodyCollider, "BodyCollider"))                                           \
+    ((TopCollider, "TopCollider"))                                             \
+    ((Body, "Body"))                                                           \
+    ((Studs, "Studs"))                                                         \
+    ((StudPrototype, "StudPrototype"))                                         \
+\
     ((conn_body0, "lego_conn:body0"))                                          \
     ((conn_body1, "lego_conn:body1"))                                          \
     ((conn_offset_studs, "lego_conn:offset_studs"))                            \
@@ -23,11 +39,7 @@ using pxr::TfToken;
     ((conn_enabled, "lego_conn:enabled"))                                      \
     ((brick_dimensions, "lego_brick:dimensions"))                              \
     ((brick_color, "lego_brick:color"))                                        \
-    ((BodyCollider, "BodyCollider"))                                           \
-    ((TopCollider, "TopCollider"))                                             \
-    ((Body, "Body"))                                                           \
-    ((Studs, "Studs"))                                                         \
-    ((StudPrototype, "StudPrototype"))
+
 // clang-format on
 
 export {

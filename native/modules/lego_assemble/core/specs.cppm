@@ -21,7 +21,7 @@ export constexpr double StudHeight = 0.0017;   // 1.7 mm stud height
 
 // ==== Definition of Interface ====
 
-export using InterfaceId = std::size_t;
+export using InterfaceId = std::uint32_t;
 
 export enum class InterfaceType : std::uint8_t {
 	Stud = 0,
@@ -149,7 +149,9 @@ export constexpr double brickMassInKg(BrickUnit L, BrickUnit W, PlateUnit H) {
 
 export class BrickPart {
   public:
-	using InterfaceIds = InterfaceIdList<0, 1>;
+	static constexpr InterfaceId HoleId = 0;
+	static constexpr InterfaceId StudId = 1;
+	using InterfaceIds = InterfaceIdList<HoleId, StudId>;
 
 	BrickPart(BrickUnit L, BrickUnit W, PlateUnit H, BrickColor color)
 	    : L_(L), W_(W), H_(H), color_(color) {}
@@ -170,8 +172,8 @@ export class BrickPart {
 		return color_;
 	}
 	template <InterfaceId Id> InterfaceSpec interface_at() const {
-		if constexpr (Id == 0) {
-			return {.id = 0,
+		if constexpr (Id == HoleId) {
+			return {.id = HoleId,
 			        .type = InterfaceType::Hole,
 			        .L = L_,
 			        .W = W_,
@@ -181,8 +183,8 @@ export class BrickPart {
 			                     -((W_ * BrickUnitLength) / 2.0),
 			                     0.0,
 			                 }}};
-		} else if constexpr (Id == 1) {
-			return {.id = 1,
+		} else if constexpr (Id == StudId) {
+			return {.id = StudId,
 			        .type = InterfaceType::Stud,
 			        .L = L_,
 			        .W = W_,

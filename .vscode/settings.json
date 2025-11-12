@@ -1,8 +1,11 @@
 {
     "files.exclude": {
-        "**/*.egg-info": true,
+        "_toolchain": true,
         "**/.thumbs": true,
+        "**/*.egg-info": true,
         "logs": true,
+        "native/_deps": true,
+        "native/.build": true,
         "outputs": true,
     },
     "files.watcherExclude": {
@@ -18,7 +21,7 @@
     "cmake.cmakePath": "${workspaceFolder}/_toolchain/cmake-4.2.0-rc2-linux-x86_64/bin/cmake",
     "cmake.sourceDirectory": "${workspaceFolder}/native",
     "cmake.useCMakePresets": "always",
-    "cmake.revealLog": "never",
+    "cmake.configureOnEdit": false,
     "clangd.path": "${workspaceFolder}/_toolchain/llvm-22+0246f33/bin/clangd",
     "clangd.arguments": [
         "--compile-commands-dir=${workspaceFolder}/native/.build/dev",

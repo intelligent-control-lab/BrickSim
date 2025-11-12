@@ -3,6 +3,7 @@ import lego_assemble.core.specs;
 import lego_assemble.core.graph;
 import lego_assemble.physx.physics_graph;
 import lego_assemble.utils.type_list;
+import lego_assemble.utils.metric_system;
 import lego_assemble.vendor.physx;
 import lego_assemble.vendor.pxr;
 
@@ -22,8 +23,9 @@ static_assert(G::HasOnBundleRemoving<TestGraph>);
 // Ensure PhysX actor key is integrated into the part key set
 static_assert(G::PartKeys::template contains<physx::PxRigidActor *>);
 // Graph constructibility signature (PxPhysics*, pmr)
-static_assert(std::is_constructible_v<TestGraph, physx::PxPhysics *,
-                                      std::pmr::memory_resource *>);
+static_assert(
+    std::is_constructible_v<TestGraph, MetricSystem, physx::PxPhysics *,
+                            std::pmr::memory_resource *>);
 
 // The graph exposes useful public aliases
 using SkipGraphT = TestGraph::SkipGraph;
@@ -46,7 +48,7 @@ static_assert(BG2::PartKeys::template contains<pxr::SdfPath>);
 static void compile_only_smoke() {
 	if (1 + 1 != 2) {
 		physx::PxPhysics *px = reinterpret_cast<physx::PxPhysics *>(1);
-		TestGraph g(px);
+		TestGraph g(MetricSystem{}, px);
 		// Free function utility also compiles
 		physx::PxActor *a = nullptr;
 		// Use public aliases to ensure types are visible and usable

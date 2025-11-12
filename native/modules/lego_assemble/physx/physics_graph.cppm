@@ -15,10 +15,16 @@ import lego_assemble.utils.conversions;
 import lego_assemble.utils.multi_key_map;
 import lego_assemble.utils.pair;
 import lego_assemble.utils.unordered_pair;
+import lego_assemble.utils.metric_system;
 import lego_assemble.vendor.physx;
 import lego_assemble.vendor.eigen;
 
 namespace lego_assemble {
+
+export struct PendingAssembly {
+	ConnSegRef csref;
+	ConnectionSegment conn_seg;
+};
 
 export using InterfaceShapePair = std::pair<InterfaceId, physx::PxShape *>;
 export using ActorShapePair =
@@ -108,15 +114,16 @@ class PhysicsLegoGraph final
 	                type_list<InterfaceRefHash, ActorShapePairHash>>;
 
 	explicit PhysicsLegoGraph(
-	    physx::PxPhysics *px,
+	    const MetricSystem &metrics, physx::PxPhysics *px,
 	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
-	    : Base(mr), px_{px},
+	    : Base(mr), metrics_{metrics}, px_{px},
 	      skip_graph_(std::bind(&PhysicsLegoGraph::create_aux_constraint, this,
 	                            std::placeholders::_1, std::placeholders::_2),
 	                  std::bind(&PhysicsLegoGraph::destroy_constraint, this,
 	                            std::placeholders::_1),
 	                  mr),
-	      shape_mapping_(mr), contact_exclusions_(mr) {}
+	      shape_mapping_(mr), contact_exclusions_(mr), pending_assemblies_(mr) {
+	}
 
 	AssemblyChecker &assembly_checker() {
 		return assembly_checker_;
@@ -318,15 +325,22 @@ class PhysicsLegoGraph final
 
 		void process_assembly_contact(
 		    physx::PxRigidActor *rb0, physx::PxShape *s0,
-		    const InterfaceSpec &if0, const physx::PxTransform &pose0,
+		    const InterfaceSpec &if0, const physx::PxTransform &pose0_px,
 		    physx::PxRigidActor *rb1, physx::PxShape *s1,
-		    const InterfaceSpec &if1, const physx::PxTransform &pose1,
-		    const physx::PxVec3 &impulse, physx::PxReal dt) {
+		    const InterfaceSpec &if1, const physx::PxTransform &pose1_px,
+		    const physx::PxVec3 &impulse_px, physx::PxReal dt) {
+
+			// Metric conversion
+			const auto &metrics = graph_->metrics_;
+			Transformd pose0 = metrics.to_m(as<Transformd>(pose0_px));
+			Transformd pose1 = metrics.to_m(as<Transformd>(pose1_px));
+			Eigen::Vector3d impulse =
+			    metrics.to_Ns(as<Eigen::Vector3d>(impulse_px));
+			Eigen::Vector3d force = impulse / static_cast<double>(dt);
 
 			std::optional<ConnectionSegment> result =
-			    graph_->assembly_checker_.detect_assembly(
-			        if0, if1, as<Transformd>(pose0), as<Transformd>(pose1),
-			        as<Eigen::Vector3d>(impulse) / static_cast<double>(dt));
+			    graph_->assembly_checker_.detect_assembly(if0, if1, pose0,
+			                                              pose1, force);
 			if (!result.has_value()) {
 				return;
 			}
@@ -341,16 +355,39 @@ class PhysicsLegoGraph final
 				std::unreachable();
 			}
 
-			// TODO
+			graph_->enqueue_pending_assembly(ConnSegRef{*ifref0, *ifref1},
+			                                 *result);
 		}
 	};
 
+	using Base::lookup_transform;
+	using Base::parts_;
+	using Base::res_;
+
+	MetricSystem metrics_;
 	physx::PxPhysics *px_;
 	SkipGraph skip_graph_;
 	ShapeMapping shape_mapping_;
 	ContactExclusionSet contact_exclusions_;
 	std::unique_ptr<PhysxBinding> physx_binding_;
 	AssemblyChecker assembly_checker_;
+
+	std::pmr::vector<PendingAssembly> pending_assemblies_;
+	std::mutex pending_assemblies_mutex_;
+
+	void enqueue_pending_assembly(auto &&...args) {
+		std::lock_guard lock{pending_assemblies_mutex_};
+		pending_assemblies_.emplace_back(std::forward<decltype(args)>(args)...);
+	}
+
+	std::pmr::vector<PendingAssembly> drain_pending_assemblies() {
+		std::pmr::vector<PendingAssembly> batch(res_);
+		{
+			std::lock_guard lock{pending_assemblies_mutex_};
+			batch.swap(pending_assemblies_);
+		}
+		return batch;
+	}
 
   private:
 	friend Base;
@@ -359,8 +396,7 @@ class PhysicsLegoGraph final
 	void on_part_added(PartId pid, PhysicsPartWrapper<P> &pw) {
 		// Update shape <-> interface mapping
 		physx::PxRigidActor *px_actor =
-		    Base::parts_.template project_key<PartId, physx::PxRigidActor *>(
-		        pid);
+		    parts_.template project_key<PartId, physx::PxRigidActor *>(pid);
 		if (!px_actor) {
 			throw std::runtime_error(
 			    std::format("Part id {} has no associated PxRigidActor", pid));
@@ -477,7 +513,7 @@ class PhysicsLegoGraph final
 	}
 
 	physx::PxConstraint *create_aux_constraint(PartId a_id, PartId b_id) {
-		std::optional<Transformd> T_a_b = Base::lookup_transform(a_id, b_id);
+		std::optional<Transformd> T_a_b = lookup_transform(a_id, b_id);
 		if (!T_a_b.has_value()) {
 			throw std::runtime_error(
 			    std::format("Cannot find graph transform from part id {} to {}",
@@ -495,11 +531,9 @@ class PhysicsLegoGraph final
 		// parentLocal (A_com -> B_com) = (A_com -> A_orig) * (A_orig -> B_orig) * (B_orig -> B_com)
 		// childLocal is identity so cB2w = bB2w (B_com).
 		const auto *actor_a_ptr =
-		    Base::parts_.template project_key<PartId, physx::PxRigidActor *>(
-		        a_id);
+		    parts_.template project_key<PartId, physx::PxRigidActor *>(a_id);
 		const auto *actor_b_ptr =
-		    Base::parts_.template project_key<PartId, physx::PxRigidActor *>(
-		        b_id);
+		    parts_.template project_key<PartId, physx::PxRigidActor *>(b_id);
 		if (!actor_a_ptr || !actor_b_ptr) {
 			throw std::runtime_error(std::format(
 			    "Cannot find actors for part ids {} and {}", a_id, b_id));
@@ -507,7 +541,7 @@ class PhysicsLegoGraph final
 		physx::PxRigidActor *actor_a = *actor_a_ptr;
 		physx::PxRigidActor *actor_b = *actor_b_ptr;
 
-		const auto &[q, t] = T_a_b;
+		const auto &[q, t] = metrics_.from_m(T_a_b); // Unit conversion
 		auto T_a_b_px = as<physx::PxTransform>(q, t);
 		physx::PxTransform A_o2com(physx::PxIdentity);
 		physx::PxTransform B_o2com(physx::PxIdentity);
