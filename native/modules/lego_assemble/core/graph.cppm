@@ -35,18 +35,25 @@ export template <class T> struct SimpleWrapper {
 	constexpr SimpleWrapper &operator=(const SimpleWrapper &) = default;
 	constexpr SimpleWrapper &operator=(SimpleWrapper &&) = default;
 
-	// Forwarding ctor: forwards any args to T, but NOT when constructing from SimpleWrapper itself
 	template <class... Args>
 	    requires(std::constructible_from<T, Args...> &&
-	             (!std::same_as<std::remove_cvref_t<Args>, SimpleWrapper> &&
+	             (!std::same_as<std::remove_cvref_t<Args>, SimpleWrapper<T>> &&
 	              ...))
 	explicit constexpr SimpleWrapper(Args &&...args)
 	    : wrapped_(std::forward<Args>(args)...) {}
 
+	// Remove trailing PMR
 	template <class... Args>
-	    requires std::constructible_from<T, Args...>
-	explicit constexpr SimpleWrapper(std::in_place_t, Args &&...args)
-	    : wrapped_(std::forward<Args>(args)...) {}
+	    requires(!std::constructible_from<T, Args...> && sizeof...(Args) > 0 &&
+	             std::same_as<std::remove_cvref_t<last_type<Args...>>,
+	                          std::pmr::memory_resource *> &&
+	             type_list<Args...>::template drop_back<
+	                 1>::template can_construct<T>)
+	explicit constexpr SimpleWrapper(Args &&...args)
+	    : wrapped_(std::make_from_tuple<T>(
+	          select_forward_as_tuple<
+	              typename type_list<Args...>::template drop_back_seq<1>>(
+	              std::forward<Args>(args)...))) {}
 
 	template <class Self> constexpr auto &&wrapped(this Self &&self) noexcept {
 		return std::forward<Self>(self).wrapped_;
@@ -520,7 +527,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			return std::nullopt;
 		}
 
-		ConnSegWrapper csw(std::forward<CSWArgs>(args)...);
+		ConnSegWrapper csw(std::forward<CSWArgs>(args)..., self.res_);
 		Transformd new_transform = SE3d{}.project(
 		    csw.wrapped().compute_transform(*stud_spec, *hole_spec));
 
