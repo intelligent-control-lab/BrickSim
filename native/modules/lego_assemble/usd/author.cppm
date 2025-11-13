@@ -6,6 +6,7 @@ import lego_assemble.core.connections;
 import lego_assemble.usd.tokens;
 import lego_assemble.utils.conversions;
 import lego_assemble.utils.sdf;
+import lego_assemble.utils.metric_system;
 import lego_assemble.vendor.pxr;
 
 namespace lego_assemble {
@@ -88,8 +89,7 @@ export struct SimpleBrickAuthor {
 
 	void operator()(const pxr::UsdStageRefPtr &stage,
 	                const pxr::SdfPath &root_path, const BrickPart &part) {
-		auto mpu = pxr::UsdGeomGetStageMetersPerUnit(stage);
-		auto kpu = pxr::UsdPhysicsGetStageKilogramsPerUnit(stage);
+		MetricSystem metrics(stage);
 		std::array<BrickUnit, 3> dimensions{part.L(), part.W(), part.H()};
 		std::array<double, 3> realDimensions{
 		    dimensions[0] * BrickUnitLength,
@@ -139,15 +139,15 @@ export struct SimpleBrickAuthor {
 		                      pxr::UsdGeomTokens->invisible);
 		SetAttr<pxr::GfVec3f>(bodyCollider, xformOpScale,
 		                      {
-		                          realDimensions[0] / mpu,
-		                          realDimensions[1] / mpu,
-		                          realDimensions[2] / mpu,
+		                          metrics.from_m(realDimensions[0]),
+		                          metrics.from_m(realDimensions[1]),
+		                          metrics.from_m(realDimensions[2]),
 		                      });
 		SetAttr<pxr::GfVec3d>(bodyCollider, xformOpTranslate,
 		                      {
-		                          0.0,
-		                          0.0,
-		                          realDimensions[2] / 2 / mpu,
+		                          metrics.from_m(0.0),
+		                          metrics.from_m(0.0),
+		                          metrics.from_m(realDimensions[2] / 2),
 		                      });
 		SetAttr<pxr::VtTokenArray>(bodyCollider,
 		                           pxr::UsdGeomTokens->xformOpOrder,
@@ -155,7 +155,7 @@ export struct SimpleBrickAuthor {
 		SetAttr<bool>(bodyCollider,
 		              pxr::UsdPhysicsTokens->physicsCollisionEnabled, true);
 		SetAttr<float>(bodyCollider, pxr::UsdPhysicsTokens->physicsMass,
-		               part.mass() / kpu);
+		               metrics.from_kg(part.mass()));
 
 		auto topCollider = pxr::SdfCreatePrimInLayer(
 		    layer, root_path.AppendChild(LegoTokens->TopCollider));
@@ -171,16 +171,17 @@ export struct SimpleBrickAuthor {
 		                      pxr::UsdGeomTokens->invisible);
 		SetAttr<pxr::GfVec3f>(topCollider, xformOpScale,
 		                      {
-		                          realDimensions[0] / mpu,
-		                          realDimensions[1] / mpu,
-		                          StudHeight / mpu,
+		                          metrics.from_m(realDimensions[0]),
+		                          metrics.from_m(realDimensions[1]),
+		                          metrics.from_m(StudHeight),
 		                      });
-		SetAttr<pxr::GfVec3d>(topCollider, xformOpTranslate,
-		                      {
-		                          0.0,
-		                          0.0,
-		                          (realDimensions[2] + StudHeight / 2) / mpu,
-		                      });
+		SetAttr<pxr::GfVec3d>(
+		    topCollider, xformOpTranslate,
+		    {
+		        metrics.from_m(0.0),
+		        metrics.from_m(0.0),
+		        metrics.from_m(realDimensions[2] + StudHeight / 2),
+		    });
 		SetAttr<pxr::VtTokenArray>(topCollider,
 		                           pxr::UsdGeomTokens->xformOpOrder,
 		                           {xformOpTranslate, xformOpScale});
@@ -195,15 +196,15 @@ export struct SimpleBrickAuthor {
 		SetAttr<double>(body, pxr::UsdGeomTokens->size, 1.0);
 		SetAttr<pxr::GfVec3f>(body, xformOpScale,
 		                      {
-		                          realDimensions[0] / mpu,
-		                          realDimensions[1] / mpu,
-		                          realDimensions[2] / mpu,
+		                          metrics.from_m(realDimensions[0]),
+		                          metrics.from_m(realDimensions[1]),
+		                          metrics.from_m(realDimensions[2]),
 		                      });
 		SetAttr<pxr::GfVec3d>(body, xformOpTranslate,
 		                      {
-		                          0.0,
-		                          0.0,
-		                          realDimensions[2] / 2 / mpu,
+		                          metrics.from_m(0.0),
+		                          metrics.from_m(0.0),
+		                          metrics.from_m(realDimensions[2] / 2),
 		                      });
 		SetAttr<pxr::VtTokenArray>(body, pxr::UsdGeomTokens->xformOpOrder,
 		                           {xformOpTranslate, xformOpScale});
@@ -223,9 +224,9 @@ export struct SimpleBrickAuthor {
 		    {as<pxr::GfVec3f>(fColor)}, pxr::SdfValueRoleNames->Color);
 		SetAttr<pxr::GfVec3f>(studPrototype, xformOpScale,
 		                      {
-		                          StudDiameter / 2.0 / mpu,
-		                          StudDiameter / 2.0 / mpu,
-		                          StudHeight / mpu,
+		                          metrics.from_m(StudDiameter / 2.0),
+		                          metrics.from_m(StudDiameter / 2.0),
+		                          metrics.from_m(StudHeight),
 		                      });
 		SetAttr<pxr::VtTokenArray>(studPrototype,
 		                           pxr::UsdGeomTokens->xformOpOrder,
@@ -241,9 +242,9 @@ export struct SimpleBrickAuthor {
 				    (j - (dimensions[1] - 1) / 2.0) * BrickUnitLength;
 				double z_offset = realDimensions[2] + StudHeight / 2.0;
 				positions[i * dimensions[1] + j] = {
-				    static_cast<float>(x_offset / mpu),
-				    static_cast<float>(y_offset / mpu),
-				    static_cast<float>(z_offset / mpu),
+				    static_cast<float>(metrics.from_m(x_offset)),
+				    static_cast<float>(metrics.from_m(y_offset)),
+				    static_cast<float>(metrics.from_m(z_offset)),
 				};
 			}
 		}
