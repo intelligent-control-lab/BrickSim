@@ -119,14 +119,15 @@ std::optional<InterfaceSpec> get_interface_at(const P &part, InterfaceId id)
     requires(PartWithFixedInterfaces<P> || PartWithDynamicInterfaces<P>)
 {
 	if constexpr (PartWithFixedInterfaces<P>) {
-		std::optional<InterfaceSpec> out;
 		// Expand the fixed ID list, pick the matching one at runtime.
-		[&]<InterfaceId... Is>(InterfaceIdList<Is...>) {
-			((id == Is ? (out = part.template interface_at<Is>(), true)
-			           : false) ||
-			 ...);
+		return [&]<InterfaceId... Is>(InterfaceIdList<Is...>) {
+			std::optional<InterfaceSpec> out;
+			[[maybe_unused]] bool matched =
+			    ((id == Is ? (out = part.template interface_at<Is>(), true)
+			               : false) ||
+			     ...);
+			return out;
 		}(typename P::InterfaceIds{});
-		return out;
 	} else {
 		// Dynamic case
 		if (const InterfaceSpec *s = part.interface_at(id)) {
