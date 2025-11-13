@@ -158,11 +158,11 @@ LegoUsdBridge::LegoUsdBridge(pxr::UsdStageRefPtr stage, physx::PxPhysics *px,
 				bodies_[path] = rb;
 				body_rev_[rb] = path;
 				if (!graph_.addRigidBody(rb, brick_info)) {
-					log_error("Failed to add rigid body for prim %s",
+					log_error("Failed to add rigid body for prim {}",
 					          path.GetText());
 				}
 			} else {
-				log_warn("Failed to get rigid body for brick prim %s",
+				log_warn("Failed to get rigid body for brick prim {}",
 				         path.GetText());
 			}
 		}
@@ -188,16 +188,16 @@ LegoUsdBridge::LegoUsdBridge(pxr::UsdStageRefPtr stage, physx::PxPhysics *px,
 					};
 					conn_rev_[{rb_parent, rb_child}] = conn.path;
 				} else {
-					log_warn("Failed to connect bodies for conn prim %s",
+					log_warn("Failed to connect bodies for conn prim {}",
 					         conn.path.GetText());
 				}
 				ps->unlockWrite();
 			} else {
-				log_warn("Bodies for conn prim %s are in different scenes",
+				log_warn("Bodies for conn prim {} are in different scenes",
 				         conn.path.GetText());
 			}
 		} else {
-			log_warn("Cannot create connection for conn prim %s: one "
+			log_warn("Cannot create connection for conn prim {}: one "
 			         "or both bodies do not exist",
 			         conn.path.GetText());
 		}
@@ -216,13 +216,13 @@ void LegoUsdBridge::onRigidCreated(physx::PxRigidActor *actor,
 
 	std::lock_guard lock(mutex_);
 	if (bodies_.find(primPath) != bodies_.end()) {
-		log_warn("Rigid body for prim %s already exists", primPath.GetText());
+		log_warn("Rigid body for prim {} already exists", primPath.GetText());
 		return;
 	}
 	bodies_[primPath] = actor;
 	body_rev_[actor] = primPath;
 	if (!graph_.addRigidBody(actor, info)) {
-		log_error("Failed to add rigid body for prim %s", primPath.GetText());
+		log_error("Failed to add rigid body for prim {}", primPath.GetText());
 	}
 }
 
@@ -238,7 +238,7 @@ void LegoUsdBridge::onRigidDestroyed(physx::PxRigidActor *actor,
 	// Need to lock because might remove connected edges (if any)
 	ps->lockWrite();
 	if (!graph_.removeRigidBody(rb)) {
-		log_error("Failed to remove rigid body for prim %s",
+		log_error("Failed to remove rigid body for prim {}",
 		          primPath.GetText());
 	}
 	ps->unlockWrite();
@@ -277,7 +277,7 @@ void LegoUsdBridge::onPreStep() {
 				auto *rb_child = child_it->second;
 				if (!conn_rev_.erase({rb_parent, rb_child})) {
 					log_warn(
-					    "Failed to remove reverse mapping for conn prim %s",
+					    "Failed to remove reverse mapping for conn prim {}",
 					    path.GetText());
 				}
 				auto *ps = rb_parent->getScene();
@@ -285,12 +285,12 @@ void LegoUsdBridge::onPreStep() {
 					ps->lockWrite();
 					if (!graph_.disconnect(rb_parent, rb_child)) {
 						log_error(
-						    "Failed to disconnect bodies for conn prim %s",
+						    "Failed to disconnect bodies for conn prim {}",
 						    path.GetText());
 					}
 					ps->unlockWrite();
 				} else {
-					log_warn("Bodies for conn prim %s are in different scenes",
+					log_warn("Bodies for conn prim {} are in different scenes",
 					         path.GetText());
 				}
 			}
@@ -318,16 +318,16 @@ void LegoUsdBridge::onPreStep() {
 						};
 						conn_rev_[{rb_parent, rb_child}] = path;
 					} else {
-						log_warn("Failed to connect bodies for conn prim %s",
+						log_warn("Failed to connect bodies for conn prim {}",
 						         path.GetText());
 					}
 					ps->unlockWrite();
 				} else {
-					log_warn("Bodies for conn prim %s are in different scenes",
+					log_warn("Bodies for conn prim {} are in different scenes",
 					         path.GetText());
 				}
 			} else {
-				log_warn("Cannot create connection for conn prim %s: "
+				log_warn("Cannot create connection for conn prim {}: "
 				         "one or both bodies do not exist",
 				         path.GetText());
 			}
@@ -347,7 +347,9 @@ void LegoUsdBridge::onPostStep() {
 	for (const auto &[a, b] : broken_conns) {
 		auto it = conn_rev_.find({a, b});
 		if (it == conn_rev_.end()) {
-			log_warn("Cannot find prim for broken connection [%p, %p]", a, b);
+			log_warn("Cannot find prim for broken connection [{:p}, {:p}]",
+			         static_cast<const void *>(a),
+			         static_cast<const void *>(b));
 			continue;
 		}
 		auto path = it->second;
@@ -360,15 +362,15 @@ void LegoUsdBridge::onPostStep() {
 		auto attr = layer->GetAttributeAtPath(
 		    path.AppendProperty(LegoTokens->conn_enabled));
 		if (!attr) {
-			log_warn("Cannot find attribute for broken connection prim %s",
+			log_warn("Cannot find attribute for broken connection prim {}",
 			         path.GetText());
 			continue;
 		}
 		if (!attr->SetDefaultValue(pxr::VtValue(false))) {
-			log_warn("Failed to disable broken connection prim %s",
+			log_warn("Failed to disable broken connection prim {}",
 			         path.GetText());
 		} else {
-			log_info("Disabled broken connection prim %s", path.GetText());
+			log_info("Disabled broken connection prim {}", path.GetText());
 		}
 	}
 
@@ -376,12 +378,14 @@ void LegoUsdBridge::onPostStep() {
 	for (const auto &event : assembly_events) {
 		auto parent_it = body_rev_.find(event.parent);
 		if (parent_it == body_rev_.end()) {
-			log_warn("Cannot find prim for assembled body %p", event.parent);
+			log_warn("Cannot find prim for assembled body {:p}",
+			         static_cast<const void *>(event.parent));
 			continue;
 		}
 		auto child_it = body_rev_.find(event.child);
 		if (child_it == body_rev_.end()) {
-			log_warn("Cannot find prim for assembled body %p", event.child);
+			log_warn("Cannot find prim for assembled body {:p}",
+			         static_cast<const void *>(event.child));
 			continue;
 		}
 		auto parent_path = parent_it->second;

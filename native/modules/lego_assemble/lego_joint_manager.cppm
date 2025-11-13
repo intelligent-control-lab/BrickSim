@@ -78,9 +78,11 @@ export bool initLegoJointManager() {
 			        g_physx->getPhysXPtrFast(objectId));
 			    if (scene) {
 				    if (patchPxScene(scene)) {
-					    log_info("PxScene %p patched successfully", scene);
+					    log_info("PxScene {:p} patched successfully",
+					             static_cast<const void *>(scene));
 				    } else {
-					    log_error("Failed to patch PxScene %p", scene);
+					    log_error("Failed to patch PxScene {:p}",
+					              static_cast<const void *>(scene));
 				    }
 			    }
 		    }

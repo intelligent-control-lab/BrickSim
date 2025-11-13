@@ -300,39 +300,43 @@ class LegoGraph::Impl {
 		for (ConnDesc *c : desc.parents) {
 			if (!c->parent->children.erase(c)) {
 				log_error(
-				    "Inconsistent state when removing body %p, continuing",
-				    actor);
+				    "Inconsistent state when removing body {:p}, continuing",
+				    static_cast<const void *>(actor));
 			}
 			releaseConn(*c);
 			if (!scheduler.disconnect(c->parent, c->child)) {
-				log_error("Failed to remove edge between %p and %p from "
+				log_error("Failed to remove edge between {:p} and {:p} from "
 				          "scheduler, continuing",
-				          c->parent->actor, c->child->actor);
+				          static_cast<const void *>(c->parent->actor),
+				          static_cast<const void *>(c->child->actor));
 			}
 			auto edge_key = std::make_pair(c->parent->actor, c->child->actor);
 			if (!conns.erase(edge_key)) {
-				log_error(
-				    "Failed to remove connection [%p, %p] from map, continuing",
-				    c->parent->actor, c->child->actor);
+				log_error("Failed to remove connection [{:p}, {:p}] from map, "
+				          "continuing",
+				          static_cast<const void *>(c->parent->actor),
+				          static_cast<const void *>(c->child->actor));
 			}
 		}
 		for (ConnDesc *c : desc.children) {
 			if (!c->child->parents.erase(c)) {
 				log_error(
-				    "Inconsistent state when removing body %p, continuing",
-				    actor);
+				    "Inconsistent state when removing body {:p}, continuing",
+				    static_cast<const void *>(actor));
 			}
 			releaseConn(*c);
 			if (!scheduler.disconnect(c->parent, c->child)) {
-				log_error("Failed to remove edge between %p and %p from "
+				log_error("Failed to remove edge between {:p} and {:p} from "
 				          "scheduler, continuing",
-				          c->parent->actor, c->child->actor);
+				          static_cast<const void *>(c->parent->actor),
+				          static_cast<const void *>(c->child->actor));
 			}
 			auto edge_key = std::make_pair(c->parent->actor, c->child->actor);
 			if (!conns.erase(edge_key)) {
-				log_error(
-				    "Failed to remove connection [%p, %p] from map, continuing",
-				    c->parent->actor, c->child->actor);
+				log_error("Failed to remove connection [{:p}, {:p}] from map, "
+				          "continuing",
+				          static_cast<const void *>(c->parent->actor),
+				          static_cast<const void *>(c->child->actor));
 			}
 		}
 		bodies.erase(it);
@@ -367,12 +371,14 @@ class LegoGraph::Impl {
 		da->children.insert(&conns[edge_key]);
 		db->parents.insert(&conns[edge_key]);
 		if (!scheduler.connect(da, db)) {
-			log_error(
-			    "Failed to add edge between %p and %p to scheduler, continuing",
-			    a, b);
+			log_error("Failed to add edge between {:p} and {:p} to scheduler, "
+			          "continuing",
+			          static_cast<const void *>(a),
+			          static_cast<const void *>(b));
 		}
 		b->getScene()->resetFiltering(*b);
-		log_info("Created base constraint between %p and %p", a, b);
+		log_info("Created base constraint between {:p} and {:p}",
+		         static_cast<const void *>(a), static_cast<const void *>(b));
 		return true;
 	}
 
@@ -395,13 +401,15 @@ class LegoGraph::Impl {
 		c.child->parents.erase(&c);
 		releaseConn(c);
 		if (!scheduler.disconnect(c.parent, c.child)) {
-			log_error("Failed to remove edge between %p and %p from "
+			log_error("Failed to remove edge between {:p} and {:p} from "
 			          "scheduler, continuing",
-			          c.parent->actor, c.child->actor);
+			          static_cast<const void *>(c.parent->actor),
+			          static_cast<const void *>(c.child->actor));
 		}
 		c.child->actor->getScene()->resetFiltering(*c.child->actor);
-		log_info("Destroyed base constraint between %p and %p", c.parent->actor,
-		         c.child->actor);
+		log_info("Destroyed base constraint between {:p} and {:p}",
+		         static_cast<const void *>(c.parent->actor),
+		         static_cast<const void *>(c.child->actor));
 		conns.erase(itc);
 		return true;
 	}
@@ -928,8 +936,8 @@ class LegoGraph::Impl {
 
 		// (Optional) Log min safety factor
 		if (alphaStar < std::numeric_limits<double>::infinity()) {
-			log_info("solveLimits(): min safety factor alpha* = %.6f "
-			         "(%zu/%zu violated)",
+			log_info("solveLimits(): min safety factor alpha* = {:.6f} "
+			         "({}/{}) violated)",
 			         alphaStar, violated.size(), E.size());
 		} else {
 			log_info("solveLimits(): no demand detected; all safe.");
@@ -1017,10 +1025,13 @@ class LegoGraph::Impl {
 	Constraint *createAuxConstraint(BodyDesc *a, BodyDesc *b) {
 		Transform T_a_b;
 		if (!lookupGraphTransform(a, b, T_a_b)) {
-			log_fatal("Cannot find graph transform from %p to %p", a, b);
+			log_fatal("Cannot find graph transform from {:p} to {:p}",
+			          static_cast<const void *>(a),
+			          static_cast<const void *>(b));
 			return nullptr;
 		}
-		log_info("Creating aux constraint between %p and %p", a, b);
+		log_info("Creating aux constraint between {:p} and {:p}",
+		         static_cast<const void *>(a), static_cast<const void *>(b));
 		return createConstraint(a, b, T_a_b);
 	}
 
@@ -1029,7 +1040,8 @@ class LegoGraph::Impl {
 			log_fatal("Cannot destroy null constraint");
 			return;
 		}
-		log_info("Destroying aux constraint %p", j);
+		log_info("Destroying aux constraint {:p}",
+		         static_cast<const void *>(j));
 		j->release();
 	}
 

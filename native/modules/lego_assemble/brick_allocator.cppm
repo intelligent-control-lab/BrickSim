@@ -88,7 +88,7 @@ export bool deallocateBrick(const pxr::UsdStageRefPtr &stage, EnvId env_id,
 				colGrpRel->GetTargetPathList().Remove(path);
 			}
 			if (!parent->RemoveNameChild(brick)) {
-				log_warn("deallocateBrick: Failed to remove brick prim %s",
+				log_warn("deallocateBrick: Failed to remove brick prim {}",
 				         path.GetText());
 			}
 			return true;

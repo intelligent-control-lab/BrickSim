@@ -196,9 +196,10 @@ export bool patchPxScene(physx::PxScene *scene) {
 	if (g_scene != nullptr) {
 		// Note g_scene can be the same as scene, but this doesn't mean they are the same object
 		// it might be another object allocated at the same address.
-		log_error("Previous PxScene %p hasn't been unpatched yet when "
-		          "patching new PxScene %p",
-		          g_scene, scene);
+		log_error("Previous PxScene {:p} hasn't been unpatched yet when "
+		          "patching new PxScene {:p}",
+		          static_cast<const void *>(g_scene),
+		          static_cast<const void *>(scene));
 		return false;
 	}
 	scene->lockWrite();
@@ -220,8 +221,10 @@ export bool patchPxScene(physx::PxScene *scene) {
 		g_scene = scene;
 		g_filterShader_wrapped = *filterShader_ptr;
 		*filterShader_ptr = entry_SimulationFilterShader;
-		log_info("NpScene->mScene->mFilterShader patched, original %p, now %p",
-		         g_filterShader_wrapped, *filterShader_ptr);
+		log_info(
+		    "NpScene->mScene->mFilterShader patched, original {:p}, now {:p}",
+		    reinterpret_cast<const void *>(g_filterShader_wrapped),
+		    reinterpret_cast<const void *>(*filterShader_ptr));
 	}
 
 	scene->unlockWrite();
@@ -242,8 +245,8 @@ export bool unpatchPxScene(bool restoreCallbacks) {
 		auto *eventCallback_ptr = locate_mSimulationEventCallback(g_scene);
 		if (*filterShader_ptr == &entry_SimulationFilterShader) {
 			*filterShader_ptr = g_filterShader_wrapped;
-			log_info("NpScene->mScene->mFilterShader restored, now %p",
-			         *filterShader_ptr);
+			log_info("NpScene->mScene->mFilterShader restored, now {:p}",
+			         reinterpret_cast<const void *>(*filterShader_ptr));
 		} else {
 			log_warn("NpScene->mScene->mFilterShader changed since patched, "
 			         "not restoring, continuing");
@@ -252,8 +255,8 @@ export bool unpatchPxScene(bool restoreCallbacks) {
 			if (*filterCallback_ptr == g_filterCallback_proxy) {
 				*filterCallback_ptr = g_filterCallback_proxy->wrapped;
 				g_filterCallback_proxy->setWrapped(nullptr);
-				log_info("NpScene->mScene->mFilterCallback restored, now %p",
-				         *filterCallback_ptr);
+				log_info("NpScene->mScene->mFilterCallback restored, now {:p}",
+				         static_cast<const void *>(*filterCallback_ptr));
 			} else {
 				log_warn(
 				    "NpScene->mScene->mFilterCallback changed since patched, "
@@ -265,8 +268,8 @@ export bool unpatchPxScene(bool restoreCallbacks) {
 				*eventCallback_ptr = g_eventCallback_proxy->wrapped;
 				g_eventCallback_proxy->setWrapped(nullptr);
 				log_info("NpScene->mScene->mSimulationEventCallback "
-				         "restored, now %p",
-				         *eventCallback_ptr);
+				         "restored, now {:p}",
+				         static_cast<const void *>(*eventCallback_ptr));
 			} else {
 				log_warn("NpScene->mScene->mSimulationEventCallback changed "
 				         "since patched, "
@@ -280,7 +283,7 @@ export bool unpatchPxScene(bool restoreCallbacks) {
 	g_filterShader_proxy = nullptr;
 	g_filterCallback_proxy = nullptr;
 	g_eventCallback_proxy = nullptr;
-	log_info("PxScene %p unpatched", g_scene);
+	log_info("PxScene {:p} unpatched", static_cast<const void *>(g_scene));
 	g_scene = nullptr;
 	return true;
 }
@@ -327,8 +330,8 @@ export bool setPxSimulationFilterCallback(PxSimulationFilterCallbackProxy *cb) {
 	cb->setWrapped(*filterCallback_ptr);
 	*filterCallback_ptr = cb;
 	g_filterCallback_proxy = cb;
-	log_info("PxSimulationFilterCallbackProxy set, now %p",
-	         *filterCallback_ptr);
+	log_info("PxSimulationFilterCallbackProxy set, now {:p}",
+	         static_cast<const void *>(*filterCallback_ptr));
 	return true;
 }
 export bool clearPxSimulationFilterCallback() {
@@ -346,8 +349,8 @@ export bool clearPxSimulationFilterCallback() {
 		*filterCallback_ptr = g_filterCallback_proxy->wrapped;
 		g_filterCallback_proxy->setWrapped(nullptr);
 		g_filterCallback_proxy = nullptr;
-		log_info("PxSimulationFilterCallbackProxy cleared, now %p",
-		         *filterCallback_ptr);
+		log_info("PxSimulationFilterCallbackProxy cleared, now {:p}",
+		         static_cast<const void *>(*filterCallback_ptr));
 		return true;
 	} else {
 		log_warn(
@@ -371,8 +374,8 @@ export bool setPxSimulationEventCallback(PxSimulationEventCallbackProxy *cb) {
 	cb->setWrapped(*simulationEventCallback_ptr);
 	*simulationEventCallback_ptr = cb;
 	g_eventCallback_proxy = cb;
-	log_info("PxSimulationEventCallbackProxy set, now %p",
-	         *simulationEventCallback_ptr);
+	log_info("PxSimulationEventCallbackProxy set, now {:p}",
+	         static_cast<const void *>(*simulationEventCallback_ptr));
 	return true;
 }
 export bool clearPxSimulationEventCallback() {
@@ -391,8 +394,8 @@ export bool clearPxSimulationEventCallback() {
 		*simulationEventCallback_ptr = g_eventCallback_proxy->wrapped;
 		g_eventCallback_proxy->setWrapped(nullptr);
 		g_eventCallback_proxy = nullptr;
-		log_info("PxSimulationEventCallbackProxy cleared, now %p",
-		         *simulationEventCallback_ptr);
+		log_info("PxSimulationEventCallbackProxy cleared, now {:p}",
+		         static_cast<const void *>(*simulationEventCallback_ptr));
 		return true;
 	} else {
 		log_warn(

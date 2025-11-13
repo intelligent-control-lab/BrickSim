@@ -1,10 +1,11 @@
 module;
 
+#include <format>
 #include <source_location>
 
+#include <carb/BindingsUtils.h>
 #include <carb/InterfaceUtils.h>
 #include <carb/logging/Log.h>
-#include <carb/BindingsUtils.h>
 
 // Declare as a Carbonite bindings module for Python so logging and builtins
 // are registered even when imported outside Kit, and to define CARB globals.
@@ -19,50 +20,41 @@ using carb::getCachedInterface;
 namespace lego_assemble {
 
 template <class... Args>
-void _log(int level, std::source_location loc, const char *fmt,
+void _log(int level, std::source_location loc, std::format_string<Args...> fmt,
           Args &&...args) {
 	if (!(g_carbLogFn && g_carbLogLevel <= level))
 		return;
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wformat-security"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wformat-security"
-#endif
 	g_carbLogFn(g_carbClientName, level, loc.file_name(), loc.function_name(),
-	            static_cast<int>(loc.line()), fmt, std::forward<Args>(args)...);
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+	            static_cast<int>(loc.line()), "%s",
+	            std::format(fmt, std::forward<Args>(args)...).c_str());
 }
 
 export template <class... Args>
-void log_verbose(const char *fmt, Args &&...args) {
+void log_verbose(std::format_string<Args...> fmt, Args &&...args) {
 	_log(carb::logging::kLevelVerbose, std::source_location::current(), fmt,
 	     std::forward<Args>(args)...);
 }
 
-export template <class... Args> void log_info(const char *fmt, Args &&...args) {
+export template <class... Args>
+void log_info(std::format_string<Args...> fmt, Args &&...args) {
 	_log(carb::logging::kLevelInfo, std::source_location::current(), fmt,
 	     std::forward<Args>(args)...);
 }
 
-export template <class... Args> void log_warn(const char *fmt, Args &&...args) {
+export template <class... Args>
+void log_warn(std::format_string<Args...> fmt, Args &&...args) {
 	_log(carb::logging::kLevelWarn, std::source_location::current(), fmt,
 	     std::forward<Args>(args)...);
 }
 
 export template <class... Args>
-void log_error(const char *fmt, Args &&...args) {
+void log_error(std::format_string<Args...> fmt, Args &&...args) {
 	_log(carb::logging::kLevelError, std::source_location::current(), fmt,
 	     std::forward<Args>(args)...);
 }
 
 export template <class... Args>
-void log_fatal(const char *fmt, Args &&...args) {
+void log_fatal(std::format_string<Args...> fmt, Args &&...args) {
 	_log(carb::logging::kLevelFatal, std::source_location::current(), fmt,
 	     std::forward<Args>(args)...);
 }

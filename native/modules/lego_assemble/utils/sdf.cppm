@@ -30,7 +30,7 @@ _SetAttr(const pxr::SdfPrimSpecHandle &owner, const pxr::TfToken &name,
 		                                  custom);
 	}
 	if (attr && !attr->SetDefaultValue(std::move(vt))) {
-		log_fatal("SetAttr: Failed to set default for '%s'.", name.GetText());
+		log_fatal("SetAttr: Failed to set default for '{}'.", name.GetText());
 	}
 	return attr;
 }

@@ -131,7 +131,7 @@ export pxr::SdfPath safeConnPathForBricks(const pxr::SdfPath &brick0,
 	auto brick0_parent = brick0.GetParentPath();
 	auto brick1_parent = brick1.GetParentPath();
 	if (brick0_parent != brick1_parent) {
-		log_warn("Bricks %s and %s have different parents!", brick0.GetText(),
+		log_warn("Bricks {} and {} have different parents!", brick0.GetText(),
 		         brick1.GetText());
 	}
 
