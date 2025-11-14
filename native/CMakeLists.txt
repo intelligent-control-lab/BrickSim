@@ -175,6 +175,7 @@ add_lego_test(TestLegoGraphSelfConnect tests/TestLegoGraphSelfConnect.cpp)
 add_lego_test(TestLegoGraphMultiSegEdge tests/TestLegoGraphMultiSegEdge.cpp)
 add_lego_test(TestLegoGraphHooks tests/TestLegoGraphHooks.cpp)
 add_lego_test(TestPhysicsGraph tests/TestPhysicsGraph.cpp)
+add_lego_test(TestUsdLegoGraph tests/TestUsdLegoGraph.cpp)
 
 # Ensure the CMake-provided std modules provider compiles <iostream>
 # with the "no-symver" path by overriding bits/c++config.h just for
