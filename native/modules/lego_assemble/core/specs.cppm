@@ -49,7 +49,7 @@ export template <class P>
 concept PartLike = requires(const P &p) {
 	{ p.mass() } -> std::convertible_to<double>;
 	{ p.color() } -> std::convertible_to<BrickColor>;
-};
+} && std::equality_comparable<P>;
 
 export template <class... Ps>
     requires((PartLike<Ps> && ...) && unique_types<Ps...> && sizeof...(Ps) > 0)
@@ -200,6 +200,8 @@ export class BrickPart {
 		}
 	}
 
+	bool operator==(const BrickPart &other) const = default;
+
   private:
 	BrickUnit L_;
 	BrickUnit W_;
@@ -235,6 +237,8 @@ export struct CustomPart {
 		}
 		return nullptr;
 	}
+
+	bool operator==(const CustomPart &other) const = default;
 
   private:
 	double mass_;

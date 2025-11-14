@@ -76,6 +76,8 @@ export struct ConnectionSegment {
 		};
 		return stud.pose * T_si_hi * inverse(hole.pose);
 	}
+
+	bool operator==(const ConnectionSegment &other) const = default;
 };
 
 } // namespace lego_assemble
