@@ -42,13 +42,13 @@ export class BrickParser {
 		}
 
 		pxr::GfVec3i dimensions_gf;
-		if (!prim.GetAttribute(LegoTokens->brick_dimensions)
+		if (!prim.GetAttribute(LegoTokens->BrickDimensions)
 		         .Get(&dimensions_gf)) {
 			return std::nullopt;
 		}
 
 		pxr::GfVec3i color_gf;
-		if (!prim.GetAttribute(LegoTokens->brick_color).Get(&color_gf)) {
+		if (!prim.GetAttribute(LegoTokens->BrickColor).Get(&color_gf)) {
 			return std::nullopt;
 		}
 
