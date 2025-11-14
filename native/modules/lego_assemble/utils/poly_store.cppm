@@ -163,9 +163,9 @@ class PolyStore<type_list<Ks...>, type_list<Ts...>, Storage, type_list<Hs...>,
 	}
 
 	// -------- type-erased visit --------
-	template <class Self, class K, class F>
+	template <class K, class F>
 	    requires(in_pack<std::remove_cvref_t<K>, Ks...>)
-	bool visit(this Self &self, const K &key, F &&f) {
+	bool visit(this auto &&self, const K &key, F &&f) {
 		const Loc *p = self.dir_.find(std::as_const(key));
 		if (!p)
 			return false;
