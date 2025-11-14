@@ -75,6 +75,15 @@ export template <class... Ts> struct type_list {
   public:
 	static constexpr std::size_t size = sizeof...(Ts);
 
+	static constexpr bool unique = unique_types<Ts...>;
+
+	template <class U>
+	static constexpr std::size_t index_of = index_in_pack<U, Ts...>;
+
+	template <std::size_t N>
+	    requires(N < size)
+	using at = Ts...[N];
+
 	template <class... Us>
 	static constexpr bool same_as = (std::same_as<Ts, Us> && ...);
 
