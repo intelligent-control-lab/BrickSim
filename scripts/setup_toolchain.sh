@@ -168,6 +168,7 @@ cat > "$ROOT_DIR/native/CMakePresets.json" <<JSON
             "generator": "Ninja",
             "binaryDir": "\${sourceDir}/.build/\${presetName}",
             "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_C_COMPILER": "clang",
                 "CMAKE_CXX_COMPILER": "clang++",
                 "CMAKE_AR": "llvm-ar",
