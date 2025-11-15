@@ -5,7 +5,12 @@ function(lego_add_abi_check TARGET_NAME)
 
   # Add a post-build step that fails the build if violating symbols are found.
   # Uses exactly the same readelf + grep + sort + uniq pipeline as provided by the user,
-  # wrapped to cause a non-zero exit when matches are present.
+  # wrapped to cause a non-zero exit when matches are present.'
+  #
+  # ABI requirements:
+  #   GLIBC >= 2.35
+  #   GLIBCXX >= 3.4.30
+  #   CXXABI >= 1.3.13
   add_custom_command(
     TARGET ${TARGET_NAME} POST_BUILD
     COMMAND bash -lc [=[
