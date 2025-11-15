@@ -1,0 +1,43 @@
+name: Build and Test 
+on:
+  push:
+  pull_request:
+jobs:
+  build:
+    name: ${{ matrix.build_type }}_amd64_linux
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Cache toolchain downloads
+        uses: actions/cache@v4
+        with:
+          path: _toolchain/downloads
+          key: toolchain-downloads-${{ runner.os }}-${{ hashFiles('scripts/setup_toolchain.sh') }}
+          restore-keys: |
+            toolchain-downloads-${{ runner.os }}-
+      - name: Cache Isaac Sim deps
+        uses: actions/cache@v4
+        with:
+          path: native/_deps
+          key: isaac-deps-${{ runner.os }}-${{ hashFiles('native/cmake/FetchIsaacDeps.cmake') }}
+          restore-keys: |
+            isaac-deps-${{ runner.os }}-
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential wget xz-utils zstd
+      - name: Build and test (${{ matrix.build_type }})
+        run: |
+          scripts/build.sh "${{ matrix.build_type }}"
+      - name: Upload native extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.build_type }}
+          path: exts/lego_assemble/lego_assemble/_native.*.so
