@@ -154,7 +154,7 @@ if [[ -z "\${LEGO_TC_DIR:-}" ]]; then
     export CCC_OVERRIDE_OPTIONS="\${CCC_OVERRIDE_OPTIONS:+\$CCC_OVERRIDE_OPTIONS }# ^--gcc-install-dir=\$LEGO_TC_DIR/$GCC_DIRNAME/usr/lib/gcc/x86_64-linux-gnu/$GCC_VER"
     export CXXFLAGS="\${CXXFLAGS:+\$CXXFLAGS } -nostdlib++"
     export LDFLAGS="\${LDFLAGS:+\$LDFLAGS }-fuse-ld=lld -L/usr/lib/x86_64-linux-gnu -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu -Wl,-Bdynamic -l:libstdc++.so.6"
-    export CPLUS_INCLUDE_PATH="\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include/c++/$GCC_VER:\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include/x86_64-linux-gnu/c++/$GCC_VER:\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include:\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include/x86_64-linux-gnu\${CPLUS_INCLUDE_PATH:+:\$CPLUS_INCLUDE_PATH}"
+    export CPLUS_INCLUDE_PATH="\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include/c++/$GCC_VER:\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include/c++/$GCC_VER/backward:\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include/x86_64-linux-gnu/c++/$GCC_VER:\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include:\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include/x86_64-linux-gnu\${CPLUS_INCLUDE_PATH:+:\$CPLUS_INCLUDE_PATH}"
 fi
 EOF
 
@@ -189,7 +189,7 @@ cat > "$ROOT_DIR/native/CMakePresets.json" <<JSON
             },
             "environment": {
                 "PATH": "\${sourceDir}/../_toolchain/$CMAKE_DIRNAME/bin:\${sourceDir}/../_toolchain/$P7ZIP_DIRNAME:\${sourceDir}/../_toolchain/$NINJA_DIRNAME:\${sourceDir}/../_toolchain/$LLVM_DIRNAME/bin:\$penv{PATH}",
-                "CPLUS_INCLUDE_PATH": "\${sourceDir}/../_toolchain/$GCC_DIRNAME/usr/include/c++/$GCC_VER:\${sourceDir}/../_toolchain/$GCC_DIRNAME/usr/include/x86_64-linux-gnu/c++/$GCC_VER:\${sourceDir}/../_toolchain/$GCC_DIRNAME/usr/include:\${sourceDir}/../_toolchain/$GCC_DIRNAME/usr/include/x86_64-linux-gnu"
+                "CPLUS_INCLUDE_PATH": "\${sourceDir}/../_toolchain/$GCC_DIRNAME/usr/include/c++/$GCC_VER:\${sourceDir}/../_toolchain/$GCC_DIRNAME/usr/include/c++/$GCC_VER/backward:\${sourceDir}/../_toolchain/$GCC_DIRNAME/usr/include/x86_64-linux-gnu/c++/$GCC_VER:\${sourceDir}/../_toolchain/$GCC_DIRNAME/usr/include:\${sourceDir}/../_toolchain/$GCC_DIRNAME/usr/include/x86_64-linux-gnu"
             }
         }
     ],
