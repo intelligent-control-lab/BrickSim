@@ -137,11 +137,12 @@ export template <PartLike... Ps> class PhysicsLegoGraph {
 			}
 		}
 
-		void on_connected(ConnSegId csid, const ConnSegRef &csref,
-		                  const InterfaceSpec &stud_spec,
-		                  const InterfaceSpec &hole_spec,
-		                  PhysicsConnectionSegmentWrapper &csw,
-		                  PhysicsConnectionBundleWrapper &cbw) {
+		void
+		on_connected(ConnSegId csid, const ConnSegRef &csref,
+		             [[maybe_unused]] const InterfaceSpec &stud_spec,
+		             [[maybe_unused]] const InterfaceSpec &hole_spec,
+		             PhysicsConnectionSegmentWrapper &csw,
+		             [[maybe_unused]] PhysicsConnectionBundleWrapper &cbw) {
 			const auto &[stud_if_ref, hole_if_ref] = csref;
 
 			// Set up PhysX shapes for connection segment
@@ -170,9 +171,11 @@ export template <PartLike... Ps> class PhysicsLegoGraph {
 			}
 		}
 
-		void on_disconnecting(ConnSegId csid, const ConnSegRef &csref,
-		                      PhysicsConnectionSegmentWrapper &csw,
-		                      PhysicsConnectionBundleWrapper &cbw) {
+		void
+		on_disconnecting(ConnSegId csid,
+		                 [[maybe_unused]] const ConnSegRef &csref,
+		                 PhysicsConnectionSegmentWrapper &csw,
+		                 [[maybe_unused]] PhysicsConnectionBundleWrapper &cbw) {
 			// Remove contact exclusion
 			if (csw.px_stud_shape != NullActorShapePair &&
 			    csw.px_hole_shape != NullActorShapePair) {

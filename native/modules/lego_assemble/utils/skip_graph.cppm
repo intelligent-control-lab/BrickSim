@@ -33,7 +33,8 @@ class NoOpSkipGraphScheduler {
 	                                          PairHash<V, Hash>, PairEq<V, Eq>>;
 
 	NoOpSkipGraphScheduler(
-	    CreateEdge create_edge, DestroyEdge destroy_edge,
+	    [[maybe_unused]] CreateEdge create_edge,
+	    [[maybe_unused]] DestroyEdge destroy_edge,
 	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
 	    : base_adj_{mr} {}
 

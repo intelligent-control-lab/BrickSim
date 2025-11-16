@@ -43,7 +43,6 @@ export class AssemblyChecker {
 		Transformd T_studif = T_stud * stud_iface.pose;
 		Transformd T_holeif = T_hole * hole_iface.pose;
 		const auto &[q_stud, t_stud] = T_studif;
-		const auto &[q_hole, t_hole] = T_holeif;
 		Transformd T_rel = inverse(T_studif) * T_holeif; // aka T_studif_holeif
 		const auto &[q_rel, t_rel] = T_rel;
 

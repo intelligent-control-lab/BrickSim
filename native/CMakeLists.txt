@@ -22,7 +22,7 @@ set(CMAKE_CXX_MODULE_STD ON)
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
-add_compile_options("-ftemplate-backtrace-limit=0")
+add_compile_options("-ftemplate-backtrace-limit=0" "-Wall" "-Wextra" "-Wpedantic" "-Werror")
 
 set(SAN_CFLAGS
   "-fsanitize=address,undefined,leak"

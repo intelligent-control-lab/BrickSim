@@ -668,6 +668,7 @@ static BenchRes best_of_two(const char *impl, const Workload &W) {
 
 } // namespace
 
+[[maybe_unused]]
 static void run_performance_benchmarks() {
 	std::vector<Workload> suite;
 	suite.push_back(make_random_workload(

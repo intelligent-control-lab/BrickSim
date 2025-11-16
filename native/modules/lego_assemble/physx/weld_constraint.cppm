@@ -102,12 +102,13 @@ static PxU32 prepareLockedAxes(Px1DConstraint *rows, const PxQuat &qA,
 	return 6;
 }
 
-static PxU32 WeldSolverPrep(Px1DConstraint *constraints,
-                            PxVec3p &body0WorldOffset, PxU32 maxConstraints,
-                            PxConstraintInvMassScale &invMassScale,
-                            const void *constantBlock, const PxTransform &bA2w,
-                            const PxTransform &bB2w, bool useExtendedLimits,
-                            PxVec3p &cA2wOut, PxVec3p &cB2wOut) {
+static PxU32
+WeldSolverPrep(Px1DConstraint *constraints, PxVec3p &body0WorldOffset,
+               [[maybe_unused]] PxU32 maxConstraints,
+               [[maybe_unused]] PxConstraintInvMassScale &invMassScale,
+               const void *constantBlock, const PxTransform &bA2w,
+               const PxTransform &bB2w, [[maybe_unused]] bool useExtendedLimits,
+               PxVec3p &cA2wOut, PxVec3p &cB2wOut) {
 	const WeldConstraintData &data =
 	    *reinterpret_cast<const WeldConstraintData *>(constantBlock);
 

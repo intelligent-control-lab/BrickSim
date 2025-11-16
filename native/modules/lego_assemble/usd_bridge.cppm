@@ -132,10 +132,9 @@ static bool getConnInfo(const pxr::UsdPrim &prim, ConnInfo &out) {
 
 LegoUsdBridge::LegoUsdBridge(pxr::UsdStageRefPtr stage, physx::PxPhysics *px,
                              omni::physx::IPhysx *omni_px)
-    : omni_px_(omni_px), stage_(std::move(stage)),
+    : stage_(std::move(stage)), omni_px_(omni_px), current_time(0),
       graph_(px, {.mpu = pxr::UsdGeomGetStageMetersPerUnit(stage_),
-                  .kpu = pxr::UsdPhysicsGetStageKilogramsPerUnit(stage_)}),
-      current_time(0) {
+                  .kpu = pxr::UsdPhysicsGetStageKilogramsPerUnit(stage_)}) {
 
 	std::lock_guard lock(mutex_);
 

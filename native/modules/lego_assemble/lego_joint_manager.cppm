@@ -39,7 +39,7 @@ export bool initLegoJointManager() {
 	physxObjCb.objectCreationNotifyFn =
 	    [](const pxr::SdfPath &sdfPath,
 	       omni::physx::usdparser::ObjectId objectId,
-	       omni::physx::PhysXType type, void *userData) {
+	       omni::physx::PhysXType type, [[maybe_unused]] void *userData) {
 		    if (!g_lego)
 			    return;
 		    if (type == omni::physx::PhysXType::ePTActor) {
@@ -53,7 +53,7 @@ export bool initLegoJointManager() {
 	physxObjCb.objectDestructionNotifyFn =
 	    [](const pxr::SdfPath &sdfPath,
 	       omni::physx::usdparser::ObjectId objectId,
-	       omni::physx::PhysXType type, void *userData) {
+	       omni::physx::PhysXType type, [[maybe_unused]] void *userData) {
 		    if (!g_lego)
 			    return;
 		    if (type == omni::physx::PhysXType::ePTActor) {
@@ -70,9 +70,9 @@ export bool initLegoJointManager() {
 	// ==== Subscribe to ALL PhysX object creation/destruction
 	omni::physx::IPhysicsObjectChangeCallback physxObjFullCb;
 	physxObjFullCb.objectCreationNotifyFn =
-	    [](const pxr::SdfPath &sdfPath,
+	    []([[maybe_unused]] const pxr::SdfPath &sdfPath,
 	       omni::physx::usdparser::ObjectId objectId,
-	       omni::physx::PhysXType type, void *userData) {
+	       omni::physx::PhysXType type, [[maybe_unused]] void *userData) {
 		    if (type == omni::physx::PhysXType::ePTScene) {
 			    auto *scene = static_cast<physx::PxScene *>(
 			        g_physx->getPhysXPtrFast(objectId));
@@ -87,13 +87,14 @@ export bool initLegoJointManager() {
 			    }
 		    }
 	    };
-	physxObjFullCb.allObjectsDestructionNotifyFn = [](void *userData) {
-		if (g_lego) {
-			g_lego = nullptr;
-			log_info("Lego state destroyed (allObjectsDestructionNotify)");
-		}
-		unpatchPxScene(true);
-	};
+	physxObjFullCb.allObjectsDestructionNotifyFn =
+	    []([[maybe_unused]] void *userData) {
+		    if (g_lego) {
+			    g_lego = nullptr;
+			    log_info("Lego state destroyed (allObjectsDestructionNotify)");
+		    }
+		    unpatchPxScene(true);
+	    };
 	physxObjFullCb.stopCallbackWhenSimStopped = false;
 	g_physxObjFullSub =
 	    g_physx->subscribeObjectChangeNotifications(physxObjFullCb);
@@ -102,7 +103,8 @@ export bool initLegoJointManager() {
 	if (g_preStepSub == omni_physx::kInvalidSubscriptionId) {
 		g_preStepSub = g_physx->subscribePhysicsOnStepEvents(
 		    true, 0,
-		    [](float elapsedTime, void *userData) {
+		    []([[maybe_unused]] float elapsedTime,
+		       [[maybe_unused]] void *userData) {
 			    if (!g_lego) {
 				    auto *px = static_cast<physx::PxPhysics *>(
 				        g_physx->getPhysXPtr({}, omni::physx::ePTPhysics));
@@ -131,7 +133,8 @@ export bool initLegoJointManager() {
 	if (g_postStepSub == omni_physx::kInvalidSubscriptionId) {
 		g_postStepSub = g_physx->subscribePhysicsOnStepEvents(
 		    false, 0,
-		    [](float elapsedTime, void *userData) {
+		    []([[maybe_unused]] float elapsedTime,
+		       [[maybe_unused]] void *userData) {
 			    if (g_lego) {
 				    g_lego->onPostStep();
 			    }
@@ -150,33 +153,45 @@ export bool initLegoJointManager() {
 		log_error("StageUpdate is nullptr");
 		return false;
 	}
-	omni::kit::StageUpdateNodeDesc desc = {nullptr};
-	desc.displayName = "lego_assemble";
-	desc.userData = nullptr;
-	desc.order = 200; // After almost all other nodes, before debug (1000)
-	desc.onAttach = [](long stageId, double metersPerUnit, void *userData) {
-		// Called when USD attach
-		g_stageId = stageId;
-	};
-	desc.onDetach = [](void *userData) {
-		// Called when USD detach
-		g_stageId = -1;
-	};
-	desc.onPrimAdd = [](const pxr::SdfPath &primPath, void *userData) {
-		if (g_lego) {
-			g_lego->enqueuePrimChange(primPath);
-		}
-	};
-	desc.onPrimOrPropertyChange = [](const pxr::SdfPath &primOrPropertyPath,
-	                                 void *userData) {
-		if (g_lego) {
-			g_lego->enqueuePrimChange(primOrPropertyPath);
-		}
-	};
-	desc.onPrimRemove = [](const pxr::SdfPath &primPath, void *userData) {
-		if (g_lego) {
-			g_lego->enqueuePrimChange(primPath);
-		}
+	omni::kit::StageUpdateNodeDesc desc = {
+	    .displayName = "lego_assemble",
+	    .userData = nullptr,
+	    .order = 200, // After almost all other nodes, before debug (1000)
+	    .onAttach =
+	        [](long stageId, [[maybe_unused]] double metersPerUnit,
+	           [[maybe_unused]] void *userData) {
+		        // Called when USD attach
+		        g_stageId = stageId;
+	        },
+	    .onDetach =
+	        []([[maybe_unused]] void *userData) {
+		        // Called when USD detach
+		        g_stageId = -1;
+	        },
+	    .onPause = nullptr,
+	    .onStop = nullptr,
+	    .onResume = nullptr,
+	    .onUpdate = nullptr,
+	    .onPrimAdd =
+	        [](const pxr::SdfPath &primPath, [[maybe_unused]] void *userData) {
+		        if (g_lego) {
+			        g_lego->enqueuePrimChange(primPath);
+		        }
+	        },
+	    .onPrimOrPropertyChange =
+	        [](const pxr::SdfPath &primOrPropertyPath,
+	           [[maybe_unused]] void *userData) {
+		        if (g_lego) {
+			        g_lego->enqueuePrimChange(primOrPropertyPath);
+		        }
+	        },
+	    .onPrimRemove =
+	        [](const pxr::SdfPath &primPath, [[maybe_unused]] void *userData) {
+		        if (g_lego) {
+			        g_lego->enqueuePrimChange(primPath);
+		        }
+	        },
+	    .onRaycast = nullptr,
 	};
 	g_stageUpdateNode = g_stageUpdate->createStageUpdateNode(desc);
 

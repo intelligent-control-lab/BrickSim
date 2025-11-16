@@ -460,10 +460,6 @@ class LegoGraph::Impl {
 			return nullptr;
 		};
 
-		auto canonPair = [](BodyDesc *a, BodyDesc *b) {
-			return std::make_pair(std::min(a, b), std::max(a, b));
-		};
-
 		// ---- 1) Index nodes (only those participating in base edges) ----
 		// Build unique node set from base connections
 		std::unordered_map<BodyDesc *, int> nodeIx;
