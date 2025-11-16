@@ -487,7 +487,8 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 	    requires(sizeof...(CSEKArgs) == sizeof...(CSEKs) &&
 	             ((std::same_as<CSEKs, std::remove_cvref_t<CSEKArgs>>) && ... &&
 	              true) &&
-	             std::constructible_from<ConnSegWrapper, CSWArgs...>)
+	             std::constructible_from<ConnSegWrapper, CSWArgs...,
+	                                     std::pmr::memory_resource *>)
 	std::optional<ConnSegId>
 	connect(const InterfaceRef &stud_if, const InterfaceRef &hole_if,
 	        std::tuple<CSEKArgs...> &&keys, CSWArgs &&...args) {
