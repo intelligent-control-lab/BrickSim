@@ -11,14 +11,14 @@ import lego_assemble.vendor.pxr;
 
 using namespace lego_assemble;
 
-using TestGraph = PhysicsLegoGraph<PartList<BrickPart>>;
-using G = TestGraph::Base;
-static_assert(G::HasOnPartAdded<TestGraph, BrickPart>);
-static_assert(G::HasOnPartRemoving<TestGraph, BrickPart>);
-static_assert(G::HasOnConnected<TestGraph>);
-static_assert(G::HasOnDisconnecting<TestGraph>);
-static_assert(G::HasOnBundleCreated<TestGraph>);
-static_assert(G::HasOnBundleRemoving<TestGraph>);
+using TestGraph = PhysicsLegoGraph<BrickPart>;
+using G = TestGraph::TopologyGraph;
+static_assert(G::HasAllOnPartAddedHooks);
+static_assert(G::HasAllOnPartRemovingHooks);
+static_assert(G::HasOnConnectedHook);
+static_assert(G::HasOnDisconnectingHook);
+static_assert(G::HasOnBundleCreatedHook);
+static_assert(G::HasOnBundleRemovingHook);
 
 // Ensure PhysX actor key is integrated into the part key set
 static_assert(G::PartKeys::template contains<physx::PxRigidActor *>);
@@ -33,20 +33,12 @@ using ShapeMappingT = TestGraph::ShapeMapping;
 static_assert(std::is_class_v<SkipGraphT>);
 static_assert(std::is_class_v<ShapeMappingT>);
 
-// Verify that augmenting extra part keys compiles and propagates
-using TG2 =
-    PhysicsLegoGraph<PartList<BrickPart>,
-                     type_list<pxr::SdfPath>,       // extra part key
-                     type_list<pxr::SdfPath::Hash>, // hash for extra key
-                     type_list<std::equal_to<>>>;   // equality for extra key
-using BG2 = TG2::Base;
-static_assert(BG2::PartKeys::template contains<physx::PxRigidActor *>);
-static_assert(BG2::PartKeys::template contains<pxr::SdfPath>);
+volatile int dummy = 0;
 
 // Compile-only smoke: construct graph and touch a few APIs without executing
 // Anything inside the if(false) is still type-checked, forcing template checks.
 static void compile_only_smoke() {
-	if (1 + 1 != 2) {
+	if (dummy == 1) {
 		physx::PxPhysics *px = reinterpret_cast<physx::PxPhysics *>(1);
 		TestGraph g(MetricSystem{}, px);
 		// Free function utility also compiles

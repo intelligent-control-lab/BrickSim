@@ -38,7 +38,7 @@ export class AssemblyChecker {
 	                const InterfaceSpec &hole_iface, const Transformd &T_stud,
 	                const Transformd &T_hole, const Eigen::Vector3d &force
 	                // TODO: add moment
-	) {
+	) const {
 		// Compute useful transforms
 		Transformd T_studif = T_stud * stud_iface.pose;
 		Transformd T_holeif = T_hole * hole_iface.pose;

@@ -115,18 +115,20 @@ static void test_initial_sync_prepopulated_stage() {
 	G g(stage, &arena);
 
 	// Two physical bricks and a single realized connection between them.
-	assert(g.parts().size() == 2);
-	assert(g.connection_segments().size() == 1);
-	assert(g.connection_bundles().size() == 1);
+	assert(g.topology().parts().size() == 2);
+	assert(g.topology().connection_segments().size() == 1);
+	assert(g.topology().connection_bundles().size() == 1);
 
 	// Path → PartId mapping
-	const PartId *pidA = g.parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB = g.parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
+	const PartId *pidB =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
 	assert(pidA && pidB);
 
 	using PW = SimplePartWrapper<BrickPart>;
-	const PW *pA = g.parts().get<PW>(*pidA);
-	const PW *pB = g.parts().get<PW>(*pidB);
+	const PW *pA = g.topology().parts().get<PW>(*pidA);
+	const PW *pB = g.topology().parts().get<PW>(*pidB);
 	assert(pA && pB);
 
 	// Adjacency
@@ -136,10 +138,13 @@ static void test_initial_sync_prepopulated_stage() {
 	assert(pB->neighbor_parts().contains(*pidA));
 
 	// Dynamic graph connectivity
-	const DgVertexId *a_dg = g.parts().project_key<PartId, DgVertexId>(*pidA);
-	const DgVertexId *b_dg = g.parts().project_key<PartId, DgVertexId>(*pidB);
+	const DgVertexId *a_dg =
+	    g.topology().parts().project_key<PartId, DgVertexId>(*pidA);
+	const DgVertexId *b_dg =
+	    g.topology().parts().project_key<PartId, DgVertexId>(*pidB);
 	assert(a_dg && b_dg);
-	assert(g.dynamic_graph().connected(a_dg->value(), b_dg->value()));
+	assert(
+	    g.topology().dynamic_graph().connected(a_dg->value(), b_dg->value()));
 
 	// pmr wiring: some allocations must have gone through our arena
 	assert(arena.allocs.load() > 0);
@@ -154,9 +159,9 @@ static void test_incremental_alloc_via_allocator() {
 	CountingResource arena;
 	G g(stage, &arena);
 
-	assert(g.parts().size() == 0);
-	assert(g.connection_segments().size() == 0);
-	assert(g.connection_bundles().size() == 0);
+	assert(g.topology().parts().size() == 0);
+	assert(g.topology().connection_segments().size() == 0);
+	assert(g.topology().connection_bundles().size() == 0);
 
 	BrickColor red{255, 0, 0};
 	BrickColor green{0, 255, 0};
@@ -172,12 +177,14 @@ static void test_incremental_alloc_via_allocator() {
 	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brickB);
 
 	// After authoring the two bricks, the graph should now see two parts
-	assert(g.parts().size() == 2);
-	assert(g.connection_segments().size() == 0);
-	assert(g.connection_bundles().size() == 0);
+	assert(g.topology().parts().size() == 2);
+	assert(g.topology().connection_segments().size() == 0);
+	assert(g.topology().connection_bundles().size() == 0);
 
-	const PartId *pidA = g.parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB = g.parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
+	const PartId *pidB =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
 	assert(pidA && pidB);
 
 	// Now author a connection; graph must realize it
@@ -186,12 +193,12 @@ static void test_incremental_alloc_via_allocator() {
 	    pathA, BrickPart::StudId, pathB, BrickPart::HoleId, cs);
 	(void)connPath;
 
-	assert(g.connection_segments().size() == 1);
-	assert(g.connection_bundles().size() == 1);
+	assert(g.topology().connection_segments().size() == 1);
+	assert(g.topology().connection_bundles().size() == 1);
 
 	using PW = SimplePartWrapper<BrickPart>;
-	const PW *pA = g.parts().get<PW>(*pidA);
-	const PW *pB = g.parts().get<PW>(*pidB);
+	const PW *pA = g.topology().parts().get<PW>(*pidA);
+	const PW *pB = g.topology().parts().get<PW>(*pidB);
 	assert(pA && pB);
 
 	assert(pA->outgoings().size() == 1);
@@ -199,10 +206,13 @@ static void test_incremental_alloc_via_allocator() {
 	assert(pA->neighbor_parts().contains(*pidB));
 	assert(pB->neighbor_parts().contains(*pidA));
 
-	const DgVertexId *a_dg = g.parts().project_key<PartId, DgVertexId>(*pidA);
-	const DgVertexId *b_dg = g.parts().project_key<PartId, DgVertexId>(*pidB);
+	const DgVertexId *a_dg =
+	    g.topology().parts().project_key<PartId, DgVertexId>(*pidA);
+	const DgVertexId *b_dg =
+	    g.topology().parts().project_key<PartId, DgVertexId>(*pidB);
 	assert(a_dg && b_dg);
-	assert(g.dynamic_graph().connected(a_dg->value(), b_dg->value()));
+	assert(
+	    g.topology().dynamic_graph().connected(a_dg->value(), b_dg->value()));
 }
 
 // Connection prim exists before either part prim; initial_sync should treat it
@@ -223,9 +233,9 @@ static void test_connection_before_parts_unrealized_then_realized() {
 	G g(stage, &arena);
 
 	// initial_sync: connection parsed but cannot be realized yet (no parts)
-	assert(g.parts().size() == 0);
-	assert(g.connection_segments().size() == 0);
-	assert(g.connection_bundles().size() == 0);
+	assert(g.topology().parts().size() == 0);
+	assert(g.topology().connection_segments().size() == 0);
+	assert(g.topology().connection_bundles().size() == 0);
 
 	// Now author the bricks exactly at the paths referenced by the connection
 	BrickColor red{255, 0, 0};
@@ -238,17 +248,19 @@ static void test_connection_before_parts_unrealized_then_realized() {
 
 	// After TfNotice-driven resync, the graph should have 2 parts and 1
 	// realized connection
-	assert(g.parts().size() == 2);
-	assert(g.connection_segments().size() == 1);
-	assert(g.connection_bundles().size() == 1);
+	assert(g.topology().parts().size() == 2);
+	assert(g.topology().connection_segments().size() == 1);
+	assert(g.topology().connection_bundles().size() == 1);
 
-	const PartId *pidA = g.parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB = g.parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
+	const PartId *pidB =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
 	assert(pidA && pidB);
 
 	using PW = SimplePartWrapper<BrickPart>;
-	const PW *pA = g.parts().get<PW>(*pidA);
-	const PW *pB = g.parts().get<PW>(*pidB);
+	const PW *pA = g.topology().parts().get<PW>(*pidA);
+	const PW *pB = g.topology().parts().get<PW>(*pidB);
 	assert(pA && pB);
 
 	assert(pA->outgoings().size() == 1);
@@ -256,10 +268,13 @@ static void test_connection_before_parts_unrealized_then_realized() {
 	assert(pA->neighbor_parts().contains(*pidB));
 	assert(pB->neighbor_parts().contains(*pidA));
 
-	const DgVertexId *a_dg = g.parts().project_key<PartId, DgVertexId>(*pidA);
-	const DgVertexId *b_dg = g.parts().project_key<PartId, DgVertexId>(*pidB);
+	const DgVertexId *a_dg =
+	    g.topology().parts().project_key<PartId, DgVertexId>(*pidA);
+	const DgVertexId *b_dg =
+	    g.topology().parts().project_key<PartId, DgVertexId>(*pidB);
 	assert(a_dg && b_dg);
-	assert(g.dynamic_graph().connected(a_dg->value(), b_dg->value()));
+	assert(
+	    g.topology().dynamic_graph().connected(a_dg->value(), b_dg->value()));
 }
 
 // Use LegoAllocator's deallocation APIs and verify that UsdLegoGraph keeps its
@@ -286,17 +301,19 @@ static void test_deallocate_managed_removes_graph_state() {
 
 	G g(stage);
 
-	assert(g.parts().size() == 2);
-	assert(g.connection_segments().size() == 1);
-	assert(g.connection_bundles().size() == 1);
+	assert(g.topology().parts().size() == 2);
+	assert(g.topology().connection_segments().size() == 1);
+	assert(g.topology().connection_bundles().size() == 1);
 
-	const PartId *pidA = g.parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB = g.parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
+	const PartId *pidB =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
 	assert(pidA && pidB);
 
 	using PW = SimplePartWrapper<BrickPart>;
-	const PW *pA = g.parts().get<PW>(*pidA);
-	const PW *pB = g.parts().get<PW>(*pidB);
+	const PW *pA = g.topology().parts().get<PW>(*pidA);
+	const PW *pB = g.topology().parts().get<PW>(*pidB);
 	assert(pA && pB);
 	assert(pA->outgoings().size() == 1);
 	assert(pB->incomings().size() == 1);
@@ -306,11 +323,11 @@ static void test_deallocate_managed_removes_graph_state() {
 	assert(removed_conn);
 
 	// Graph should have removed the connection & bundle and cleaned adjacency
-	assert(g.connection_segments().size() == 0);
-	assert(g.connection_bundles().size() == 0);
+	assert(g.topology().connection_segments().size() == 0);
+	assert(g.topology().connection_bundles().size() == 0);
 
-	pA = g.parts().get<PW>(*pidA);
-	pB = g.parts().get<PW>(*pidB);
+	pA = g.topology().parts().get<PW>(*pidA);
+	pB = g.topology().parts().get<PW>(*pidB);
 	assert(pA && pB);
 	assert(pA->outgoings().size() == 0);
 	assert(pB->incomings().size() == 0);
@@ -322,9 +339,9 @@ static void test_deallocate_managed_removes_graph_state() {
 	bool removed_all = alloc.deallocate_managed_all(env_id);
 	assert(removed_all);
 
-	assert(g.parts().size() == 0);
-	assert(g.connection_segments().size() == 0);
-	assert(g.connection_bundles().size() == 0);
+	assert(g.topology().parts().size() == 0);
+	assert(g.topology().connection_segments().size() == 0);
+	assert(g.topology().connection_bundles().size() == 0);
 }
 
 } // namespace
