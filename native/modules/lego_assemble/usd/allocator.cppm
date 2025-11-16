@@ -18,10 +18,13 @@ const pxr::SdfPath LegoStateNextConnIdProp =
     LegoStatePath.AppendProperty(pxr::TfToken("next_conn_id"));
 
 const pxr::TfToken kManaged("managed");
+const pxr::TfToken kParts("Parts");
+const pxr::TfToken kConns("Conns");
 
 export class LegoAllocator {
   public:
-	explicit LegoAllocator(const pxr::UsdStageRefPtr &stage) : stage_(stage) {}
+	explicit LegoAllocator(pxr::UsdStageRefPtr stage)
+	    : stage_{std::move(stage)} {}
 
 	template <PartAuthor PA>
 	pxr::SdfPath allocate_part_managed(std::int64_t env_id,
@@ -71,34 +74,21 @@ export class LegoAllocator {
 		auto hole_env = envIdFromPath(hole);
 		if (!conn_env.has_value() || !stud_env.has_value() ||
 		    !hole_env.has_value() || conn_env.value() != stud_env.value() ||
-		    stud_env.value() != hole_env.value()) {
+		    stud_env.value() != hole_env.value()) [[unlikely]] {
 			throw std::invalid_argument(
 			    "Cannot allocate connection between interfaces in different "
 			    "environments.");
 		}
-		auto env_id = stud_env.value();
 		author_connection(stage_, conn_path, stud, stud_if, hole, hole_if,
 		                  conn_seg);
 	}
 
-	bool deallocate_managed(const pxr::SdfPath &path) {
-		auto env_id = envIdFromPath(path);
-		if (!env_id.has_value()) [[unlikely]] {
-			return false;
-		}
-		auto managed_root = get_managed_root(env_id.value());
-		if (!path.HasPrefix(managed_root)) [[unlikely]] {
-			return false;
-		}
-		auto layer = stage_->GetEditTarget().GetLayer();
-		if (auto prim = layer->GetPrimAtPath(path)) {
-			if (auto parent = prim->GetNameParent()) [[likely]] {
-				pxr::SdfChangeBlock _changes;
-				parent->RemoveNameChild(prim);
-				return true;
-			}
-		}
-		return false;
+	bool deallocate_managed_part(const pxr::SdfPath &path) {
+		return deallocate_managed(path, kParts);
+	}
+
+	bool deallocate_managed_conn(const pxr::SdfPath &path) {
+		return deallocate_managed(path, kConns);
 	}
 
 	bool deallocate_managed_all(std::int64_t env_id) {
@@ -116,6 +106,27 @@ export class LegoAllocator {
   private:
 	pxr::UsdStageRefPtr stage_;
 
+	bool deallocate_managed(const pxr::SdfPath &path,
+	                        const pxr::TfToken &group) {
+		auto env_id = envIdFromPath(path);
+		if (!env_id.has_value()) [[unlikely]] {
+			return false;
+		}
+		auto managed_group = get_managed_group(env_id.value(), group);
+		if (!path.HasPrefix(managed_group)) [[unlikely]] {
+			return false;
+		}
+		auto layer = stage_->GetEditTarget().GetLayer();
+		if (auto prim = layer->GetPrimAtPath(path)) {
+			if (auto parent = prim->GetNameParent()) [[likely]] {
+				pxr::SdfChangeBlock _changes;
+				parent->RemoveNameChild(prim);
+				return true;
+			}
+		}
+		return false;
+	}
+
 	pxr::SdfPath ensure_managed_root(std::int64_t env_id) {
 		auto layer = stage_->GetEditTarget().GetLayer();
 		auto managed_root = get_managed_root(env_id);
@@ -130,19 +141,44 @@ export class LegoAllocator {
 		return managed_root;
 	}
 
+	pxr::SdfPath ensure_managed_group(std::int64_t env_id,
+	                                  const pxr::TfToken &group) {
+		auto layer = stage_->GetEditTarget().GetLayer();
+		auto managed_group = get_managed_group(env_id, group);
+		if (layer->GetPrimAtPath(managed_group)) [[likely]] {
+			return managed_group;
+		}
+
+		pxr::SdfChangeBlock _changes;
+		auto managed_root = ensure_managed_root(env_id);
+		auto managed_group_prim =
+		    pxr::SdfCreatePrimInLayer(layer, managed_group);
+		managed_group_prim->SetSpecifier(pxr::SdfSpecifierDef);
+		managed_group_prim->SetTypeName(pxr::UsdGeomTokens->Scope);
+		return managed_group;
+	}
+
 	pxr::SdfPath get_managed_root(std::int64_t env_id) {
 		return pathForEnv(env_id).AppendChild(kManaged);
 	}
 
+	pxr::SdfPath get_managed_group(std::int64_t env_id,
+	                               const pxr::TfToken &group) {
+		return get_managed_root(env_id).AppendChild(group);
+	}
+
 	pxr::SdfPath allocate_part_path(std::int64_t env_id) {
-		return allocate_path(LegoStateNextPartIdProp, "Part_{}", env_id);
+		return allocate_path(LegoStateNextPartIdProp, kParts, "Part_{}",
+		                     env_id);
 	}
 
 	pxr::SdfPath allocate_conn_path(std::int64_t env_id) {
-		return allocate_path(LegoStateNextConnIdProp, "Conn_{}", env_id);
+		return allocate_path(LegoStateNextConnIdProp, kConns, "Conn_{}",
+		                     env_id);
 	}
 
 	pxr::SdfPath allocate_path(const pxr::SdfPath &id_prop,
+	                           const pxr::TfToken &group,
 	                           std::format_string<std::int64_t> fname,
 	                           std::int64_t env_id) {
 		auto layer = stage_->GetEditTarget().GetLayer();
@@ -165,7 +201,7 @@ export class LegoAllocator {
 			next_id = 0;
 		}
 
-		pxr::SdfPath parent = ensure_managed_root(env_id);
+		pxr::SdfPath parent = ensure_managed_group(env_id, group);
 		pxr::SdfPath path;
 		while (layer->GetPrimAtPath(
 		    path = parent.AppendChild(

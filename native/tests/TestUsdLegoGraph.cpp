@@ -6,8 +6,10 @@ import lego_assemble.usd.usd_graph;
 import lego_assemble.usd.author;
 import lego_assemble.usd.allocator;
 import lego_assemble.usd.parse;
+import lego_assemble.usd.tokens;
 import lego_assemble.utils.transforms;
 import lego_assemble.utils.type_list;
+import lego_assemble.utils.usd_envs;
 import lego_assemble.vendor.eigen;
 import lego_assemble.vendor.pxr;
 
@@ -83,6 +85,11 @@ static void create_env_root(const pxr::UsdStageRefPtr &stage,
 static BrickPart make_brick(BrickUnit L, BrickUnit W, PlateUnit H,
                             BrickColor color) {
 	return BrickPart(L, W, H, color);
+}
+
+static bool contains_path(const std::vector<pxr::SdfPath> &paths,
+                          const pxr::SdfPath &target) {
+	return std::ranges::find(paths, target) != paths.end();
 }
 
 // --------------------------- tests ---------------------------
@@ -319,7 +326,7 @@ static void test_deallocate_managed_removes_graph_state() {
 	assert(pB->incomings().size() == 1);
 
 	// First deallocate the connection prim
-	bool removed_conn = alloc.deallocate_managed(connPath);
+	bool removed_conn = alloc.deallocate_managed_conn(connPath);
 	assert(removed_conn);
 
 	// Graph should have removed the connection & bundle and cleaned adjacency
@@ -344,6 +351,552 @@ static void test_deallocate_managed_removes_graph_state() {
 	assert(g.topology().connection_bundles().size() == 0);
 }
 
+// Modifying a recognized brick prim in-place (e.g., changing its color) should
+// be picked up by resync_tree and update the stored BrickPart while keeping the
+// part realized.
+static void test_resync_part_modified_updates_brick() {
+	auto stage = make_stage();
+	LegoAllocator alloc(stage);
+
+	BrickColor red{255, 0, 0};
+	BrickColor green{0, 255, 0};
+	BrickPart brick = make_brick(2, 4, BrickHeightPerPlate, red);
+
+	std::int64_t env_id = 9;
+	create_env_root(stage, env_id);
+	pxr::SdfPath path =
+	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brick);
+
+	CountingResource arena;
+	G g(stage, &arena);
+
+	assert(g.topology().parts().size() == 1);
+	assert(g.topology().connection_segments().size() == 0);
+	assert(g.topology().connection_bundles().size() == 0);
+
+	const PartId *pid_before =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(path);
+	assert(pid_before);
+	using PW = SimplePartWrapper<BrickPart>;
+	const PW *p_before = g.topology().parts().get<PW>(*pid_before);
+	assert(p_before);
+	assert(p_before->wrapped().color() == red);
+
+	pxr::UsdPrim prim = stage->GetPrimAtPath(path);
+	assert(prim.IsValid());
+
+	pxr::GfVec3i new_color_gf(0, 255, 0);
+	prim.GetAttribute(LegoTokens->BrickColor).Set(new_color_gf);
+
+	const PartId *pid_after =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(path);
+	assert(pid_after);
+	const PW *p_after = g.topology().parts().get<PW>(*pid_after);
+	assert(p_after);
+	assert(p_after->wrapped().color() == green);
+
+	assert(g.topology().parts().size() == 1);
+	assert(g.topology().connection_segments().size() == 0);
+	assert(g.topology().connection_bundles().size() == 0);
+	assert(g.unrealized_parts().empty());
+	assert(g.unrealized_connections().empty());
+}
+
+// If a previously recognized brick prim is edited so that BrickParser no
+// longer recognizes it (e.g., lego:part_kind changed), resync_tree should
+// remove the part from the topology while leaving the USD prim intact.
+static void test_resync_part_becomes_unrecognized() {
+	auto stage = make_stage();
+	LegoAllocator alloc(stage);
+
+	BrickColor red{255, 0, 0};
+	BrickPart brick = make_brick(2, 4, BrickHeightPerPlate, red);
+
+	std::int64_t env_id = 10;
+	create_env_root(stage, env_id);
+	pxr::SdfPath path =
+	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brick);
+
+	CountingResource arena;
+	G g(stage, &arena);
+
+	assert(g.topology().parts().size() == 1);
+
+	pxr::UsdPrim prim = stage->GetPrimAtPath(path);
+	assert(prim.IsValid());
+
+	prim.GetAttribute(LegoTokens->PartKind)
+	    .Set(pxr::TfToken("not_a_brick_kind"));
+
+	assert(g.topology().parts().size() == 0);
+	assert(stage->GetPrimAtPath(path).IsValid());
+	assert(g.unrealized_parts().empty());
+	assert(g.unrealized_connections().empty());
+}
+
+// Modifying an existing realized connection prim in-place (offset/yaw) through
+// USD authoring should go through resync_tree and update the ConnectionSegment
+// stored in the topology while keeping the connection realized.
+static void test_resync_connection_modified_segment_updates_topology() {
+	auto stage = make_stage();
+	LegoAllocator alloc(stage);
+
+	BrickColor red{255, 0, 0};
+	BrickColor green{0, 255, 0};
+	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickB = make_brick(2, 4, BrickHeightPerPlate, green);
+
+	std::int64_t env_id = 11;
+	create_env_root(stage, env_id);
+	pxr::SdfPath pathA =
+	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brickA);
+	pxr::SdfPath pathB =
+	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brickB);
+
+	ConnectionSegment cs{};
+	pxr::SdfPath connPath = alloc.allocate_conn_managed(
+	    pathA, BrickPart::StudId, pathB, BrickPart::HoleId, cs);
+
+	CountingResource arena;
+	G g(stage, &arena);
+
+	assert(g.topology().connection_segments().size() == 1);
+	assert(g.topology().connection_bundles().size() == 1);
+
+	pxr::UsdPrim connPrim = stage->GetPrimAtPath(connPath);
+	assert(connPrim.IsValid());
+
+	ConnectionSegment cs_modified{};
+	cs_modified.offset = Eigen::Vector2i(1, -2);
+	author_connection(stage, connPath, pathA, BrickPart::StudId, pathB,
+	                  BrickPart::HoleId, cs_modified);
+
+	const lego_assemble::ConnSegId *csid_after =
+	    g.topology()
+	        .connection_segments()
+	        .project<pxr::SdfPath, lego_assemble::ConnSegId>(connPath);
+	assert(csid_after);
+	const SimpleWrapper<ConnectionSegment> *csw_after =
+	    g.topology().connection_segments().find(*csid_after);
+	assert(csw_after);
+	assert(csw_after->wrapped().offset == cs_modified.offset);
+	assert(csw_after->wrapped().yaw == cs_modified.yaw);
+
+	assert(g.topology().connection_segments().size() == 1);
+	assert(g.topology().connection_bundles().size() == 1);
+	assert(g.unrealized_connections().empty());
+	assert(g.unrealized_parts().empty());
+}
+
+// Deleting an unrealized managed connection prim from USD after the graph has
+// seen it should remove the connection from bookkeeping and clear the
+// corresponding unrealized parts.
+static void test_resync_unrealized_connection_deleted_cleans_state() {
+	auto stage = make_stage();
+	LegoAllocator alloc(stage);
+
+	pxr::SdfPath stud_path("/World/BrickA");
+	pxr::SdfPath hole_path("/World/BrickB");
+	ConnectionSegment cs{};
+	pxr::SdfPath connPath = alloc.allocate_conn_managed(
+	    stud_path, BrickPart::StudId, hole_path, BrickPart::HoleId, cs);
+
+	CountingResource arena;
+	G g(stage, &arena);
+
+	assert(g.topology().parts().size() == 0);
+	assert(g.topology().connection_segments().size() == 0);
+	assert(g.topology().connection_bundles().size() == 0);
+
+	auto unreal_parts_before = g.unrealized_parts();
+	auto unreal_conns_before = g.unrealized_connections();
+	assert(unreal_conns_before.size() == 1);
+	assert(unreal_conns_before[0] == connPath);
+	assert(unreal_parts_before.size() == 2);
+	assert(contains_path(unreal_parts_before, stud_path));
+	assert(contains_path(unreal_parts_before, hole_path));
+
+	bool removed = alloc.deallocate_managed_conn(connPath);
+	assert(removed);
+
+	assert(g.topology().parts().size() == 0);
+	assert(g.topology().connection_segments().size() == 0);
+	assert(g.topology().connection_bundles().size() == 0);
+
+	auto unreal_parts_after = g.unrealized_parts();
+	auto unreal_conns_after = g.unrealized_connections();
+	assert(unreal_conns_after.empty());
+	assert(unreal_parts_after.empty());
+}
+
+// --------------------------- graph -> USD tests ---------------------------
+
+// add_part should author a managed prim in USD and a corresponding part
+// in the topology, for both kNoEnv (/World) and a regular env (/World/envs).
+static void test_add_part_graph_to_usd() {
+	auto stage = make_stage();
+
+	BrickColor red{255, 0, 0};
+	BrickColor green{0, 255, 0};
+	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickB = make_brick(2, 4, BrickHeightPerPlate, green);
+
+	CountingResource arena;
+	G g(stage, &arena);
+
+	// kNoEnv -> /World/managed/Parts/...
+	std::int64_t env_world = kNoEnv;
+	auto pathA_opt = g.add_part(env_world, brickA);
+	assert(pathA_opt.has_value());
+	pxr::SdfPath pathA = *pathA_opt;
+
+	pxr::UsdPrim primA = stage->GetPrimAtPath(pathA);
+	assert(primA.IsValid());
+
+	const PartId *pidA =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
+	assert(pidA);
+
+	// Regular env -> /World/envs/env_X/managed/Parts/...
+	std::int64_t env_id = 10;
+	create_env_root(stage, env_id);
+	auto pathB_opt = g.add_part(env_id, brickB);
+	assert(pathB_opt.has_value());
+	pxr::SdfPath pathB = *pathB_opt;
+
+	pxr::UsdPrim primB = stage->GetPrimAtPath(pathB);
+	assert(primB.IsValid());
+
+	const PartId *pidB =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	assert(pidB);
+
+	// Two realized parts, no connections, nothing unrealized.
+	assert(g.topology().parts().size() == 2);
+	assert(g.topology().connection_segments().size() == 0);
+	assert(g.topology().connection_bundles().size() == 0);
+	assert(g.unrealized_parts().empty());
+	assert(g.unrealized_connections().empty());
+}
+
+// remove_part on a managed part with no connections should:
+// - remove the prim from USD
+// - remove the part from the topology
+// - return true the first time and false on repeated calls.
+static void test_remove_part_no_connections_graph_api() {
+	auto stage = make_stage();
+
+	BrickColor red{255, 0, 0};
+	BrickColor green{0, 255, 0};
+	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickB = make_brick(2, 4, BrickHeightPerPlate, green);
+
+	CountingResource arena;
+	G g(stage, &arena);
+
+	std::int64_t env_id = 3;
+	create_env_root(stage, env_id);
+
+	auto pathA_opt = g.add_part(env_id, brickA);
+	auto pathB_opt = g.add_part(env_id, brickB);
+	assert(pathA_opt.has_value() && pathB_opt.has_value());
+	pxr::SdfPath pathA = *pathA_opt;
+	pxr::SdfPath pathB = *pathB_opt;
+
+	assert(g.topology().parts().size() == 2);
+
+	// Remove B, which has no connections.
+	bool removedB = g.remove_part(pathB);
+	assert(removedB);
+	assert(g.topology().parts().size() == 1);
+	assert(!stage->GetPrimAtPath(pathB).IsValid());
+
+	// Second attempt: nothing to remove -> false, no further changes.
+	bool removedB_again = g.remove_part(pathB);
+	assert(!removedB_again);
+	assert(g.topology().parts().size() == 1);
+	assert(stage->GetPrimAtPath(pathA).IsValid());
+}
+
+// remove_part on a recognized but unmanaged part should return false and leave
+// both USD and graph state unchanged.
+static void test_remove_part_unmanaged_returns_false() {
+	auto stage = make_stage();
+
+	BrickColor red{255, 0, 0};
+	BrickPart brick = make_brick(2, 4, BrickHeightPerPlate, red);
+
+	// Author a brick directly under /World via PrototypeBrickAuthor, which
+	// is NOT under any managed group; initial_sync should still recognize it.
+	pxr::SdfPath unmanaged_path("/World/FreeBrick");
+	PrototypeBrickAuthor{}(stage, unmanaged_path, brick);
+
+	CountingResource arena;
+	G g(stage, &arena);
+
+	assert(g.topology().parts().size() == 1);
+
+	// remove_part should fail for unmanaged bricks and leave state intact.
+	bool removed = g.remove_part(unmanaged_path);
+	assert(!removed);
+	assert(g.topology().parts().size() == 1);
+	assert(stage->GetPrimAtPath(unmanaged_path).IsValid());
+}
+
+// Helper behavior: with only a managed connection authored in USD that
+// references non-existent parts, the graph should report one unrealized
+// connection and two unrealized part paths, and no realized topology.
+static void test_unrealized_helpers_for_managed_connection_only() {
+	auto stage = make_stage();
+
+	// Author a managed connection under /World/managed/Conns that references
+	// two brick paths that do not exist yet.
+	LegoAllocator alloc(stage);
+	pxr::SdfPath stud_path("/World/BrickA");
+	pxr::SdfPath hole_path("/World/BrickB");
+	ConnectionSegment cs{};
+	pxr::SdfPath connPath = alloc.allocate_conn_managed(
+	    stud_path, BrickPart::StudId, hole_path, BrickPart::HoleId, cs);
+
+	CountingResource arena;
+	G g(stage, &arena);
+
+	// No realized topology yet.
+	assert(g.topology().parts().size() == 0);
+	assert(g.topology().connection_segments().size() == 0);
+	assert(g.topology().connection_bundles().size() == 0);
+
+	auto unreal_parts = g.unrealized_parts();
+	auto unreal_conns = g.unrealized_connections();
+
+	assert(unreal_conns.size() == 1);
+	assert(unreal_conns[0] == connPath);
+	assert(unreal_parts.size() == 2);
+	assert(contains_path(unreal_parts, stud_path));
+	assert(contains_path(unreal_parts, hole_path));
+}
+
+// remove_part on a realized part that participates in an unrealized
+// managed connection should:
+// - remove the part prim from USD
+// - remove the unrealized connection prim from USD
+// - clean up unrealized bookkeeping so that there are no lingering
+//   unrealized parts or connections.
+static void test_remove_part_with_unrealized_connection() {
+	auto stage = make_stage();
+	LegoAllocator alloc(stage);
+
+	BrickColor red{255, 0, 0};
+	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
+
+	std::int64_t env_id = 5;
+	create_env_root(stage, env_id);
+
+	// Realized brick part at a managed path.
+	pxr::SdfPath part_path =
+	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brickA);
+
+	// Hole path lives in the same env, but we deliberately do not
+	// author a brick there so that the connection is unrealized.
+	pxr::SdfPath hole_path = pathForEnv(env_id)
+	                             .AppendChild(pxr::TfToken("managed"))
+	                             .AppendChild(pxr::TfToken("Parts"))
+	                             .AppendChild(pxr::TfToken("HoleOnly"));
+
+	// Author a managed connection between part_path and hole_path.
+	ConnectionSegment cs{};
+	pxr::SdfPath conn_path = pathForEnv(env_id)
+	                             .AppendChild(pxr::TfToken("managed"))
+	                             .AppendChild(pxr::TfToken("Conns"))
+	                             .AppendChild(pxr::TfToken("ConnUnrealized"));
+
+	// When using allocate_conn_unmanaged, caller must ensure the parent
+	// hierarchy exists in USD so that traversal can see the prim.
+	{
+		auto layer = stage->GetEditTarget().GetLayer();
+		pxr::SdfPath managed_root =
+		    pathForEnv(env_id).AppendChild(pxr::TfToken("managed"));
+		if (!layer->GetPrimAtPath(managed_root)) {
+			pxr::SdfChangeBlock _changes;
+			auto managed_prim = pxr::SdfCreatePrimInLayer(layer, managed_root);
+			managed_prim->SetSpecifier(pxr::SdfSpecifierDef);
+			managed_prim->SetTypeName(pxr::UsdGeomTokens->Scope);
+		}
+		pxr::SdfPath conns_root =
+		    managed_root.AppendChild(pxr::TfToken("Conns"));
+		if (!layer->GetPrimAtPath(conns_root)) {
+			pxr::SdfChangeBlock _changes;
+			auto conns_prim = pxr::SdfCreatePrimInLayer(layer, conns_root);
+			conns_prim->SetSpecifier(pxr::SdfSpecifierDef);
+			conns_prim->SetTypeName(pxr::UsdGeomTokens->Scope);
+		}
+	}
+
+	alloc.allocate_conn_unmanaged(conn_path, part_path, BrickPart::StudId,
+	                              hole_path, BrickPart::HoleId, cs);
+
+	CountingResource arena;
+	G g(stage, &arena);
+
+	// initial_sync: part_path is realized, hole_path is not; the connection
+	// is therefore unrealized.
+	assert(g.topology().parts().size() == 1);
+	assert(g.topology().connection_segments().size() == 0);
+	assert(g.topology().connection_bundles().size() == 0);
+
+	auto unreal_parts_before = g.unrealized_parts();
+	auto unreal_conns_before = g.unrealized_connections();
+	assert(unreal_conns_before.size() == 1);
+	assert(unreal_conns_before[0] == conn_path);
+	// Only the missing endpoint should appear as an unrealized part.
+	assert(!contains_path(unreal_parts_before, part_path));
+	assert(contains_path(unreal_parts_before, hole_path));
+
+	// Now remove the realized part via the graph API.
+	bool removed = g.remove_part(part_path);
+	assert(removed);
+
+	// The part prim and connection prim should be gone from USD.
+	assert(!stage->GetPrimAtPath(part_path).IsValid());
+	assert(!stage->GetPrimAtPath(conn_path).IsValid());
+
+	// No realized topology and no unrealized bookkeeping left that
+	// refers to the removed part or connection.
+	assert(g.topology().parts().size() == 0);
+	assert(g.topology().connection_segments().size() == 0);
+	assert(g.topology().connection_bundles().size() == 0);
+
+	auto unreal_parts_after = g.unrealized_parts();
+	auto unreal_conns_after = g.unrealized_connections();
+	assert(unreal_conns_after.empty());
+	assert(!contains_path(unreal_parts_after, part_path));
+	assert(!contains_path(unreal_parts_after, hole_path));
+}
+
+// connect() should create a managed connection prim and corresponding
+// topology state; disconnect() should tear both down.
+static void test_connect_and_disconnect_realized_graph_api() {
+	auto stage = make_stage();
+
+	BrickColor red{255, 0, 0};
+	BrickColor green{0, 255, 0};
+	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickB = make_brick(2, 4, BrickHeightPerPlate, green);
+
+	CountingResource arena;
+	G g(stage, &arena);
+
+	std::int64_t env_id = 7;
+	create_env_root(stage, env_id);
+
+	auto pathA_opt = g.add_part(env_id, brickA);
+	auto pathB_opt = g.add_part(env_id, brickB);
+	assert(pathA_opt.has_value() && pathB_opt.has_value());
+	pxr::SdfPath pathA = *pathA_opt;
+	pxr::SdfPath pathB = *pathB_opt;
+
+	const PartId *pidA =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
+	const PartId *pidB =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	assert(pidA && pidB);
+
+	InterfaceRef stud_if{*pidA, BrickPart::StudId};
+	InterfaceRef hole_if{*pidB, BrickPart::HoleId};
+	ConnectionSegment cs{};
+
+	auto connPath_opt = g.connect(stud_if, hole_if, cs);
+	assert(connPath_opt.has_value());
+	pxr::SdfPath connPath = *connPath_opt;
+
+	// Graph topology should now have exactly one realized connection.
+	assert(g.topology().connection_segments().size() == 1);
+	assert(g.topology().connection_bundles().size() == 1);
+
+	using PW = SimplePartWrapper<BrickPart>;
+	const PW *pA = g.topology().parts().get<PW>(*pidA);
+	const PW *pB = g.topology().parts().get<PW>(*pidB);
+	assert(pA && pB);
+	assert(pA->outgoings().size() == 1);
+	assert(pB->incomings().size() == 1);
+	assert(pA->neighbor_parts().contains(*pidB));
+	assert(pB->neighbor_parts().contains(*pidA));
+
+	pxr::UsdPrim connPrim = stage->GetPrimAtPath(connPath);
+	assert(connPrim.IsValid());
+
+	// disconnect should succeed and tear down both USD and topology state.
+	bool disconnected = g.disconnect(connPath);
+	assert(disconnected);
+
+	assert(!stage->GetPrimAtPath(connPath).IsValid());
+	assert(g.topology().connection_segments().size() == 0);
+	assert(g.topology().connection_bundles().size() == 0);
+
+	pA = g.topology().parts().get<PW>(*pidA);
+	pB = g.topology().parts().get<PW>(*pidB);
+	assert(pA && pB);
+	assert(pA->outgoings().size() == 0);
+	assert(pB->incomings().size() == 0);
+	assert(!pA->neighbor_parts().contains(*pidB));
+	assert(!pB->neighbor_parts().contains(*pidA));
+
+	// No unrealized connections should be left behind.
+	assert(g.unrealized_connections().empty());
+}
+
+// connect() given InterfaceRefs that do not map to any existing parts in the
+// topology should return std::nullopt and author no USD connection prim.
+static void test_connect_invalid_interfaces_returns_nullopt() {
+	auto stage = make_stage();
+	CountingResource arena;
+	G g(stage, &arena);
+
+	InterfaceRef bad_stud{PartId{123u}, BrickPart::StudId};
+	InterfaceRef bad_hole{PartId{456u}, BrickPart::HoleId};
+	ConnectionSegment cs{};
+
+	auto connPath_opt = g.connect(bad_stud, bad_hole, cs);
+	assert(!connPath_opt.has_value());
+}
+
+// disconnect() on a non-existent or unmanaged path should return false and
+// not affect state.
+static void test_disconnect_nonexistent_or_unmanaged_returns_false() {
+	auto stage = make_stage();
+	CountingResource arena;
+	G g(stage, &arena);
+
+	// Non-existent managed-like path.
+	pxr::SdfPath bogus_managed("/World/managed/Conns/DoesNotExist");
+	assert(!g.disconnect(bogus_managed));
+
+	// Unmanaged connection prim: author it directly, but outside managed
+	// groups, so LegoAllocator's deallocate_managed_conn will return false.
+	pxr::SdfPath stud_path("/World/BrickA");
+	pxr::SdfPath hole_path("/World/BrickB");
+	BrickColor red{255, 0, 0};
+	BrickColor green{0, 255, 0};
+	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickB = make_brick(2, 4, BrickHeightPerPlate, green);
+	PrototypeBrickAuthor{}(stage, stud_path, brickA);
+	PrototypeBrickAuthor{}(stage, hole_path, brickB);
+
+	LegoAllocator alloc(stage);
+	ConnectionSegment cs{};
+	pxr::SdfPath unmanaged_conn("/World/UnmanagedConn");
+	author_connection(stage, unmanaged_conn, stud_path, BrickPart::StudId,
+	                  hole_path, BrickPart::HoleId, cs);
+
+	// Reconstruct G so it picks up the bricks and the unmanaged connection.
+	G g2(stage, &arena);
+
+	// The unmanaged connection is realized in topology/conn_path_table_, but
+	// disconnect via graph API should return false because the prim is not
+	// in a managed group.
+	assert(!g2.disconnect(unmanaged_conn));
+}
+
 } // namespace
 
 int main() {
@@ -351,5 +904,17 @@ int main() {
 	test_incremental_alloc_via_allocator();
 	test_connection_before_parts_unrealized_then_realized();
 	test_deallocate_managed_removes_graph_state();
+	test_resync_part_modified_updates_brick();
+	test_resync_part_becomes_unrecognized();
+	test_resync_connection_modified_segment_updates_topology();
+	test_resync_unrealized_connection_deleted_cleans_state();
+	test_add_part_graph_to_usd();
+	test_remove_part_no_connections_graph_api();
+	test_remove_part_unmanaged_returns_false();
+	test_unrealized_helpers_for_managed_connection_only();
+	test_remove_part_with_unrealized_connection();
+	test_connect_and_disconnect_realized_graph_api();
+	test_connect_invalid_interfaces_returns_nullopt();
+	test_disconnect_nonexistent_or_unmanaged_returns_false();
 	return 0;
 }

@@ -43,7 +43,7 @@ export template <class T, class Cmp = std::less<T>> class OrderedVecSet {
 	using value_type = T;
 	using const_iterator = std::pmr::vector<T>::const_iterator;
 
-	explicit OrderedVecSet(
+	OrderedVecSet(
 	    std::pmr::memory_resource *r = std::pmr::get_default_resource(),
 	    Cmp cmp = {})
 	    : data_{r}, cmp_(std::move(cmp)) {}
@@ -106,9 +106,8 @@ class HashSet {
 	using value_type = T;
 	using const_iterator = std::pmr::unordered_set<T, Hash, Eq>::const_iterator;
 
-	explicit HashSet(
-	    std::pmr::memory_resource *r = std::pmr::get_default_resource(),
-	    std::size_t bucket_count = 0, Hash h = {}, Eq eq = {})
+	HashSet(std::pmr::memory_resource *r = std::pmr::get_default_resource(),
+	        std::size_t bucket_count = 0, Hash h = {}, Eq eq = {})
 	    : set_(bucket_count, h, eq, std::pmr::polymorphic_allocator<T>{r}) {}
 
 	const_iterator begin() const noexcept {
@@ -152,9 +151,8 @@ export template <class T, class Cmp = std::less<T>> class TreeSet {
 	using value_type = T;
 	using const_iterator = std::pmr::set<T, Cmp>::const_iterator;
 
-	explicit TreeSet(
-	    std::pmr::memory_resource *r = std::pmr::get_default_resource(),
-	    Cmp cmp = {})
+	TreeSet(std::pmr::memory_resource *r = std::pmr::get_default_resource(),
+	        Cmp cmp = {})
 	    : set_(cmp, std::pmr::polymorphic_allocator<T>{r}) {}
 
 	const_iterator begin() const noexcept {
