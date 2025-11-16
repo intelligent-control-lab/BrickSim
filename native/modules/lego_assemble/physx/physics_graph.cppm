@@ -95,22 +95,28 @@ export template <PartLike... Ps> class PhysicsLegoGraph {
 		template <class P>
 		void on_part_added(PartId pid, PhysicsPartWrapper<P> &pw) {
 			// Update shape <-> interface mapping
-			physx::PxRigidActor *px_actor =
+			physx::PxRigidActor *const *px_actor_ptr =
 			    owner_->topology_.parts()
 			        .template project_key<PartId, physx::PxRigidActor *>(pid);
-			if (!px_actor) {
+			if (!px_actor_ptr) {
 				throw std::runtime_error(std::format(
 				    "Part id {} has no associated PxRigidActor", pid));
 			}
+			physx::PxRigidActor *px_actor = *px_actor_ptr;
 			for (const auto &[if_id, shape] : pw.interface_shapes()) {
 				if (shape == nullptr) {
 					throw std::runtime_error(std::format(
 					    "Interface {} of part id {} has null PxShape", if_id,
 					    pid));
 				}
+				std::optional<InterfaceSpec> iface =
+				    get_interface_at(pw.wrapped(), if_id);
+				if (!iface) {
+					throw std::runtime_error(std::format(
+					    "Interface {} not found in part id {}", if_id, pid));
+				}
 				if (!owner_->shape_mapping_.emplace(
-				        {{pid, if_id}, {px_actor, shape}},
-				        get_interface_at(pw.wrapped(), if_id))) {
+				        {{pid, if_id}, {px_actor, shape}}, *iface)) {
 					throw std::runtime_error(std::format(
 					    "Failed to map shape to interface {} of part id {}",
 					    if_id, pid));
