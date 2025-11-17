@@ -5,6 +5,29 @@ import lego_assemble.utils.dynamic_graph;
 
 using namespace lego_assemble;
 
+template <DynamicGraphLike G>
+static std::vector<std::vector<vertex_id>> collect_components(const G &g) {
+	std::vector<std::vector<vertex_id>> comps;
+	for (auto comp : g.components()) {
+		std::vector<vertex_id> verts;
+		for (auto v : comp.vertices())
+			verts.push_back(v);
+		std::sort(verts.begin(), verts.end());
+		if (!verts.empty())
+			assert(comp.size() == verts.size());
+		comps.push_back(std::move(verts));
+	}
+	std::sort(comps.begin(), comps.end());
+	return comps;
+}
+
+static void assert_components_equal(const HolmDeLichtenbergThorup &G,
+                                    const NaiveDynamicGraph &O) {
+	auto cg = collect_components(G);
+	auto co = collect_components(O);
+	assert(cg == co);
+}
+
 static void test_vertex_add_delete_basic() {
 	HolmDeLichtenbergThorup G(0);
 	NaiveDynamicGraph O(0);
@@ -34,6 +57,9 @@ static void test_vertex_add_delete_basic() {
 	assert(chk(v[4], v[5]));
 	assert(chk(v[0], v[5]));
 
+	assert(G._debug_invariant_i_holds());
+
+	assert_components_equal(G, O);
 	assert(G._debug_invariant_i_holds());
 }
 
@@ -67,6 +93,9 @@ static void test_cut_all_levels() {
 		}
 	}
 
+	assert(G._debug_invariant_i_holds());
+
+	assert_components_equal(G, O);
 	assert(G._debug_invariant_i_holds());
 }
 
@@ -109,6 +138,13 @@ static void test_random(std::uint32_t seed = 20240229) {
 		}
 		if ((op % 50) == 0) {
 			assert(G._debug_invariant_i_holds());
+		}
+		if ((op % 7) == 0) {
+			vertex_id t = pick(max_id);
+			assert(G.component_size(t) == O.component_size(t));
+		}
+		if ((op % 73) == 0) {
+			assert_components_equal(G, O);
 		}
 	}
 }
@@ -367,6 +403,39 @@ static void test_visit_path_both_impls() {
 			assert(pg.empty());
 			assert(po.empty());
 		}
+
+		// Components API should see exactly the same connected components.
+		assert_components_equal(G, O);
+
+		// For each implementation, check that component views work and edges()
+		// yields a spanning tree of that component using real graph edges.
+		auto validate_components = [&](const auto &graph) {
+			std::size_t total_vertices = 0;
+			for (auto comp : graph.components()) {
+				std::vector<vertex_id> verts;
+				for (auto vtx : comp.vertices())
+					verts.push_back(vtx);
+				assert(!verts.empty());
+				std::size_t sz = comp.size();
+				assert(sz == verts.size());
+				total_vertices += sz;
+
+				std::size_t edge_count = 0;
+				for (auto [a, b] : comp.edges()) {
+					++edge_count;
+					assert(edges.count(pack(a, b)) &&
+					       "component edge must be an actual graph edge");
+				}
+				if (sz > 0)
+					assert(edge_count == sz - 1);
+				else
+					assert(edge_count == 0);
+			}
+			assert(total_vertices == graph.num_vertices());
+		};
+
+		validate_components(G);
+		validate_components(O);
 	}
 
 	// A quick "dead vertex" check: erase a vertex and ensure path is empty.
@@ -702,6 +771,177 @@ static void run_performance_benchmarks() {
 	}
 }
 
+template <class G>
+static std::vector<std::vector<vertex_id>>
+collect_components_direct(const G &g) {
+	std::vector<std::vector<vertex_id>> comps;
+	for (auto comp : g.components()) {
+		std::vector<vertex_id> verts;
+		for (auto v : comp.vertices())
+			verts.push_back(v);
+		std::sort(verts.begin(), verts.end());
+		comps.push_back(std::move(verts));
+	}
+	std::sort(comps.begin(), comps.end());
+	return comps;
+}
+
+static void test_components_direct_basic() {
+	HolmDeLichtenbergThorup G(0);
+	NaiveDynamicGraph O(0);
+
+	const int N = 6;
+	for (int i = 0; i < N; ++i) {
+		auto g = G.add_vertex();
+		auto o = O.add_vertex();
+		assert(g == o);
+	}
+
+	auto add = [&](vertex_id u, vertex_id v) {
+		bool g = G.add_edge(u, v);
+		bool o = O.add_edge(u, v);
+		assert(g == o);
+	};
+
+	// Components:
+	//  {0,1,2} as a chain
+	//  {3,4}   as a chain
+	//  {5}     isolated
+	add(0, 1);
+	add(1, 2);
+	add(3, 4);
+
+	auto compsG = collect_components_direct(G);
+	auto compsO = collect_components_direct(O);
+
+	std::vector<std::vector<vertex_id>> expected{{0, 1, 2}, {3, 4}, {5}};
+	std::sort(expected.begin(), expected.end());
+
+	assert(compsG == expected);
+	assert(compsO == expected);
+
+	// Check component_size for each vertex
+	std::unordered_map<vertex_id, std::size_t> size_map;
+	for (const auto &comp : expected)
+		for (auto v : comp)
+			size_map[v] = comp.size();
+
+	for (vertex_id v = 0; v < static_cast<vertex_id>(N); ++v) {
+		assert(G.component_size(v) == size_map[v]);
+		assert(O.component_size(v) == size_map[v]);
+	}
+
+	// Now break {0,1,2} into {0,1} and {2}.
+	assert(G.erase_edge(1, 2) == O.erase_edge(1, 2));
+
+	expected = {{0, 1}, {2}, {3, 4}, {5}};
+	std::sort(expected.begin(), expected.end());
+	compsG = collect_components_direct(G);
+	compsO = collect_components_direct(O);
+
+	assert(compsG == expected);
+	assert(compsO == expected);
+
+	size_map.clear();
+	for (const auto &comp : expected)
+		for (auto v : comp)
+			size_map[v] = comp.size();
+
+	for (vertex_id v = 0; v < static_cast<vertex_id>(N); ++v) {
+		assert(G.component_size(v) == size_map[v]);
+		assert(O.component_size(v) == size_map[v]);
+	}
+}
+
+static void test_components_edges_spanning_tree() {
+	HolmDeLichtenbergThorup G(0);
+	NaiveDynamicGraph O(0);
+
+	const int N = 10;
+	for (int i = 0; i < N; ++i) {
+		auto g = G.add_vertex();
+		auto o = O.add_vertex();
+		assert(g == o);
+	}
+
+	auto add = [&](vertex_id u, vertex_id v) {
+		bool g = G.add_edge(u, v);
+		bool o = O.add_edge(u, v);
+		assert(g == o);
+	};
+
+	// CC1: vertices {0,1,2,3} as a path plus chords
+	add(0, 1);
+	add(1, 2);
+	add(2, 3);
+	add(0, 2); // chord
+	add(1, 3); // chord
+
+	// CC2: star centered at 4 -> {4,5,6}
+	add(4, 5);
+	add(4, 6);
+
+	// CC3: path {7,8,9}
+	add(7, 8);
+	add(8, 9);
+
+	auto validate = [&](const auto &graph) {
+		for (auto comp : graph.components()) {
+			std::vector<vertex_id> verts;
+			for (auto v : comp.vertices())
+				verts.push_back(v);
+			if (verts.empty())
+				continue;
+
+			std::sort(verts.begin(), verts.end());
+
+			std::vector<std::pair<vertex_id, vertex_id>> edges;
+			for (auto e : comp.edges())
+				edges.push_back(e);
+
+			// For a connected component with k vertices, edges() should give a spanning tree: k-1 edges.
+			assert(edges.size() == verts.size() - 1);
+
+			std::unordered_map<vertex_id, int> idx;
+			for (int i = 0; i < static_cast<int>(verts.size()); ++i)
+				idx[verts[i]] = i;
+
+			std::vector<std::vector<int>> adj(verts.size());
+			for (auto [a, b] : edges) {
+				auto itA = idx.find(a);
+				auto itB = idx.find(b);
+				assert(itA != idx.end() && itB != idx.end());
+				int ia = itA->second;
+				int ib = itB->second;
+				adj[ia].push_back(ib);
+				adj[ib].push_back(ia);
+			}
+
+			// BFS to confirm connectivity over the spanning tree edges
+			std::vector<char> vis(verts.size(), 0);
+			std::queue<int> q;
+			vis[0] = 1;
+			q.push(0);
+			int seen = 0;
+			while (!q.empty()) {
+				int x = q.front();
+				q.pop();
+				++seen;
+				for (int y : adj[x]) {
+					if (!vis[y]) {
+						vis[y] = 1;
+						q.push(y);
+					}
+				}
+			}
+			assert(seen == static_cast<int>(verts.size()));
+		}
+	};
+
+	validate(G);
+	validate(O);
+}
+
 int main() {
 	test_vertex_add_delete_basic();
 	test_cut_all_levels();
@@ -710,5 +950,7 @@ int main() {
 	test_hlt_uses_given_pmr_and_exercises_allocation_branches();
 	test_visit_path_both_impls();
 	// run_performance_benchmarks();
+	test_components_direct_basic();
+	test_components_edges_spanning_tree();
 	return 0;
 }

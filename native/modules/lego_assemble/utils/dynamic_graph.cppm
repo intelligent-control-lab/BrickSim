@@ -10,6 +10,15 @@ namespace lego_assemble {
 // uint32_t is enough
 export using vertex_id = std::uint32_t;
 
+export template <class CV>
+concept ComponentViewLike = requires(CV cv) {
+	{ cv.size() } -> std::same_as<std::size_t>;
+	{ cv.vertices() } -> std::same_as<std::generator<vertex_id>>;
+	{
+		cv.edges()
+	} -> std::same_as<std::generator<std::pair<vertex_id, vertex_id>>>;
+};
+
 export template <class G>
 concept DynamicGraphLike = requires(G g, const G cg, vertex_id u, vertex_id v) {
 	{ g.reset(0u) } -> std::same_as<void>;
@@ -23,6 +32,12 @@ concept DynamicGraphLike = requires(G g, const G cg, vertex_id u, vertex_id v) {
 	{
 		cg.path(u, v)
 	} -> std::same_as<std::generator<std::pair<vertex_id, vertex_id>>>;
+	{ cg.component_size(u) } -> std::same_as<std::size_t>;
+	typename G::component_view_type;
+	requires ComponentViewLike<typename G::component_view_type>;
+	{
+		cg.components()
+	} -> std::same_as<std::generator<typename G::component_view_type>>;
 } && std::constructible_from<G, std::size_t, std::pmr::memory_resource *>;
 
 // --------- Naive dynamic graph (PMR, fixed-width ints, const connected) ---------
@@ -31,6 +46,79 @@ concept DynamicGraphLike = requires(G g, const G cg, vertex_id u, vertex_id v) {
 // Efficiency is not a concern here.
 export class NaiveDynamicGraph {
   public:
+	class ComponentView {
+	  public:
+		ComponentView(const NaiveDynamicGraph &g, vertex_id root) noexcept
+		    : g_{&g}, root_{root} {}
+
+		[[nodiscard]] std::size_t size() const {
+			return g_->component_size(root_);
+		}
+
+		std::generator<vertex_id> vertices() const {
+			if (!g_->valid(root_))
+				co_return;
+
+			std::pmr::deque<vertex_id> dq{g_->mr_};
+			std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
+			std::pmr::vector<std::uint8_t> vis(
+			    g_->adj_.size(), static_cast<std::uint8_t>(0), g_->mr_);
+
+			vis[root_] = static_cast<std::uint8_t>(1);
+			q.push(root_);
+			while (!q.empty()) {
+				auto x = q.front();
+				q.pop();
+				co_yield x;
+				for (auto y : g_->adj_[x]) {
+					if (g_->alive_[y] != 0 && !vis[y]) {
+						vis[y] = static_cast<std::uint8_t>(1);
+						q.push(y);
+					}
+				}
+			}
+		}
+
+		std::generator<std::pair<vertex_id, vertex_id>> edges() const {
+			if (!g_->valid(root_))
+				co_return;
+
+			std::pmr::deque<vertex_id> dq{g_->mr_};
+			std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
+			std::pmr::vector<std::uint8_t> vis(
+			    g_->adj_.size(), static_cast<std::uint8_t>(0), g_->mr_);
+			std::pmr::vector<vertex_id> parent(
+			    g_->adj_.size(), std::numeric_limits<vertex_id>::max(),
+			    g_->mr_);
+
+			vis[root_] = static_cast<std::uint8_t>(1);
+			parent[root_] = root_;
+			q.push(root_);
+
+			while (!q.empty()) {
+				auto x = q.front();
+				q.pop();
+
+				if (x != root_)
+					co_yield {parent[x], x};
+
+				for (auto y : g_->adj_[x]) {
+					if (g_->alive_[y] != 0 && !vis[y]) {
+						vis[y] = static_cast<std::uint8_t>(1);
+						parent[y] = x;
+						q.push(y);
+					}
+				}
+			}
+		}
+
+	  private:
+		const NaiveDynamicGraph *g_;
+		vertex_id root_;
+	};
+
+	using component_view_type = ComponentView;
+
 	explicit NaiveDynamicGraph(
 	    std::size_t n0 = 0,
 	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
@@ -191,6 +279,61 @@ export class NaiveDynamicGraph {
 		// Invoke visitor on each consecutive edge (p_i, p_{i+1})
 		for (std::size_t i = 1; i < path.size(); ++i)
 			co_yield {path[i - 1], path[i]};
+	}
+
+	[[nodiscard]] std::size_t component_size(vertex_id s) const {
+		if (!valid(s))
+			return 0;
+
+		std::pmr::deque<vertex_id> dq{mr_};
+		std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
+		std::pmr::vector<std::uint8_t> vis(adj_.size(),
+		                                   static_cast<std::uint8_t>(0), mr_);
+
+		vis[s] = static_cast<std::uint8_t>(1);
+		q.push(s);
+		std::size_t cnt = 1;
+		while (!q.empty()) {
+			auto x = q.front();
+			q.pop();
+			for (auto y : adj_[x]) {
+				if (alive_[y] != 0 && !vis[y]) {
+					vis[y] = static_cast<std::uint8_t>(1);
+					++cnt;
+					q.push(y);
+				}
+			}
+		}
+		return cnt;
+	}
+
+	std::generator<component_view_type> components() const {
+		std::pmr::vector<std::uint8_t> vis(adj_.size(),
+		                                   static_cast<std::uint8_t>(0), mr_);
+
+		for (vertex_id s = 0; s < static_cast<vertex_id>(adj_.size()); ++s) {
+			if (!valid(s) || vis[s])
+				continue;
+
+			// Mark this component so we don't yield it again.
+			std::pmr::deque<vertex_id> dq{mr_};
+			std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
+
+			vis[s] = static_cast<std::uint8_t>(1);
+			q.push(s);
+			while (!q.empty()) {
+				auto x = q.front();
+				q.pop();
+				for (auto y : adj_[x]) {
+					if (alive_[y] != 0 && !vis[y]) {
+						vis[y] = static_cast<std::uint8_t>(1);
+						q.push(y);
+					}
+				}
+			}
+
+			co_yield ComponentView{*this, s};
+		}
 	}
 
   private:
@@ -361,6 +504,14 @@ class LinkCutForest {
 		}
 	}
 
+	[[nodiscard]] std::size_t component_size(vertex_id u0) const {
+		const std::uint32_t u = to1(u0);
+		make_root(u0);
+		access(u);
+		splay(u);
+		return static_cast<std::size_t>(get_size(u));
+	}
+
   private:
 	// Indexing: nodes are [1..n_], 0 is "null"
 	vertex_id n_{0};
@@ -516,6 +667,93 @@ class LinkCutForest {
 
 export class HolmDeLichtenbergThorup {
   public:
+	class ComponentView {
+	  public:
+		ComponentView(const HolmDeLichtenbergThorup &g, vertex_id root) noexcept
+		    : g_{&g}, root_{root} {}
+
+		[[nodiscard]] std::size_t size() const {
+			return g_->component_size(root_);
+		}
+
+		std::generator<vertex_id> vertices() const {
+			if (!g_->valid(root_))
+				co_return;
+
+			std::pmr::deque<vertex_id> dq{g_->mr_};
+			std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
+			std::pmr::vector<std::uint8_t> vis(
+			    g_->alive_.size(), static_cast<std::uint8_t>(0), g_->mr_);
+
+			vis[root_] = static_cast<std::uint8_t>(1);
+			q.push(root_);
+
+			while (!q.empty()) {
+				auto x = q.front();
+				q.pop();
+				co_yield x;
+
+				auto push_neighbor = [&](vertex_id y) {
+					if (!g_->valid(y) || vis[y])
+						return;
+					vis[y] = static_cast<std::uint8_t>(1);
+					q.push(y);
+				};
+
+				for (auto y : g_->treeAdj_[x])
+					push_neighbor(y);
+				for (std::uint32_t lvl = 0; lvl <= g_->L_; ++lvl)
+					for (auto y : g_->nonTreeAdj_[lvl][x])
+						push_neighbor(y);
+			}
+		}
+
+		std::generator<std::pair<vertex_id, vertex_id>> edges() const {
+			if (!g_->valid(root_))
+				co_return;
+
+			std::pmr::deque<vertex_id> dq{g_->mr_};
+			std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
+			std::pmr::vector<std::uint8_t> vis(
+			    g_->alive_.size(), static_cast<std::uint8_t>(0), g_->mr_);
+			std::pmr::vector<vertex_id> parent(
+			    g_->alive_.size(), std::numeric_limits<vertex_id>::max(),
+			    g_->mr_);
+
+			vis[root_] = static_cast<std::uint8_t>(1);
+			parent[root_] = root_;
+			q.push(root_);
+
+			while (!q.empty()) {
+				auto x = q.front();
+				q.pop();
+
+				if (x != root_)
+					co_yield {parent[x], x};
+
+				auto push_neighbor = [&](vertex_id y) {
+					if (!g_->valid(y) || vis[y])
+						return;
+					vis[y] = static_cast<std::uint8_t>(1);
+					parent[y] = x;
+					q.push(y);
+				};
+
+				for (auto y : g_->treeAdj_[x])
+					push_neighbor(y);
+				for (std::uint32_t lvl = 0; lvl <= g_->L_; ++lvl)
+					for (auto y : g_->nonTreeAdj_[lvl][x])
+						push_neighbor(y);
+			}
+		}
+
+	  private:
+		const HolmDeLichtenbergThorup *g_;
+		vertex_id root_;
+	};
+
+	using component_view_type = ComponentView;
+
 	explicit HolmDeLichtenbergThorup(
 	    std::size_t n0 = 0,
 	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
@@ -716,6 +954,49 @@ export class HolmDeLichtenbergThorup {
 		if (!valid(u) || !valid(v))
 			co_return;
 		co_yield std::ranges::elements_of(forests_[0].path(u, v));
+	}
+
+	[[nodiscard]] std::size_t component_size(vertex_id u) const {
+		if (!valid(u))
+			return 0;
+		// F_0 is a spanning forest of G; its tree size is exactly CC size.
+		return forests_[0].component_size(u);
+	}
+
+	std::generator<component_view_type> components() const {
+		std::pmr::vector<std::uint8_t> vis(alive_.size(),
+		                                   static_cast<std::uint8_t>(0), mr_);
+
+		for (vertex_id s = 0; s < static_cast<vertex_id>(alive_.size()); ++s) {
+			if (!valid(s) || vis[s])
+				continue;
+
+			std::pmr::deque<vertex_id> dq{mr_};
+			std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
+
+			vis[s] = static_cast<std::uint8_t>(1);
+			q.push(s);
+
+			while (!q.empty()) {
+				auto x = q.front();
+				q.pop();
+
+				auto push_neighbor = [&](vertex_id y) {
+					if (!valid(y) || vis[y])
+						return;
+					vis[y] = static_cast<std::uint8_t>(1);
+					q.push(y);
+				};
+
+				for (auto y : treeAdj_[x])
+					push_neighbor(y);
+				for (std::uint32_t lvl = 0; lvl <= L_; ++lvl)
+					for (auto y : nonTreeAdj_[lvl][x])
+						push_neighbor(y);
+			}
+
+			co_yield ComponentView{*this, s};
+		}
 	}
 
   private:
