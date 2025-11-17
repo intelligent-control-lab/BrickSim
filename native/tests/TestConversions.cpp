@@ -111,36 +111,36 @@ static_assert(transform_like<
 // --------------------- tests ---------------------
 
 void test_initializer_list_to_vector() {
-    // std::array target
-    auto a3 = as<std::array<double, 3>>({1, 2, 3});
-    assert(approx_equal(a3[0], 1.0));
-    assert(approx_equal(a3[1], 2.0));
-    assert(approx_equal(a3[2], 3.0));
+	// std::array target
+	auto a3 = as<std::array<double, 3>>({1, 2, 3});
+	assert(approx_equal(a3[0], 1.0));
+	assert(approx_equal(a3[1], 2.0));
+	assert(approx_equal(a3[2], 3.0));
 
-    // Eigen vector target (implicit narrowing from double -> float)
-    auto e3f = as<Eigen::Matrix<float, 3, 1>>({1.0, 2.0, 3.5});
-    Eigen::Matrix<float, 3, 1> e_expected;
-    e_expected << 1.0f, 2.0f, 3.5f;
-    assert(approx_mat(e3f, e_expected));
+	// Eigen vector target (implicit narrowing from double -> float)
+	auto e3f = as<Eigen::Matrix<float, 3, 1>>({1.0, 2.0, 3.5});
+	Eigen::Matrix<float, 3, 1> e_expected;
+	e_expected << 1.0f, 2.0f, 3.5f;
+	assert(approx_mat(e3f, e_expected));
 
-    // USD Gf vector target
-    auto g3f = as<pxr::GfVec3f>({-1.0f, 0.5f, 10.0f});
-    std::array<double, 3> g_expected{ -1.0, 0.5, 10.0 };
-    assert(approx_mat(g3f, g_expected));
+	// USD Gf vector target
+	auto g3f = as<pxr::GfVec3f>({-1.0f, 0.5f, 10.0f});
+	std::array<double, 3> g_expected{-1.0, 0.5, 10.0};
+	assert(approx_mat(g3f, g_expected));
 
-    // PhysX vector target
-    auto p4d = as<physx::PxVec4T<double>>({1, 2, 3, 4});
-    std::array<double, 4> p_expected{1.0, 2.0, 3.0, 4.0};
-    assert(approx_mat(p4d, p_expected));
+	// PhysX vector target
+	auto p4d = as<physx::PxVec4T<double>>({1, 2, 3, 4});
+	std::array<double, 4> p_expected{1.0, 2.0, 3.0, 4.0};
+	assert(approx_mat(p4d, p_expected));
 
-    // Size mismatch should throw std::invalid_argument
-    bool threw = false;
-    try {
-        (void)as<std::array<double, 3>>({1.0, 2.0});
-    } catch (const std::invalid_argument &) {
-        threw = true;
-    }
-    assert(threw && "initializer_list with wrong size must throw");
+	// Size mismatch should throw std::invalid_argument
+	bool threw = false;
+	try {
+		(void)as<std::array<double, 3>>({1.0, 2.0});
+	} catch (const std::invalid_argument &) {
+		threw = true;
+	}
+	assert(threw && "initializer_list with wrong size must throw");
 }
 
 void test_vectors_all() {
@@ -265,12 +265,93 @@ void test_transforms_gf() {
 	assert(approx_mat(t, te));
 }
 
-int main() {
-    // initializer_list -> vector
-    test_initializer_list_to_vector();
+void test_gf_matrix4d_transform_traits() {
+	// Build a pure GfMatrix4d using Gf's own API: rotation + translation.
+	const double th = 0.5;
+	const double c = std::cos(th * 0.5);
+	const double s = std::sin(th * 0.5);
+	pxr::GfVec3d im(0.0, 0.0, s);
+	pxr::GfQuatd q_exp(c, im); // rotation about +Z by angle 'th'
+	pxr::GfVec3d t_exp(1.0, -2.0, 3.5);
 
-    // vectors & matrices
-    test_vectors_all();
+	pxr::GfMatrix4d M(1.0);
+	M.SetRotate(q_exp);
+	M.SetTranslateOnly(t_exp);
+
+	// Sanity: Gf's own extractors see what we authored.
+	auto q_usd = M.ExtractRotationQuat();
+	auto t_usd = M.ExtractTranslation();
+	assert(approx_quat(q_exp, q_usd));
+	assert(approx_mat(as<std::array<double, 3>>(t_exp),
+	                  as<std::array<double, 3>>(t_usd)));
+
+	// Now go through transform_traits<pxr::GfMatrix4d> and ensure we decode the
+	// same rotation and translation.
+	auto R_dec = transform_traits<pxr::GfMatrix4d>::template rotation33<
+	    std::array<std::array<double, 3>, 3>>(M);
+	auto t_dec = transform_traits<pxr::GfMatrix4d>::template translation3<
+	    std::array<double, 3>>(M);
+
+	auto R_expected =
+	    as<std::array<std::array<double, 3>, 3>>(q_usd); // canonical 3x3
+	auto t_expected = as<std::array<double, 3>>(t_usd);
+
+	assert(approx_mat(R_expected, R_dec));
+	assert(approx_mat(t_expected, t_dec));
+
+	// And the high-level pose_qt API must agree with q_usd, t_usd up to the
+	// usual quaternion sign ambiguity.
+	auto [q_read, t_read] = as_pose_qt<eigen_tag, double>(M);
+	auto R_read = as<std::array<std::array<double, 3>, 3>>(q_read);
+	assert(approx_mat(R_expected, R_read));
+	assert(approx_mat(t_expected, t_read));
+}
+
+void test_gf_matrix4f_transform_traits() {
+	// Same as the double-precision test, but for GfMatrix4f.
+	const float th = 0.3f;
+	const float c = std::cos(th * 0.5f);
+	const float s = std::sin(th * 0.5f);
+	pxr::GfVec3f im(0.0f, 0.0f, s);
+	pxr::GfQuatf q_exp(c, im); // rotation about +Z
+	pxr::GfVec3f t_exp(2.0f, -1.0f, 4.0f);
+
+	pxr::GfMatrix4f M(1.0f);
+	M.SetRotate(q_exp);
+	M.SetTranslateOnly(t_exp);
+
+	// Baseline: Gf's own extractors.
+	auto q_usd = M.ExtractRotationQuat();
+	auto t_usd = M.ExtractTranslation();
+
+	// Decode via transform_traits<GfMatrix4f>.
+	auto R_dec = transform_traits<pxr::GfMatrix4f>::template rotation33<
+	    std::array<std::array<double, 3>, 3>>(M);
+	auto t_dec = transform_traits<pxr::GfMatrix4f>::template translation3<
+	    std::array<double, 3>>(M);
+
+	auto R_expected =
+	    as<std::array<std::array<double, 3>, 3>>(q_usd); // canonical 3x3
+	auto t_expected = as<std::array<double, 3>>(t_usd);
+
+	assert(approx_mat(R_expected, R_dec));
+	assert(approx_mat(t_expected, t_dec));
+
+	// High-level pose_qt API should agree as well.
+	auto [q_read, t_read] = as_pose_qt<eigen_tag, float>(M);
+	auto R_read = as<std::array<std::array<double, 3>, 3>>(q_read);
+	auto t_read_arr = as<std::array<double, 3>>(t_read);
+
+	assert(approx_mat(R_expected, R_read));
+	assert(approx_mat(t_expected, t_read_arr));
+}
+
+int main() {
+	// initializer_list -> vector
+	test_initializer_list_to_vector();
+
+	// vectors & matrices
+	test_vectors_all();
 	test_matrices_all();
 
 	// quaternions
@@ -281,6 +362,8 @@ int main() {
 
 	// transforms (USD) — requires you to apply the two small header fixes above
 	test_transforms_gf();
+	test_gf_matrix4d_transform_traits();
+	test_gf_matrix4f_transform_traits();
 
 	std::cout << "All Conversions tests passed.\n";
 	return 0;

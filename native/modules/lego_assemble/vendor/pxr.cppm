@@ -56,6 +56,7 @@ using pxr::GfMatrix4d;
 using pxr::GfMatrix4f;
 using pxr::GfQuatd;
 using pxr::GfQuatf;
+using pxr::GfRotation;
 using pxr::GfTransform;
 using pxr::GfVec2d;
 using pxr::GfVec2f;

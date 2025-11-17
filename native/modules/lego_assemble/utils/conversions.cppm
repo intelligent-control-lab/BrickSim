@@ -665,7 +665,7 @@ concept transform_like = transform_traits<T>::valid;
 export template <transform_like T>
 using transform_scalar_t = typename transform_traits<T>::scalar_type;
 
-// Any 4x4 mat_like is also a transform
+// Any 4x4 mat_like is also a transform (column-translation, column convention)
 export template <class T>
     requires(mat_traits<T>::valid && mat_traits<T>::rows == 4 &&
              mat_traits<T>::cols == 4)
@@ -717,6 +717,41 @@ struct transform_traits<T> {
 	}
 };
 
+// Shared base for GfMatrix4* specializations: use Gf's ExtractRotationQuat /
+// ExtractTranslation (row-vector convention).
+template <class Mat, class Quat, class Vec>
+struct gf_matrix4_transform_traits_base {
+	static constexpr bool valid = true;
+	using scalar_type = typename Mat::ScalarType;
+	using S = scalar_type;
+	using T = Mat;
+
+	template <mat_like R>
+	    requires(mat_traits<R>::rows == 3 && mat_traits<R>::cols == 3)
+	static R rotation33(const T &M) {
+		Quat q = M.ExtractRotationQuat();
+		return as<R>(q);
+	}
+
+	template <mat_like V>
+	    requires(mat_traits<V>::rows == 3 && mat_traits<V>::cols == 1)
+	static V translation3(const T &M) {
+		Vec t = M.ExtractTranslation();
+		return as<V>(t);
+	}
+};
+
+// USD GfMatrix4d / GfMatrix4f — honor Gf's own transform conventions.
+export template <>
+struct transform_traits<pxr::GfMatrix4d>
+    : gf_matrix4_transform_traits_base<pxr::GfMatrix4d, pxr::GfQuatd,
+                                       pxr::GfVec3d> {};
+
+export template <>
+struct transform_traits<pxr::GfMatrix4f>
+    : gf_matrix4_transform_traits_base<pxr::GfMatrix4f, pxr::GfQuatf,
+                                       pxr::GfVec3f> {};
+
 // PhysX PxTransformT<S>
 export template <class S> struct transform_traits<physx::PxTransformT<S>> {
 	static constexpr bool valid = true;
@@ -751,57 +786,59 @@ export template <class S> struct transform_traits<physx::PxTransformT<S>> {
 	}
 };
 
-// USD GfTransform (double precision) — row-translation convention
+// USD GfTransform (double precision) — use component API + map to SE(3)
 export template <> struct transform_traits<pxr::GfTransform> {
 	static constexpr bool valid = true;
 	using scalar_type = double;
 	using S = double;
 
+	// Build a GfTransform from a 3x3 rotation and translation vector.
 	template <mat_like R, mat_like V>
 	    requires(mat_traits<R>::rows == 3 && mat_traits<R>::cols == 3 &&
 	             mat_traits<V>::rows == 3 && mat_traits<V>::cols == 1)
 	static pxr::GfTransform make_rt(const R &R33, const V &t) {
-		std::array<std::array<S, 4>, 4> M{};
-		for (std::size_t r = 0; r < 3; ++r) {
-			for (std::size_t c = 0; c < 3; ++c)
-				M[r][c] = static_cast<S>(mat_traits<R>::get(R33, r, c));
-			M[r][3] = S(0); // zero last column for rotation rows
-		}
-		// USD: translation in row 3
-		M[3][0] = static_cast<S>(mat_traits<V>::get(t, 0, 0));
-		M[3][1] = static_cast<S>(mat_traits<V>::get(t, 1, 0));
-		M[3][2] = static_cast<S>(mat_traits<V>::get(t, 2, 0));
-		M[3][3] = S(1);
-
-		pxr::GfTransform out;
-		out.SetMatrix(as<pxr::GfMatrix4d>(M)); // use your matrix bridge
-		return out;
+		// Derive a quaternion from the rotation matrix using our generic
+		// matrix->quat conversion, then delegate to make_qt so that all
+		// construction flows through the same quaternion path.
+		pxr::GfQuatd q_gf = as<pxr::GfQuatd>(R33);
+		return make_qt(q_gf, t);
 	}
 
+	// Build a GfTransform from a quaternion and translation vector.
 	template <quat_like Q, mat_like V>
 	    requires(mat_traits<V>::rows == 3 && mat_traits<V>::cols == 1)
 	static pxr::GfTransform make_qt(const Q &q, const V &t) {
-		auto R33 = as<std::array<std::array<S, 3>, 3>>(q);
-		return make_rt(R33, t);
+		// Convert to Gf's native types.
+		pxr::GfQuatd q_gf = as<pxr::GfQuatd>(q);
+		pxr::GfVec3d t_gf = as<pxr::GfVec3d>(t);
+
+		// Use GfTransform's component API so that its internal matrix and
+		// ExtractRotationQuat/ExtractTranslation stay self-consistent.
+		pxr::GfTransform out;
+		out.Set(t_gf,                        // translation
+		        pxr::GfRotation(q_gf),       // rotation
+		        pxr::GfVec3d(1.0, 1.0, 1.0), // scale
+		        pxr::GfVec3d(0.0, 0.0, 0.0), // pivot position
+		        pxr::GfRotation());          // pivot orientation (identity)
+		return out;
 	}
 
+	// Decode rotation: start from the underlying GfMatrix4d (row semantics),
+	// then map into SE(3) column semantics by transposing the 3x3 block.
 	template <mat_like R>
 	    requires(mat_traits<R>::rows == 3 && mat_traits<R>::cols == 3)
 	static R rotation33(const pxr::GfTransform &X) {
-		auto M = X.GetMatrix();
-		std::array<std::array<S, 3>, 3> Rarr{};
-		for (std::size_t r = 0; r < 3; ++r)
-			for (std::size_t c = 0; c < 3; ++c)
-				Rarr[r][c] = M[static_cast<int>(r)][static_cast<int>(c)];
-		return as<R>(Rarr);
+		pxr::GfMatrix4d M = X.GetMatrix();
+		return as<R>(transform_traits<pxr::GfMatrix4d>::template rotation33<
+		             std::array<std::array<double, 3>, 3>>(M));
 	}
 
+	// Decode translation via the GfMatrix4d traits (ExtractTranslation).
 	template <mat_like W>
 	    requires(mat_traits<W>::rows == 3 && mat_traits<W>::cols == 1)
 	static W translation3(const pxr::GfTransform &X) {
-		auto M = X.GetMatrix();
-		std::array<S, 3> Tarr{M[3][0], M[3][1], M[3][2]}; // row-translation
-		return as<W>(Tarr);
+		pxr::GfMatrix4d M = X.GetMatrix();
+		return transform_traits<pxr::GfMatrix4d>::template translation3<W>(M);
 	}
 };
 
