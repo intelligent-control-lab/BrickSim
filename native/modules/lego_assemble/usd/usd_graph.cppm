@@ -7,6 +7,7 @@ import lego_assemble.core.connections;
 import lego_assemble.usd.allocator;
 import lego_assemble.usd.author;
 import lego_assemble.usd.parse;
+import lego_assemble.usd.specs;
 import lego_assemble.utils.conversions;
 import lego_assemble.utils.metric_system;
 import lego_assemble.utils.transforms;
@@ -26,6 +27,21 @@ export enum class AlignPolicy {
 	None,       // just connect, no pose changes
 	MoveStudCC, // move stud's component to match hole
 	MoveHoleCC, // move hole's component to match stud
+};
+
+export template <PartLike P> struct UsdPartWrapper : SimplePartWrapper<P> {
+	template <class... Args>
+	explicit UsdPartWrapper(std::vector<InterfaceColliderPair> colliders,
+	                        Args &&...args)
+	    : SimplePartWrapper<P>(std::forward<Args>(args)...),
+	      colliders_{std::move(colliders)} {}
+
+	std::span<const InterfaceColliderPair> colliders() const {
+		return colliders_;
+	}
+
+  private:
+	std::vector<InterfaceColliderPair> colliders_;
 };
 
 template <class T> using GetPartType = typename T::PartType;
@@ -50,7 +66,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	              "UsdLegoGraph: all PPs... must have unique PartType");
 
 	using TopologyGraph =
-	    LegoGraph<type_list<Ps...>, SimplePartWrapper, pmr_vector_storage,
+	    LegoGraph<type_list<Ps...>, UsdPartWrapper, pmr_vector_storage,
 	              type_list<pxr::SdfPath>, type_list<pxr::SdfPath::Hash>,
 	              type_list<std::equal_to<>>, SimpleWrapper<ConnectionSegment>,
 	              type_list<pxr::SdfPath>, type_list<pxr::SdfPath::Hash>,
@@ -113,10 +129,10 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	                                                 P part) {
 		using Author = PartAuthorFor<P>;
 		pxr::SdfChangeBlock _changes;
-		pxr::SdfPath path =
+		auto [path, colliders] =
 		    allocator_.allocate_part_managed<Author>(env_id, part);
 		std::optional<PartId> part_id = topology_.template add_part<P>(
-		    std::forward_as_tuple(path), std::move(part));
+		    std::forward_as_tuple(path), std::move(colliders), std::move(part));
 		if (!part_id) [[unlikely]] {
 			// rollback
 			allocator_.deallocate_managed_part(path);
@@ -660,7 +676,8 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 				pxr::SdfPath path = prim.GetPath();
 				auto &[part, colliders] = result;
 				std::optional<PartId> part_id = topology_.template add_part<P>(
-				    std::forward_as_tuple(path), std::move(part));
+				    std::forward_as_tuple(path), std::move(colliders),
+				    std::move(part));
 				if (part_id) [[likely]] {
 					part_path_table_[path].pid = *part_id;
 				} else [[unlikely]] {
@@ -716,8 +733,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		// ==== Parts resync ====
 		auto remove_part_and_invalidate_conns =
 		    [&]<PartLike P> [[nodiscard]] (
-		        PartId pid,
-		        const SimplePartWrapper<P> &pw) -> bool /* success */ {
+		        PartId pid, const UsdPartWrapper<P> &pw) -> bool /* success */ {
 			std::vector<pxr::SdfPath> affected_conn_paths =
 			    collect_connections(pw);
 
@@ -753,7 +769,8 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		                            const pxr::SdfPath &path,
 		                            UsdPartInfo &part_info, PartId old_pid,
 		                            New &&new_part,
-		                            const SimplePartWrapper<Old> &old_pw)
+		                            InterfaceCollidersVector &&colliders,
+		                            const UsdPartWrapper<Old> &old_pw)
 		    -> bool /* erase_part_info */ {
 			// Delete the old
 			bool deleted = remove_part_and_invalidate_conns(old_pid, old_pw);
@@ -765,7 +782,8 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 			}
 			// Add the new part
 			std::optional<PartId> new_pid = topology_.template add_part<New>(
-			    std::forward_as_tuple(path), std::move(new_part));
+			    std::forward_as_tuple(path), std::move(colliders),
+			    std::move(new_part));
 			if (new_pid) [[likely]] {
 				part_info.pid = *new_pid;
 			} else [[unlikely]] {
@@ -779,12 +797,14 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 			}
 			return false;
 		};
-		auto do_part_added = [&]<PartLike P> [[nodiscard]] (
-		                         const pxr::SdfPath &path,
-		                         UsdPartInfo &part_info,
-		                         P &&new_part) -> bool /* erase_part_info */ {
+		auto do_part_added =
+		    [&]<PartLike P> [[nodiscard]] (const pxr::SdfPath &path,
+		                                   UsdPartInfo &part_info, P &&new_part,
+		                                   InterfaceCollidersVector &&colliders)
+		    -> bool /* erase_part_info */ {
 			std::optional<PartId> new_pid = topology_.template add_part<P>(
-			    std::forward_as_tuple(path), std::move(new_part));
+			    std::forward_as_tuple(path), std::move(colliders),
+			    std::move(new_part));
 			if (new_pid) [[likely]] {
 				part_info.pid = *new_pid;
 				dirty_conns.insert_range(part_info.unrealized_conns);
@@ -804,7 +824,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 			PartId old_pid = *part_info.pid;
 			bool erase_part_info = false;
 			bool visited = topology_.parts().visit(
-			    old_pid, [&]<PartLike P>(const SimplePartWrapper<P> &old_pw) {
+			    old_pid, [&]<PartLike P>(const UsdPartWrapper<P> &old_pw) {
 				    // Delete the old
 				    bool deleted =
 				        remove_part_and_invalidate_conns(old_pid, old_pw);
@@ -849,9 +869,8 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 						    pid, path.GetText());
 						return;
 					}
-					const SimplePartWrapper<P> *existing_part =
-					    topology_.parts().template get<SimplePartWrapper<P>>(
-					        pid);
+					const UsdPartWrapper<P> *existing_part =
+					    topology_.parts().template get<UsdPartWrapper<P>>(pid);
 					if (existing_part) {
 						if (existing_part->wrapped() == part) {
 							// Unmodified
@@ -860,20 +879,21 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 							// Modified, same type
 							erase_part_info = do_part_modified(
 							    path, part_info, pid, std::move(part),
-							    *existing_part);
+							    std::move(colliders), *existing_part);
 						}
 					} else {
 						// Modified, different type
 						topology_.parts().visit(pid, [&](const auto &old_pw) {
 							erase_part_info = do_part_modified(
-							    path, part_info, pid, std::move(part), old_pw);
+							    path, part_info, pid, std::move(part),
+							    std::move(colliders), old_pw);
 						});
 					}
 				} else {
 					// Before: part NOT recognized.
 					// Now: part recognized.
-					erase_part_info =
-					    do_part_added(path, part_info, std::move(part));
+					erase_part_info = do_part_added(
+					    path, part_info, std::move(part), std::move(colliders));
 				}
 				if (erase_part_info) [[unlikely]] {
 					part_path_table_.erase(path);
@@ -1220,8 +1240,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	}
 
 	template <PartLike P>
-	std::vector<pxr::SdfPath>
-	collect_connections(const SimplePartWrapper<P> &pw) {
+	std::vector<pxr::SdfPath> collect_connections(const UsdPartWrapper<P> &pw) {
 		std::vector<pxr::SdfPath> conn_paths;
 		auto add_conn_path = [&](const OrderedVecSet<ConnSegId> &csids) {
 			for (ConnSegId csid : csids) {
@@ -1245,10 +1264,10 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 
 	std::optional<std::vector<pxr::SdfPath>> collect_connections(PartId pid) {
 		std::optional<std::vector<pxr::SdfPath>> conn_paths;
-		topology_.parts().visit(
-		    pid, [&]<PartLike P>(const SimplePartWrapper<P> &pw) {
-			    conn_paths = collect_connections(pw);
-		    });
+		topology_.parts().visit(pid,
+		                        [&]<PartLike P>(const UsdPartWrapper<P> &pw) {
+			                        conn_paths = collect_connections(pw);
+		                        });
 		return conn_paths;
 	}
 };

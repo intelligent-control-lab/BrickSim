@@ -5,6 +5,7 @@ import lego_assemble.core.specs;
 import lego_assemble.core.connections;
 import lego_assemble.usd.tokens;
 import lego_assemble.usd.author;
+import lego_assemble.usd.specs;
 import lego_assemble.utils.usd_envs;
 import lego_assemble.utils.sdf;
 import lego_assemble.vendor.pxr;
@@ -27,23 +28,25 @@ export class LegoAllocator {
 	    : stage_{std::move(stage)} {}
 
 	template <PartAuthor PA>
-	pxr::SdfPath allocate_part_managed(std::int64_t env_id,
-	                                   const typename PA::PartType &part) {
+	std::tuple<pxr::SdfPath, InterfaceCollidersVector>
+	allocate_part_managed(std::int64_t env_id,
+	                      const typename PA::PartType &part) {
 		auto path = allocate_part_path(env_id);
-		PA{}(stage_, path, part);
-		return path;
+		auto colliders = PA{}(stage_, path, part);
+		return {path, colliders};
 	}
 
 	template <PartAuthor PA>
-	pxr::SdfPath allocate_part_unmanaged(const pxr::SdfPath &path,
-	                                     const typename PA::PartType &part) {
+	std::tuple<pxr::SdfPath, InterfaceCollidersVector>
+	allocate_part_unmanaged(const pxr::SdfPath &path,
+	                        const typename PA::PartType &part) {
 		auto env_id = envIdFromPath(path);
 		if (!env_id.has_value()) [[unlikely]] {
 			throw std::invalid_argument(
 			    "Cannot allocate unmanaged part outside of an environment.");
 		}
-		PA{}(stage_, path, part);
-		return path;
+		auto colliders = PA{}(stage_, path, part);
+		return {path, colliders};
 	}
 
 	pxr::SdfPath allocate_conn_managed(const pxr::SdfPath &stud,

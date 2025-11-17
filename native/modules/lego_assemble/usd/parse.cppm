@@ -4,6 +4,7 @@ import std;
 import lego_assemble.usd.tokens;
 import lego_assemble.core.specs;
 import lego_assemble.core.connections;
+import lego_assemble.usd.specs;
 import lego_assemble.utils.conversions;
 import lego_assemble.utils.c4_rotation;
 import lego_assemble.vendor.pxr;
@@ -13,10 +14,8 @@ namespace lego_assemble {
 
 // ==== Parts ====
 
-export using InterfaceColliderPair = std::pair<InterfaceId, pxr::SdfPath>;
-
 export template <PartLike P>
-using PartPrimParseResult = std::pair<P, std::vector<InterfaceColliderPair>>;
+using PartPrimParseResult = std::pair<P, InterfaceCollidersVector>;
 
 export template <class T>
 concept PartParser = requires {
@@ -63,7 +62,7 @@ export class BrickParser {
 		PlateUnit H = dimensions_gf[2];
 		BrickColor brick_color = as<BrickColor>(color_gf);
 		BrickPart part(L, W, H, brick_color);
-		std::vector<InterfaceColliderPair> colliders{
+		InterfaceCollidersVector colliders{
 		    {BrickPart::HoleId, hole_collider_prim.GetPath()},
 		    {BrickPart::StudId, stud_collider_prim.GetPath()},
 		};

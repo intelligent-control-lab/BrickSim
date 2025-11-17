@@ -114,6 +114,30 @@ static bool almost_equal(const pxr::GfQuatd &a, const pxr::GfQuatd &b,
 	return std::abs(std::abs(dot) - 1.0) <= eps;
 }
 
+static void assert_brick_colliders(const UsdPartWrapper<BrickPart> &pw,
+                                   const pxr::SdfPath &path) {
+	auto colls = pw.colliders();
+	assert(colls.size() == 2);
+
+	pxr::SdfPath hole_path = path.AppendChild(LegoTokens->BodyCollider);
+	pxr::SdfPath stud_path = path.AppendChild(LegoTokens->TopCollider);
+
+	bool seen_hole = false;
+	bool seen_stud = false;
+	for (const auto &[iface, collider_path] : colls) {
+		if (iface == BrickPart::HoleId) {
+			seen_hole = true;
+			assert(collider_path == hole_path);
+		} else if (iface == BrickPart::StudId) {
+			seen_stud = true;
+			assert(collider_path == stud_path);
+		} else {
+			assert(false);
+		}
+	}
+	assert(seen_hole && seen_stud);
+}
+
 // --------------------------- tests ---------------------------
 
 // Stage is populated before UsdLegoGraph is constructed; initial_sync should
@@ -130,10 +154,12 @@ static void test_initial_sync_prepopulated_stage() {
 
 	std::int64_t env_id = -1;
 	create_env_root(stage, env_id);
-	pxr::SdfPath pathA =
+	auto allocA =
 	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brickA);
-	pxr::SdfPath pathB =
+	auto allocB =
 	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brickB);
+	pxr::SdfPath pathA = std::get<0>(allocA);
+	pxr::SdfPath pathB = std::get<0>(allocB);
 
 	ConnectionSegment cs{}; // default offset(0,0), yaw=0
 	pxr::SdfPath connPath = alloc.allocate_conn_managed(
@@ -155,10 +181,12 @@ static void test_initial_sync_prepopulated_stage() {
 	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
 	assert(pidA && pidB);
 
-	using PW = SimplePartWrapper<BrickPart>;
+	using PW = UsdPartWrapper<BrickPart>;
 	const PW *pA = g.topology().parts().get<PW>(*pidA);
 	const PW *pB = g.topology().parts().get<PW>(*pidB);
 	assert(pA && pB);
+	assert_brick_colliders(*pA, pathA);
+	assert_brick_colliders(*pB, pathB);
 
 	// Adjacency
 	assert(pA->outgoings().size() == 1);
@@ -200,10 +228,12 @@ static void test_incremental_alloc_via_allocator() {
 
 	std::int64_t env_id = 1;
 	create_env_root(stage, env_id);
-	pxr::SdfPath pathA =
+	auto allocA =
 	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brickA);
-	pxr::SdfPath pathB =
+	auto allocB =
 	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brickB);
+	pxr::SdfPath pathA = std::get<0>(allocA);
+	pxr::SdfPath pathB = std::get<0>(allocB);
 
 	// After authoring the two bricks, the graph should now see two parts
 	assert(g.topology().parts().size() == 2);
@@ -225,10 +255,12 @@ static void test_incremental_alloc_via_allocator() {
 	assert(g.topology().connection_segments().size() == 1);
 	assert(g.topology().connection_bundles().size() == 1);
 
-	using PW = SimplePartWrapper<BrickPart>;
+	using PW = UsdPartWrapper<BrickPart>;
 	const PW *pA = g.topology().parts().get<PW>(*pidA);
 	const PW *pB = g.topology().parts().get<PW>(*pidB);
 	assert(pA && pB);
+	assert_brick_colliders(*pA, pathA);
+	assert_brick_colliders(*pB, pathB);
 
 	assert(pA->outgoings().size() == 1);
 	assert(pB->incomings().size() == 1);
@@ -287,10 +319,12 @@ static void test_connection_before_parts_unrealized_then_realized() {
 	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
 	assert(pidA && pidB);
 
-	using PW = SimplePartWrapper<BrickPart>;
+	using PW = UsdPartWrapper<BrickPart>;
 	const PW *pA = g.topology().parts().get<PW>(*pidA);
 	const PW *pB = g.topology().parts().get<PW>(*pidB);
 	assert(pA && pB);
+	assert_brick_colliders(*pA, pathA);
+	assert_brick_colliders(*pB, pathB);
 
 	assert(pA->outgoings().size() == 1);
 	assert(pB->incomings().size() == 1);
@@ -319,10 +353,12 @@ static void test_deallocate_managed_removes_graph_state() {
 
 	std::int64_t env_id = 2;
 	create_env_root(stage, env_id);
-	pxr::SdfPath pathA =
+	auto allocA =
 	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brickA);
-	pxr::SdfPath pathB =
+	auto allocB =
 	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brickB);
+	pxr::SdfPath pathA = std::get<0>(allocA);
+	pxr::SdfPath pathB = std::get<0>(allocB);
 
 	ConnectionSegment cs{};
 	pxr::SdfPath connPath = alloc.allocate_conn_managed(
@@ -340,10 +376,12 @@ static void test_deallocate_managed_removes_graph_state() {
 	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
 	assert(pidA && pidB);
 
-	using PW = SimplePartWrapper<BrickPart>;
+	using PW = UsdPartWrapper<BrickPart>;
 	const PW *pA = g.topology().parts().get<PW>(*pidA);
 	const PW *pB = g.topology().parts().get<PW>(*pidB);
 	assert(pA && pB);
+	assert_brick_colliders(*pA, pathA);
+	assert_brick_colliders(*pB, pathB);
 	assert(pA->outgoings().size() == 1);
 	assert(pB->incomings().size() == 1);
 
@@ -386,8 +424,9 @@ static void test_resync_part_modified_updates_brick() {
 
 	std::int64_t env_id = 9;
 	create_env_root(stage, env_id);
-	pxr::SdfPath path =
+	auto alloc_result =
 	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brick);
+	pxr::SdfPath path = std::get<0>(alloc_result);
 
 	CountingResource arena;
 	G g(stage, &arena);
@@ -399,9 +438,10 @@ static void test_resync_part_modified_updates_brick() {
 	const PartId *pid_before =
 	    g.topology().parts().project_key<pxr::SdfPath, PartId>(path);
 	assert(pid_before);
-	using PW = SimplePartWrapper<BrickPart>;
+	using PW = UsdPartWrapper<BrickPart>;
 	const PW *p_before = g.topology().parts().get<PW>(*pid_before);
 	assert(p_before);
+	assert_brick_colliders(*p_before, path);
 	assert(p_before->wrapped().color() == red);
 
 	pxr::UsdPrim prim = stage->GetPrimAtPath(path);
@@ -415,6 +455,7 @@ static void test_resync_part_modified_updates_brick() {
 	assert(pid_after);
 	const PW *p_after = g.topology().parts().get<PW>(*pid_after);
 	assert(p_after);
+	assert_brick_colliders(*p_after, path);
 	assert(p_after->wrapped().color() == green);
 
 	assert(g.topology().parts().size() == 1);
@@ -436,8 +477,9 @@ static void test_resync_part_becomes_unrecognized() {
 
 	std::int64_t env_id = 10;
 	create_env_root(stage, env_id);
-	pxr::SdfPath path =
+	auto alloc_result =
 	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brick);
+	pxr::SdfPath path = std::get<0>(alloc_result);
 
 	CountingResource arena;
 	G g(stage, &arena);
@@ -470,10 +512,12 @@ static void test_resync_connection_modified_segment_updates_topology() {
 
 	std::int64_t env_id = 11;
 	create_env_root(stage, env_id);
-	pxr::SdfPath pathA =
+	auto allocA =
 	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brickA);
-	pxr::SdfPath pathB =
+	auto allocB =
 	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brickB);
+	pxr::SdfPath pathA = std::get<0>(allocA);
+	pxr::SdfPath pathB = std::get<0>(allocB);
 
 	ConnectionSegment cs{};
 	pxr::SdfPath connPath = alloc.allocate_conn_managed(
@@ -715,8 +759,9 @@ static void test_remove_part_with_unrealized_connection() {
 	create_env_root(stage, env_id);
 
 	// Realized brick part at a managed path.
-	pxr::SdfPath part_path =
+	auto alloc_result =
 	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brickA);
+	pxr::SdfPath part_path = std::get<0>(alloc_result);
 
 	// Hole path lives in the same env, but we deliberately do not
 	// author a brick there so that the connection is unrealized.
@@ -835,10 +880,12 @@ static void test_connect_and_disconnect_realized_graph_api() {
 	assert(g.topology().connection_segments().size() == 1);
 	assert(g.topology().connection_bundles().size() == 1);
 
-	using PW = SimplePartWrapper<BrickPart>;
+	using PW = UsdPartWrapper<BrickPart>;
 	const PW *pA = g.topology().parts().get<PW>(*pidA);
 	const PW *pB = g.topology().parts().get<PW>(*pidB);
 	assert(pA && pB);
+	assert_brick_colliders(*pA, pathA);
+	assert_brick_colliders(*pB, pathB);
 	assert(pA->outgoings().size() == 1);
 	assert(pB->incomings().size() == 1);
 	assert(pA->neighbor_parts().contains(*pidB));

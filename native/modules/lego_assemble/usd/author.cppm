@@ -4,6 +4,7 @@ import std;
 import lego_assemble.core.specs;
 import lego_assemble.core.connections;
 import lego_assemble.usd.tokens;
+import lego_assemble.usd.specs;
 import lego_assemble.utils.conversions;
 import lego_assemble.utils.sdf;
 import lego_assemble.utils.metric_system;
@@ -20,16 +21,17 @@ concept PartAuthor =
 	    requires PartLike<typename T::PartType>;
     } && requires(T t, const pxr::UsdStageRefPtr &stage,
                   const pxr::SdfPath &path, const typename T::PartType &part) {
-	    { t(stage, path, part) } -> std::same_as<void>;
+	    { t(stage, path, part) } -> std::same_as<InterfaceCollidersVector>;
     };
 
 export template <class T, class P>
-concept PartPrototypeNamer = PartLike<P> && std::invocable<T, const P &> &&
-                             requires(T t, const P &part) {
-	                             {
-		                             t(part)
-	                             } -> std::convertible_to<std::string>;
-                             };
+concept PartPrototypeNaming =
+    PartLike<P> && requires(T t, const P &part, const pxr::SdfPath &path) {
+	    { t.get_name(part) } -> std::convertible_to<std::string>;
+	    {
+		    t.get_colliders(part, path)
+	    } -> std::same_as<InterfaceCollidersVector>;
+    };
 
 // This path MUST be sorted after /World due to Omni PhysX's bug.
 // Defected functions:
@@ -51,19 +53,21 @@ concept PartPrototypeNamer = PartLike<P> && std::invocable<T, const P &> &&
 //   passes DefaultPredicate, so loadPhysicsFromPrimitive runs the heavy path and creates the rigid.
 const pxr::SdfPath PrototypesPath{"/_Prototypes"};
 
-export template <PartAuthor PA, PartPrototypeNamer<typename PA::PartType> PN>
+export template <PartAuthor PA, PartPrototypeNaming<typename PA::PartType> PN>
 struct PrototypePartAuthor {
   public:
 	using PartType = typename PA::PartType;
 
-	void operator()(const pxr::UsdStageRefPtr &stage, const pxr::SdfPath &path,
-	                const PartType &part) {
+	InterfaceCollidersVector operator()(const pxr::UsdStageRefPtr &stage,
+	                                    const pxr::SdfPath &path,
+	                                    const PartType &part) {
 		auto layer = stage->GetEditTarget().GetLayer();
 		pxr::SdfChangeBlock _changes;
 		auto class_path = ensure_prototype(stage, part);
 		auto prim = pxr::SdfCreatePrimInLayer(layer, path);
 		prim->SetSpecifier(pxr::SdfSpecifierDef);
 		prim->GetInheritPathList().Add(class_path);
+		return PN{}.get_colliders(part, path);
 	}
 
   private:
@@ -75,7 +79,7 @@ struct PrototypePartAuthor {
 			class_root->SetSpecifier(pxr::SdfSpecifierDef);
 			class_root->SetTypeName(pxr::UsdGeomTokens->Scope);
 		}
-		auto proto_name = PN{}(part);
+		auto proto_name = PN{}.get_name(part);
 		auto proto_path = PrototypesPath.AppendChild(pxr::TfToken(proto_name));
 		if (!layer->GetPrimAtPath(proto_path)) {
 			PA{}(stage, proto_path, part);
@@ -87,8 +91,9 @@ struct PrototypePartAuthor {
 export struct SimpleBrickAuthor {
 	using PartType = BrickPart;
 
-	void operator()(const pxr::UsdStageRefPtr &stage,
-	                const pxr::SdfPath &root_path, const BrickPart &part) {
+	InterfaceCollidersVector operator()(const pxr::UsdStageRefPtr &stage,
+	                                    const pxr::SdfPath &root_path,
+	                                    const BrickPart &part) {
 		MetricSystem metrics(stage);
 		std::array<BrickUnit, 3> dimensions{part.L(), part.W(), part.H()};
 		std::array<double, 3> realDimensions{
@@ -260,12 +265,17 @@ export struct SimpleBrickAuthor {
 		                           positions, pxr::SdfValueRoleNames->Point);
 		SetAttr<pxr::VtIntArray>(studs, pxr::UsdGeomTokens->protoIndices,
 		                         pxr::VtIntArray(positions.size(), 0));
+
+		return {
+		    {BrickPart::HoleId, bodyCollider->GetPath()},
+		    {BrickPart::StudId, topCollider->GetPath()},
+		};
 	}
 };
 static_assert(PartAuthor<SimpleBrickAuthor>);
 
-export struct BrickPrototypeNamer {
-	std::string operator()(const BrickPart &part) {
+export struct BrickPrototypeNaming {
+	std::string get_name(const BrickPart &part) {
 		auto color = part.color();
 		auto L = part.L();
 		auto W = part.W();
@@ -273,11 +283,19 @@ export struct BrickPrototypeNamer {
 		return std::format("Brick_{0}x{1}x{2}_{3:02x}{4:02x}{5:02x}", L, W, H,
 		                   color[0], color[1], color[2]);
 	}
+	InterfaceCollidersVector
+	get_colliders([[maybe_unused]] const BrickPart &part,
+	              const pxr::SdfPath &path) {
+		return {
+		    {BrickPart::HoleId, path.AppendChild(LegoTokens->BodyCollider)},
+		    {BrickPart::StudId, path.AppendChild(LegoTokens->TopCollider)},
+		};
+	}
 };
-static_assert(PartPrototypeNamer<BrickPrototypeNamer, BrickPart>);
+static_assert(PartPrototypeNaming<BrickPrototypeNaming, BrickPart>);
 
 export using PrototypeBrickAuthor =
-    PrototypePartAuthor<SimpleBrickAuthor, BrickPrototypeNamer>;
+    PrototypePartAuthor<SimpleBrickAuthor, BrickPrototypeNaming>;
 static_assert(PartAuthor<PrototypeBrickAuthor>);
 
 // ==== Connections ====
