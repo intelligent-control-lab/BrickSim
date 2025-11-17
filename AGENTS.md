@@ -50,6 +50,7 @@ In `native/modules/lego_assemble`:
    - Quaternions: ordering (xyzw vs wxyz)
 4. Less code > more code: avoid unnecessary abstractions and boilerplate.
 5. Use the `lego_assemble.utils.*` module wherever needed.
+6. Never delete tests because they can't pass. If you do this, you are cheating. A programmer who cheats will be fired.
 
 ## APIs & Docs
 - Isaac Sim 5.1 is partially open‑sourced.
