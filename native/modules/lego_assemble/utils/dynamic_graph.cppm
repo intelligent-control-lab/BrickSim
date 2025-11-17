@@ -10,24 +10,20 @@ namespace lego_assemble {
 // uint32_t is enough
 export using vertex_id = std::uint32_t;
 
-export template <class T>
-concept VisitorLike = std::invocable<T, vertex_id, vertex_id>;
-
 export template <class G>
-concept DynamicGraphLike =
-    requires(G g, const G cg, vertex_id u, vertex_id v,
-             std::function<void(vertex_id, vertex_id)> vis) {
-	    { g.reset(0u) } -> std::same_as<void>;
-	    { cg.num_vertices() } -> std::convertible_to<std::size_t>;
-	    { g.add_vertex() } -> std::same_as<vertex_id>;
-	    { g.erase_vertex(u) } -> std::same_as<bool>;
-	    { g.add_edge(u, v) } -> std::same_as<bool>;
-	    { g.erase_edge(u, v) } -> std::same_as<bool>;
-	    { cg.connected(u, v) } -> std::same_as<bool>; // must be const
-	    { g.clear() } -> std::same_as<void>;
-	    { cg.visit_path(u, v, vis) } -> std::same_as<bool>; // must be const
-    } &&
-    std::constructible_from<G, std::size_t, std::pmr::memory_resource *>;
+concept DynamicGraphLike = requires(G g, const G cg, vertex_id u, vertex_id v) {
+	{ g.reset(0u) } -> std::same_as<void>;
+	{ cg.num_vertices() } -> std::convertible_to<std::size_t>;
+	{ g.add_vertex() } -> std::same_as<vertex_id>;
+	{ g.erase_vertex(u) } -> std::same_as<bool>;
+	{ g.add_edge(u, v) } -> std::same_as<bool>;
+	{ g.erase_edge(u, v) } -> std::same_as<bool>;
+	{ cg.connected(u, v) } -> std::same_as<bool>; // must be const
+	{ g.clear() } -> std::same_as<void>;
+	{
+		cg.path(u, v)
+	} -> std::same_as<std::generator<std::pair<vertex_id, vertex_id>>>;
+} && std::constructible_from<G, std::size_t, std::pmr::memory_resource *>;
 
 // --------- Naive dynamic graph (PMR, fixed-width ints, const connected) ---------
 
@@ -147,11 +143,12 @@ export class NaiveDynamicGraph {
 		alive_count_ = 0;
 	}
 
-	bool visit_path(vertex_id u, vertex_id v, VisitorLike auto &&vis) const {
+	std::generator<std::pair<vertex_id, vertex_id>> path(vertex_id u,
+	                                                     vertex_id v) const {
 		if (!valid(u) || !valid(v))
-			return false;
+			co_return;
 		if (u == v)
-			return true; // empty path is valid
+			co_return; // empty path
 
 		// BFS parent map to reconstruct a simple u->v path.
 		const vertex_id NIL = std::numeric_limits<vertex_id>::max();
@@ -182,7 +179,7 @@ export class NaiveDynamicGraph {
 			}
 		}
 		if (!found)
-			return false;
+			co_return;
 
 		// Reconstruct vertex path [u = p0, p1, ..., pk = v]
 		std::pmr::vector<vertex_id> path{mr_};
@@ -193,9 +190,7 @@ export class NaiveDynamicGraph {
 
 		// Invoke visitor on each consecutive edge (p_i, p_{i+1})
 		for (std::size_t i = 1; i < path.size(); ++i)
-			std::invoke(vis, path[i - 1], path[i]);
-
-		return true;
+			co_yield {path[i - 1], path[i]};
 	}
 
   private:
@@ -323,15 +318,15 @@ class LinkCutForest {
 		return static_cast<std::size_t>(get_size(u));
 	}
 
-	bool for_each_on_path(vertex_id u0, vertex_id v0,
-	                      VisitorLike auto &&vis) const {
+	std::generator<std::pair<vertex_id, vertex_id>> path(vertex_id u0,
+	                                                     vertex_id v0) const {
 		// Empty path => nothing to visit.
 		if (u0 == v0)
-			return true;
+			co_return;
 
 		// Critical correctness check: no path if not connected.
 		if (!connected(u0, v0))
-			return false;
+			co_return;
 
 		const std::uint32_t v = to1(v0);
 
@@ -340,23 +335,30 @@ class LinkCutForest {
 		access(v);
 		splay(v);
 
-		// In-order traversal of the exposed path; lazy flags are pushed top-down.
+		// Iterative in-order traversal of the exposed path.
+		std::pmr::vector<std::uint32_t> stack{mr_};
+		std::uint32_t curr = v;
 		std::uint32_t prev = 0u;
-		auto inorder = [&](auto &&self, std::uint32_t x) -> void {
-			if (!x)
-				return;
-			push(x);               // handle lazy reversal at x
-			self(self, ch_[x][0]); // left subtree
-			if (prev)
-				// report edge (prev -> x) in 0-based ids
-				std::invoke(vis, prev - 1u, x - 1u);
-			prev = x;
-			self(self, ch_[x][1]); // right subtree
-		};
-		inorder(inorder, v);
 
-		// No push_all(v) here; redundant given the per-node push(x) above.
-		return true;
+		while (curr || !stack.empty()) {
+			// Go left as far as possible, pushing lazy flags top-down.
+			while (curr) {
+				push(curr); // handle lazy reversal at curr
+				stack.push_back(curr);
+				curr = ch_[curr][0]; // left child (after push)
+			}
+
+			curr = stack.back();
+			stack.pop_back();
+
+			// Visit node: emit edge from previous to current.
+			if (prev)
+				co_yield {prev - 1u, curr - 1u}; // back to 0-based ids
+			prev = curr;
+
+			// Then traverse right subtree.
+			curr = ch_[curr][1];
+		}
 	}
 
   private:
@@ -709,11 +711,11 @@ export class HolmDeLichtenbergThorup {
 		epoch_ = 1u;
 	}
 
-	bool visit_path(vertex_id u, vertex_id v, VisitorLike auto &&vis) const {
+	std::generator<std::pair<vertex_id, vertex_id>> path(vertex_id u,
+	                                                     vertex_id v) const {
 		if (!valid(u) || !valid(v))
-			return false;
-		return forests_[0].for_each_on_path(u, v,
-		                                    std::forward<decltype(vis)>(vis));
+			co_return;
+		co_yield std::ranges::elements_of(forests_[0].path(u, v));
 	}
 
   private:

@@ -353,13 +353,12 @@ static void test_visit_path_both_impls() {
 		assert(cG == cO);
 
 		std::vector<std::pair<vertex_id, vertex_id>> pg, po;
-		bool rG = G.visit_path(
-		    u, v, [&](vertex_id a, vertex_id b) { pg.emplace_back(a, b); });
-		bool rO = O.visit_path(
-		    u, v, [&](vertex_id a, vertex_id b) { po.emplace_back(a, b); });
-
-		assert(rG == cG);
-		assert(rO == cO);
+		for (auto [a, b] : G.path(u, v)) {
+			pg.emplace_back(a, b);
+		}
+		for (auto [a, b] : O.path(u, v)) {
+			po.emplace_back(a, b);
+		}
 
 		if (cG) {
 			check_path(u, v, pg); // HLT path (tree path)
@@ -370,18 +369,17 @@ static void test_visit_path_both_impls() {
 		}
 	}
 
-	// A quick "dead vertex" check: erase a vertex and ensure visit_path fails.
+	// A quick "dead vertex" check: erase a vertex and ensure path is empty.
 	assert(G.erase_vertex(5) == O.erase_vertex(5));
-	std::vector<std::pair<vertex_id, vertex_id>> tmp;
-	assert(G.visit_path(5, 2, [&](vertex_id, vertex_id) {
-		tmp.emplace_back(0, 0);
-	}) == false);
-	assert(tmp.empty());
-	tmp.clear();
-	assert(O.visit_path(5, 2, [&](vertex_id, vertex_id) {
-		tmp.emplace_back(0, 0);
-	}) == false);
-	assert(tmp.empty());
+	std::vector<std::pair<vertex_id, vertex_id>> tmpG, tmpO;
+	for (auto [a, b] : G.path(5, 2)) {
+		tmpG.emplace_back(a, b);
+	}
+	for (auto [a, b] : O.path(5, 2)) {
+		tmpO.emplace_back(a, b);
+	}
+	assert(tmpG.empty());
+	assert(tmpO.empty());
 }
 
 // ==================

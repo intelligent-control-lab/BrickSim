@@ -113,16 +113,23 @@ static void test_get_interface_spec_and_lookup_visit() {
 	assert(h0 && h0->type == InterfaceType::Hole);
 	assert(!missing);
 
-	// visit_part_path: same vertex returns true and invokes visitor zero times
-	int steps = 0;
-	bool ok_same = g.visit_part_path<PartId>(
-	    0, 0, [&](const PartId &, const PartId &) { ++steps; });
-	assert(ok_same && steps == 0);
+	// part_path: same vertex yields an empty sequence
+	int steps_same = 0;
+	for (auto [a, b] : g.part_path<PartId>(0, 0)) {
+		(void)a;
+		(void)b;
+		++steps_same;
+	}
+	assert(steps_same == 0);
 
-	// visit_part_path: missing part id returns false
-	bool ok_missing =
-	    g.visit_part_path<PartId>(123456u, 0, [&](auto &, auto &) { ++steps; });
-	assert(!ok_missing);
+	// part_path: missing part id yields an empty sequence
+	int steps_missing = 0;
+	for (auto [a, b] : g.part_path<PartId>(PartId{123456u}, PartId{0})) {
+		(void)a;
+		(void)b;
+		++steps_missing;
+	}
+	assert(steps_missing == 0);
 
 	// lookup_transform: identity for u==v; nullopt for unconnected pair
 	auto T00 = g.lookup_transform<PartId>(0, 0);

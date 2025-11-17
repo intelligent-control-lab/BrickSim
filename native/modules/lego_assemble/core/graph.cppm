@@ -307,33 +307,33 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		return dynamic_graph_;
 	}
 
-	template <class Id, class VisitorId = Id>
-	bool visit_part_path(const Id &u, const Id &v, auto &&vis) const
-	    requires(
-	        PartKeys::template contains<Id> &&
-	        PartKeys::template contains<VisitorId> &&
-	        std::invocable<decltype(vis), const VisitorId &, const VisitorId &>)
+	template <class InputId, class OutputId = InputId>
+	std::generator<std::pair<OutputId, OutputId>>
+	part_path(const InputId &u, const InputId &v) const
+	    requires(PartKeys::template contains<InputId> &&
+	             PartKeys::template contains<OutputId>)
 	{
-		const auto *u_dgid = parts_.template project_key<Id, DgVertexId>(u);
-		const auto *v_dgid = parts_.template project_key<Id, DgVertexId>(v);
+		const auto *u_dgid =
+		    parts_.template project_key<InputId, DgVertexId>(u);
+		const auto *v_dgid =
+		    parts_.template project_key<InputId, DgVertexId>(v);
 		if (!u_dgid || !v_dgid) {
-			return false;
+			co_return;
 		}
-		return dynamic_graph_.visit_path(
-		    u_dgid->value(), v_dgid->value(),
-		    [&](vertex_id p_vid, vertex_id q_vid) {
-			    const auto *p_id =
-			        parts_.template project_key<DgVertexId, VisitorId>(
-			            DgVertexId(p_vid));
-			    const auto *q_id =
-			        parts_.template project_key<DgVertexId, VisitorId>(
-			            DgVertexId(q_vid));
-			    if (p_id && q_id) {
-				    std::invoke(vis, *p_id, *q_id);
-			    } else {
-				    std::unreachable();
-			    }
-		    });
+		for (auto [p_vid, q_vid] :
+		     dynamic_graph_.path(u_dgid->value(), v_dgid->value())) {
+			const auto *p_id =
+			    parts_.template project_key<DgVertexId, OutputId>(
+			        DgVertexId(p_vid));
+			const auto *q_id =
+			    parts_.template project_key<DgVertexId, OutputId>(
+			        DgVertexId(q_vid));
+			if (p_id && q_id) {
+				co_yield std::make_pair(*p_id, *q_id);
+			} else {
+				std::unreachable();
+			}
+		}
 	}
 
 	template <class Id>
@@ -341,18 +341,23 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 	    requires(PartKeys::template contains<Id>)
 	{
 		Transformd T = SE3d{}.identity();
-		bool found = visit_part_path<Id, PartId>(
-		    u, v, [&](const PartId &a_id, const PartId &b_id) {
-			    auto it = conn_bundles_.find({a_id, b_id});
-			    if (it == conn_bundles_.end()) {
-				    std::unreachable();
-			    }
-			    const auto &bundle = it->second.wrapped();
-			    const auto &T_a_b = a_id < b_id ? bundle.T_a_b : bundle.T_b_a;
-			    T = T * T_a_b;
-		    });
-		if (found) {
-			return SE3d{}.project(T);
+		bool has_path = false;
+		for (auto [a_pid, b_pid] : part_path<Id, PartId>(u, v)) {
+			const auto it = conn_bundles_.find({a_pid, b_pid});
+			if (it == conn_bundles_.end()) {
+				std::unreachable();
+			}
+			const auto &bundle = it->second.wrapped();
+			const auto &T_a_b = a_pid < b_pid ? bundle.T_a_b : bundle.T_b_a;
+			T = T * T_a_b;
+			has_path = true;
+		}
+		if (has_path) {
+			return T;
+		}
+		// Is u equal to v and valid?
+		if (u == v && parts_.alive(u)) {
+			return T;
 		} else {
 			return std::nullopt;
 		}
