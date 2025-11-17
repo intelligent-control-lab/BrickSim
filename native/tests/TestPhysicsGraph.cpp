@@ -17,10 +17,35 @@ import lego_assemble.vendor.pxr;
 #include <cstdint>
 #include <initializer_list>
 #include <memory_resource>
+#include <vector>
 
 using namespace lego_assemble;
 
-using TestGraph = PhysicsLegoGraph<BrickPart>;
+struct TestHooks {
+	struct AssembledEvent {
+		ConnSegId csid;
+		ConnSegRef csref;
+		ConnectionSegment conn_seg;
+	};
+
+	std::vector<AssembledEvent> assembled_events;
+	std::vector<ConnSegId> disassembled_events;
+
+	void on_assembled(ConnSegId csid, const ConnSegRef &csref,
+	                  const ConnectionSegment &conn_seg) {
+		assembled_events.push_back(AssembledEvent{
+		    .csid = csid,
+		    .csref = csref,
+		    .conn_seg = conn_seg,
+		});
+	}
+
+	void on_disassembled(ConnSegId csid) {
+		disassembled_events.push_back(csid);
+	}
+};
+
+using TestGraph = PhysicsLegoGraph<type_list<BrickPart>, TestHooks>;
 using TopologyGraph = TestGraph::TopologyGraph;
 using SkipGraphT = TestGraph::SkipGraph;
 using ShapeMappingT = TestGraph::ShapeMapping;
@@ -31,14 +56,16 @@ static_assert(TopologyGraph::HasOnConnectedHook);
 static_assert(TopologyGraph::HasOnDisconnectingHook);
 static_assert(TopologyGraph::HasOnBundleCreatedHook);
 static_assert(TopologyGraph::HasOnBundleRemovingHook);
+static_assert(TestGraph::HasOnAssembledHook);
+static_assert(TestGraph::HasOnDisassembledHook);
 
 // Ensure PhysX actor key is integrated into the part key set
 static_assert(
     TopologyGraph::PartKeys::template contains<physx::PxRigidActor *>);
-// Graph constructibility signature (PxPhysics*, pmr)
+// Graph constructibility signature (PxPhysics*, hooks*, pmr)
 static_assert(
     std::is_constructible_v<TestGraph, MetricSystem, physx::PxPhysics *,
-                            std::pmr::memory_resource *>);
+                            TestHooks *, std::pmr::memory_resource *>);
 
 static_assert(std::is_class_v<SkipGraphT>);
 static_assert(std::is_class_v<ShapeMappingT>);
@@ -128,6 +155,7 @@ static physx::PxRigidDynamic *create_brick_actor(PhysxEnv &env,
 struct PhysicsGraphFixture {
 	PhysxEnv env;
 	MetricSystem metrics{1.0, 1.0, 1.0};
+	TestHooks hooks{};
 	TestGraph graph;
 
 	physx::PxRigidDynamic *actorA{nullptr};
@@ -141,8 +169,9 @@ struct PhysicsGraphFixture {
 	PartId pidB{};
 	ConnSegId csid{};
 
-	PhysicsGraphFixture()
-	    : env{}, metrics{1.0, 1.0, 1.0}, graph(metrics, env.physics) {
+	PhysicsGraphFixture(bool create_initial_connection = true)
+	    : env{}, metrics{1.0, 1.0, 1.0}, hooks{},
+	      graph(metrics, env.physics, &hooks) {
 		// Bind PhysX scene so callbacks are installed.
 		assert(graph.bind_physx_scene(env.scene));
 
@@ -181,22 +210,24 @@ struct PhysicsGraphFixture {
 		pidA = *pidA_opt;
 		pidB = *pidB_opt;
 
-		// Create one connection segment between stud(A) and hole(B).
-		ConnectionSegment cs{};
-		auto csid_opt = graph.topology().connect(
-		    InterfaceRef{pidA, BrickPart::StudId},
-		    InterfaceRef{pidB, BrickPart::HoleId}, std::tuple{}, cs);
-		assert(csid_opt.has_value());
-		csid = *csid_opt;
+		if (create_initial_connection) {
+			// Create one connection segment between stud(A) and hole(B).
+			ConnectionSegment cs{};
+			auto csid_opt = graph.topology().connect(
+			    InterfaceRef{pidA, BrickPart::StudId},
+			    InterfaceRef{pidB, BrickPart::HoleId}, std::tuple{}, cs);
+			assert(csid_opt.has_value());
+			csid = *csid_opt;
 
-		// At this point, topology hooks should have created a base constraint.
-		const auto &bundles = graph.topology().connection_bundles();
-		assert(bundles.size() == 1);
-		ConnectionEndpoint ep{pidA, pidB};
-		auto it = bundles.find(ep);
-		assert(it != bundles.end());
-		const auto &cbw = it->second;
-		assert(cbw.px_constraint != nullptr);
+			// At this point, topology hooks should have created a base constraint.
+			const auto &bundles = graph.topology().connection_bundles();
+			assert(bundles.size() == 1);
+			ConnectionEndpoint ep{pidA, pidB};
+			auto it = bundles.find(ep);
+			assert(it != bundles.end());
+			const auto &cbw = it->second;
+			assert(cbw.px_constraint != nullptr);
+		}
 	}
 
 	~PhysicsGraphFixture() {
@@ -373,22 +404,22 @@ make_contact_payload(PhysicsGraphFixture &fx, physx::PxShape *shape0,
 }
 
 // Exercise PhysxBinding::onContact branches, including both the early-exit
-// paths and the successful assembly detection path feeding the pending queue.
+// paths and the successful assembly detection path feeding the hooks + graph.
 static void test_event_callback_onContact() {
-	PhysicsGraphFixture fx;
-
-	// One simulation step to ensure getElapsedTime(scene) returns a non-zero dt.
-	fx.env.scene->simulate(1.0f / 60.0f);
-	fx.env.scene->fetchResults(true);
-
-	physx::PxSimulationEventCallback *cb_base =
-	    fx.env.scene->getSimulationEventCallback();
-	assert(cb_base != nullptr);
-	auto *proxy = dynamic_cast<PxSimulationEventCallbackProxy *>(cb_base);
-	assert(proxy != nullptr);
-
 	// Case 1: header flags mark removed actor => early return.
 	{
+		PhysicsGraphFixture fx(/*create_initial_connection=*/false);
+
+		// One simulation step to ensure getElapsedTime(scene) returns a non-zero dt.
+		fx.env.scene->simulate(1.0f / 60.0f);
+		fx.env.scene->fetchResults(true);
+
+		physx::PxSimulationEventCallback *cb_base =
+		    fx.env.scene->getSimulationEventCallback();
+		assert(cb_base != nullptr);
+		auto *proxy = dynamic_cast<PxSimulationEventCallbackProxy *>(cb_base);
+		assert(proxy != nullptr);
+
 		ContactPayload payload =
 		    make_contact_payload(fx, fx.studShapeA, fx.holeShapeB,
 		                         physx::PxTransform(physx::PxVec3(0, 0, 0)),
@@ -396,12 +427,25 @@ static void test_event_callback_onContact() {
 		                         /*set_impulse=*/true, physx::PxVec3(0, 0, -1));
 		payload.header.flags = physx::PxContactPairHeaderFlag::eREMOVED_ACTOR_0;
 		proxy->onContact(payload.header, &payload.pair, 1);
-		auto pending = fx.graph.drain_pending_assemblies();
-		assert(pending.empty());
+
+		fx.graph.process_pending_events();
+		assert(fx.hooks.assembled_events.empty());
+		assert(fx.graph.topology().connection_segments().size() == 0);
 	}
 
 	// Case 2: shapes not mapped to any interface => ignored.
 	{
+		PhysicsGraphFixture fx(/*create_initial_connection=*/false);
+
+		fx.env.scene->simulate(1.0f / 60.0f);
+		fx.env.scene->fetchResults(true);
+
+		physx::PxSimulationEventCallback *cb_base =
+		    fx.env.scene->getSimulationEventCallback();
+		assert(cb_base != nullptr);
+		auto *proxy = dynamic_cast<PxSimulationEventCallbackProxy *>(cb_base);
+		assert(proxy != nullptr);
+
 		physx::PxShape *unmappedA = nullptr;
 		physx::PxShape *unmappedB = nullptr;
 		// Create two extra shapes, but do not register them in interface_shapes
@@ -419,8 +463,10 @@ static void test_event_callback_onContact() {
 		                         physx::PxTransform(physx::PxVec3(0, 0, 0)),
 		                         /*set_impulse=*/true, physx::PxVec3(0, 0, -1));
 		proxy->onContact(payload.header, &payload.pair, 1);
-		auto pending = fx.graph.drain_pending_assemblies();
-		assert(pending.empty());
+
+		fx.graph.process_pending_events();
+		assert(fx.hooks.assembled_events.empty());
+		assert(fx.graph.topology().connection_segments().size() == 0);
 
 		// Clean up the extra shapes (actors hold references).
 		unmappedA->release();
@@ -430,19 +476,43 @@ static void test_event_callback_onContact() {
 	// Case 3: mapped interfaces but type combination is Hole/Hole =>
 	// rejected before force threshold.
 	{
+		PhysicsGraphFixture fx(/*create_initial_connection=*/false);
+
+		fx.env.scene->simulate(1.0f / 60.0f);
+		fx.env.scene->fetchResults(true);
+
+		physx::PxSimulationEventCallback *cb_base =
+		    fx.env.scene->getSimulationEventCallback();
+		assert(cb_base != nullptr);
+		auto *proxy = dynamic_cast<PxSimulationEventCallbackProxy *>(cb_base);
+		assert(proxy != nullptr);
+
 		ContactPayload payload =
 		    make_contact_payload(fx, fx.holeShapeA, fx.holeShapeB,
 		                         physx::PxTransform(physx::PxVec3(0, 0, 0)),
 		                         physx::PxTransform(physx::PxVec3(0, 0, 0)),
 		                         /*set_impulse=*/true, physx::PxVec3(0, 0, -1));
 		proxy->onContact(payload.header, &payload.pair, 1);
-		auto pending = fx.graph.drain_pending_assemblies();
-		assert(pending.empty());
+
+		fx.graph.process_pending_events();
+		assert(fx.hooks.assembled_events.empty());
+		assert(fx.graph.topology().connection_segments().size() == 0);
 	}
 
 	// Case 4: full assembly detection path with stud(A) contacting hole(B)
 	// and sufficient force to satisfy thresholds.
 	{
+		PhysicsGraphFixture fx(/*create_initial_connection=*/false);
+
+		fx.env.scene->simulate(1.0f / 60.0f);
+		fx.env.scene->fetchResults(true);
+
+		physx::PxSimulationEventCallback *cb_base =
+		    fx.env.scene->getSimulationEventCallback();
+		assert(cb_base != nullptr);
+		auto *proxy = dynamic_cast<PxSimulationEventCallbackProxy *>(cb_base);
+		assert(proxy != nullptr);
+
 		physx::PxTransform poseStud(physx::PxVec3(0.0f, 0.0f, 0.0f));
 		physx::PxTransform poseHole(physx::PxVec3(
 		    0.0f, 0.0f,
@@ -455,21 +525,29 @@ static void test_event_callback_onContact() {
 		    physx::PxVec3(0, 0, -1));
 		proxy->onContact(payload.header, &payload.pair, 1);
 
-		auto pending = fx.graph.drain_pending_assemblies();
-		assert(pending.size() == 1);
-		const PendingAssembly &evt = pending[0];
+		fx.graph.process_pending_events();
+		assert(fx.hooks.assembled_events.size() == 1);
+		const auto &evt = fx.hooks.assembled_events[0];
+
+		// Exactly one connection segment should now exist in the topology.
+		const auto &conn_segs = fx.graph.topology().connection_segments();
+		assert(conn_segs.size() == 1);
+		const ConnSegRef *stored_csref =
+		    conn_segs.template project<ConnSegId, ConnSegRef>(evt.csid);
+		assert(stored_csref != nullptr);
+		assert(*stored_csref == evt.csref);
+
 		// Expect interfaces: stud on part A, hole on part B.
 		assert((evt.csref.first == InterfaceRef{fx.pidA, BrickPart::StudId}));
 		assert((evt.csref.second == InterfaceRef{fx.pidB, BrickPart::HoleId}));
 
 		// ConnectionSegment should represent a perfect aligned stack:
 		assert(evt.conn_seg.offset == Eigen::Vector2i(0, 0));
-	}
 
-	// After draining, queue must be empty.
-	{
-		auto pending = fx.graph.drain_pending_assemblies();
-		assert(pending.empty());
+		// After processing once, subsequent processing should be idempotent.
+		fx.graph.process_pending_events();
+		assert(fx.hooks.assembled_events.size() == 1);
+		assert(fx.graph.topology().connection_segments().size() == 1);
 	}
 }
 

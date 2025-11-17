@@ -21,9 +21,12 @@ import lego_assemble.vendor.eigen;
 
 namespace lego_assemble {
 
-export struct PendingAssembly {
+struct PendingAssembly {
 	ConnSegRef csref;
 	ConnectionSegment conn_seg;
+};
+struct PendingDisassembly {
+	ConnSegId csid;
 };
 
 export using InterfaceShapePair = std::pair<InterfaceId, physx::PxShape *>;
@@ -82,9 +85,12 @@ physx::PxRigidActor *cast_rigid_actor(physx::PxActor *actor) {
 	}
 }
 
-export template <PartLike... Ps> class PhysicsLegoGraph {
+export template <class Ps, class Hooks> class PhysicsLegoGraph;
+
+export template <PartLike... Ps, class Hooks>
+class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
   public:
-	using Self = PhysicsLegoGraph<Ps...>;
+	using Self = PhysicsLegoGraph<type_list<Ps...>, Hooks>;
 
   private:
 	struct TopologyHooks {
@@ -128,7 +134,7 @@ export template <PartLike... Ps> class PhysicsLegoGraph {
 		void on_part_removing(PartId pid, PhysicsPartWrapper<P> &pw) {
 			// Update shape <-> interface mapping
 			for (const auto &[if_id, shape] : pw.interface_shapes()) {
-				if (!owner_->shape_mapping_.erase_by_key<InterfaceRef>(
+				if (!owner_->shape_mapping_.template erase_by_key<InterfaceRef>(
 				        {pid, if_id})) {
 					throw std::runtime_error(std::format(
 					    "Failed to unmap shape from interface {} of part id {}",
@@ -148,12 +154,14 @@ export template <PartLike... Ps> class PhysicsLegoGraph {
 			// Set up PhysX shapes for connection segment
 			if (auto stud_shape_mapping =
 			        owner_->shape_mapping_
-			            .project<InterfaceRef, ActorShapePair>(stud_if_ref)) {
+			            .template project<InterfaceRef, ActorShapePair>(
+			                stud_if_ref)) {
 				csw.px_stud_shape = *stud_shape_mapping;
 			}
 			if (auto hole_shape_mapping =
 			        owner_->shape_mapping_
-			            .project<InterfaceRef, ActorShapePair>(hole_if_ref)) {
+			            .template project<InterfaceRef, ActorShapePair>(
+			                hole_if_ref)) {
 				csw.px_hole_shape = *hole_shape_mapping;
 			}
 
@@ -464,18 +472,36 @@ export template <PartLike... Ps> class PhysicsLegoGraph {
 	    MultiKeyMap<type_list<InterfaceRef, ActorShapePair>, InterfaceSpec,
 	                type_list<InterfaceRefHash, ActorShapePairHash>>;
 
+	static constexpr bool HasOnAssembledHook =
+	    requires(Hooks &hooks, ConnSegId csid, const ConnSegRef &csref,
+	             const ConnectionSegment &conn_seg) {
+		    {
+			    // Called after a new connection segment is assembled
+			    hooks.on_assembled(csid, csref, conn_seg)
+		    } -> std::same_as<void>;
+	    };
+
+	static constexpr bool HasOnDisassembledHook =
+	    requires(Hooks &hooks, ConnSegId csid) {
+		    {
+			    // Called after a connection segment is disassembled
+			    hooks.on_disassembled(csid)
+		    } -> std::same_as<void>;
+	    };
+
 	explicit PhysicsLegoGraph(
 	    const MetricSystem &metrics, physx::PxPhysics *px,
+	    Hooks *hooks = nullptr,
 	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
-	    : res_{mr}, metrics_{metrics}, px_{px}, hooks_{this},
-	      topology_{&hooks_, mr},
+	    : res_{mr}, metrics_{metrics}, px_{px}, hooks_{hooks},
+	      topology_hooks_{this}, topology_{&topology_hooks_, mr},
 	      skip_graph_{std::bind(&PhysicsLegoGraph::create_aux_constraint, this,
 	                            std::placeholders::_1, std::placeholders::_2),
 	                  std::bind(&PhysicsLegoGraph::destroy_constraint, this,
 	                            std::placeholders::_1),
 	                  mr},
-	      shape_mapping_{mr}, contact_exclusions_{mr}, pending_assemblies_{mr} {
-	}
+	      shape_mapping_{mr}, contact_exclusions_{mr}, pending_assemblies_{mr},
+	      pending_disassemblies_{mr} {}
 	~PhysicsLegoGraph() = default;
 	PhysicsLegoGraph(const PhysicsLegoGraph &) = delete;
 	PhysicsLegoGraph &operator=(const PhysicsLegoGraph &) = delete;
@@ -498,13 +524,30 @@ export template <PartLike... Ps> class PhysicsLegoGraph {
 		return assembly_checker_;
 	}
 
-	std::pmr::vector<PendingAssembly> drain_pending_assemblies() {
-		std::pmr::vector<PendingAssembly> batch(res_);
-		{
-			std::lock_guard lock{pending_assemblies_mutex_};
-			batch.swap(pending_assemblies_);
+	void process_pending_events() {
+		std::lock_guard lock{pending_mutex_};
+		for (const auto &[csid] : pending_disassemblies_) {
+			bool disconnected = topology_.disconnect(csid).has_value();
+			if (disconnected) {
+				if constexpr (HasOnDisassembledHook) {
+					if (hooks_) {
+						hooks_->on_disassembled(csid);
+					}
+				}
+			}
 		}
-		return batch;
+		for (const auto &[csref, conn_seg] : pending_assemblies_) {
+			const auto &[stud_if, hole_if] = csref;
+			std::optional<ConnSegId> csid =
+			    topology_.connect(stud_if, hole_if, std::tuple{}, conn_seg);
+			if (csid.has_value()) {
+				if constexpr (HasOnAssembledHook) {
+					if (hooks_) {
+						hooks_->on_assembled(*csid, csref, conn_seg);
+					}
+				}
+			}
+		}
 	}
 
 	bool bind_physx_scene(physx::PxScene *px_scene) {
@@ -523,11 +566,20 @@ export template <PartLike... Ps> class PhysicsLegoGraph {
 		return true;
 	}
 
+	Hooks *get_hooks() const noexcept {
+		return hooks_;
+	}
+
+	void set_hooks(Hooks *hooks) noexcept {
+		hooks_ = hooks;
+	}
+
   private:
 	std::pmr::memory_resource *res_;
 	MetricSystem metrics_;
 	physx::PxPhysics *px_;
-	TopologyHooks hooks_;
+	Hooks *hooks_;
+	TopologyHooks topology_hooks_;
 	TopologyGraph topology_;
 	SkipGraph skip_graph_;
 	ShapeMapping shape_mapping_;
@@ -535,11 +587,18 @@ export template <PartLike... Ps> class PhysicsLegoGraph {
 	std::unique_ptr<PhysxBinding> physx_binding_;
 	AssemblyChecker assembly_checker_;
 	std::pmr::vector<PendingAssembly> pending_assemblies_;
-	std::mutex pending_assemblies_mutex_;
+	std::pmr::vector<PendingDisassembly> pending_disassemblies_;
+	std::mutex pending_mutex_;
 
 	void enqueue_pending_assembly(auto &&...args) {
-		std::lock_guard lock{pending_assemblies_mutex_};
+		std::lock_guard lock{pending_mutex_};
 		pending_assemblies_.emplace_back(std::forward<decltype(args)>(args)...);
+	}
+
+	void enqueue_pending_disassembly(auto &&...args) {
+		std::lock_guard lock{pending_mutex_};
+		pending_disassemblies_.emplace_back(
+		    std::forward<decltype(args)>(args)...);
 	}
 
 	physx::PxConstraint *create_aux_constraint(PartId a_id, PartId b_id) {

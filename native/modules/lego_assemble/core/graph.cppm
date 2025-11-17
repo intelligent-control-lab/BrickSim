@@ -706,6 +706,14 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		return csid;
 	}
 
+	Hooks *get_hooks() const noexcept {
+		return hooks_;
+	}
+
+	void set_hooks(Hooks *hooks) noexcept {
+		hooks_ = hooks;
+	}
+
   private:
 	std::pmr::memory_resource *res_;
 	PartStore parts_;
