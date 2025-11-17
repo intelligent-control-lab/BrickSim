@@ -35,6 +35,7 @@ module;
 #include <pxr/usd/usd/tokens.h>
 #include <pxr/usd/usdGeom/metrics.h>
 #include <pxr/usd/usdGeom/tokens.h>
+#include <pxr/usd/usdGeom/xformCache.h>
 #include <pxr/usd/usdGeom/xformOp.h>
 #include <pxr/usd/usdGeom/xformable.h>
 #include <pxr/usd/usdPhysics/metrics.h>
@@ -104,6 +105,8 @@ using pxr::TfWeakPtr;
 using pxr::UsdGeomGetStageMetersPerUnit;
 using pxr::UsdGeomTokens;
 using pxr::UsdGeomXformable;
+using pxr::UsdGeomXformCache;
+using pxr::UsdGeomXformOp;
 using pxr::UsdNotice;
 using pxr::UsdPhysicsGetStageKilogramsPerUnit;
 using pxr::UsdPhysicsTokens;

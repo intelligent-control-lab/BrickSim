@@ -7,14 +7,26 @@ import lego_assemble.core.connections;
 import lego_assemble.usd.allocator;
 import lego_assemble.usd.author;
 import lego_assemble.usd.parse;
+import lego_assemble.utils.conversions;
+import lego_assemble.utils.metric_system;
+import lego_assemble.utils.transforms;
 import lego_assemble.utils.type_list;
 import lego_assemble.utils.poly_store;
 import lego_assemble.utils.unique_set;
 import lego_assemble.utils.sdf_path_map;
+import lego_assemble.utils.usd_envs;
+import lego_assemble.utils.sdf;
 import lego_assemble.vendor.pxr;
 import lego_assemble.vendor.carb;
+import lego_assemble.vendor.eigen;
 
 namespace lego_assemble {
+
+export enum class AlignPolicy {
+	None,       // just connect, no pose changes
+	MoveStudCC, // move stud's component to match hole
+	MoveHoleCC, // move hole's component to match stud
+};
 
 template <class T> using GetPartType = typename T::PartType;
 
@@ -267,9 +279,10 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		return true;
 	}
 
-	std::optional<pxr::SdfPath> connect(const InterfaceRef &stud_if,
-	                                    const InterfaceRef &hole_if,
-	                                    ConnectionSegment conn_seg) {
+	std::optional<pxr::SdfPath>
+	connect(const InterfaceRef &stud_if, const InterfaceRef &hole_if,
+	        ConnectionSegment conn_seg,
+	        AlignPolicy align_policy = AlignPolicy::MoveHoleCC) {
 		auto [stud_pid, stud_ifid] = stud_if;
 		auto [hole_pid, hole_ifid] = hole_if;
 		const pxr::SdfPath *stud_path_ptr =
@@ -284,6 +297,45 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		const pxr::SdfPath &stud_path = *stud_path_ptr;
 		const pxr::SdfPath &hole_path = *hole_path_ptr;
 		pxr::SdfChangeBlock _changes;
+
+		bool connected_before = topology_.is_connected(stud_pid, hole_pid);
+		if (!connected_before && align_policy != AlignPolicy::None) {
+			auto stud_spec = topology_.get_interface_spec(stud_if);
+			auto hole_spec = topology_.get_interface_spec(hole_if);
+			if (!stud_spec || !hole_spec) {
+				log_warn("UsdLegoGraph: failed to get interface specs when "
+				         "connecting stud {} to hole {}",
+				         stud_pid, hole_pid);
+				return std::nullopt;
+			}
+			Transformd T_stud_hole =
+			    conn_seg.compute_transform(*stud_spec, *hole_spec);
+
+			if (align_policy == AlignPolicy::MoveStudCC) {
+				auto T_env_hole = part_pose_relative_to_env(hole_pid);
+				if (!T_env_hole) {
+					log_warn(
+					    "UsdLegoGraph: failed to get env-relative pose "
+					    "for hole part {} when connecting stud {} to hole {}",
+					    hole_pid, stud_pid, hole_pid);
+					return std::nullopt;
+				}
+				auto T_env_stud = (*T_env_hole) * inverse(T_stud_hole);
+				set_component_transform(stud_pid, T_env_stud);
+
+			} else if (align_policy == AlignPolicy::MoveHoleCC) {
+				auto T_env_stud = part_pose_relative_to_env(stud_pid);
+				if (!T_env_stud) {
+					log_warn(
+					    "UsdLegoGraph: failed to get env-relative pose "
+					    "for stud part {} when connecting stud {} to hole {}",
+					    stud_pid, stud_pid, hole_pid);
+					return std::nullopt;
+				}
+				auto T_env_hole = (*T_env_stud) * T_stud_hole;
+				set_component_transform(hole_pid, T_env_hole);
+			}
+		}
 		pxr::SdfPath conn_path = allocator_.allocate_conn_managed(
 		    stud_path, stud_ifid, hole_path, hole_ifid, conn_seg);
 		std::optional<ConnSegId> csid = topology_.connect(
@@ -347,6 +399,165 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 			}
 		}
 		return true;
+	}
+
+	// Returns {}^{env}T_part in SI units (meters), if the part has
+	// a prim path that can be resolved into an env root.
+	std::optional<Transformd> part_pose_relative_to_env(PartId pid) const {
+		// 1. Map part id -> prim path
+		const pxr::SdfPath *prim_path_ptr =
+		    topology_.parts().template project_key<PartId, pxr::SdfPath>(pid);
+		if (!prim_path_ptr) {
+			// No USD prim for this part
+			return std::nullopt;
+		}
+		const pxr::SdfPath &prim_path = *prim_path_ptr;
+
+		// 2. Determine env id and env root path (/World or /World/envs/env_X)
+		auto env_id_opt = envIdFromPath(prim_path);
+		if (!env_id_opt) {
+			// Part is not under a known env root
+			return std::nullopt;
+		}
+		std::int64_t env_id = *env_id_opt;
+		pxr::SdfPath env_path = pathForEnv(env_id);
+
+		// 3. Look up prims on the stage
+		pxr::UsdPrim prim = stage_->GetPrimAtPath(prim_path);
+		pxr::UsdPrim env_prim = stage_->GetPrimAtPath(env_path);
+		if (!prim || !env_prim) {
+			return std::nullopt;
+		}
+
+		// 4. Compose env->part matrix in STAGE UNITS using USD's xform ops.
+		pxr::GfMatrix4d M_env_part = ComputeRelativeTransform(prim, env_prim);
+
+		// 5. Convert matrix to SE(3) in STAGE UNITS
+		auto T_stage = as<Transformd>(M_env_part);
+
+		// 6. Convert translation from stage units to meters (SI).
+		return MetricSystem(stage_).to_m(T_stage);
+	}
+
+	// Set the transform of a part w.r.t. its env in USD.
+	// And propagate the transforms to its connected component.
+	std::size_t set_component_transform(PartId u0, const Transformd &T_u0) {
+		// Look up the anchor part's prim path.
+		const pxr::SdfPath *u0_path_ptr =
+		    topology_.parts().template project_key<PartId, pxr::SdfPath>(u0);
+		if (!u0_path_ptr) {
+			log_warn("UsdLegoGraph::set_component_transform: anchor part {} "
+			         "has no associated SdfPath",
+			         u0);
+			return 0;
+		}
+		const pxr::SdfPath &u0_path = *u0_path_ptr;
+
+		// Resolve env root for this part.
+		auto env_id_opt = envIdFromPath(u0_path);
+		if (!env_id_opt.has_value()) {
+			log_warn("UsdLegoGraph::set_component_transform: anchor prim {} is "
+			         "outside any known env",
+			         u0_path.GetText());
+			return 0;
+		}
+		std::int64_t env_id = *env_id_opt;
+		pxr::SdfPath env_path = pathForEnv(env_id);
+
+		pxr::UsdPrim env_prim = stage_->GetPrimAtPath(env_path);
+		if (!env_prim) {
+			log_error(
+			    "UsdLegoGraph::set_component_transform: env prim {} not found",
+			    env_path.GetText());
+			return 0;
+		}
+
+		MetricSystem metrics(stage_);
+		auto layer = stage_->GetEditTarget().GetLayer();
+
+		std::size_t updated_count = 0;
+		pxr::SdfChangeBlock _changes;
+		for (auto [v, T_u0_v] : topology_.part_bfs(u0)) {
+			// For each part v in the connected component, we have:
+			//   T_u0    : {}^{env}T_{u0} (env <- u0), in meters
+			//   T_u0_v  : {}^{u0}T_v    (u0 <- v), relative graph transform
+			// So the desired env-local pose for v is:
+			//   T_env_v = T_u0 * T_u0_v  (env <- v), in meters.
+			Transformd T_env_v = SE3d{}.project(T_u0 * T_u0_v);
+
+			// Convert to stage units.
+			Transformd T_env_v_stage = metrics.from_m(T_env_v);
+
+			// Map PartId -> SdfPath.
+			const pxr::SdfPath *v_path_ptr =
+			    topology_.parts().template project_key<PartId, pxr::SdfPath>(v);
+			if (!v_path_ptr) {
+				log_error("UsdLegoGraph::set_component_transform: part {} has "
+				          "no SdfPath mapping",
+				          v);
+				continue;
+			}
+			const pxr::SdfPath &v_path = *v_path_ptr;
+
+			// All parts in a connected component are expected to live in the
+			// same env. If not, skip and warn.
+			auto v_env_id_opt = envIdFromPath(v_path);
+			if (!v_env_id_opt.has_value() || v_env_id_opt.value() != env_id) {
+				log_warn("UsdLegoGraph::set_component_transform: part {} at "
+				         "path {} is in a different env; skipping",
+				         v, v_path.GetText());
+				continue;
+			}
+
+			pxr::UsdPrim v_prim = stage_->GetPrimAtPath(v_path);
+			if (!v_prim) {
+				log_warn("UsdLegoGraph::set_component_transform: prim {} not "
+				         "found on stage; skipping",
+				         v_path.GetText());
+				continue;
+			}
+
+			// Compute the current env->parent transform for v's parent.
+			pxr::UsdPrim parent_prim = v_prim.GetParent();
+			pxr::GfMatrix4d M_env_parent(1.0);
+
+			if (parent_prim && parent_prim != env_prim) {
+				M_env_parent = ComputeRelativeTransform(parent_prim, env_prim);
+			}
+
+			// Desired env->v matrix in stage units.
+			pxr::GfTransform env_v_tf =
+			    as<pxr::GfTransform>(T_env_v_stage.first, T_env_v_stage.second);
+			pxr::GfMatrix4d M_env_v = env_v_tf.GetMatrix();
+
+			// Solve for parent->v local transform:
+			//   M_env_v = M_env_parent * M_parent_v
+			// => M_parent_v = M_env_parent^{-1} * M_env_v
+			pxr::GfMatrix4d M_parent_v = M_env_parent.GetInverse() * M_env_v;
+
+			// Decompose into translate + rotate (+ unit scale), and author
+			// using separate xformOps
+			pxr::GfVec3d translate = M_parent_v.ExtractTranslation();
+			pxr::GfQuatd orient = M_parent_v.ExtractRotationQuat();
+			pxr::GfVec3f scale(1.0f, 1.0f, 1.0f);
+
+			pxr::SdfPrimSpecHandle prim_spec = layer->GetPrimAtPath(v_path);
+			if (!prim_spec) {
+				prim_spec = pxr::SdfCreatePrimInLayer(layer, v_path);
+				prim_spec->SetSpecifier(pxr::SdfSpecifierDef);
+			}
+
+			SetAttr<pxr::GfVec3d>(prim_spec, xformOpTranslate, translate);
+			SetAttr<pxr::GfQuatd>(prim_spec, xformOpOrient, orient);
+			SetAttr<pxr::GfVec3f>(prim_spec, xformOpScale, scale);
+			SetAttr<pxr::VtTokenArray>(
+			    prim_spec, pxr::UsdGeomTokens->xformOpOrder,
+			    {xformOpTranslate, xformOpOrient, xformOpScale});
+
+			updated_count++;
+		}
+
+		return updated_count;
 	}
 
   private:

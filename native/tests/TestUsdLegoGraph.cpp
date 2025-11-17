@@ -10,6 +10,9 @@ import lego_assemble.usd.tokens;
 import lego_assemble.utils.transforms;
 import lego_assemble.utils.type_list;
 import lego_assemble.utils.usd_envs;
+import lego_assemble.utils.sdf;
+import lego_assemble.utils.conversions;
+import lego_assemble.utils.metric_system;
 import lego_assemble.vendor.eigen;
 import lego_assemble.vendor.pxr;
 
@@ -90,6 +93,25 @@ static BrickPart make_brick(BrickUnit L, BrickUnit W, PlateUnit H,
 static bool contains_path(const std::vector<pxr::SdfPath> &paths,
                           const pxr::SdfPath &target) {
 	return std::ranges::find(paths, target) != paths.end();
+}
+
+static bool almost_equal(const pxr::GfVec3d &a, const pxr::GfVec3d &b,
+                         double eps = 1e-6) {
+	return (a - b).GetLengthSq() <= eps * eps;
+}
+
+static bool almost_equal(const pxr::GfQuatd &a, const pxr::GfQuatd &b,
+                         double eps = 1e-6) {
+	pxr::GfQuatd da = a;
+	da.Normalize();
+	pxr::GfQuatd db = b;
+	db.Normalize();
+	// Quaternions q and -q represent the same rotation.
+	double dot = da.GetReal() * db.GetReal() +
+	             da.GetImaginary()[0] * db.GetImaginary()[0] +
+	             da.GetImaginary()[1] * db.GetImaginary()[1] +
+	             da.GetImaginary()[2] * db.GetImaginary()[2];
+	return std::abs(std::abs(dot) - 1.0) <= eps;
 }
 
 // --------------------------- tests ---------------------------
@@ -860,6 +882,266 @@ static void test_connect_invalid_interfaces_returns_nullopt() {
 	assert(!connPath_opt.has_value());
 }
 
+// connect() with AlignPolicy::MoveHoleCC should:
+// - keep the stud's connected component pose fixed (when it already has
+//   an env-local pose),
+// - move the hole's connected component so that the gain-graph relative
+//   transform between stud and hole is satisfied in env coordinates.
+static void test_connect_align_move_hole_component() {
+	auto stage = make_stage();
+	CountingResource arena;
+	G g(stage, &arena);
+
+	BrickColor red{255, 0, 0};
+	BrickColor green{0, 255, 0};
+	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickB = make_brick(2, 4, BrickHeightPerPlate, green);
+
+	std::int64_t env_id = 11;
+	create_env_root(stage, env_id);
+
+	auto pathA_opt = g.add_part(env_id, brickA);
+	auto pathB_opt = g.add_part(env_id, brickB);
+	assert(pathA_opt.has_value() && pathB_opt.has_value());
+	pxr::SdfPath pathA = *pathA_opt;
+	pxr::SdfPath pathB = *pathB_opt;
+
+	const PartId *pidA =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
+	const PartId *pidB =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	assert(pidA && pidB);
+
+	// Give the stud's connected component (A) a non-trivial env-local pose.
+	Eigen::Quaterniond qA(
+	    Eigen::AngleAxisd(0.35 * std::numbers::pi, Eigen::Vector3d::UnitX()));
+	Eigen::Vector3d tA(0.1, -0.2, 0.3);
+	Transformd T_env_A{qA, tA};
+
+	std::size_t updated = g.set_component_transform(*pidA, T_env_A);
+	// Only A is in its component at this point.
+	assert(updated == 1);
+
+	// Record the stud's env-local pose before connect.
+	std::optional<Transformd> poseA_before_opt =
+	    g.part_pose_relative_to_env(*pidA);
+	assert(poseA_before_opt.has_value());
+	const Transformd &T_env_A_before = *poseA_before_opt;
+
+	// Connect A (stud) to B (hole) and let connect() move hole's CC.
+	InterfaceRef stud_if{*pidA, BrickPart::StudId};
+	InterfaceRef hole_if{*pidB, BrickPart::HoleId};
+	ConnectionSegment cs{};
+	auto connPath_opt =
+	    g.connect(stud_if, hole_if, cs, AlignPolicy::MoveHoleCC);
+	assert(connPath_opt.has_value());
+
+	// After connect, A's env pose must be unchanged.
+	std::optional<Transformd> poseA_after_opt =
+	    g.part_pose_relative_to_env(*pidA);
+	std::optional<Transformd> poseB_after_opt =
+	    g.part_pose_relative_to_env(*pidB);
+	assert(poseA_after_opt.has_value());
+	assert(poseB_after_opt.has_value());
+
+	const Transformd &T_env_A_after = *poseA_after_opt;
+	const Transformd &T_env_B_after = *poseB_after_opt;
+
+	const auto &[qA_before, tA_before] = T_env_A_before;
+	const auto &[qA_after, tA_after] = T_env_A_after;
+	assert(
+	    almost_equal(as<pxr::GfQuatd>(qA_before), as<pxr::GfQuatd>(qA_after)));
+	assert(
+	    almost_equal(as<pxr::GfVec3d>(tA_before), as<pxr::GfVec3d>(tA_after)));
+
+	// The env-local transform between A and B must match the gain-graph
+	// prediction {}^{A}T_B.
+	auto T_A_B_opt = g.topology().lookup_transform<PartId>(*pidA, *pidB);
+	assert(T_A_B_opt.has_value());
+	const Transformd &T_A_B_graph = *T_A_B_opt;
+
+	// {}^{A}T_B_read = {}^{A}T_env^{-1} * {}^{env}T_B
+	Transformd T_A_B_read =
+	    SE3d{}.project(inverse(T_env_A_after) * T_env_B_after);
+
+	const auto &[q_graph, t_graph] = T_A_B_graph;
+	const auto &[q_read, t_read] = T_A_B_read;
+
+	assert(almost_equal(as<pxr::GfQuatd>(q_read), as<pxr::GfQuatd>(q_graph)));
+	assert(almost_equal(as<pxr::GfVec3d>(t_read), as<pxr::GfVec3d>(t_graph)));
+}
+
+// connect() with AlignPolicy::MoveStudCC should:
+// - keep the hole's connected component pose fixed (when it already has
+//   an env-local pose),
+// - move the stud's connected component so that the gain-graph relative
+//   transform between stud and hole is satisfied in env coordinates.
+static void test_connect_align_move_stud_component() {
+	auto stage = make_stage();
+	CountingResource arena;
+	G g(stage, &arena);
+
+	BrickColor red{255, 0, 0};
+	BrickColor green{0, 255, 0};
+	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickB = make_brick(2, 4, BrickHeightPerPlate, green);
+
+	std::int64_t env_id = 12;
+	create_env_root(stage, env_id);
+
+	auto pathA_opt = g.add_part(env_id, brickA);
+	auto pathB_opt = g.add_part(env_id, brickB);
+	assert(pathA_opt.has_value() && pathB_opt.has_value());
+	pxr::SdfPath pathA = *pathA_opt;
+	pxr::SdfPath pathB = *pathB_opt;
+
+	const PartId *pidA =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
+	const PartId *pidB =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	assert(pidA && pidB);
+
+	// Give the hole's connected component (B) a non-trivial env-local pose.
+	Eigen::Quaterniond qB(
+	    Eigen::AngleAxisd(-0.2 * std::numbers::pi, Eigen::Vector3d::UnitZ()));
+	Eigen::Vector3d tB(-0.4, 0.5, 0.2);
+	Transformd T_env_B{qB, tB};
+
+	std::size_t updated = g.set_component_transform(*pidB, T_env_B);
+	// Only B is in its component at this point.
+	assert(updated == 1);
+
+	std::optional<Transformd> poseB_before_opt =
+	    g.part_pose_relative_to_env(*pidB);
+	assert(poseB_before_opt.has_value());
+	const Transformd &T_env_B_before = *poseB_before_opt;
+
+	// Connect A (stud) to B (hole) and let connect() move stud's CC.
+	InterfaceRef stud_if{*pidA, BrickPart::StudId};
+	InterfaceRef hole_if{*pidB, BrickPart::HoleId};
+	ConnectionSegment cs{};
+	auto connPath_opt =
+	    g.connect(stud_if, hole_if, cs, AlignPolicy::MoveStudCC);
+	assert(connPath_opt.has_value());
+
+	std::optional<Transformd> poseA_after_opt =
+	    g.part_pose_relative_to_env(*pidA);
+	std::optional<Transformd> poseB_after_opt =
+	    g.part_pose_relative_to_env(*pidB);
+	assert(poseA_after_opt.has_value());
+	assert(poseB_after_opt.has_value());
+
+	const Transformd &T_env_A_after = *poseA_after_opt;
+	const Transformd &T_env_B_after = *poseB_after_opt;
+
+	// Hole's env pose must be unchanged.
+	const auto &[qB_before, tB_before] = T_env_B_before;
+	const auto &[qB_after, tB_after] = T_env_B_after;
+	assert(
+	    almost_equal(as<pxr::GfQuatd>(qB_before), as<pxr::GfQuatd>(qB_after)));
+	assert(
+	    almost_equal(as<pxr::GfVec3d>(tB_before), as<pxr::GfVec3d>(tB_after)));
+
+	// Stud's env pose must agree with the gain-graph:
+	// {}^{env}T_A_expected = {}^{env}T_B * ({}^{A}T_B)^{-1}
+	auto T_A_B_opt = g.topology().lookup_transform<PartId>(*pidA, *pidB);
+	assert(T_A_B_opt.has_value());
+	const Transformd &T_A_B_graph = *T_A_B_opt;
+	Transformd T_env_A_expected =
+	    SE3d{}.project(T_env_B_after * inverse(T_A_B_graph));
+
+	const auto &[qA_exp, tA_exp] = T_env_A_expected;
+	const auto &[qA_after, tA_after2] = T_env_A_after;
+
+	assert(almost_equal(as<pxr::GfQuatd>(qA_after), as<pxr::GfQuatd>(qA_exp)));
+	assert(almost_equal(as<pxr::GfVec3d>(tA_after2), as<pxr::GfVec3d>(tA_exp)));
+}
+
+// connect() with AlignPolicy::None should not change env-local poses of either
+// connected component; it should only add topology + USD connection prim.
+static void test_connect_align_policy_none_preserves_env_poses() {
+	auto stage = make_stage();
+	CountingResource arena;
+	G g(stage, &arena);
+
+	BrickColor red{255, 0, 0};
+	BrickColor green{0, 255, 0};
+	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickB = make_brick(2, 4, BrickHeightPerPlate, green);
+
+	std::int64_t env_id = 13;
+	create_env_root(stage, env_id);
+
+	auto pathA_opt = g.add_part(env_id, brickA);
+	auto pathB_opt = g.add_part(env_id, brickB);
+	assert(pathA_opt.has_value() && pathB_opt.has_value());
+	pxr::SdfPath pathA = *pathA_opt;
+	pxr::SdfPath pathB = *pathB_opt;
+
+	const PartId *pidA =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
+	const PartId *pidB =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	assert(pidA && pidB);
+
+	// Give both components distinct env-local poses while they are still
+	// disconnected.
+	Eigen::Quaterniond qA(
+	    Eigen::AngleAxisd(0.1 * std::numbers::pi, Eigen::Vector3d::UnitY()));
+	Eigen::Vector3d tA(0.2, 0.1, -0.3);
+	Transformd T_env_A{qA, tA};
+
+	Eigen::Quaterniond qB(
+	    Eigen::AngleAxisd(-0.3 * std::numbers::pi, Eigen::Vector3d::UnitX()));
+	Eigen::Vector3d tB(-0.5, 0.4, 0.6);
+	Transformd T_env_B{qB, tB};
+
+	std::size_t updatedA = g.set_component_transform(*pidA, T_env_A);
+	std::size_t updatedB = g.set_component_transform(*pidB, T_env_B);
+	assert(updatedA == 1);
+	assert(updatedB == 1);
+
+	std::optional<Transformd> poseA_before_opt =
+	    g.part_pose_relative_to_env(*pidA);
+	std::optional<Transformd> poseB_before_opt =
+	    g.part_pose_relative_to_env(*pidB);
+	assert(poseA_before_opt.has_value());
+	assert(poseB_before_opt.has_value());
+
+	const Transformd &T_env_A_before = *poseA_before_opt;
+	const Transformd &T_env_B_before = *poseB_before_opt;
+
+	InterfaceRef stud_if{*pidA, BrickPart::StudId};
+	InterfaceRef hole_if{*pidB, BrickPart::HoleId};
+	ConnectionSegment cs{};
+	auto connPath_opt = g.connect(stud_if, hole_if, cs, AlignPolicy::None);
+	assert(connPath_opt.has_value());
+
+	std::optional<Transformd> poseA_after_opt =
+	    g.part_pose_relative_to_env(*pidA);
+	std::optional<Transformd> poseB_after_opt =
+	    g.part_pose_relative_to_env(*pidB);
+	assert(poseA_after_opt.has_value());
+	assert(poseB_after_opt.has_value());
+
+	const Transformd &T_env_A_after = *poseA_after_opt;
+	const Transformd &T_env_B_after = *poseB_after_opt;
+
+	const auto &[qA_before, tA_before] = T_env_A_before;
+	const auto &[qA_after, tA_after2] = T_env_A_after;
+	assert(
+	    almost_equal(as<pxr::GfQuatd>(qA_before), as<pxr::GfQuatd>(qA_after)));
+	assert(
+	    almost_equal(as<pxr::GfVec3d>(tA_before), as<pxr::GfVec3d>(tA_after2)));
+
+	const auto &[qB_before, tB_before] = T_env_B_before;
+	const auto &[qB_after, tB_after] = T_env_B_after;
+	assert(
+	    almost_equal(as<pxr::GfQuatd>(qB_before), as<pxr::GfQuatd>(qB_after)));
+	assert(
+	    almost_equal(as<pxr::GfVec3d>(tB_before), as<pxr::GfVec3d>(tB_after)));
+}
+
 // disconnect() on a non-existent or unmanaged path should return false and
 // not affect state.
 static void test_disconnect_nonexistent_or_unmanaged_returns_false() {
@@ -897,6 +1179,270 @@ static void test_disconnect_nonexistent_or_unmanaged_returns_false() {
 	assert(!g2.disconnect(unmanaged_conn));
 }
 
+// set_component_transform on a single managed part should author translate,
+// orient and scale xformOps that match the requested env-local pose.
+static void test_set_component_transform_single_part() {
+	auto stage = make_stage();
+	CountingResource arena;
+	G g(stage, &arena);
+
+	BrickColor red{255, 0, 0};
+	BrickPart brick = make_brick(2, 4, BrickHeightPerPlate, red);
+
+	std::int64_t env_id = kNoEnv;
+	auto path_opt = g.add_part(env_id, brick);
+	assert(path_opt.has_value());
+	pxr::SdfPath path = *path_opt;
+
+	const PartId *pid =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(path);
+	assert(pid);
+
+	// Desired env-local pose for the anchor (in meters).
+	Eigen::Quaterniond q = Eigen::Quaterniond::Identity();
+	Eigen::Vector3d t(0.1, -0.2, 0.3);
+	Transformd T_env{q, t};
+
+	std::size_t updated = g.set_component_transform(*pid, T_env);
+	assert(updated == 1);
+
+	pxr::UsdPrim prim = stage->GetPrimAtPath(path);
+	assert(prim.IsValid());
+	pxr::UsdGeomXformable xf(prim);
+	assert(bool(xf));
+
+	bool resets_stack = false;
+	std::vector<pxr::UsdGeomXformOp> ops = xf.GetOrderedXformOps(&resets_stack);
+	assert(ops.size() == 3);
+	assert(ops[0].GetOpName() == pxr::TfToken("xformOp:translate"));
+	assert(ops[1].GetOpName() == pxr::TfToken("xformOp:orient"));
+	assert(ops[2].GetOpName() == pxr::TfToken("xformOp:scale"));
+
+	pxr::GfMatrix4d M_local;
+	bool resets = false;
+	assert(xf.GetLocalTransformation(&M_local, &resets));
+
+	pxr::GfVec3d got_t = M_local.ExtractTranslation();
+	pxr::GfQuatd got_q = M_local.ExtractRotationQuat();
+
+	MetricSystem metrics(stage);
+	pxr::GfVec3d exp_t(metrics.from_m(t[0]), metrics.from_m(t[1]),
+	                   metrics.from_m(t[2]));
+
+	assert(almost_equal(got_t, exp_t));
+	assert(almost_equal(got_q, pxr::GfQuatd(1.0, 0.0, 0.0, 0.0)));
+}
+
+// set_component_transform on a connected component should move both parts
+// consistently with the gain-graph relative transform.
+static void test_set_component_transform_two_parts_connected() {
+	auto stage = make_stage();
+	CountingResource arena;
+	G g(stage, &arena);
+
+	BrickColor red{255, 0, 0};
+	BrickColor green{0, 255, 0};
+	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickB = make_brick(2, 4, BrickHeightPerPlate, green);
+
+	std::int64_t env_id = 7;
+	create_env_root(stage, env_id);
+
+	auto pathA_opt = g.add_part(env_id, brickA);
+	auto pathB_opt = g.add_part(env_id, brickB);
+	assert(pathA_opt.has_value() && pathB_opt.has_value());
+	pxr::SdfPath pathA = *pathA_opt;
+	pxr::SdfPath pathB = *pathB_opt;
+
+	const PartId *pidA =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
+	const PartId *pidB =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	assert(pidA && pidB);
+
+	// Connect stud(A) to hole(B) with default ConnectionSegment,
+	// which encodes a deterministic transform between A and B.
+	InterfaceRef stud_if{*pidA, BrickPart::StudId};
+	InterfaceRef hole_if{*pidB, BrickPart::HoleId};
+	ConnectionSegment cs{};
+	auto connPath_opt = g.connect(stud_if, hole_if, cs);
+	assert(connPath_opt.has_value());
+
+	// Choose a non-trivial env pose for A.
+	Eigen::Quaterniond qA(
+	    Eigen::AngleAxisd(0.25 * std::numbers::pi, Eigen::Vector3d::UnitZ()));
+	Eigen::Vector3d tA(0.3, 0.4, 0.5);
+	Transformd T_env_A{qA, tA};
+
+	std::size_t updated = g.set_component_transform(*pidA, T_env_A);
+	// Both A and B should be updated.
+	assert(updated == 2);
+
+	pxr::UsdPrim primA = stage->GetPrimAtPath(pathA);
+	pxr::UsdPrim primB = stage->GetPrimAtPath(pathB);
+	assert(primA.IsValid() && primB.IsValid());
+	pxr::UsdGeomXformable xfA(primA);
+	pxr::UsdGeomXformable xfB(primB);
+	assert(bool(xfA) && bool(xfB));
+
+	// Check A's env-local pose matches the requested one.
+	pxr::UsdPrim env_prim =
+	    stage->GetPrimAtPath(pathForEnv(env_id)); // /World/envs/env_7
+
+	pxr::GfMatrix4d M_env_A = ComputeRelativeTransform(primA, env_prim);
+	pxr::GfMatrix4d M_env_B = ComputeRelativeTransform(primB, env_prim);
+
+	pxr::GfVec3d got_tA = M_env_A.ExtractTranslation();
+	pxr::GfQuatd got_qA = M_env_A.ExtractRotationQuat();
+
+	MetricSystem metricsA(stage);
+	Transformd T_env_A_stage = metricsA.from_m(T_env_A);
+	pxr::GfTransform env_A_tf =
+	    as<pxr::GfTransform>(T_env_A_stage.first, T_env_A_stage.second);
+	pxr::GfMatrix4d M_env_A_expected = env_A_tf.GetMatrix();
+	pxr::GfVec3d exp_tA = M_env_A_expected.ExtractTranslation();
+	pxr::GfQuatd exp_qA = M_env_A_expected.ExtractRotationQuat();
+
+	assert(almost_equal(got_tA, exp_tA));
+	assert(almost_equal(got_qA, exp_qA));
+
+	// And that B's env pose matches the gain-graph prediction:
+	// {}^{env}T_B_expected = {}^{env}T_A * {}^{A}T_B
+	auto T_A_B_opt = g.topology().lookup_transform<PartId>(*pidA, *pidB);
+	assert(T_A_B_opt.has_value());
+	Transformd T_env_B_expected = SE3d{}.project(T_env_A * *T_A_B_opt);
+	Transformd T_env_B_expected_stage =
+	    MetricSystem(stage).from_m(T_env_B_expected);
+	pxr::GfTransform env_B_tf = as<pxr::GfTransform>(
+	    T_env_B_expected_stage.first, T_env_B_expected_stage.second);
+	pxr::GfMatrix4d M_env_B_expected = env_B_tf.GetMatrix();
+
+	pxr::GfVec3d got_tB = M_env_B.ExtractTranslation();
+	pxr::GfQuatd got_qB = M_env_B.ExtractRotationQuat();
+	pxr::GfVec3d exp_tB = M_env_B_expected.ExtractTranslation();
+	pxr::GfQuatd exp_qB = M_env_B_expected.ExtractRotationQuat();
+
+	assert(almost_equal(got_tB, exp_tB));
+	assert(almost_equal(got_qB, exp_qB));
+}
+
+// part_pose_relative_to_env on a single managed part with default pose
+// should return identity (env-local) in SI.
+static void test_part_pose_relative_to_env_single_part() {
+	auto stage = make_stage();
+	CountingResource arena;
+	G g(stage, &arena);
+
+	BrickColor red{255, 0, 0};
+	BrickPart brick = make_brick(2, 4, BrickHeightPerPlate, red);
+
+	std::int64_t env_id = kNoEnv;
+	auto path_opt = g.add_part(env_id, brick);
+	assert(path_opt.has_value());
+	pxr::SdfPath path = *path_opt;
+
+	const PartId *pid =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(path);
+	assert(pid);
+
+	std::optional<Transformd> pose_opt = g.part_pose_relative_to_env(*pid);
+	assert(pose_opt.has_value());
+	const Transformd &T = *pose_opt;
+
+	const auto &[q, t] = T;
+	// Identity rotation and zero translation in SI.
+	assert(almost_equal(as<pxr::GfQuatd>(q), pxr::GfQuatd(1.0, 0.0, 0.0, 0.0)));
+	assert(almost_equal(as<pxr::GfVec3d>(t), pxr::GfVec3d(0.0, 0.0, 0.0)));
+}
+
+// part_pose_relative_to_env should agree with the gain-graph prediction
+// after set_component_transform on a connected component.
+static void test_part_pose_relative_to_env_two_parts_connected() {
+	auto stage = make_stage();
+	CountingResource arena;
+	G g(stage, &arena);
+
+	BrickColor red{255, 0, 0};
+	BrickColor green{0, 255, 0};
+	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickB = make_brick(2, 4, BrickHeightPerPlate, green);
+
+	std::int64_t env_id = 9;
+	create_env_root(stage, env_id);
+
+	auto pathA_opt = g.add_part(env_id, brickA);
+	auto pathB_opt = g.add_part(env_id, brickB);
+	assert(pathA_opt.has_value() && pathB_opt.has_value());
+	pxr::SdfPath pathA = *pathA_opt;
+	pxr::SdfPath pathB = *pathB_opt;
+
+	const PartId *pidA =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
+	const PartId *pidB =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	assert(pidA && pidB);
+
+	// Connect A and B with default ConnectionSegment.
+	InterfaceRef stud_if{*pidA, BrickPart::StudId};
+	InterfaceRef hole_if{*pidB, BrickPart::HoleId};
+	ConnectionSegment cs{};
+	auto connPath_opt = g.connect(stud_if, hole_if, cs);
+	assert(connPath_opt.has_value());
+
+	// Set a non-trivial env pose for A in SI.
+	Eigen::Quaterniond qA(
+	    Eigen::AngleAxisd(0.25 * std::numbers::pi, Eigen::Vector3d::UnitZ()));
+	Eigen::Vector3d tA(0.2, -0.1, 0.6);
+	Transformd T_env_A{qA, tA};
+
+	std::size_t updated = g.set_component_transform(*pidA, T_env_A);
+	assert(updated == 2);
+
+	// Read back env-local poses via part_pose_relative_to_env.
+	std::optional<Transformd> poseA_opt = g.part_pose_relative_to_env(*pidA);
+	std::optional<Transformd> poseB_opt = g.part_pose_relative_to_env(*pidB);
+	assert(poseA_opt.has_value());
+	assert(poseB_opt.has_value());
+
+	const Transformd &T_env_A_read = *poseA_opt;
+	const Transformd &T_env_B_read = *poseB_opt;
+
+	// Build expected env-local transform for A using the same USD
+	// pipeline as set_component_transform (SI -> stage -> GfTransform).
+	MetricSystem metricsA(stage);
+	Transformd T_env_A_stage = metricsA.from_m(T_env_A);
+	pxr::GfTransform env_A_tf =
+	    as<pxr::GfTransform>(T_env_A_stage.first, T_env_A_stage.second);
+	pxr::GfMatrix4d M_env_A_expected = env_A_tf.GetMatrix();
+	pxr::GfQuatd qA_exp_gf = M_env_A_expected.ExtractRotationQuat();
+	pxr::GfVec3d tA_exp_stage = M_env_A_expected.ExtractTranslation();
+	Eigen::Vector3d tA_exp_m = metricsA.to_m(as<Eigen::Vector3d>(tA_exp_stage));
+
+	// A: pose must match the requested T_env_A (up to numeric tolerance),
+	// as interpreted through USD's transform extraction.
+	const auto &[qA_read, tA_read] = T_env_A_read;
+	assert(almost_equal(as<pxr::GfQuatd>(qA_read), qA_exp_gf));
+	assert(almost_equal(as<pxr::GfVec3d>(tA_read), as<pxr::GfVec3d>(tA_exp_m)));
+
+	// B: pose must match T_env_A * {}^{A}T_B from the gain graph.
+	auto T_A_B_opt = g.topology().lookup_transform<PartId>(*pidA, *pidB);
+	assert(T_A_B_opt.has_value());
+	Transformd T_env_B_expected = SE3d{}.project(T_env_A * *T_A_B_opt);
+	const auto &[qB_read, tB_read] = T_env_B_read;
+
+	// Expected env-local transform for B via the same USD pipeline.
+	Transformd T_env_B_expected_stage = metricsA.from_m(T_env_B_expected);
+	pxr::GfTransform env_B_tf = as<pxr::GfTransform>(
+	    T_env_B_expected_stage.first, T_env_B_expected_stage.second);
+	pxr::GfMatrix4d M_env_B_expected = env_B_tf.GetMatrix();
+	pxr::GfQuatd qB_exp_gf = M_env_B_expected.ExtractRotationQuat();
+	pxr::GfVec3d tB_exp_stage = M_env_B_expected.ExtractTranslation();
+	Eigen::Vector3d tB_exp_m = metricsA.to_m(as<Eigen::Vector3d>(tB_exp_stage));
+
+	assert(almost_equal(as<pxr::GfQuatd>(qB_read), qB_exp_gf));
+	assert(almost_equal(as<pxr::GfVec3d>(tB_read), as<pxr::GfVec3d>(tB_exp_m)));
+}
+
 } // namespace
 
 int main() {
@@ -915,6 +1461,13 @@ int main() {
 	test_remove_part_with_unrealized_connection();
 	test_connect_and_disconnect_realized_graph_api();
 	test_connect_invalid_interfaces_returns_nullopt();
+	test_connect_align_move_hole_component();
+	test_connect_align_move_stud_component();
+	test_connect_align_policy_none_preserves_env_poses();
 	test_disconnect_nonexistent_or_unmanaged_returns_false();
+	test_set_component_transform_single_part();
+	test_set_component_transform_two_parts_connected();
+	test_part_pose_relative_to_env_single_part();
+	test_part_pose_relative_to_env_two_parts_connected();
 	return 0;
 }

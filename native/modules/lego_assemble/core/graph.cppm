@@ -307,6 +307,15 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		return dynamic_graph_;
 	}
 
+	bool is_connected(PartId u, PartId v) const {
+		const auto *u_dgid = parts_.template project_key<PartId, DgVertexId>(u);
+		const auto *v_dgid = parts_.template project_key<PartId, DgVertexId>(v);
+		if (!u_dgid || !v_dgid) {
+			return false;
+		}
+		return dynamic_graph_.connected(u_dgid->value(), v_dgid->value());
+	}
+
 	template <class InputId = PartId, class OutputId = InputId>
 	std::generator<std::pair<OutputId, OutputId>>
 	part_path(const InputId &u, const InputId &v) const
