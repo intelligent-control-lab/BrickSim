@@ -139,7 +139,7 @@ concept ConnBundleWrapperLike =
 // For indexing vertices in the dynamic graph
 export using DgVertexId = TypedId<struct DgVertexTag, std::uint32_t>;
 
-struct NoHooks {};
+export struct NoHooks {};
 
 export template <
     class Ps, template <class> class PartWrapper = SimplePartWrapper,
@@ -767,7 +767,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		return csid;
 	}
 
-	Hooks *get_hooks() const noexcept {
+	Hooks *get_hooks() noexcept {
 		return hooks_;
 	}
 

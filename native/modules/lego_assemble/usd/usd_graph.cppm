@@ -46,11 +46,13 @@ export template <PartLike P> struct UsdPartWrapper : SimplePartWrapper<P> {
 
 template <class T> using GetPartType = typename T::PartType;
 
-export template <class Parts, class PartAuthors, class PartParsers>
+export template <class Parts, class PartAuthors, class PartParsers,
+                 class Hooks = NoHooks>
 class UsdLegoGraph;
 
-export template <class... Ps, class... PAs, class... PPs>
-class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
+export template <class... Ps, class... PAs, class... PPs, class Hooks>
+class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
+                   Hooks> {
   public:
 	using PartAuthorList = type_list<PAs...>;
 	using PartParserList = type_list<PPs...>;
@@ -70,9 +72,37 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	              type_list<pxr::SdfPath>, type_list<pxr::SdfPath::Hash>,
 	              type_list<std::equal_to<>>, SimpleWrapper<ConnectionSegment>,
 	              type_list<pxr::SdfPath>, type_list<pxr::SdfPath::Hash>,
-	              type_list<std::equal_to<>>, SimpleWrapper<ConnectionBundle>>;
-	using Self =
-	    UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>>;
+	              type_list<std::equal_to<>>, SimpleWrapper<ConnectionBundle>,
+	              Hooks>;
+	using Self = UsdLegoGraph<type_list<Ps...>, type_list<PAs...>,
+	                          type_list<PPs...>, Hooks>;
+
+	// Re-export hook detection traits
+	template <class P>
+	static constexpr bool HasOnPartAddedHook =
+	    TopologyGraph::template HasOnPartAddedHook<P>;
+
+	static constexpr bool HasAllOnPartAddedHooks =
+	    TopologyGraph::HasAllOnPartAddedHooks;
+
+	template <class P>
+	static constexpr bool HasOnPartRemovingHook =
+	    TopologyGraph::template HasOnPartRemovingHook<P>;
+
+	static constexpr bool HasAllOnPartRemovingHooks =
+	    TopologyGraph::HasAllOnPartRemovingHooks;
+
+	static constexpr bool HasOnBundleCreatedHook =
+	    TopologyGraph::HasOnBundleCreatedHook;
+
+	static constexpr bool HasOnBundleRemovingHook =
+	    TopologyGraph::HasOnBundleRemovingHook;
+
+	static constexpr bool HasOnConnectedHook =
+	    TopologyGraph::HasOnConnectedHook;
+
+	static constexpr bool HasOnDisconnectingHook =
+	    TopologyGraph::HasOnDisconnectingHook;
 
 	template <PartLike P>
 	    requires PartAuthorPartTypes::template
@@ -101,6 +131,14 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	// Direct edit to topology is disallowed.
 	const TopologyGraph &topology() const {
 		return topology_;
+	}
+
+	Hooks *get_hooks() noexcept {
+		return topology_.get_hooks();
+	}
+
+	void set_hooks(Hooks *hooks) noexcept {
+		topology_.set_hooks(hooks);
 	}
 
 	std::vector<pxr::SdfPath> unrealized_parts() const {

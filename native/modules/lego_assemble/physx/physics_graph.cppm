@@ -566,7 +566,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		return true;
 	}
 
-	Hooks *get_hooks() const noexcept {
+	Hooks *get_hooks() noexcept {
 		return hooks_;
 	}
 

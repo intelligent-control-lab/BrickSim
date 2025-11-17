@@ -1490,6 +1490,210 @@ static void test_part_pose_relative_to_env_two_parts_connected() {
 	assert(almost_equal(as<pxr::GfVec3d>(tB_read), as<pxr::GfVec3d>(tB_exp_m)));
 }
 
+// --------------------------- hook tests ---------------------------
+
+struct Hooks;
+using GH = UsdLegoGraph<Parts, PartAuthors, PartParsers, Hooks>;
+
+struct Hooks {
+	using PW = UsdPartWrapper<BrickPart>;
+	using CSW = SimpleWrapper<ConnectionSegment>;
+	using CBW = SimpleWrapper<ConnectionBundle>;
+
+	GH *g = nullptr;
+
+	int added_calls = 0;
+	int removing_calls = 0;
+	int connected_calls = 0;
+	int disconnecting_calls = 0;
+	int bundle_created_calls = 0;
+	int bundle_removing_calls = 0;
+
+	PartId last_added_pid{};
+	bool added_pw_matches_store = false;
+
+	bool removing_alive_in_store = false;
+	bool removing_has_any_connections = false;
+
+	ConnSegId last_csid{};
+	ConnSegRef last_csref{};
+	bool connect_bundle_has_csid = false;
+	bool disconnect_bundle_has_csid = false;
+
+	ConnectionEndpoint last_created_ep{0, 0};
+	ConnectionEndpoint last_removed_ep{0, 0};
+	std::size_t created_bundle_size = 0;
+	std::size_t removing_bundle_size = 0;
+
+	template <class P> void on_part_added(PartId pid, UsdPartWrapper<P> &pw) {
+		++added_calls;
+		last_added_pid = pid;
+		const auto *stored =
+		    g->topology().parts().template get<UsdPartWrapper<P>>(pid);
+		added_pw_matches_store = (stored == &pw);
+	}
+
+	template <class P>
+	void on_part_removing(PartId pid, UsdPartWrapper<P> &pw) {
+		++removing_calls;
+		removing_alive_in_store = g->topology().parts().alive(pid);
+		removing_has_any_connections =
+		    (!pw.incomings().empty() || !pw.outgoings().empty());
+	}
+
+	void on_connected(ConnSegId csid, const ConnSegRef &csref,
+	                  const InterfaceSpec &, const InterfaceSpec &, CSW &,
+	                  CBW &cbw) {
+		++connected_calls;
+		last_csid = csid;
+		last_csref = csref;
+		connect_bundle_has_csid = cbw.wrapped().conn_seg_ids.contains(csid);
+	}
+
+	void on_disconnecting(ConnSegId csid, const ConnSegRef &, CSW &, CBW &cbw) {
+		++disconnecting_calls;
+		disconnect_bundle_has_csid = cbw.wrapped().conn_seg_ids.contains(csid);
+	}
+
+	void on_bundle_created(const ConnectionEndpoint &ep, CBW &cbw) {
+		++bundle_created_calls;
+		last_created_ep = ep;
+		created_bundle_size = cbw.wrapped().conn_seg_ids.size();
+	}
+
+	void on_bundle_removing(const ConnectionEndpoint &ep, CBW &cbw) {
+		++bundle_removing_calls;
+		last_removed_ep = ep;
+		removing_bundle_size = cbw.wrapped().conn_seg_ids.size();
+	}
+};
+
+// Compile-time traits: default (NoHooks) graph should report no hooks.
+static_assert(!G::HasAllOnPartAddedHooks);
+static_assert(!G::HasAllOnPartRemovingHooks);
+static_assert(!G::HasOnConnectedHook);
+static_assert(!G::HasOnDisconnectingHook);
+static_assert(!G::HasOnBundleCreatedHook);
+static_assert(!G::HasOnBundleRemovingHook);
+static_assert(!G::template HasOnPartAddedHook<BrickPart>);
+static_assert(!G::template HasOnPartRemovingHook<BrickPart>);
+
+// Hook-enabled graph should report all hooks available.
+static_assert(GH::HasAllOnPartAddedHooks);
+static_assert(GH::HasAllOnPartRemovingHooks);
+static_assert(GH::HasOnConnectedHook);
+static_assert(GH::HasOnDisconnectingHook);
+static_assert(GH::HasOnBundleCreatedHook);
+static_assert(GH::HasOnBundleRemovingHook);
+static_assert(GH::template HasOnPartAddedHook<BrickPart>);
+static_assert(GH::template HasOnPartRemovingHook<BrickPart>);
+
+// For our single-part graph, per-part flags agree with aggregates.
+static_assert(G::HasAllOnPartAddedHooks ==
+              G::template HasOnPartAddedHook<BrickPart>);
+static_assert(G::HasAllOnPartRemovingHooks ==
+              G::template HasOnPartRemovingHook<BrickPart>);
+static_assert(GH::HasAllOnPartAddedHooks ==
+              GH::template HasOnPartAddedHook<BrickPart>);
+static_assert(GH::HasAllOnPartRemovingHooks ==
+              GH::template HasOnPartRemovingHook<BrickPart>);
+
+// Hooks should be plumbed through get_hooks/set_hooks and invoked on graph ops.
+static void test_usd_lego_graph_hooks_part_added_and_get_set() {
+	auto stage = make_stage();
+	CountingResource arena;
+	GH g(stage, &arena);
+
+	// Initially, hooks pointer is null.
+	assert(g.get_hooks() == nullptr);
+
+	Hooks hooks;
+	g.set_hooks(&hooks);
+	hooks.g = &g;
+
+	assert(g.get_hooks() == &hooks);
+
+	BrickColor red{255, 0, 0};
+	BrickColor green{0, 255, 0};
+	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickB = make_brick(2, 4, BrickHeightPerPlate, green);
+
+	std::int64_t env_id = 42;
+	create_env_root(stage, env_id);
+
+	auto pathA_opt = g.add_part(env_id, brickA);
+	auto pathB_opt = g.add_part(env_id, brickB);
+	assert(pathA_opt.has_value() && pathB_opt.has_value());
+
+	const PartId *pidA =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(*pathA_opt);
+	const PartId *pidB =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(*pathB_opt);
+	assert(pidA && pidB);
+
+	// Hooks must have observed both part additions.
+	assert(hooks.added_calls == 2);
+	assert(hooks.last_added_pid == *pidB);
+	assert(hooks.added_pw_matches_store);
+}
+
+// Connection lifecycle from graph API should drive connection-related hooks.
+static void test_usd_lego_graph_hooks_connection_lifecycle() {
+	auto stage = make_stage();
+	CountingResource arena;
+	GH g(stage, &arena);
+
+	Hooks hooks;
+	g.set_hooks(&hooks);
+	hooks.g = &g;
+
+	BrickColor red{255, 0, 0};
+	BrickColor green{0, 255, 0};
+	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickB = make_brick(2, 4, BrickHeightPerPlate, green);
+
+	std::int64_t env_id = 7;
+	create_env_root(stage, env_id);
+
+	auto pathA_opt = g.add_part(env_id, brickA);
+	auto pathB_opt = g.add_part(env_id, brickB);
+	assert(pathA_opt.has_value() && pathB_opt.has_value());
+	pxr::SdfPath pathA = *pathA_opt;
+	pxr::SdfPath pathB = *pathB_opt;
+
+	const PartId *pidA =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
+	const PartId *pidB =
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	assert(pidA && pidB);
+
+	InterfaceRef stud_if{*pidA, BrickPart::StudId};
+	InterfaceRef hole_if{*pidB, BrickPart::HoleId};
+	ConnectionSegment cs{};
+
+	auto connPath_opt = g.connect(stud_if, hole_if, cs);
+	assert(connPath_opt.has_value());
+	pxr::SdfPath connPath = *connPath_opt;
+
+	// First realized connection between this pair creates a bundle and a segment.
+	assert(hooks.bundle_created_calls == 1);
+	assert(hooks.connected_calls == 1);
+	assert((hooks.last_created_ep == ConnectionEndpoint{*pidA, *pidB}));
+	assert(hooks.created_bundle_size == 1);
+	assert(hooks.connect_bundle_has_csid);
+
+	// Disconnect via USD-facing API should drive disconnecting + bundle_removing.
+	bool disconnected = g.disconnect(connPath);
+	assert(disconnected);
+
+	assert(hooks.disconnecting_calls == 1);
+	assert(hooks.bundle_removing_calls == 1);
+	assert((hooks.last_removed_ep == ConnectionEndpoint{*pidA, *pidB}));
+	// By convention, bundle_removing sees the bundle while it still contains
+	// the last connection segment.
+	assert(hooks.removing_bundle_size == 1);
+}
+
 } // namespace
 
 int main() {
@@ -1516,5 +1720,7 @@ int main() {
 	test_set_component_transform_two_parts_connected();
 	test_part_pose_relative_to_env_single_part();
 	test_part_pose_relative_to_env_two_parts_connected();
+	test_usd_lego_graph_hooks_part_added_and_get_set();
+	test_usd_lego_graph_hooks_connection_lifecycle();
 	return 0;
 }
