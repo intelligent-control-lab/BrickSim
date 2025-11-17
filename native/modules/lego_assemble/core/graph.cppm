@@ -307,7 +307,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		return dynamic_graph_;
 	}
 
-	template <class InputId, class OutputId = InputId>
+	template <class InputId = PartId, class OutputId = InputId>
 	std::generator<std::pair<OutputId, OutputId>>
 	part_path(const InputId &u, const InputId &v) const
 	    requires(PartKeys::template contains<InputId> &&
@@ -336,7 +336,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		}
 	}
 
-	template <class Id>
+	template <class Id = PartId>
 	std::optional<Transformd> lookup_transform(const Id &u, const Id &v) const
 	    requires(PartKeys::template contains<Id>)
 	{
@@ -360,6 +360,53 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			return T;
 		} else {
 			return std::nullopt;
+		}
+	}
+
+	std::generator<std::pair<PartId, Transformd>> part_bfs(PartId u0) const {
+		if (!parts_.alive(u0)) {
+			co_return;
+		}
+
+		// BFS frontier and "visited" map, storing {}^{u0}T_v for each visited v.
+		std::unordered_map<PartId, Transformd> transforms;
+		std::deque<PartId> queue;
+
+		transforms.emplace(u0, SE3d{}.identity());
+		queue.push_back(u0);
+		while (!queue.empty()) {
+			PartId cur = queue.front();
+			queue.pop_front();
+
+			auto it_T = transforms.find(cur);
+			if (it_T == transforms.end()) {
+				std::unreachable();
+			}
+			Transformd T_u0_cur = it_T->second;
+			co_yield {cur, T_u0_cur};
+
+			bool visited_part = parts_.visit(cur, [&](const auto &pw) {
+				for (PartId npid : pw.neighbor_parts()) {
+					if (transforms.contains(npid)) {
+						// already visited
+						continue;
+					}
+					auto it_bundle = conn_bundles_.find({cur, npid});
+					if (it_bundle == conn_bundles_.end()) {
+						std::unreachable();
+					}
+					const ConnectionBundle &bundle =
+					    it_bundle->second.wrapped();
+					Transformd T_cur_n =
+					    cur < npid ? bundle.T_a_b : bundle.T_b_a;
+					Transformd T_u0_n = T_u0_cur * T_cur_n;
+					transforms.emplace(npid, T_u0_n);
+					queue.push_back(npid);
+				}
+			});
+			if (!visited_part) {
+				std::unreachable();
+			}
 		}
 	}
 

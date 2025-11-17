@@ -138,6 +138,100 @@ static void test_get_interface_spec_and_lookup_visit() {
 	assert(!T01.has_value());
 }
 
+static void test_part_bfs_invalid_and_isolated() {
+	G g;
+	build_three_parts(g); // three isolated parts; no connections yet
+
+	// Helper to collect BFS traversal from a given start part id
+	auto collect_bfs = [&](PartId start) {
+		std::vector<PartId> order;
+		std::unordered_map<PartId, Transformd> transforms;
+		for (auto [pid, T] : g.part_bfs(start)) {
+			order.push_back(pid);
+			// part_bfs must not visit a part twice
+			assert(!transforms.contains(pid));
+			transforms.emplace(pid, T);
+		}
+		return std::pair{std::move(order), std::move(transforms)};
+	};
+
+	// Starting from an existing but isolated part: only itself is visited
+	{
+		auto [order0, T0] = collect_bfs(PartId{0});
+		assert(order0.size() == 1);
+		assert(order0[0] == PartId{0});
+		auto it = T0.find(PartId{0});
+		assert(it != T0.end());
+		assert(SE3d{}.almost_equal(it->second, SE3d{}.identity()));
+	}
+
+	{
+		auto [order2, T2] = collect_bfs(PartId{2});
+		assert(order2.size() == 1);
+		assert(order2[0] == PartId{2});
+		auto it = T2.find(PartId{2});
+		assert(it != T2.end());
+		assert(SE3d{}.almost_equal(it->second, SE3d{}.identity()));
+	}
+
+	// Starting from a non-existent / dead part id: traversal is empty
+	std::size_t count_invalid = 0;
+	for (auto [pid, T] : g.part_bfs(PartId{9999})) {
+		(void)pid;
+		(void)T;
+		++count_invalid;
+	}
+	assert(count_invalid == 0);
+}
+
+static void test_part_bfs_matches_lookup_transform() {
+	G g;
+	build_three_parts(g); // parts 0,1,2
+
+	// Build a simple chain 0-1-2 with non-trivial transforms on each edge.
+	ConnectionSegment cs01{};
+	cs01.offset = Eigen::Vector2i{1, 0}; // translate along +x
+	ConnectionSegment cs12{};
+	cs12.offset = Eigen::Vector2i{0, 2}; // translate along +y
+
+	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs01));
+	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs12));
+
+	auto check_from = [&](PartId start) {
+		std::vector<PartId> order;
+		std::unordered_map<PartId, Transformd> seen;
+		for (auto [pid, T] : g.part_bfs(start)) {
+			// BFS should not revisit nodes
+			assert(!seen.contains(pid));
+			seen.emplace(pid, T);
+			order.push_back(pid);
+		}
+
+		// We built a connected chain of three parts
+		assert(seen.size() == 3);
+		assert(order.size() == 3);
+		assert(order.front() == start);
+
+		// Start node must have identity transform
+		auto it_start = seen.find(start);
+		assert(it_start != seen.end());
+		assert(SE3d{}.almost_equal(it_start->second, SE3d{}.identity()));
+
+		// For every reachable part, BFS-reported transform must match lookup_transform
+		for (PartId pid : {PartId{0}, PartId{1}, PartId{2}}) {
+			auto it = seen.find(pid);
+			assert(it != seen.end());
+			auto T_expected = g.lookup_transform<PartId>(start, pid);
+			assert(T_expected.has_value());
+			assert(SE3d{}.almost_equal(it->second, *T_expected));
+		}
+	};
+
+	check_from(PartId{0});
+	check_from(PartId{1});
+	check_from(PartId{2});
+}
+
 static void test_connect_branches_and_bundle() {
 	G g;
 	build_three_parts(g);
@@ -415,6 +509,8 @@ static void test_remove_part_variants() {
 int main() {
 	test_resource_wiring_and_initial_state();
 	test_get_interface_spec_and_lookup_visit();
+	test_part_bfs_invalid_and_isolated();
+	test_part_bfs_matches_lookup_transform();
 	test_connect_branches_and_bundle();
 	test_connect_inputs_and_status();
 	test_multi_connections_match_and_mismatch();
