@@ -18,6 +18,7 @@ import lego_assemble.utils.unordered_pair;
 import lego_assemble.utils.metric_system;
 import lego_assemble.vendor.physx;
 import lego_assemble.vendor.eigen;
+import lego_assemble.vendor.carb;
 
 namespace lego_assemble {
 
@@ -28,6 +29,8 @@ struct PendingAssembly {
 struct PendingDisassembly {
 	ConnSegId csid;
 };
+
+using ConstraintHandle = std::size_t;
 
 export using InterfaceShapePair = std::pair<InterfaceId, physx::PxShape *>;
 export using ActorShapePair =
@@ -40,16 +43,16 @@ export constexpr ActorShapePair NullActorShapePair{nullptr, nullptr};
 export template <PartLike P> struct PhysicsPartWrapper : SimplePartWrapper<P> {
 	template <class... Args>
 	explicit PhysicsPartWrapper(
-	    std::initializer_list<InterfaceShapePair> if_shapes, Args &&...args)
+	    std::vector<InterfaceShapePair> interface_shapes, Args &&...args)
 	    : SimplePartWrapper<P>(std::forward<Args>(args)...),
-	      interface_shapes_{if_shapes, tail_mr(args...)} {}
+	      interface_shapes_{std::move(interface_shapes)} {}
 
 	std::span<const InterfaceShapePair> interface_shapes() const {
 		return interface_shapes_;
 	}
 
   private:
-	std::pmr::vector<InterfaceShapePair> interface_shapes_;
+	std::vector<InterfaceShapePair> interface_shapes_;
 };
 
 export struct PhysicsConnectionSegmentWrapper
@@ -62,7 +65,7 @@ export struct PhysicsConnectionSegmentWrapper
 };
 
 export struct PhysicsConnectionBundleWrapper : SimpleWrapper<ConnectionBundle> {
-	physx::PxConstraint *px_constraint{nullptr};
+	std::optional<ConstraintHandle> constraint_handle;
 
 	template <class... Args>
 	explicit PhysicsConnectionBundleWrapper(Args &&...args)
@@ -97,6 +100,11 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		Self *owner_;
 
 		TopologyHooks(Self *owner) : owner_{owner} {}
+		~TopologyHooks() = default;
+		TopologyHooks(const TopologyHooks &) = delete;
+		TopologyHooks &operator=(const TopologyHooks &) = delete;
+		TopologyHooks(TopologyHooks &&) = delete;
+		TopologyHooks &operator=(TopologyHooks &&) = delete;
 
 		template <class P>
 		void on_part_added(PartId pid, PhysicsPartWrapper<P> &pw) {
@@ -109,6 +117,17 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				    "Part id {} has no associated PxRigidActor", pid));
 			}
 			physx::PxRigidActor *px_actor = *px_actor_ptr;
+
+			// Thread safety: modifying shape_mapping_ and part_actors_
+			std::unique_lock<std::shared_mutex> lock(owner_->sim_mutex_);
+
+			auto [_, inserted] = owner_->part_actors_.emplace(px_actor);
+			if (!inserted) {
+				throw std::runtime_error(std::format(
+				    "PxRigidActor {:p} for part id {} already registered",
+				    static_cast<const void *>(px_actor), pid));
+			}
+
 			for (const auto &[if_id, shape] : pw.interface_shapes()) {
 				if (shape == nullptr) {
 					throw std::runtime_error(std::format(
@@ -133,6 +152,25 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		template <class P>
 		void on_part_removing(PartId pid, PhysicsPartWrapper<P> &pw) {
 			// Update shape <-> interface mapping
+
+			physx::PxRigidActor *const *px_actor_ptr =
+			    owner_->topology_.parts()
+			        .template project_key<PartId, physx::PxRigidActor *>(pid);
+			if (!px_actor_ptr) {
+				throw std::runtime_error(std::format(
+				    "Part id {} has no associated PxRigidActor", pid));
+			}
+			physx::PxRigidActor *px_actor = *px_actor_ptr;
+
+			// Thread safety: modifying shape_mapping_ and part_actors_
+			std::unique_lock<std::shared_mutex> lock(owner_->sim_mutex_);
+
+			if (!owner_->part_actors_.erase(px_actor)) {
+				throw std::runtime_error(std::format(
+				    "PxRigidActor {:p} for part id {} not registered",
+				    static_cast<const void *>(px_actor), pid));
+			}
+
 			for (const auto &[if_id, shape] : pw.interface_shapes()) {
 				if (!owner_->shape_mapping_.template erase_by_key<InterfaceRef>(
 				        {pid, if_id})) {
@@ -150,6 +188,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		             PhysicsConnectionSegmentWrapper &csw,
 		             [[maybe_unused]] PhysicsConnectionBundleWrapper &cbw) {
 			const auto &[stud_if_ref, hole_if_ref] = csref;
+
+			// Thread safety: modifying contact_exclusions_ and reading shape_mapping_
+			std::unique_lock<std::shared_mutex> lock(owner_->sim_mutex_);
 
 			// Set up PhysX shapes for connection segment
 			if (auto stud_shape_mapping =
@@ -187,6 +228,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			// Remove contact exclusion
 			if (csw.px_stud_shape != NullActorShapePair &&
 			    csw.px_hole_shape != NullActorShapePair) {
+				// Thread safety: modifying contact_exclusions_
+				std::unique_lock<std::shared_mutex> lock(owner_->sim_mutex_);
 				if (owner_->contact_exclusions_.erase(
 				        {csw.px_stud_shape, csw.px_hole_shape}) == 0) {
 					throw std::runtime_error(
@@ -205,7 +248,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 			// Create PhysX constraint
 			const auto &T_a_b = cbw.wrapped().T_a_b;
-			cbw.px_constraint = owner_->create_constraint(a_id, b_id, T_a_b);
+			cbw.constraint_handle =
+			    owner_->create_constraint(a_id, b_id, T_a_b);
 
 			// Update skip graph
 			if (!owner_->skip_graph_.connect(a_id, b_id)) {
@@ -221,8 +265,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			auto [a_id, b_id] = ep;
 
 			// Destroy PhysX constraint
-			owner_->destroy_constraint(cbw.px_constraint);
-			cbw.px_constraint = nullptr;
+			if (cbw.constraint_handle) {
+				owner_->destroy_constraint(*cbw.constraint_handle);
+				cbw.constraint_handle.reset();
+			}
 
 			// Update skip graph
 			if (!owner_->skip_graph_.disconnect(a_id, b_id)) {
@@ -267,6 +313,12 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		}
 		PhysxBinding(const PhysxBinding &) = delete;
 		PhysxBinding &operator=(const PhysxBinding &) = delete;
+		PhysxBinding(PhysxBinding &&) = delete;
+		PhysxBinding &operator=(PhysxBinding &&) = delete;
+
+		// Thread safety:
+		// PxSimulationFilterCallbackProxy (pairFound, ...) is called on PhysX/worker threads (multiple)
+		// PxSimulationEventCallbackProxy (onContact, ...) is called on PhysX/stepper thread (single)
 
 		virtual physx::PxFilterFlags pairFound(
 		    physx::PxU64 pairID, physx::PxFilterObjectAttributes attributes0,
@@ -291,6 +343,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				return result;
 			}
 
+			// Thread safety: reading contact_exclusions_ and part_actors_
+			std::shared_lock<std::shared_mutex> lock(owner_->sim_mutex_);
+
 			// Check contact exclusion
 			ContactExclusionPair exclusion_pair{
 			    {rb0, const_cast<physx::PxShape *>(s0)},
@@ -300,12 +355,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			}
 
 			// Enable contact pose report collision between parts
-			bool is_part0 =
-			    owner_->topology_.parts().template alive<physx::PxRigidActor *>(
-			        rb0);
-			bool is_part1 =
-			    owner_->topology_.parts().template alive<physx::PxRigidActor *>(
-			        rb1);
+			bool is_part0 = owner_->part_actors_.contains(rb0);
+			bool is_part1 = owner_->part_actors_.contains(rb1);
 			if (is_part0 && is_part1) {
 				pairFlags |= physx::PxPairFlag::eCONTACT_EVENT_POSE;
 			}
@@ -332,6 +383,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			if (rb0 == nullptr || rb1 == nullptr) {
 				return;
 			}
+
+			// Thread safety: reading shape_mapping_
+			std::shared_lock<std::shared_mutex> lock(owner_->sim_mutex_);
 
 			physx::PxReal dt = getElapsedTime(px_scene_);
 
@@ -435,6 +489,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				return;
 			}
 
+			// Thread safety: read lock already acquired in caller
+
 			const InterfaceRef *ifref0 =
 			    owner_->shape_mapping_
 			        .template project<ActorShapePair, InterfaceRef>({rb0, s0});
@@ -465,9 +521,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	static_assert(TopologyGraph::HasOnBundleRemovingHook);
 
 	using SkipGraph = SimpleSkipGraphScheduler<
-	    PartId, physx::PxConstraint *,
-	    std::function<physx::PxConstraint *(PartId, PartId)>,
-	    std::function<void(physx::PxConstraint *)>>;
+	    PartId, ConstraintHandle,
+	    std::function<ConstraintHandle(PartId, PartId)>,
+	    std::function<void(ConstraintHandle)>>;
 	using ShapeMapping =
 	    MultiKeyMap<type_list<InterfaceRef, ActorShapePair>, InterfaceSpec,
 	                type_list<InterfaceRefHash, ActorShapePairHash>>;
@@ -495,13 +551,11 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
 	    : res_{mr}, metrics_{metrics}, px_{px}, hooks_{hooks},
 	      topology_hooks_{this}, topology_{&topology_hooks_, mr},
-	      skip_graph_{std::bind(&PhysicsLegoGraph::create_aux_constraint, this,
-	                            std::placeholders::_1, std::placeholders::_2),
-	                  std::bind(&PhysicsLegoGraph::destroy_constraint, this,
-	                            std::placeholders::_1),
-	                  mr},
-	      shape_mapping_{mr}, contact_exclusions_{mr}, pending_assemblies_{mr},
-	      pending_disassemblies_{mr} {}
+	      skip_graph_{
+	          std::bind_front(&PhysicsLegoGraph::create_aux_constraint, this),
+	          std::bind_front(&PhysicsLegoGraph::destroy_constraint, this), mr},
+	      pending_assemblies_{mr}, pending_disassemblies_{mr},
+	      shape_mapping_{mr}, contact_exclusions_{mr} {}
 	~PhysicsLegoGraph() = default;
 	PhysicsLegoGraph(const PhysicsLegoGraph &) = delete;
 	PhysicsLegoGraph &operator=(const PhysicsLegoGraph &) = delete;
@@ -524,9 +578,27 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		return assembly_checker_;
 	}
 
-	void process_pending_events() {
-		std::lock_guard lock{pending_mutex_};
-		for (const auto &[csid] : pending_disassemblies_) {
+	// Should be called BEFORE simulation step on USD/Kit thread
+	// Use a StageUpdateNode with order < 10 to implement this
+	void do_pre_step() {
+		sim_running_ = true;
+	}
+
+	// Should be called AFTER simulation step on USD/Kit thread
+	// Use a StageUpdateNode with order < 10 to implement this
+	void do_post_step() {
+		sim_running_ = false;
+
+		flush_pending_constraints();
+
+		std::pmr::vector<PendingAssembly> pending_assemblies{res_};
+		std::pmr::vector<PendingDisassembly> pending_disassemblies{res_};
+		{
+			std::lock_guard lock{pending_mutex_};
+			pending_assemblies.swap(pending_assemblies_);
+			pending_disassemblies.swap(pending_disassemblies_);
+		}
+		for (const auto &[csid] : pending_disassemblies) {
 			bool disconnected = topology_.disconnect(csid).has_value();
 			if (disconnected) {
 				if constexpr (HasOnDisassembledHook) {
@@ -536,7 +608,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				}
 			}
 		}
-		for (const auto &[csref, conn_seg] : pending_assemblies_) {
+		for (const auto &[csref, conn_seg] : pending_assemblies) {
 			const auto &[stud_if, hole_if] = csref;
 			std::optional<ConnSegId> csid =
 			    topology_.connect(stud_if, hole_if, std::tuple{}, conn_seg);
@@ -582,13 +654,121 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	TopologyHooks topology_hooks_;
 	TopologyGraph topology_;
 	SkipGraph skip_graph_;
-	ShapeMapping shape_mapping_;
-	ContactExclusionSet contact_exclusions_;
 	std::unique_ptr<PhysxBinding> physx_binding_;
 	AssemblyChecker assembly_checker_;
+
+	std::mutex pending_mutex_;
 	std::pmr::vector<PendingAssembly> pending_assemblies_;
 	std::pmr::vector<PendingDisassembly> pending_disassemblies_;
-	std::mutex pending_mutex_;
+
+	std::shared_mutex sim_mutex_;
+	ShapeMapping shape_mapping_;
+	ContactExclusionSet contact_exclusions_;
+	std::unordered_set<physx::PxRigidActor *> part_actors_;
+
+	bool sim_running_ = false;
+	std::unordered_map<ConstraintHandle, physx::PxConstraint *>
+	    realized_constraints_;
+	std::unordered_set<ConstraintHandle> constraints_to_remove_;
+	std::unordered_map<ConstraintHandle,
+	                   std::tuple<PartId, PartId, WeldConstraintData>>
+	    pending_constraints_;
+	ConstraintHandle next_constraint_handle_ = 1;
+	void flush_pending_constraints() {
+		if (sim_running_) {
+			throw std::runtime_error("Cannot process pending constraints while "
+			                         "simulation is running");
+		}
+		for (ConstraintHandle handle : constraints_to_remove_) {
+			auto it = realized_constraints_.find(handle);
+			if (it != realized_constraints_.end()) {
+				it->second->release();
+				realized_constraints_.erase(it);
+			}
+		}
+		constraints_to_remove_.clear();
+		for (auto &[handle, tuple] : pending_constraints_) {
+			auto &[pid_a, pid_b, weld_data] = tuple;
+			physx::PxRigidActor *const *actor_a_ptr =
+			    topology_.parts()
+			        .template project_key<PartId, physx::PxRigidActor *>(pid_a);
+			physx::PxRigidActor *const *actor_b_ptr =
+			    topology_.parts()
+			        .template project_key<PartId, physx::PxRigidActor *>(pid_b);
+			if (!actor_a_ptr || !actor_b_ptr) {
+				log_error("Cannot find actors for part ids {} and {}, skipping "
+				          "constraint realization",
+				          pid_a, pid_b);
+				continue;
+			}
+			physx::PxRigidActor *actor_a = *actor_a_ptr;
+			physx::PxRigidActor *actor_b = *actor_b_ptr;
+			physx::PxConstraint *constraint = createWeldConstraint(
+			    *px_, actor_a, actor_b, std::move(weld_data));
+			auto [it, inserted] =
+			    realized_constraints_.emplace(handle, constraint);
+			if (!inserted) {
+				throw std::runtime_error(std::format(
+				    "Constraint handle {} already realized", handle));
+			}
+		}
+		pending_constraints_.clear();
+	}
+	ConstraintHandle create_constraint_safely(PartId pid_a, PartId pid_b,
+	                                          WeldConstraintData &&weld_data) {
+		ConstraintHandle handle = next_constraint_handle_++;
+		if (sim_running_) {
+			auto [it, inserted] = pending_constraints_.emplace(
+			    handle, std::make_tuple(pid_a, pid_b, std::move(weld_data)));
+			if (!inserted) {
+				throw std::runtime_error(std::format(
+				    "Constraint handle {} already exist in pending constraints",
+				    handle));
+			}
+		} else {
+			physx::PxRigidActor *const *actor_a_ptr =
+			    topology_.parts()
+			        .template project_key<PartId, physx::PxRigidActor *>(pid_a);
+			physx::PxRigidActor *const *actor_b_ptr =
+			    topology_.parts()
+			        .template project_key<PartId, physx::PxRigidActor *>(pid_b);
+			if (!actor_a_ptr || !actor_b_ptr) {
+				throw std::runtime_error(std::format(
+				    "Cannot find actors for part ids {} and {}", pid_a, pid_b));
+			}
+			physx::PxRigidActor *actor_a = *actor_a_ptr;
+			physx::PxRigidActor *actor_b = *actor_b_ptr;
+			physx::PxConstraint *constraint = createWeldConstraint(
+			    *px_, actor_a, actor_b, std::move(weld_data));
+			auto [it, inserted] =
+			    realized_constraints_.emplace(handle, constraint);
+			if (!inserted) {
+				throw std::runtime_error(
+				    std::format("Constraint handle {} already exist in "
+				                "realized constraints",
+				                handle));
+			}
+		}
+		return handle;
+	}
+	bool destroy_constraint_safely(ConstraintHandle handle) {
+		auto it = realized_constraints_.find(handle);
+		if (it != realized_constraints_.end()) {
+			if (sim_running_) {
+				constraints_to_remove_.insert(handle);
+			} else {
+				it->second->release();
+				realized_constraints_.erase(it);
+			}
+			return true;
+		}
+		auto pit = pending_constraints_.find(handle);
+		if (pit != pending_constraints_.end()) {
+			pending_constraints_.erase(pit);
+			return true;
+		}
+		return false;
+	}
 
 	void enqueue_pending_assembly(auto &&...args) {
 		std::lock_guard lock{pending_mutex_};
@@ -601,7 +781,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		    std::forward<decltype(args)>(args)...);
 	}
 
-	physx::PxConstraint *create_aux_constraint(PartId a_id, PartId b_id) {
+	ConstraintHandle create_aux_constraint(PartId a_id, PartId b_id) {
 		std::optional<Transformd> T_a_b =
 		    topology_.lookup_transform(a_id, b_id);
 		if (!T_a_b.has_value()) {
@@ -612,8 +792,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		return create_constraint(a_id, b_id, *T_a_b);
 	}
 
-	physx::PxConstraint *create_constraint(PartId a_id, PartId b_id,
-	                                       const Transformd &T_a_b) {
+	ConstraintHandle create_constraint(PartId a_id, PartId b_id,
+	                                   const Transformd &T_a_b) {
 		// PxConstraint shader uses body frames (COM frames) bA2w/bB2w.
 		// Our T_a_b (from Python) is defined between actor-local origins (bottom centers).
 		// Convert to COM-local frames so the weld aligns the intended anchor points.
@@ -646,18 +826,18 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		physx::PxTransform A_com2o = A_o2com.getInverse();
 		physx::PxTransform parentLocal = A_com2o * T_a_b_px * B_o2com;
 		physx::PxTransform childLocal(physx::PxIdentity);
-		return createWeldConstraint(*px_, actor_a, actor_b,
-		                            {
-		                                .parentLocal = parentLocal,
-		                                .childLocal = childLocal,
-		                            });
+		return create_constraint_safely(a_id, b_id,
+		                                {
+		                                    .parentLocal = parentLocal,
+		                                    .childLocal = childLocal,
+		                                });
 	}
 
-	void destroy_constraint(physx::PxConstraint *constraint) {
-		if (!constraint) {
-			throw std::runtime_error("Cannot destroy null constraint");
+	void destroy_constraint(ConstraintHandle constraint) {
+		if (!destroy_constraint_safely(constraint)) {
+			log_error("Constraint handle {} not found for destruction",
+			          constraint);
 		}
-		constraint->release();
 	}
 };
 

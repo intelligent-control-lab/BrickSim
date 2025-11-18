@@ -31,6 +31,7 @@ export struct AssemblyThresholds {
 
 export class AssemblyChecker {
   public:
+	// Do not modify this while PhysX is stepping, really.
 	AssemblyThresholds thresholds;
 
 	std::optional<ConnectionSegment>

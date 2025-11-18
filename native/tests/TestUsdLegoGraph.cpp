@@ -874,7 +874,7 @@ static void test_connect_and_disconnect_realized_graph_api() {
 
 	auto connPath_opt = g.connect(stud_if, hole_if, cs);
 	assert(connPath_opt.has_value());
-	pxr::SdfPath connPath = *connPath_opt;
+	auto [csid, connPath] = *connPath_opt;
 
 	// Graph topology should now have exactly one realized connection.
 	assert(g.topology().connection_segments().size() == 1);
@@ -1673,7 +1673,7 @@ static void test_usd_lego_graph_hooks_connection_lifecycle() {
 
 	auto connPath_opt = g.connect(stud_if, hole_if, cs);
 	assert(connPath_opt.has_value());
-	pxr::SdfPath connPath = *connPath_opt;
+	auto [csid, connPath] = *connPath_opt;
 
 	// First realized connection between this pair creates a bundle and a segment.
 	assert(hooks.bundle_created_calls == 1);

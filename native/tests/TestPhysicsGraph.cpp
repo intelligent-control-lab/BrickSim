@@ -226,7 +226,7 @@ struct PhysicsGraphFixture {
 			auto it = bundles.find(ep);
 			assert(it != bundles.end());
 			const auto &cbw = it->second;
-			assert(cbw.px_constraint != nullptr);
+			assert(cbw.constraint_handle.has_value());
 		}
 	}
 
@@ -287,7 +287,7 @@ static void test_topology_and_constraints() {
 	assert(it != bundles.end());
 	const auto &cbw = it->second;
 	assert(cbw.wrapped().conn_seg_ids.contains(fx.csid));
-	assert(cbw.px_constraint != nullptr);
+	assert(cbw.constraint_handle.has_value());
 }
 
 // Exercise PhysxBinding::pairFound branches via the PxScene callback.
@@ -428,7 +428,7 @@ static void test_event_callback_onContact() {
 		payload.header.flags = physx::PxContactPairHeaderFlag::eREMOVED_ACTOR_0;
 		proxy->onContact(payload.header, &payload.pair, 1);
 
-		fx.graph.process_pending_events();
+		fx.graph.do_post_step();
 		assert(fx.hooks.assembled_events.empty());
 		assert(fx.graph.topology().connection_segments().size() == 0);
 	}
@@ -464,7 +464,7 @@ static void test_event_callback_onContact() {
 		                         /*set_impulse=*/true, physx::PxVec3(0, 0, -1));
 		proxy->onContact(payload.header, &payload.pair, 1);
 
-		fx.graph.process_pending_events();
+		fx.graph.do_post_step();
 		assert(fx.hooks.assembled_events.empty());
 		assert(fx.graph.topology().connection_segments().size() == 0);
 
@@ -494,7 +494,7 @@ static void test_event_callback_onContact() {
 		                         /*set_impulse=*/true, physx::PxVec3(0, 0, -1));
 		proxy->onContact(payload.header, &payload.pair, 1);
 
-		fx.graph.process_pending_events();
+		fx.graph.do_post_step();
 		assert(fx.hooks.assembled_events.empty());
 		assert(fx.graph.topology().connection_segments().size() == 0);
 	}
@@ -525,7 +525,7 @@ static void test_event_callback_onContact() {
 		    physx::PxVec3(0, 0, -1));
 		proxy->onContact(payload.header, &payload.pair, 1);
 
-		fx.graph.process_pending_events();
+		fx.graph.do_post_step();
 		assert(fx.hooks.assembled_events.size() == 1);
 		const auto &evt = fx.hooks.assembled_events[0];
 
@@ -545,7 +545,7 @@ static void test_event_callback_onContact() {
 		assert(evt.conn_seg.offset == Eigen::Vector2i(0, 0));
 
 		// After processing once, subsequent processing should be idempotent.
-		fx.graph.process_pending_events();
+		fx.graph.do_post_step();
 		assert(fx.hooks.assembled_events.size() == 1);
 		assert(fx.graph.topology().connection_segments().size() == 1);
 	}

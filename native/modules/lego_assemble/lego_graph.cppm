@@ -252,10 +252,8 @@ class LegoGraph::Impl {
 
 	explicit Impl(physx::PxPhysics *px_, const Config &cfg_)
 	    : px(px_), cfg(cfg_),
-	      scheduler(std::bind(&Impl::createAuxConstraint, this,
-	                          std::placeholders::_1, std::placeholders::_2),
-	                std::bind(&Impl::destroyAuxConstraint, this,
-	                          std::placeholders::_1)) {
+	      scheduler(std::bind_front(&Impl::createAuxConstraint, this),
+	                std::bind_front(&Impl::destroyAuxConstraint, this)) {
 		simFilter = std::make_unique<LegoSimulationFilterCallback>(this);
 		if (!setPxSimulationFilterCallback(simFilter.get())) {
 			simFilter = nullptr;

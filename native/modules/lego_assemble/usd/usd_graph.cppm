@@ -333,7 +333,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		return true;
 	}
 
-	std::optional<pxr::SdfPath>
+	std::optional<std::tuple<PartId, pxr::SdfPath>>
 	connect(const InterfaceRef &stud_if, const InterfaceRef &hole_if,
 	        ConnectionSegment conn_seg,
 	        AlignPolicy align_policy = AlignPolicy::MoveHoleCC) {
@@ -406,7 +406,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		conn_info.csid = *csid;
 		conn_info.stud = stud_path;
 		conn_info.hole = hole_path;
-		return conn_path;
+		return {{*csid, conn_path}};
 	}
 
 	bool disconnect(const pxr::SdfPath &conn_path) {
@@ -621,6 +621,10 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		~UsdNoticeSink() {
 			disconnect();
 		}
+		UsdNoticeSink(const UsdNoticeSink &) = delete;
+		UsdNoticeSink &operator=(const UsdNoticeSink &) = delete;
+		UsdNoticeSink(UsdNoticeSink &&) = delete;
+		UsdNoticeSink &operator=(UsdNoticeSink &&) = delete;
 
 		void connect() {
 			pxr::TfWeakPtr<UsdNoticeSink> weak_this =

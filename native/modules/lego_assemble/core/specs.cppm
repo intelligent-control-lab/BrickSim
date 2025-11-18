@@ -197,6 +197,7 @@ export class BrickPart {
 			                 }}};
 		} else {
 			static_assert(Id < 2, "Invalid interface id");
+			std::unreachable();
 		}
 	}
 
