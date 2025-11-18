@@ -218,7 +218,7 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		}
 		px_scene_ = new_scene;
 		physics_graph_ = std::make_unique<PhysicsGraph>(
-		    MetricSystem(stage_), new_scene->getPhysics());
+		    MetricSystem(stage_), &new_scene->getPhysics());
 		bool physics_graph_bound = physics_graph_->bind_physx_scene(px_scene_);
 		if (!physics_graph_bound) {
 			throw std::runtime_error(
