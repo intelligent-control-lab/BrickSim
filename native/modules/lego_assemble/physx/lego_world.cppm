@@ -54,11 +54,6 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		if (!omni_px_) {
 			throw std::runtime_error("IPhysx unavailable");
 		}
-		px_ = static_cast<physx::PxPhysics *>(
-		    omni_px_->getPhysXPtr({}, omni::physx::ePTPhysics));
-		if (!px_) {
-			throw std::runtime_error("ePTPhysics is nullptr");
-		}
 
 		// Register Omni PhysX callbacks
 		physx_obj_sub_ = omni_px_->subscribeObjectChangeNotifications({
@@ -162,7 +157,6 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		}
 
 		// Unset interfaces
-		px_ = nullptr;
 		omni_px_ = nullptr;
 		stage_update_.reset();
 	}
@@ -198,7 +192,6 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 
 	std::shared_ptr<omni::kit::StageUpdate> stage_update_;
 	omni::physx::IPhysx *omni_px_ = nullptr;
-	physx::PxPhysics *px_ = nullptr;
 
 	std::optional<omni::physx::SubscriptionId> physx_obj_sub_;
 	omni::kit::StageUpdateNode *stage_update_pre_ = nullptr;
@@ -224,8 +217,8 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 			}
 		}
 		px_scene_ = new_scene;
-		physics_graph_ =
-		    std::make_unique<PhysicsGraph>(MetricSystem(stage_), px_);
+		physics_graph_ = std::make_unique<PhysicsGraph>(
+		    MetricSystem(stage_), new_scene->getPhysics());
 		bool physics_graph_bound = physics_graph_->bind_physx_scene(px_scene_);
 		if (!physics_graph_bound) {
 			throw std::runtime_error(
