@@ -1,4 +1,4 @@
-export module lego_assemble.physx.usd_physics_bridge;
+export module lego_assemble.omni.usd_physics_bridge;
 
 import std;
 import lego_assemble.core.specs;

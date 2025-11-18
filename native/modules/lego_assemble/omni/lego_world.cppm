@@ -1,13 +1,13 @@
-export module lego_assemble.physx.lego_world;
+export module lego_assemble.omni.lego_world;
 
 import std;
 import lego_assemble.core.specs;
 import lego_assemble.physx.physics_graph;
-import lego_assemble.physx.usd_physics_bridge;
 import lego_assemble.usd.usd_graph;
 import lego_assemble.usd.author;
 import lego_assemble.usd.parse;
 import lego_assemble.usd.specs;
+import lego_assemble.omni.usd_physics_bridge;
 import lego_assemble.utils.type_list;
 import lego_assemble.utils.metric_system;
 import lego_assemble.vendor.pxr;
