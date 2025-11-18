@@ -585,7 +585,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	}
 
 	// Should be called AFTER simulation step on USD/Kit thread
-	// Use a StageUpdateNode with order < 10 to implement this
+	// Use a StageUpdateNode with order > 10 to implement this
 	void do_post_step() {
 		sim_running_ = false;
 

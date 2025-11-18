@@ -21,10 +21,10 @@ import lego_assemble.vendor.pxr;
 
 namespace lego_assemble {
 
-template <class Parts, class PartAuthors, class PartParsers>
+export template <class Parts, class PartAuthors, class PartParsers>
 class UsdPhysicsBridge;
 
-template <class... Ps, class... PAs, class... PPs>
+export template <class... Ps, class... PAs, class... PPs>
 class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
   public:
 	using PartTypeList = type_list<Ps...>;
@@ -631,8 +631,5 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	static_assert(UsdGraph::HasOnConnectedHook);
 	static_assert(UsdGraph::HasOnDisconnectingHook);
 };
-
-template class UsdPhysicsBridge<
-    type_list<BrickPart>, type_list<SimpleBrickAuthor>, type_list<BrickParser>>;
 
 } // namespace lego_assemble

@@ -15,9 +15,11 @@ export namespace omni {
 
 namespace kit {
 using omni::kit::IStageUpdate;
+using omni::kit::StageUpdate;
 using omni::kit::StageUpdateNode;
 using omni::kit::StageUpdateNodeDesc;
 using omni::kit::StageUpdatePtr;
+using omni::kit::StageUpdateSettings;
 } // namespace kit
 
 namespace physx {
