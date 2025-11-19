@@ -2,6 +2,7 @@ export module lego_assemble.omni.lego_runtime;
 
 import std;
 import lego_assemble.core.specs;
+import lego_assemble.core.assembly;
 import lego_assemble.usd.author;
 import lego_assemble.usd.parse;
 import lego_assemble.utils.type_list;
@@ -26,6 +27,21 @@ export class LegoRuntime {
 
 	World *world() {
 		return world_.get();
+	}
+
+	AssemblyThresholds get_assembly_thresholds() const {
+		if (world_) {
+			return world_->get_assembly_thresholds();
+		} else {
+			return cfg_.assembly_thresholds;
+		}
+	}
+
+	void set_assembly_thresholds(const AssemblyThresholds &thresholds) {
+		cfg_.assembly_thresholds = thresholds;
+		if (world_) {
+			world_->set_assembly_thresholds(thresholds);
+		}
 	}
 
   private:

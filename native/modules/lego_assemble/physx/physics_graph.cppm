@@ -547,15 +547,16 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 	explicit PhysicsLegoGraph(
 	    const MetricSystem &metrics, physx::PxPhysics *px,
-	    Hooks *hooks = nullptr,
+	    Hooks *hooks = nullptr, AssemblyThresholds thresholds = {},
 	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
 	    : res_{mr}, metrics_{metrics}, px_{px}, hooks_{hooks},
 	      topology_hooks_{this}, topology_{&topology_hooks_, mr},
 	      skip_graph_{
 	          std::bind_front(&PhysicsLegoGraph::create_aux_constraint, this),
 	          std::bind_front(&PhysicsLegoGraph::destroy_constraint, this), mr},
-	      pending_assemblies_{mr}, pending_disassemblies_{mr},
-	      shape_mapping_{mr}, contact_exclusions_{mr} {}
+	      assembly_checker_{thresholds}, pending_assemblies_{mr},
+	      pending_disassemblies_{mr}, shape_mapping_{mr},
+	      contact_exclusions_{mr} {}
 	~PhysicsLegoGraph() = default;
 	PhysicsLegoGraph(const PhysicsLegoGraph &) = delete;
 	PhysicsLegoGraph &operator=(const PhysicsLegoGraph &) = delete;

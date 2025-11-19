@@ -62,10 +62,6 @@ static_assert(TestGraph::HasOnDisassembledHook);
 // Ensure PhysX actor key is integrated into the part key set
 static_assert(
     TopologyGraph::PartKeys::template contains<physx::PxRigidActor *>);
-// Graph constructibility signature (PxPhysics*, hooks*, pmr)
-static_assert(
-    std::is_constructible_v<TestGraph, MetricSystem, physx::PxPhysics *,
-                            TestHooks *, std::pmr::memory_resource *>);
 
 static_assert(std::is_class_v<SkipGraphT>);
 static_assert(std::is_class_v<ShapeMappingT>);

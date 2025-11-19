@@ -34,6 +34,9 @@ export class AssemblyChecker {
 	// Do not modify this while PhysX is stepping, really.
 	AssemblyThresholds thresholds;
 
+	AssemblyChecker(AssemblyThresholds thresholds = {})
+	    : thresholds{thresholds} {}
+
 	std::optional<ConnectionSegment>
 	detect_assembly(const InterfaceSpec &stud_iface,
 	                const InterfaceSpec &hole_iface, const Transformd &T_stud,

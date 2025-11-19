@@ -2,6 +2,7 @@ export module lego_assemble.omni.lego_world;
 
 import std;
 import lego_assemble.core.specs;
+import lego_assemble.core.assembly;
 import lego_assemble.physx.physics_graph;
 import lego_assemble.usd.usd_graph;
 import lego_assemble.usd.author;
@@ -22,6 +23,7 @@ export struct LegoConfig {
 	bool sync_conns_to_physics = false;
 	bool warn_divergence = true;
 	AlignPolicy align_policy = AlignPolicy::MoveHoleCC;
+	AssemblyThresholds assembly_thresholds{};
 };
 
 export template <class Parts, class PartAuthors, class PartParsers>
@@ -40,7 +42,7 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	using PhysicsGraph = typename Bridge::PhysicsGraph;
 	using UsdGraph = typename Bridge::UsdGraph;
 
-	explicit LegoWorld(pxr::UsdStageRefPtr stage, LegoConfig cfg)
+	explicit LegoWorld(pxr::UsdStageRefPtr stage, LegoConfig cfg = {})
 	    : stage_{std::move(stage)}, cfg_{std::move(cfg)} {
 
 		// Retrieve interfaces
@@ -186,6 +188,21 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		return px_scene_ != nullptr;
 	}
 
+	AssemblyThresholds get_assembly_thresholds() const {
+		if (physics_graph_) {
+			return physics_graph_->assembly_checker().thresholds;
+		} else {
+			return cfg_.assembly_thresholds;
+		}
+	}
+
+	void set_assembly_thresholds(const AssemblyThresholds &thresholds) {
+		cfg_.assembly_thresholds = thresholds;
+		if (physics_graph_) {
+			physics_graph_->assembly_checker().thresholds = thresholds;
+		}
+	}
+
   private:
 	pxr::UsdStageRefPtr stage_;
 	LegoConfig cfg_;
@@ -218,7 +235,8 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		}
 		px_scene_ = new_scene;
 		physics_graph_ = std::make_unique<PhysicsGraph>(
-		    MetricSystem(stage_), &new_scene->getPhysics());
+		    MetricSystem(stage_), &new_scene->getPhysics(), nullptr,
+		    cfg_.assembly_thresholds);
 		bool physics_graph_bound = physics_graph_->bind_physx_scene(px_scene_);
 		if (!physics_graph_bound) {
 			throw std::runtime_error(
