@@ -702,8 +702,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			}
 			physx::PxRigidActor *actor_a = *actor_a_ptr;
 			physx::PxRigidActor *actor_b = *actor_b_ptr;
-			physx::PxConstraint *constraint = createWeldConstraint(
-			    *px_, actor_a, actor_b, std::move(weld_data));
+			physx::PxConstraint *constraint =
+			    do_create_constraint(actor_a, actor_b, std::move(weld_data));
 			auto [it, inserted] =
 			    realized_constraints_.emplace(handle, constraint);
 			if (!inserted) {
@@ -737,8 +737,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			}
 			physx::PxRigidActor *actor_a = *actor_a_ptr;
 			physx::PxRigidActor *actor_b = *actor_b_ptr;
-			physx::PxConstraint *constraint = createWeldConstraint(
-			    *px_, actor_a, actor_b, std::move(weld_data));
+			physx::PxConstraint *constraint =
+			    do_create_constraint(actor_a, actor_b, std::move(weld_data));
 			auto [it, inserted] =
 			    realized_constraints_.emplace(handle, constraint);
 			if (!inserted) {
@@ -767,6 +767,14 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			return true;
 		}
 		return false;
+	}
+	physx::PxConstraint *do_create_constraint(physx::PxRigidActor *actor_a,
+	                                          physx::PxRigidActor *actor_b,
+	                                          WeldConstraintData &&weld_data) {
+		physx::PxConstraint *constraint =
+		    createWeldConstraint(*px_, actor_a, actor_b, std::move(weld_data));
+		actor_a->getScene()->resetFiltering(*actor_a);
+		return constraint;
 	}
 
 	void enqueue_pending_assembly(auto &&...args) {
