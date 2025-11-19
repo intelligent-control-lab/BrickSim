@@ -538,6 +538,22 @@ export template <quat_like To, quat_like From>
 	return out;
 }
 
+export template <quat_like To, mat_like From>
+    requires(mat_rows_v<From> == 4 && mat_cols_v<From> == 1)
+[[nodiscard]] constexpr To as(const From &v) {
+	using ST = quat_scalar_t<To>;
+	To out{};
+	quat_traits<To>::set(out, 0,
+	                     static_cast<ST>(mat_traits<From>::get(v, 0, 0)));
+	quat_traits<To>::set(out, 1,
+	                     static_cast<ST>(mat_traits<From>::get(v, 1, 0)));
+	quat_traits<To>::set(out, 2,
+	                     static_cast<ST>(mat_traits<From>::get(v, 2, 0)));
+	quat_traits<To>::set(out, 3,
+	                     static_cast<ST>(mat_traits<From>::get(v, 3, 0)));
+	return out;
+}
+
 export template <class S, quat_like From>
 [[nodiscard]] constexpr std::array<S, 4> as_array(const From &q) {
 	std::array<S, 4> out{};

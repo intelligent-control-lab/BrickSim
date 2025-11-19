@@ -23,6 +23,28 @@ namespace {
 
 using nlohmann::ordered_json;
 
+static bool almost_equal_array3(const std::array<double, 3> &a,
+                                const std::array<double, 3> &b,
+                                double eps = 1e-9) {
+	for (int i = 0; i < 3; ++i) {
+		if (std::abs(a[i] - b[i]) > eps) {
+			return false;
+		}
+	}
+	return true;
+}
+
+static bool almost_equal_array4(const std::array<double, 4> &a,
+                                const std::array<double, 4> &b,
+                                double eps = 1e-9) {
+	for (int i = 0; i < 4; ++i) {
+		if (std::abs(a[i] - b[i]) > eps) {
+			return false;
+		}
+	}
+	return true;
+}
+
 // -------------------- basic struct JSON roundtrips --------------------
 
 static void test_brick_serializer_roundtrip() {
@@ -420,6 +442,228 @@ static void test_topology_serializer_export_usd_graph_env_filtering() {
 	assert(topo_none.pose_hints.empty());
 }
 
+// -------------------- TopologySerializer import() --------------------
+
+// Unknown part types should be skipped, and any connections involving them
+// must not be imported.
+static void
+test_topology_serializer_import_unknown_part_type_skips_parts_and_connections() {
+	auto stage = make_stage();
+	std::int64_t env_id = 7;
+	create_env_root(stage, env_id);
+
+	UsdGraphG g(stage);
+	TopologySerializer<BrickSerializer> ser;
+
+	BrickColor color{10, 20, 30};
+	BrickPart brick = make_brick(2, 4, BrickHeightPerPlate, color);
+	BrickSerializer brick_ser;
+
+	JsonTopology topo;
+
+	// Known brick part
+	JsonPart p_known{
+	    .id = 1,
+	    .type = std::string(BrickSerializer::TypeString),
+	    .payload = brick_ser.to_json(brick),
+	};
+	topo.parts.push_back(p_known);
+
+	// Unknown part type; should be ignored by import()
+	JsonPart p_unknown{
+	    .id = 2,
+	    .type = "unknown_type",
+	    .payload = ordered_json{{"foo", 42}},
+	};
+	topo.parts.push_back(p_unknown);
+
+	// Connection referencing both known and unknown part ids.
+	// Since the unknown endpoint cannot be imported, the connection must be
+	// skipped entirely.
+	JsonConnection conn{
+	    .stud_id = 1,
+	    .stud_iface = static_cast<std::int64_t>(BrickPart::StudId),
+	    .hole_id = 2,
+	    .hole_iface = static_cast<std::int64_t>(BrickPart::HoleId),
+	    .offset = {0, 0},
+	    .yaw = 0,
+	};
+	topo.connections.push_back(conn);
+
+	ser.import(topo, g, env_id);
+
+	// Only the known brick part should be present.
+	assert(g.topology().parts().size() == 1);
+	// No connections should have been created.
+	assert(g.topology().connection_segments().size() == 0);
+	assert(g.topology().connection_bundles().size() == 0);
+	// Import should not create any unrealized parts or connections.
+	assert(g.unrealized_parts().empty());
+	assert(g.unrealized_connections().empty());
+}
+
+// Round-trip invariant: export_usd_graph -> import -> export_usd_graph again
+// should preserve parts, connections, and pose hints (up to reindexing of
+// PartIds). When a non-identity env transform is supplied to import(), the
+// pose hints in the re-exported topology should be transformed accordingly.
+static void
+test_topology_serializer_export_import_usd_graph_roundtrip_with_env_transform() {
+	auto stage_src = make_stage();
+	BrickColor red{255, 0, 0};
+	BrickColor green{0, 255, 0};
+
+	std::int64_t env_src = 3;
+	create_env_root(stage_src, env_src);
+
+	UsdGraphG g_src(stage_src);
+
+	// Use bricks with distinct payloads so we can match parts across
+	// round-trips by (type, payload).
+	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickB = make_brick(1, 2, BrickHeightPerPlate, green);
+
+	auto pathA_opt = g_src.add_part(env_src, brickA);
+	auto pathB_opt = g_src.add_part(env_src, brickB);
+	assert(pathA_opt.has_value() && pathB_opt.has_value());
+	auto [pidA_src, pathA] = *pathA_opt;
+	auto [pidB_src, pathB] = *pathB_opt;
+	(void)pathA;
+	(void)pathB;
+
+	InterfaceRef stud_if{pidA_src, BrickPart::StudId};
+	InterfaceRef hole_if{pidB_src, BrickPart::HoleId};
+	ConnectionSegment cs{};
+	assert(g_src.connect(stud_if, hole_if, cs, AlignPolicy::None).has_value());
+
+	TopologySerializer<BrickSerializer> ser;
+	JsonTopology topo = ser.export_usd_graph(g_src, env_src);
+
+	assert(topo.parts.size() == 2);
+	assert(topo.connections.size() == 1);
+	assert(topo.pose_hints.size() == 1);
+
+	// Import into a different environment on a fresh stage, applying a
+	// non-trivial env transform.
+	auto stage_dst = make_stage();
+	std::int64_t env_dst = 10;
+	create_env_root(stage_dst, env_dst);
+
+	UsdGraphG g_dst(stage_dst);
+
+	Eigen::Quaterniond q_env_ref = Eigen::Quaterniond::Identity();
+	Eigen::Vector3d t_env_ref(0.5, -1.0, 2.0);
+	Transformd T_env_ref{q_env_ref, t_env_ref};
+
+	ser.import(topo, g_dst, env_dst, T_env_ref);
+
+	JsonTopology topo_rt = ser.export_usd_graph(g_dst, env_dst);
+
+	// Same number of logical entities after round-trip.
+	assert(topo_rt.parts.size() == topo.parts.size());
+	assert(topo_rt.connections.size() == topo.connections.size());
+	assert(topo_rt.pose_hints.size() == topo.pose_hints.size());
+
+	// Build a mapping from source JsonPart id -> destination JsonPart id by
+	// matching (type, payload). Part ids may be renumbered but payloads are
+	// preserved.
+	std::unordered_map<std::int64_t, std::int64_t> src_to_dst;
+	std::unordered_set<std::int64_t> used_dst;
+
+	for (const JsonPart &p_src : topo.parts) {
+		bool found = false;
+		for (const JsonPart &p_dst : topo_rt.parts) {
+			if (p_dst.type == p_src.type && p_dst.payload == p_src.payload &&
+			    !used_dst.contains(p_dst.id)) {
+				src_to_dst[p_src.id] = p_dst.id;
+				used_dst.insert(p_dst.id);
+				found = true;
+				break;
+			}
+		}
+		assert(found);
+	}
+	assert(src_to_dst.size() == topo.parts.size());
+
+	// Check that each exported connection is preserved under the part-id
+	// reindexing.
+	struct ConnKey {
+		std::int64_t stud_id;
+		std::int64_t stud_iface;
+		std::int64_t hole_id;
+		std::int64_t hole_iface;
+		std::array<std::int64_t, 2> offset;
+		std::int64_t yaw;
+	};
+
+	std::vector<ConnKey> conns_rt;
+	conns_rt.reserve(topo_rt.connections.size());
+	for (const JsonConnection &jc : topo_rt.connections) {
+		conns_rt.push_back(ConnKey{
+		    .stud_id = jc.stud_id,
+		    .stud_iface = jc.stud_iface,
+		    .hole_id = jc.hole_id,
+		    .hole_iface = jc.hole_iface,
+		    .offset = jc.offset,
+		    .yaw = jc.yaw,
+		});
+	}
+
+	for (const JsonConnection &jc_src : topo.connections) {
+		auto it_stud = src_to_dst.find(jc_src.stud_id);
+		auto it_hole = src_to_dst.find(jc_src.hole_id);
+		assert(it_stud != src_to_dst.end());
+		assert(it_hole != src_to_dst.end());
+
+		std::int64_t stud_mapped = it_stud->second;
+		std::int64_t hole_mapped = it_hole->second;
+
+		bool found = false;
+		for (const ConnKey &ck : conns_rt) {
+			if (ck.stud_id == stud_mapped && ck.hole_id == hole_mapped &&
+			    ck.stud_iface == jc_src.stud_iface &&
+			    ck.hole_iface == jc_src.hole_iface &&
+			    ck.offset == jc_src.offset && ck.yaw == jc_src.yaw) {
+				found = true;
+				break;
+			}
+		}
+		assert(found);
+	}
+
+	// Pose hints: new hints should correspond to old hints transformed by
+	// T_env_ref (up to numerical tolerance), with part ids remapped.
+	for (const JsonPoseHint &hint_src : topo.pose_hints) {
+		auto it = src_to_dst.find(hint_src.part);
+		assert(it != src_to_dst.end());
+		std::int64_t part_mapped = it->second;
+
+		// Reconstruct {}^{ref}T_part from the source pose hint.
+		Eigen::Quaterniond q_src = as<Eigen::Quaterniond>(hint_src.rot); // wxyz
+		Eigen::Vector3d t_src = as<Eigen::Vector3d>(hint_src.pos);
+		Transformd T_ref_part{q_src, t_src};
+
+		// Expected env-local transform in the destination env:
+		// {}^{env_dst}T_part = T_env_ref * {}^{ref}T_part
+		Transformd T_env_part_expected = SE3d{}.project(T_env_ref * T_ref_part);
+		auto expected_pos =
+		    as_array<double, 3>(T_env_part_expected.second); // translation
+		auto expected_rot =
+		    as_array<double>(T_env_part_expected.first); // quaternion wxyz
+
+		bool found = false;
+		for (const JsonPoseHint &hint_dst : topo_rt.pose_hints) {
+			if (hint_dst.part != part_mapped) {
+				continue;
+			}
+			assert(almost_equal_array3(hint_dst.pos, expected_pos));
+			assert(almost_equal_array4(hint_dst.rot, expected_rot));
+			found = true;
+			break;
+		}
+		assert(found);
+	}
+}
+
 } // namespace
 
 int main() {
@@ -432,5 +676,7 @@ int main() {
 	test_topology_serializer_export_graph_with_filters();
 	test_topology_serializer_export_usd_graph_env_and_pose_hints();
 	test_topology_serializer_export_usd_graph_env_filtering();
+	test_topology_serializer_import_unknown_part_type_skips_parts_and_connections();
+	test_topology_serializer_export_import_usd_graph_roundtrip_with_env_transform();
 	return 0;
 }

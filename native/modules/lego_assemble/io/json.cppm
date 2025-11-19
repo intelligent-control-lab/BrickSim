@@ -9,7 +9,12 @@ import lego_assemble.utils.type_list;
 import lego_assemble.utils.poly_store;
 import lego_assemble.utils.usd_envs;
 import lego_assemble.utils.conversions;
+import lego_assemble.utils.transforms;
+import lego_assemble.utils.c4_rotation;
 import lego_assemble.vendor.nlohmann_json;
+import lego_assemble.vendor.pxr;
+import lego_assemble.vendor.carb;
+import lego_assemble.vendor.eigen;
 
 namespace lego_assemble {
 
@@ -193,7 +198,6 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 			        const pmr_vector_storage<PW, PartId> &storage) {
 				    using P = typename PW::wrapped_type;
 				    using PS = SerializerFor<P>;
-				    PS serializer{};
 
 				    // TODO: a bug in clang (?) causes us to be unable to use zip
 				    // for (const auto &[pid, pw] : std::views::zip(storage.ids, storage.data)) {
@@ -208,7 +212,7 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 					    result.parts.push_back({
 					        .id = static_cast<std::int64_t>(pid),
 					        .type = std::string{PS::TypeString},
-					        .payload = serializer.to_json(part),
+					        .payload = PS{}.to_json(part),
 					    });
 				    }
 			    }(g.parts().template storage_for<PWs>()),
@@ -294,6 +298,80 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 			});
 		}
 		return result;
+	}
+
+	template <class UsdGraph>
+	void import(const JsonTopology &topology, UsdGraph &g,
+	            std::int64_t env_id = kNoEnv,
+	            const Transformd &T_env_ref = SE3d{}.identity()) const {
+		// 1) Import parts
+		std::unordered_map<std::int64_t, PartId> id_map;
+		for (const JsonPart &jp : topology.parts) {
+			bool matched =
+			    visit_by_type_string(jp.type, [&](auto &&serializer) {
+				    using PS = std::decay_t<decltype(serializer)>;
+				    using P = typename PS::PartType;
+				    P part = serializer.from_json(jp.payload);
+				    auto added =
+				        g.template add_part<P>(env_id, std::move(part));
+				    if (!added) {
+					    log_warn("TopologySerializer: failed to import part id "
+					             "{} of type {}",
+					             jp.id, jp.type);
+					    return;
+				    }
+				    const auto &[pid, path] = *added;
+				    id_map[jp.id] = pid;
+			    });
+			if (!matched) {
+				log_warn(
+				    "TopologySerializer: unknown part type string {} for part "
+				    "id {}",
+				    jp.type, jp.id);
+			}
+		}
+
+		// 2) Import connections
+		for (const JsonConnection &jc : topology.connections) {
+			auto it_stud = id_map.find(jc.stud_id);
+			auto it_hole = id_map.find(jc.hole_id);
+			if (it_stud == id_map.end() || it_hole == id_map.end()) {
+				// One of the endpoints failed to import; skip
+				continue;
+			}
+			PartId stud_pid = it_stud->second;
+			PartId hole_pid = it_hole->second;
+
+			InterfaceRef stud_if{stud_pid,
+			                     static_cast<InterfaceId>(jc.stud_iface)};
+			InterfaceRef hole_if{hole_pid,
+			                     static_cast<InterfaceId>(jc.hole_iface)};
+			ConnectionSegment conn_seg{
+			    .offset = as<Eigen::Vector2i>(jc.offset),
+			    .yaw = to_c4(static_cast<int>(jc.yaw)),
+			};
+			auto connected = g.connect(stud_if, hole_if, std::move(conn_seg),
+			                           AlignPolicy::None);
+			if (!connected) {
+				log_warn("TopologySerializer: failed to import connection "
+				         "between {}:{} and {}:{}",
+				         jc.stud_id, jc.stud_iface, jc.hole_id, jc.hole_iface);
+			}
+		}
+
+		// 3) Apply pose hints
+		for (const JsonPoseHint &jph : topology.pose_hints) {
+			auto it = id_map.find(jph.part);
+			if (it == id_map.end()) {
+				// part failed to import; skip
+				continue;
+			}
+			PartId pid = it->second;
+			Transformd T_ref_part{as<Eigen::Quaterniond>(jph.rot),
+			                      as<Eigen::Vector3d>(jph.pos)};
+			Transformd T_env_part = T_env_ref * T_ref_part;
+			g.set_component_transform(pid, T_env_part);
+		}
 	}
 
   private:
