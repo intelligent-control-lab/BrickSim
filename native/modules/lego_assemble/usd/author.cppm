@@ -8,7 +8,7 @@ import lego_assemble.usd.specs;
 import lego_assemble.utils.conversions;
 import lego_assemble.utils.sdf;
 import lego_assemble.utils.metric_system;
-import lego_assemble.vendor.pxr;
+import lego_assemble.vendor;
 
 namespace lego_assemble {
 

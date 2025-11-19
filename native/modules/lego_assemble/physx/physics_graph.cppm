@@ -16,9 +16,7 @@ import lego_assemble.utils.multi_key_map;
 import lego_assemble.utils.pair;
 import lego_assemble.utils.unordered_pair;
 import lego_assemble.utils.metric_system;
-import lego_assemble.vendor.physx;
-import lego_assemble.vendor.eigen;
-import lego_assemble.vendor.carb;
+import lego_assemble.vendor;
 
 namespace lego_assemble {
 

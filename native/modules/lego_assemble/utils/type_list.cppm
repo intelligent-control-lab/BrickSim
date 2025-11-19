@@ -62,6 +62,11 @@ constexpr decltype(auto) select_forward_as_tuple(Args &&...args) {
 	}(Seq{});
 }
 
+// TODO: Workaround for https://github.com/clangd/clangd/issues/2529
+template <std::size_t N, class... Ts> struct _type_list_at {
+	using type = Ts...[N];
+};
+
 export template <class... Ts> struct type_list {
   private:
 	// Helper for select
@@ -82,7 +87,8 @@ export template <class... Ts> struct type_list {
 
 	template <std::size_t N>
 	    requires(N < size)
-	using at = Ts...[N];
+	// using at = Ts...[N];
+	using at = _type_list_at<N, Ts...>::type;
 
 	template <class... Us>
 	static constexpr bool same_as = (std::same_as<Ts, Us> && ...);

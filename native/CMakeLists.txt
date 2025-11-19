@@ -136,11 +136,8 @@ target_include_directories(lego_assemble_modules BEFORE PRIVATE "${CMAKE_CURRENT
 # target_link_options(lego_assemble_modules PRIVATE $<$<CONFIG:DEBUG>:${SAN_LDFLAGS}>)
 
 add_library(_native MODULE)
-target_sources(_native PRIVATE
-  FILE_SET cxx_modules TYPE CXX_MODULES
-  BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/py"
-  FILES "${CMAKE_CURRENT_SOURCE_DIR}/py/lego_assemble/native.cppm"
-)
+target_sources(_native PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/py/pybind11.cpp")
+target_include_directories(_native BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
 target_link_libraries(_native PRIVATE lego_assemble_modules pybind11::module)
 pybind11_extension(_native)
 
@@ -152,6 +149,7 @@ lego_add_abi_check(_native)
 
 function(add_lego_test TEST_NAME)
   add_executable(${TEST_NAME} ${ARGN})
+  target_include_directories(${TEST_NAME} BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
   target_link_libraries(${TEST_NAME} PRIVATE lego_assemble_modules)
   target_compile_options(${TEST_NAME} PRIVATE ${SAN_CFLAGS})
   target_link_options(${TEST_NAME} PRIVATE ${SAN_LDFLAGS})
@@ -186,9 +184,13 @@ foreach(_lvl IN ITEMS 26 23)
     get_target_property(_real "__CMAKE::CXX${_lvl}" ALIASED_TARGET)
     if (_real)
       target_include_directories(${_real} BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
+      # Ensure the provider itself is built as PIC.
+      set_property(TARGET ${_real} PROPERTY POSITION_INDEPENDENT_CODE ON)
     endif()
   endif()
   if (TARGET "__cmake_cxx${_lvl}")
     target_include_directories("__cmake_cxx${_lvl}" BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
+    # Ensure libstdc++ support objects (std.cc, std.compat.cc, ...) are PIC.
+    set_property(TARGET "__cmake_cxx${_lvl}" PROPERTY POSITION_INDEPENDENT_CODE ON)
   endif()
 endforeach()

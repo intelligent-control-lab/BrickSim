@@ -1,8 +1,6 @@
 import std;
 import lego_assemble.utils.conversions;
-import lego_assemble.vendor.physx;
-import lego_assemble.vendor.pxr;
-import lego_assemble.vendor.eigen;
+import lego_assemble.vendor;
 
 #include <cassert>
 

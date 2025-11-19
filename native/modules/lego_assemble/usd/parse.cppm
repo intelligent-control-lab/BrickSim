@@ -7,8 +7,7 @@ import lego_assemble.core.connections;
 import lego_assemble.usd.specs;
 import lego_assemble.utils.conversions;
 import lego_assemble.utils.c4_rotation;
-import lego_assemble.vendor.pxr;
-import lego_assemble.vendor.eigen;
+import lego_assemble.vendor;
 
 namespace lego_assemble {
 

@@ -61,7 +61,10 @@ class PolyStore<type_list<Ks...>, type_list<Ts...>, Storage, type_list<Hs...>,
 	using KeysList = type_list<Ks...>;
 	using HashList = type_list<Hs...>;
 	using EqList = type_list<Es...>;
-	using Anchor = Ks...[0]; // first key type as anchor
+	// TODO: Workaround for Clang bug. The commented lines will trigger segfault.
+	// using Anchor = Ks...[0]; // first key type as anchor
+	// using Anchor = KeysList::template at<0>;
+	using Anchor = std::tuple_element_t<0, std::tuple<Ks...>>;
 
 	static_assert((StorageLike<Storage<Ts, Anchor>, Ts, Anchor> && ...),
 	              "PolyStore: Storage<T,Anchor> must satisfy StorageLike");

@@ -1,7 +1,7 @@
 export module lego_assemble.utils.transforms;
 
 import std;
-import lego_assemble.vendor.eigen;
+import lego_assemble.vendor;
 import lego_assemble.utils.group;
 
 namespace lego_assemble {

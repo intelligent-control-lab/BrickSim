@@ -2,8 +2,7 @@ export module lego_assemble.utils.sdf;
 
 import std;
 import lego_assemble.utils.conversions;
-import lego_assemble.vendor.carb;
-import lego_assemble.vendor.pxr;
+import lego_assemble.vendor;
 
 namespace lego_assemble {
 

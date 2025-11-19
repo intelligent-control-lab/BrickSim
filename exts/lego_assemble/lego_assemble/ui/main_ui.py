@@ -3,11 +3,15 @@ import omni.ui
 import omni.usd
 import omni.physx
 import math
-import omni.physx.scripts.physicsUtils as physicsUtils 
-from pxr import Gf, UsdGeom
 from lego_assemble.colors import parse_color, Colors
 from lego_assemble.ui.force_monitor import ForceMonitor
-from lego_assemble._native import export_lego_topology, get_lego_thresholds, set_lego_thresholds, allocate_brick, deallocate_all_bricks_in_env
+from lego_assemble._native import (
+    allocate_brick_part,
+    deallocate_all_managed,
+    export_lego,
+    get_assembly_thresholds,
+    set_assembly_thresholds,
+)
 
 class LegoUI():
     def __init__(self):
@@ -55,7 +59,7 @@ class LegoUI():
                 # Middle: thresholds (top) + inv mass/inertia scale settings (bottom)
                 with omni.ui.VStack(height=0, spacing=8):
                     # Read current native thresholds and use them to initialize the UI
-                    _thr = get_lego_thresholds()
+                    _thr = get_assembly_thresholds()
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Distance tol (m):", width=140)
                         self._dist_tol_field = omni.ui.FloatDrag(min=0.0, max=0.05)
@@ -99,9 +103,10 @@ class LegoUI():
                             lambda m: self._set_threshold("position_tolerance", float(m.as_float))
                         )
 
-                # Right: monitoring column (delegated)
-                with omni.ui.VStack(height=0, spacing=5):
-                    self._monitor = ForceMonitor()
+                # TODO: currently disabled
+                # # Right: monitoring column (delegated)
+                # with omni.ui.VStack(height=0, spacing=5):
+                #     self._monitor = ForceMonitor()
 
     def destroy(self):
         self._monitor.destroy()
@@ -118,18 +123,18 @@ class LegoUI():
 
         env_id_str = self._base_path_field.model.as_string
         env_id = int(env_id_str) if env_id_str else -1
-        brick_id, brick_path = allocate_brick(
+        brick_path = allocate_brick_part(
             dimensions=(width, length, height),
             color=parse_color(color),
             env_id=env_id,
+            rot=(1.0, 0.0, 0.0, 0.0),
+            pos=(pos_x, pos_y, pos_z),
         )
-        prim = omni.usd.get_context().get_stage().GetPrimAtPath(brick_path)
-        physicsUtils.set_or_add_translate_op(UsdGeom.Xformable(prim), Gf.Vec3f(pos_x, pos_y, pos_z))
 
     def _reset_env_clicked(self):
         env_id_str = self._base_path_field.model.as_string
         env_id = int(env_id_str) if env_id_str else -1
-        deallocate_all_bricks_in_env(env_id)
+        deallocate_all_managed(env_id)
 
     def _save_to_usd(self):
         omni.physx.get_physx_interface().update_transformations(True, True, True, True)
@@ -138,11 +143,11 @@ class LegoUI():
 
     def _export(self):
         env_id_str = self._base_path_field.model.as_string
-        root_path = f"/World/envs/env_{env_id_str}" if env_id_str else "/World"
-        topology = export_lego_topology(root_path)
+        env_id = int(env_id_str) if env_id_str else -1
+        topology = export_lego(env_id)
         carb.log_info(f"Exported topology: {topology}")
 
     def _set_threshold(self, name: str, value: float):
-        thr = get_lego_thresholds()
+        thr = get_assembly_thresholds()
         setattr(thr, name, value)
-        set_lego_thresholds(thr)
+        set_assembly_thresholds(thr)

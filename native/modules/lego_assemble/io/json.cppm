@@ -11,14 +11,11 @@ import lego_assemble.utils.usd_envs;
 import lego_assemble.utils.conversions;
 import lego_assemble.utils.transforms;
 import lego_assemble.utils.c4_rotation;
-import lego_assemble.vendor.nlohmann_json;
-import lego_assemble.vendor.pxr;
-import lego_assemble.vendor.carb;
-import lego_assemble.vendor.eigen;
+import lego_assemble.vendor;
 
 namespace lego_assemble {
 
-export template <typename T>
+export template <class T>
 concept PartSerializer = requires {
 	typename T::PartType;
 	requires PartLike<typename T::PartType>;
@@ -162,7 +159,7 @@ export void from_json(const nlohmann::ordered_json &j, JsonTopology &topology) {
 	}
 }
 
-template <class T> using GetPartType = typename T::PartType;
+template <class T> using GetPartType = T::PartType;
 
 export template <PartSerializer... Serializers> class TopologySerializer {
   public:
@@ -310,7 +307,7 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 			bool matched =
 			    visit_by_type_string(jp.type, [&](auto &&serializer) {
 				    using PS = std::decay_t<decltype(serializer)>;
-				    using P = typename PS::PartType;
+				    using P = PS::PartType;
 				    P part = serializer.from_json(jp.payload);
 				    auto added =
 				        g.template add_part<P>(env_id, std::move(part));

@@ -11,10 +11,7 @@ import lego_assemble.usd.specs;
 import lego_assemble.omni.usd_physics_bridge;
 import lego_assemble.utils.type_list;
 import lego_assemble.utils.metric_system;
-import lego_assemble.vendor.pxr;
-import lego_assemble.vendor.physx;
-import lego_assemble.vendor.omni;
-import lego_assemble.vendor.carb;
+import lego_assemble.vendor;
 
 namespace lego_assemble {
 
@@ -39,8 +36,8 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 
 	using Bridge =
 	    UsdPhysicsBridge<PartTypeList, PartAuthorList, PartParserList>;
-	using PhysicsGraph = typename Bridge::PhysicsGraph;
-	using UsdGraph = typename Bridge::UsdGraph;
+	using PhysicsGraph = Bridge::PhysicsGraph;
+	using UsdGraph = Bridge::UsdGraph;
 
 	explicit LegoWorld(pxr::UsdStageRefPtr stage, LegoConfig cfg = {})
 	    : stage_{std::move(stage)}, cfg_{std::move(cfg)} {

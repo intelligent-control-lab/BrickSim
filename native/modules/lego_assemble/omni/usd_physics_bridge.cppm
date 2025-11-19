@@ -14,10 +14,7 @@ import lego_assemble.utils.type_list;
 import lego_assemble.utils.multi_key_set;
 import lego_assemble.utils.typed_id;
 import lego_assemble.utils.poly_store;
-import lego_assemble.vendor.omni;
-import lego_assemble.vendor.physx;
-import lego_assemble.vendor.carb;
-import lego_assemble.vendor.pxr;
+import lego_assemble.vendor;
 
 namespace lego_assemble {
 
@@ -528,8 +525,11 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		(
 		    [&]<PartLike P>(
 		        const pmr_vector_storage<UsdPartWrapper<P>, PartId> &storage) {
-			    for (const auto &[pid, pw] :
-			         std::views::zip(storage.ids, storage.data)) {
+			    // TODO: a bug in clang (?) causes us to be unable to use zip
+			    // for (const auto &[pid, pw] : std::views::zip(storage.ids, storage.data)) {
+			    for (std::size_t i = 0; i < storage.ids.size(); ++i) {
+				    PartId pid = storage.ids[i];
+				    const UsdPartWrapper<P> &pw = storage.data[i];
 				    const pxr::SdfPath *part_path_ptr =
 				        usd_graph_->topology()
 				            .parts()

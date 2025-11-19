@@ -1,7 +1,7 @@
 export module lego_assemble.utils.c4_rotation;
 
 import std;
-import lego_assemble.vendor.eigen;
+import lego_assemble.vendor;
 
 namespace lego_assemble {
 

@@ -7,9 +7,8 @@ import lego_assemble.usd.author;
 import lego_assemble.usd.parse;
 import lego_assemble.utils.type_list;
 import lego_assemble.omni.lego_world;
-import lego_assemble.vendor.pxr;
-import lego_assemble.vendor.carb;
-import lego_assemble.vendor.omni;
+import lego_assemble.io.json;
+import lego_assemble.vendor;
 
 namespace lego_assemble {
 
@@ -19,6 +18,7 @@ export class LegoRuntime {
 	using PartAuthors = type_list<PrototypeBrickAuthor>;
 	using PartParsers = type_list<BrickParser>;
 	using World = LegoWorld<Parts, PartAuthors, PartParsers>;
+	using Serializer = TopologySerializer<BrickSerializer>;
 
 	static LegoRuntime &instance() {
 		static LegoRuntime inst;

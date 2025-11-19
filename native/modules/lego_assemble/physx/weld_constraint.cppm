@@ -1,7 +1,7 @@
 export module lego_assemble.physx.weld_constraint;
 
 import std;
-import lego_assemble.vendor.physx;
+import lego_assemble.vendor;
 
 using namespace physx;
 

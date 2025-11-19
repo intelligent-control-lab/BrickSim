@@ -2,7 +2,7 @@ export module lego_assemble.utils.usd_envs;
 
 import std;
 import lego_assemble.utils.strings;
-import lego_assemble.vendor.pxr;
+import lego_assemble.vendor;
 
 namespace lego_assemble {
 

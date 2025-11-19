@@ -5,7 +5,7 @@ import lego_assemble.core.specs;
 import lego_assemble.core.connections;
 import lego_assemble.utils.transforms;
 import lego_assemble.utils.c4_rotation;
-import lego_assemble.vendor.eigen;
+import lego_assemble.vendor;
 
 namespace lego_assemble {
 

@@ -1,8 +1,7 @@
 export module lego_assemble.physx.scene_patcher;
 
 import std;
-import lego_assemble.vendor.carb;
-import lego_assemble.vendor.physx;
+import lego_assemble.vendor;
 
 namespace lego_assemble {
 

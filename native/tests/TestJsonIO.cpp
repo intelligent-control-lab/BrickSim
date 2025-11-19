@@ -11,9 +11,7 @@ import lego_assemble.utils.type_list;
 import lego_assemble.utils.transforms;
 import lego_assemble.utils.usd_envs;
 import lego_assemble.utils.conversions;
-import lego_assemble.vendor.nlohmann_json;
-import lego_assemble.vendor.eigen;
-import lego_assemble.vendor.pxr;
+import lego_assemble.vendor;
 
 #include <cassert>
 

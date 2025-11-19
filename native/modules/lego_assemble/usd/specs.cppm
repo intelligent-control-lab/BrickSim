@@ -2,7 +2,7 @@ export module lego_assemble.usd.specs;
 
 import std;
 import lego_assemble.core.specs;
-import lego_assemble.vendor.pxr;
+import lego_assemble.vendor;
 
 namespace lego_assemble {
 

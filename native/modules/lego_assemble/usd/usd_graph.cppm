@@ -17,9 +17,7 @@ import lego_assemble.utils.unique_set;
 import lego_assemble.utils.sdf_path_map;
 import lego_assemble.utils.usd_envs;
 import lego_assemble.utils.sdf;
-import lego_assemble.vendor.pxr;
-import lego_assemble.vendor.carb;
-import lego_assemble.vendor.eigen;
+import lego_assemble.vendor;
 
 namespace lego_assemble {
 
@@ -44,7 +42,7 @@ export template <PartLike P> struct UsdPartWrapper : SimplePartWrapper<P> {
 	std::vector<InterfaceColliderPair> colliders_;
 };
 
-template <class T> using GetPartType = typename T::PartType;
+template <class T> using GetPartType = T::PartType;
 
 export template <class Parts, class PartAuthors, class PartParsers,
                  class Hooks = NoHooks>
@@ -106,13 +104,13 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 
 	template <PartLike P>
 	    requires PartAuthorPartTypes::template
-	contains<P> using PartAuthorFor = typename PartAuthorList::template at<
-	    PartAuthorPartTypes::template index_of<P>>;
+	contains<P> using PartAuthorFor =
+	    PartAuthorList::template at<PartAuthorPartTypes::template index_of<P>>;
 
 	template <PartLike P>
 	    requires PartParserPartTypes::template
-	contains<P> using PartParserFor = typename PartParserList::template at<
-	    PartParserPartTypes::template index_of<P>>;
+	contains<P> using PartParserFor =
+	    PartParserList::template at<PartParserPartTypes::template index_of<P>>;
 
 	explicit UsdLegoGraph(
 	    pxr::UsdStageRefPtr stage,
@@ -631,6 +629,10 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		}
 
 		return updated_count;
+	}
+
+	LegoAllocator &allocator() noexcept {
+		return allocator_;
 	}
 
   private:

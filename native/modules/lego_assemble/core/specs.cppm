@@ -3,7 +3,7 @@ export module lego_assemble.core.specs;
 import std;
 import lego_assemble.utils.type_list;
 import lego_assemble.utils.transforms;
-import lego_assemble.vendor.eigen;
+import lego_assemble.vendor;
 
 namespace lego_assemble {
 

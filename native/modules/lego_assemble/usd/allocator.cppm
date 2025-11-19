@@ -8,7 +8,7 @@ import lego_assemble.usd.author;
 import lego_assemble.usd.specs;
 import lego_assemble.utils.usd_envs;
 import lego_assemble.utils.sdf;
-import lego_assemble.vendor.pxr;
+import lego_assemble.vendor;
 
 namespace lego_assemble {
 

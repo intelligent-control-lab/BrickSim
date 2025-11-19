@@ -3,7 +3,7 @@ import lego_assemble.core.graph;
 import lego_assemble.core.specs;
 import lego_assemble.core.connections;
 import lego_assemble.utils.transforms;
-import lego_assemble.vendor.eigen;
+import lego_assemble.vendor;
 
 #include <cassert>
 
