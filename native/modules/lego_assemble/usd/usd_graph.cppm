@@ -455,6 +455,25 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		return true;
 	}
 
+	std::optional<std::int64_t> part_env_id(PartId pid) const {
+		const pxr::SdfPath *prim_path_ptr =
+		    topology_.parts().template project_key<PartId, pxr::SdfPath>(pid);
+		if (!prim_path_ptr) {
+			return std::nullopt;
+		}
+		return envIdFromPath(*prim_path_ptr);
+	}
+
+	std::optional<std::int64_t> conn_env_id(ConnSegId csid) const {
+		const pxr::SdfPath *conn_path_ptr =
+		    topology_.connection_segments()
+		        .template project<ConnSegId, pxr::SdfPath>(csid);
+		if (!conn_path_ptr) {
+			return std::nullopt;
+		}
+		return envIdFromPath(*conn_path_ptr);
+	}
+
 	// Returns {}^{env}T_part in SI units (meters), if the part has
 	// a prim path that can be resolved into an env root.
 	std::optional<Transformd> part_pose_relative_to_env(PartId pid) const {

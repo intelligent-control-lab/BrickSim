@@ -87,6 +87,13 @@ export template <class... Ts> struct type_list {
 	template <class... Us>
 	static constexpr bool same_as = (std::same_as<Ts, Us> && ...);
 
+	template <class U>
+	static constexpr bool is_subset_of = (U::template contains<Ts> && ...);
+
+	template <class U>
+	static constexpr bool is_superset_of =
+	    U::template is_subset_of<type_list<Ts...>>;
+
 	template <class... Us>
 	static constexpr bool same_as_remove_cvref =
 	    (std::same_as<std::remove_cvref_t<Ts>, std::remove_cvref_t<Us>> && ...);

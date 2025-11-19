@@ -293,6 +293,10 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 
 	class ComponentView {
 	  public:
+		[[nodiscard]] PartId root() const {
+			return root_;
+		}
+
 		[[nodiscard]] std::size_t size() const {
 			const DgVertexId *dgid =
 			    g_->parts_.template project_key<PartId, DgVertexId>(root_);
