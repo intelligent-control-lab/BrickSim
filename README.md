@@ -46,3 +46,9 @@ pip install -e exts/lego_assemble -v
 ```bash
 scripts/launch_isaacsim.sh
 ```
+
+### Issues
+1. `ModuleNotFoundError: No module named '_lzma'`.
+Solution: Reinstall Python. The system Python may miss this package.
+2. `The currently installed NVIDIA graphics driver is unsupported or has known issues. Reason for failure: The minimum Omniverse RTX requirement on Linux Installed driver: 535.18 The unsupported driver range: [0.0, 535.129)`
+Solution: install another driver, e.g., 580. The 535.274 does not work according to Nvidia.
