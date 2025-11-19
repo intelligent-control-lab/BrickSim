@@ -216,11 +216,12 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 					                csid));
 				}
 			}
+			const auto &[stud_pid, stud_ifid] = stud_if_ref;
+			owner_->reset_filtering_safely(stud_pid);
 		}
 
 		void
-		on_disconnecting(ConnSegId csid,
-		                 [[maybe_unused]] const ConnSegRef &csref,
+		on_disconnecting(ConnSegId csid, const ConnSegRef &csref,
 		                 PhysicsConnectionSegmentWrapper &csw,
 		                 [[maybe_unused]] PhysicsConnectionBundleWrapper &cbw) {
 			// Remove contact exclusion
@@ -238,6 +239,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			}
 			csw.px_stud_shape = NullActorShapePair;
 			csw.px_hole_shape = NullActorShapePair;
+
+			const auto &[stud_if_ref, hole_if_ref] = csref;
+			const auto &[stud_pid, stud_ifid] = stud_if_ref;
+			owner_->reset_filtering_safely(stud_pid);
 		}
 
 		void on_bundle_created(const ConnectionEndpoint &ep,
@@ -588,7 +593,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	void do_post_step() {
 		sim_running_ = false;
 
-		flush_pending_constraints();
+		flush_physx_ops();
 
 		std::pmr::vector<PendingAssembly> pending_assemblies{res_};
 		std::pmr::vector<PendingDisassembly> pending_disassemblies{res_};
@@ -673,15 +678,16 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	                   std::tuple<PartId, PartId, WeldConstraintData>>
 	    pending_constraints_;
 	ConstraintHandle next_constraint_handle_ = 1;
-	void flush_pending_constraints() {
+	std::unordered_set<PartId> pending_reset_filtering_parts_;
+	void flush_physx_ops() {
 		if (sim_running_) {
-			throw std::runtime_error("Cannot process pending constraints while "
-			                         "simulation is running");
+			throw std::runtime_error("Cannot process pending PhysX operations "
+			                         "while simulation is running");
 		}
 		for (ConstraintHandle handle : constraints_to_remove_) {
 			auto it = realized_constraints_.find(handle);
 			if (it != realized_constraints_.end()) {
-				it->second->release();
+				do_release_constraint(it->second);
 				realized_constraints_.erase(it);
 			}
 		}
@@ -712,6 +718,20 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			}
 		}
 		pending_constraints_.clear();
+		for (PartId pid : pending_reset_filtering_parts_) {
+			physx::PxRigidActor *const *actor_ptr =
+			    topology_.parts()
+			        .template project_key<PartId, physx::PxRigidActor *>(pid);
+			if (!actor_ptr) {
+				log_warn(
+				    "Cannot find actor for part id {}, skipping filter reset",
+				    pid);
+				continue;
+			}
+			physx::PxRigidActor *actor = *actor_ptr;
+			actor->getScene()->resetFiltering(*actor);
+		}
+		pending_reset_filtering_parts_.clear();
 	}
 	ConstraintHandle create_constraint_safely(PartId pid_a, PartId pid_b,
 	                                          WeldConstraintData &&weld_data) {
@@ -756,7 +776,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			if (sim_running_) {
 				constraints_to_remove_.insert(handle);
 			} else {
-				it->second->release();
+				do_release_constraint(it->second);
 				realized_constraints_.erase(it);
 			}
 			return true;
@@ -771,10 +791,28 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	physx::PxConstraint *do_create_constraint(physx::PxRigidActor *actor_a,
 	                                          physx::PxRigidActor *actor_b,
 	                                          WeldConstraintData &&weld_data) {
-		physx::PxConstraint *constraint =
-		    createWeldConstraint(*px_, actor_a, actor_b, std::move(weld_data));
-		actor_a->getScene()->resetFiltering(*actor_a);
-		return constraint;
+		return createWeldConstraint(*px_, actor_a, actor_b,
+		                            std::move(weld_data));
+	}
+	void do_release_constraint(physx::PxConstraint *constraint) {
+		constraint->release();
+	}
+	void reset_filtering_safely(PartId pid) {
+		if (sim_running_) {
+			pending_reset_filtering_parts_.insert(pid);
+		} else {
+			physx::PxRigidActor *const *actor_ptr =
+			    topology_.parts()
+			        .template project_key<PartId, physx::PxRigidActor *>(pid);
+			if (!actor_ptr) {
+				log_warn(
+				    "Cannot find actor for part id {}, skipping filter reset",
+				    pid);
+				return;
+			}
+			physx::PxRigidActor *actor = *actor_ptr;
+			actor->getScene()->resetFiltering(*actor);
+		}
 	}
 
 	void enqueue_pending_assembly(auto &&...args) {
