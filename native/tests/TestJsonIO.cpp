@@ -328,8 +328,8 @@ static void test_topology_serializer_export_usd_graph_env_and_pose_hints() {
 	auto pathA_opt = g.add_part(env_id, brickA);
 	auto pathB_opt = g.add_part(env_id, brickB);
 	assert(pathA_opt.has_value() && pathB_opt.has_value());
-	pxr::SdfPath pathA = *pathA_opt;
-	pxr::SdfPath pathB = *pathB_opt;
+	[[maybe_unused]] auto [ignored_pidA, pathA] = *pathA_opt;
+	[[maybe_unused]] auto [ignored_pidB, pathB] = *pathB_opt;
 
 	const PartId *pidA =
 	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
@@ -383,8 +383,8 @@ static void test_topology_serializer_export_usd_graph_env_filtering() {
 	auto pathA_opt = g.add_part(env_keep, brickA);
 	auto pathB_opt = g.add_part(env_keep, brickB);
 	assert(pathA_opt.has_value() && pathB_opt.has_value());
-	pxr::SdfPath pathA = *pathA_opt;
-	pxr::SdfPath pathB = *pathB_opt;
+	[[maybe_unused]] auto [ignored_pidA2, pathA] = *pathA_opt;
+	[[maybe_unused]] auto [ignored_pidB2, pathB] = *pathB_opt;
 
 	const PartId *pidA =
 	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);

@@ -163,8 +163,8 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 
 	template <PartLike P>
 	    requires PartAuthorPartTypes::template
-	contains<P> std::optional<pxr::SdfPath> add_part(std::int64_t env_id,
-	                                                 P part) {
+	contains<P> std::optional<std::tuple<PartId, pxr::SdfPath>>
+	add_part(std::int64_t env_id, P part) {
 		using Author = PartAuthorFor<P>;
 		pxr::SdfChangeBlock _changes;
 		auto [path, colliders] =
@@ -182,7 +182,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		UsdPartInfo &part_info = part_path_table_[path];
 		part_info.pid = *part_id;
 		try_realize_unrealized_conns_for(path, part_info);
-		return path;
+		return {{*part_id, path}};
 	}
 
 	bool remove_part(const pxr::SdfPath &path) {
@@ -333,7 +333,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		return true;
 	}
 
-	std::optional<std::tuple<PartId, pxr::SdfPath>>
+	std::optional<std::tuple<ConnSegId, pxr::SdfPath>>
 	connect(const InterfaceRef &stud_if, const InterfaceRef &hole_if,
 	        ConnectionSegment conn_seg,
 	        AlignPolicy align_policy = AlignPolicy::MoveHoleCC) {

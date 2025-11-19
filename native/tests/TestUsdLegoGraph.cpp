@@ -614,7 +614,7 @@ static void test_add_part_graph_to_usd() {
 	std::int64_t env_world = kNoEnv;
 	auto pathA_opt = g.add_part(env_world, brickA);
 	assert(pathA_opt.has_value());
-	pxr::SdfPath pathA = *pathA_opt;
+	[[maybe_unused]] auto [ignored_pidA0, pathA] = *pathA_opt;
 
 	pxr::UsdPrim primA = stage->GetPrimAtPath(pathA);
 	assert(primA.IsValid());
@@ -628,7 +628,7 @@ static void test_add_part_graph_to_usd() {
 	create_env_root(stage, env_id);
 	auto pathB_opt = g.add_part(env_id, brickB);
 	assert(pathB_opt.has_value());
-	pxr::SdfPath pathB = *pathB_opt;
+	[[maybe_unused]] auto [ignored_pidB0, pathB] = *pathB_opt;
 
 	pxr::UsdPrim primB = stage->GetPrimAtPath(pathB);
 	assert(primB.IsValid());
@@ -666,8 +666,8 @@ static void test_remove_part_no_connections_graph_api() {
 	auto pathA_opt = g.add_part(env_id, brickA);
 	auto pathB_opt = g.add_part(env_id, brickB);
 	assert(pathA_opt.has_value() && pathB_opt.has_value());
-	pxr::SdfPath pathA = *pathA_opt;
-	pxr::SdfPath pathB = *pathB_opt;
+	[[maybe_unused]] auto [ignored_pidA1, pathA] = *pathA_opt;
+	[[maybe_unused]] auto [ignored_pidB1, pathB] = *pathB_opt;
 
 	assert(g.topology().parts().size() == 2);
 
@@ -859,8 +859,8 @@ static void test_connect_and_disconnect_realized_graph_api() {
 	auto pathA_opt = g.add_part(env_id, brickA);
 	auto pathB_opt = g.add_part(env_id, brickB);
 	assert(pathA_opt.has_value() && pathB_opt.has_value());
-	pxr::SdfPath pathA = *pathA_opt;
-	pxr::SdfPath pathB = *pathB_opt;
+	[[maybe_unused]] auto [ignored_pidA2, pathA] = *pathA_opt;
+	[[maybe_unused]] auto [ignored_pidB2, pathB] = *pathB_opt;
 
 	const PartId *pidA =
 	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
@@ -950,8 +950,8 @@ static void test_connect_align_move_hole_component() {
 	auto pathA_opt = g.add_part(env_id, brickA);
 	auto pathB_opt = g.add_part(env_id, brickB);
 	assert(pathA_opt.has_value() && pathB_opt.has_value());
-	pxr::SdfPath pathA = *pathA_opt;
-	pxr::SdfPath pathB = *pathB_opt;
+	[[maybe_unused]] auto [ignored_pidA3, pathA] = *pathA_opt;
+	[[maybe_unused]] auto [ignored_pidB3, pathB] = *pathB_opt;
 
 	const PartId *pidA =
 	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
@@ -1039,8 +1039,8 @@ static void test_connect_align_move_stud_component() {
 	auto pathA_opt = g.add_part(env_id, brickA);
 	auto pathB_opt = g.add_part(env_id, brickB);
 	assert(pathA_opt.has_value() && pathB_opt.has_value());
-	pxr::SdfPath pathA = *pathA_opt;
-	pxr::SdfPath pathB = *pathB_opt;
+	[[maybe_unused]] auto [ignored_pidA4, pathA] = *pathA_opt;
+	[[maybe_unused]] auto [ignored_pidB4, pathB] = *pathB_opt;
 
 	const PartId *pidA =
 	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
@@ -1122,8 +1122,8 @@ static void test_connect_align_policy_none_preserves_env_poses() {
 	auto pathA_opt = g.add_part(env_id, brickA);
 	auto pathB_opt = g.add_part(env_id, brickB);
 	assert(pathA_opt.has_value() && pathB_opt.has_value());
-	pxr::SdfPath pathA = *pathA_opt;
-	pxr::SdfPath pathB = *pathB_opt;
+	[[maybe_unused]] auto [ignored_pidA5, pathA] = *pathA_opt;
+	[[maybe_unused]] auto [ignored_pidB5, pathB] = *pathB_opt;
 
 	const PartId *pidA =
 	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
@@ -1239,7 +1239,7 @@ static void test_set_component_transform_single_part() {
 	std::int64_t env_id = kNoEnv;
 	auto path_opt = g.add_part(env_id, brick);
 	assert(path_opt.has_value());
-	pxr::SdfPath path = *path_opt;
+	[[maybe_unused]] auto [ignored_pid_single, path] = *path_opt;
 
 	const PartId *pid =
 	    g.topology().parts().project_key<pxr::SdfPath, PartId>(path);
@@ -1298,8 +1298,8 @@ static void test_set_component_transform_two_parts_connected() {
 	auto pathA_opt = g.add_part(env_id, brickA);
 	auto pathB_opt = g.add_part(env_id, brickB);
 	assert(pathA_opt.has_value() && pathB_opt.has_value());
-	pxr::SdfPath pathA = *pathA_opt;
-	pxr::SdfPath pathB = *pathB_opt;
+	[[maybe_unused]] auto [ignored_pidA6, pathA] = *pathA_opt;
+	[[maybe_unused]] auto [ignored_pidB6, pathB] = *pathB_opt;
 
 	const PartId *pidA =
 	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
@@ -1386,7 +1386,7 @@ static void test_part_pose_relative_to_env_single_part() {
 	std::int64_t env_id = kNoEnv;
 	auto path_opt = g.add_part(env_id, brick);
 	assert(path_opt.has_value());
-	pxr::SdfPath path = *path_opt;
+	[[maybe_unused]] auto [ignored_pid_pose, path] = *path_opt;
 
 	const PartId *pid =
 	    g.topology().parts().project_key<pxr::SdfPath, PartId>(path);
@@ -1420,8 +1420,8 @@ static void test_part_pose_relative_to_env_two_parts_connected() {
 	auto pathA_opt = g.add_part(env_id, brickA);
 	auto pathB_opt = g.add_part(env_id, brickB);
 	assert(pathA_opt.has_value() && pathB_opt.has_value());
-	pxr::SdfPath pathA = *pathA_opt;
-	pxr::SdfPath pathB = *pathB_opt;
+	[[maybe_unused]] auto [ignored_pidA7, pathA] = *pathA_opt;
+	[[maybe_unused]] auto [ignored_pidB7, pathB] = *pathB_opt;
 
 	const PartId *pidA =
 	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
@@ -1624,11 +1624,13 @@ static void test_usd_lego_graph_hooks_part_added_and_get_set() {
 	auto pathA_opt = g.add_part(env_id, brickA);
 	auto pathB_opt = g.add_part(env_id, brickB);
 	assert(pathA_opt.has_value() && pathB_opt.has_value());
+	auto [pidA_added, pathA] = *pathA_opt;
+	auto [pidB_added, pathB] = *pathB_opt;
 
 	const PartId *pidA =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(*pathA_opt);
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
 	const PartId *pidB =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(*pathB_opt);
+	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
 	assert(pidA && pidB);
 
 	// Hooks must have observed both part additions.
@@ -1658,8 +1660,8 @@ static void test_usd_lego_graph_hooks_connection_lifecycle() {
 	auto pathA_opt = g.add_part(env_id, brickA);
 	auto pathB_opt = g.add_part(env_id, brickB);
 	assert(pathA_opt.has_value() && pathB_opt.has_value());
-	pxr::SdfPath pathA = *pathA_opt;
-	pxr::SdfPath pathB = *pathB_opt;
+	[[maybe_unused]] auto [ignored_pidA8, pathA] = *pathA_opt;
+	[[maybe_unused]] auto [ignored_pidB8, pathB] = *pathB_opt;
 
 	const PartId *pidA =
 	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
