@@ -519,6 +519,19 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		return ComponentView{*this, root};
 	}
 
+	std::generator<ComponentView> components() const {
+		for (auto dg_view : dynamic_graph_.components()) {
+			const auto *root_pid =
+			    parts_.template project_key<DgVertexId, PartId>(
+			        DgVertexId(dg_view.root()));
+			if (root_pid) {
+				co_yield ComponentView{*this, *root_pid};
+			} else {
+				std::unreachable();
+			}
+		}
+	}
+
 	std::optional<InterfaceSpec>
 	get_interface_spec(const InterfaceRef &iref) const {
 		const auto &[part_id, interface_id] = iref;

@@ -86,6 +86,24 @@ static InterfaceRef IR(PartId pid, InterfaceId iid) {
 	return {pid, iid};
 }
 
+// Collect connected components as sorted PartId sets for easy comparison
+static std::vector<std::vector<PartId>> collect_components(const G &g) {
+	std::vector<std::vector<PartId>> comps;
+	for (auto comp : g.components()) {
+		std::vector<PartId> verts;
+		for (PartId pid : comp.vertices()) {
+			verts.push_back(pid);
+		}
+		std::sort(verts.begin(), verts.end());
+		if (!verts.empty()) {
+			assert(comp.size() == verts.size());
+		}
+		comps.push_back(std::move(verts));
+	}
+	std::sort(comps.begin(), comps.end());
+	return comps;
+}
+
 // --------------------------- tests ---------------------------
 
 static void test_resource_wiring_and_initial_state() {
@@ -230,6 +248,79 @@ static void test_part_bfs_matches_lookup_transform() {
 	check_from(PartId{0});
 	check_from(PartId{1});
 	check_from(PartId{2});
+}
+
+// components(): empty graph and graph with isolated parts
+static void test_components_empty_and_singletons() {
+	{
+		G g;
+		auto comps = collect_components(g);
+		assert(comps.empty());
+	}
+
+	{
+		G g;
+		build_three_parts(g); // three isolated parts 0,1,2
+		auto comps = collect_components(g);
+
+		std::vector<std::vector<PartId>> expected{
+		    {PartId{0}}, {PartId{1}}, {PartId{2}}};
+		std::sort(expected.begin(), expected.end());
+
+		assert(comps == expected);
+	}
+}
+
+// components(): connectivity after adding edges between parts
+static void test_components_with_connections() {
+	G g;
+	build_three_parts(g); // 0,1,2
+
+	ConnectionSegment cs{}; // identity transform
+	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
+
+	auto comps = collect_components(g);
+
+	std::vector<std::vector<PartId>> expected{{PartId{0}, PartId{1}},
+	                                          {PartId{2}}};
+	for (auto &v : expected) {
+		std::sort(v.begin(), v.end());
+	}
+	std::sort(expected.begin(), expected.end());
+
+	assert(comps == expected);
+}
+
+// components(): stay consistent after removing parts
+static void test_components_after_removals() {
+	G g;
+	build_three_parts(g); // 0,1,2
+
+	ConnectionSegment cs{}; // identity transform on each edge
+	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs)); // 0-1
+	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs)); // 1-2
+
+	// All three parts should be in one component
+	{
+		auto comps = collect_components(g);
+		std::vector<std::vector<PartId>> expected{
+		    {PartId{0}, PartId{1}, PartId{2}}};
+		for (auto &v : expected) {
+			std::sort(v.begin(), v.end());
+		}
+		std::sort(expected.begin(), expected.end());
+		assert(comps == expected);
+	}
+
+	// Remove middle part; remaining parts must become separate components
+	assert(g.remove_part(PartId{1}));
+
+	{
+		auto comps = collect_components(g);
+		std::vector<std::vector<PartId>> expected{{PartId{0}}, {PartId{2}}};
+		std::sort(expected.begin(), expected.end());
+		assert(comps == expected);
+	}
 }
 
 static void test_connect_branches_and_bundle() {
@@ -511,6 +602,9 @@ int main() {
 	test_get_interface_spec_and_lookup_visit();
 	test_part_bfs_invalid_and_isolated();
 	test_part_bfs_matches_lookup_transform();
+	test_components_empty_and_singletons();
+	test_components_with_connections();
+	test_components_after_removals();
 	test_connect_branches_and_bundle();
 	test_connect_inputs_and_status();
 	test_multi_connections_match_and_mismatch();
