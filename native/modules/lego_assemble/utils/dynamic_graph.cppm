@@ -62,9 +62,6 @@ export class NaiveDynamicGraph {
   public:
 	class ComponentView {
 	  public:
-		ComponentView(const NaiveDynamicGraph &g, vertex_id root) noexcept
-		    : g_{&g}, root_{root} {}
-
 		[[nodiscard]] std::size_t size() const {
 			return g_->component_size(root_);
 		}
@@ -159,6 +156,11 @@ export class NaiveDynamicGraph {
 	  private:
 		const NaiveDynamicGraph *g_;
 		vertex_id root_;
+
+		ComponentView(const NaiveDynamicGraph &g, vertex_id root) noexcept
+		    : g_{&g}, root_{root} {}
+
+		friend class NaiveDynamicGraph;
 	};
 
 	using component_view_type = ComponentView;
@@ -717,9 +719,6 @@ export class HolmDeLichtenbergThorup {
   public:
 	class ComponentView {
 	  public:
-		ComponentView(const HolmDeLichtenbergThorup &g, vertex_id root) noexcept
-		    : g_{&g}, root_{root} {}
-
 		[[nodiscard]] std::size_t size() const {
 			return g_->component_size(root_);
 		}
@@ -816,6 +815,11 @@ export class HolmDeLichtenbergThorup {
 	  private:
 		const HolmDeLichtenbergThorup *g_;
 		vertex_id root_;
+
+		ComponentView(const HolmDeLichtenbergThorup &g, vertex_id root) noexcept
+		    : g_{&g}, root_{root} {}
+
+		friend class HolmDeLichtenbergThorup;
 	};
 
 	using component_view_type = ComponentView;

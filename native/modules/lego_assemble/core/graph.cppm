@@ -188,6 +188,12 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 	              "LegoGraph: Hooks must be a class type");
 
   public:
+	using Self =
+	    LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
+	              type_list<PEKs...>, type_list<PEKHs...>, type_list<PEKEqs...>,
+	              ConnSegWrapper, type_list<CSEKs...>, type_list<CSEKHs...>,
+	              type_list<CSEKEqs...>, ConnBundleWrapper, Hooks,
+	              DynamicGraph>;
 	using PartTypeList = PartList<Ps...>;
 	using WrappedPartList = type_list<PartWrapper<Ps>...>;
 	using PartKeys = type_list<PartId, DgVertexId, PEKs...>;
@@ -285,6 +291,143 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		} -> std::same_as<void>;
 	};
 
+	class ComponentView {
+	  public:
+		[[nodiscard]] std::size_t size() const {
+			const DgVertexId *dgid =
+			    g_->parts_.template project_key<PartId, DgVertexId>(root_);
+			if (!dgid) {
+				return 0;
+			}
+			return g_->dynamic_graph_.component_view(dgid->value()).size();
+		}
+
+		// Yields PartIds in the component
+		std::generator<PartId> vertices() const {
+			const DgVertexId *root_dgid =
+			    g_->parts_.template project_key<PartId, DgVertexId>(root_);
+			if (!root_dgid) {
+				co_return;
+			}
+
+			for (vertex_id vid :
+			     g_->dynamic_graph_.component_view(root_dgid->value())
+			         .vertices()) {
+				const PartId *pid =
+				    g_->parts_.template project_key<DgVertexId, PartId>(
+				        DgVertexId(vid));
+				if (pid) {
+					co_yield *pid;
+				} else {
+					std::unreachable();
+				}
+			}
+		}
+
+		// Yields pairs of PartIds representing edges in the component
+		// Optional boolean: tree_only (default false returns all edges, true returns spanning forest)
+		std::generator<std::pair<PartId, PartId>>
+		edges(bool tree_only = false) const {
+			const DgVertexId *root_dgid =
+			    g_->parts_.template project_key<PartId, DgVertexId>(root_);
+			if (!root_dgid) {
+				co_return;
+			}
+
+			auto view = g_->dynamic_graph_.component_view(root_dgid->value());
+
+			// Select generator based on flag
+			auto edge_gen = tree_only ? view.tree_edges() : view.edges();
+
+			for (auto [u_vid, v_vid] : edge_gen) {
+				const PartId *u_pid =
+				    g_->parts_.template project_key<DgVertexId, PartId>(
+				        DgVertexId(u_vid));
+				const PartId *v_pid =
+				    g_->parts_.template project_key<DgVertexId, PartId>(
+				        DgVertexId(v_vid));
+				if (u_pid && v_pid) {
+					co_yield {*u_pid, *v_pid};
+				} else {
+					std::unreachable();
+				}
+			}
+		}
+
+		// Calculates transforms on the fly by traversing the HLT spanning tree.
+		// Complexity: O(N) where N is component size. No cycle checks needed.
+		std::generator<std::pair<PartId, Transformd>> transforms() const {
+			const DgVertexId *root_dgid =
+			    g_->parts_.template project_key<PartId, DgVertexId>(root_);
+			if (!root_dgid) {
+				co_return;
+			}
+
+			// 1. Yield Identity for root
+			Transformd identity = SE3d{}.identity();
+			co_yield {root_, identity};
+
+			// 2. Cache for calculated transforms relative to root
+			//    We use pmr::unordered_map if we want to utilize the graph's resource,
+			//    but this view is transient. Standard map is fine, or we can use a temporary resource.
+			std::unordered_map<PartId, Transformd> cache;
+			cache.reserve(size()); // Hint size
+			cache.emplace(root_, identity);
+
+			// 3. Traverse the Spanning Tree (F0) from DynamicGraph
+			//    tree_edges() is guaranteed to yield edges {parent, child} in a BFS/traversal order
+			//    stemming from the view's root.
+			auto view = g_->dynamic_graph_.component_view(root_dgid->value());
+
+			for (auto [parent_vid, child_vid] : view.tree_edges()) {
+				const PartId *p_pid_ptr =
+				    g_->parts_.template project_key<DgVertexId, PartId>(
+				        DgVertexId(parent_vid));
+				const PartId *c_pid_ptr =
+				    g_->parts_.template project_key<DgVertexId, PartId>(
+				        DgVertexId(child_vid));
+
+				if (!p_pid_ptr || !c_pid_ptr) {
+					std::unreachable();
+				}
+				PartId parent_id = *p_pid_ptr;
+				PartId child_id = *c_pid_ptr;
+
+				// Retrieve parent's transform (must exist due to tree traversal order)
+				auto it_p = cache.find(parent_id);
+				if (it_p == cache.end()) {
+					std::unreachable();
+				}
+				const Transformd &T_root_parent = it_p->second;
+
+				// Retrieve connection transform T_parent_child
+				auto bundle_it = g_->conn_bundles_.find({parent_id, child_id});
+				if (bundle_it == g_->conn_bundles_.end()) {
+					std::unreachable();
+				}
+
+				const ConnectionBundle &bundle = bundle_it->second.wrapped();
+				const Transformd &T_parent_child =
+				    (parent_id < child_id) ? bundle.T_a_b : bundle.T_b_a;
+
+				// Compose: T_root_child = T_root_parent * T_parent_child
+				Transformd T_root_child = T_root_parent * T_parent_child;
+
+				// Yield and Cache
+				cache.emplace(child_id, T_root_child);
+				co_yield {child_id, T_root_child};
+			}
+		}
+
+	  private:
+		const Self *g_;
+		PartId root_;
+
+		ComponentView(const LegoGraph &g, PartId root) : g_(&g), root_(root) {}
+
+		friend Self;
+	};
+
 	explicit LegoGraph(
 	    Hooks *hooks = nullptr,
 	    std::pmr::memory_resource *r = std::pmr::get_default_resource())
@@ -372,51 +515,8 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		}
 	}
 
-	std::generator<std::pair<PartId, Transformd>> part_bfs(PartId u0) const {
-		if (!parts_.alive(u0)) {
-			co_return;
-		}
-
-		// BFS frontier and "visited" map, storing {}^{u0}T_v for each visited v.
-		std::unordered_map<PartId, Transformd> transforms;
-		std::deque<PartId> queue;
-
-		transforms.emplace(u0, SE3d{}.identity());
-		queue.push_back(u0);
-		while (!queue.empty()) {
-			PartId cur = queue.front();
-			queue.pop_front();
-
-			auto it_T = transforms.find(cur);
-			if (it_T == transforms.end()) {
-				std::unreachable();
-			}
-			Transformd T_u0_cur = it_T->second;
-			co_yield {cur, T_u0_cur};
-
-			bool visited_part = parts_.visit(cur, [&](const auto &pw) {
-				for (PartId npid : pw.neighbor_parts()) {
-					if (transforms.contains(npid)) {
-						// already visited
-						continue;
-					}
-					auto it_bundle = conn_bundles_.find({cur, npid});
-					if (it_bundle == conn_bundles_.end()) {
-						std::unreachable();
-					}
-					const ConnectionBundle &bundle =
-					    it_bundle->second.wrapped();
-					Transformd T_cur_n =
-					    cur < npid ? bundle.T_a_b : bundle.T_b_a;
-					Transformd T_u0_n = T_u0_cur * T_cur_n;
-					transforms.emplace(npid, T_u0_n);
-					queue.push_back(npid);
-				}
-			});
-			if (!visited_part) {
-				std::unreachable();
-			}
-		}
+	ComponentView component_view(PartId root) const {
+		return ComponentView{*this, root};
 	}
 
 	std::optional<InterfaceSpec>

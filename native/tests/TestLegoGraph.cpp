@@ -146,7 +146,7 @@ static void test_part_bfs_invalid_and_isolated() {
 	auto collect_bfs = [&](PartId start) {
 		std::vector<PartId> order;
 		std::unordered_map<PartId, Transformd> transforms;
-		for (auto [pid, T] : g.part_bfs(start)) {
+		for (auto [pid, T] : g.component_view(start).transforms()) {
 			order.push_back(pid);
 			// part_bfs must not visit a part twice
 			assert(!transforms.contains(pid));
@@ -176,7 +176,7 @@ static void test_part_bfs_invalid_and_isolated() {
 
 	// Starting from a non-existent / dead part id: traversal is empty
 	std::size_t count_invalid = 0;
-	for (auto [pid, T] : g.part_bfs(PartId{9999})) {
+	for (auto [pid, T] : g.component_view(PartId{9999}).transforms()) {
 		(void)pid;
 		(void)T;
 		++count_invalid;
@@ -200,7 +200,7 @@ static void test_part_bfs_matches_lookup_transform() {
 	auto check_from = [&](PartId start) {
 		std::vector<PartId> order;
 		std::unordered_map<PartId, Transformd> seen;
-		for (auto [pid, T] : g.part_bfs(start)) {
+		for (auto [pid, T] : g.component_view(start).transforms()) {
 			// BFS should not revisit nodes
 			assert(!seen.contains(pid));
 			seen.emplace(pid, T);

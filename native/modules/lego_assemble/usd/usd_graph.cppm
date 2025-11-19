@@ -531,7 +531,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 
 		std::size_t updated_count = 0;
 		pxr::SdfChangeBlock _changes;
-		for (auto [v, T_u0_v] : topology_.part_bfs(u0)) {
+		for (auto [v, T_u0_v] : topology_.component_view(u0).transforms()) {
 			// For each part v in the connected component, we have:
 			//   T_u0    : {}^{env}T_{u0} (env <- u0), in meters
 			//   T_u0_v  : {}^{u0}T_v    (u0 <- v), relative graph transform
