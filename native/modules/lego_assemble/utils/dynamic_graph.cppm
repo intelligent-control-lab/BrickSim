@@ -48,6 +48,10 @@ concept DynamicGraphLike = requires(G g, const G cg, vertex_id u, vertex_id v) {
 	{
 		cg.components()
 	} -> std::same_as<std::generator<typename G::component_view_type>>;
+	{
+		// If a non-existent vertex is given, it returns an empty view
+		cg.component_view(u)
+	} -> std::same_as<typename G::component_view_type>;
 } && std::constructible_from<G, std::size_t, std::pmr::memory_resource *>;
 
 // --------- Naive dynamic graph (PMR, fixed-width ints, const connected) ---------
@@ -374,6 +378,10 @@ export class NaiveDynamicGraph {
 
 			co_yield ComponentView{*this, s};
 		}
+	}
+
+	[[nodiscard]] component_view_type component_view(vertex_id u) const {
+		return ComponentView{*this, u};
 	}
 
   private:
@@ -1055,6 +1063,10 @@ export class HolmDeLichtenbergThorup {
 
 			co_yield ComponentView{*this, s};
 		}
+	}
+
+	[[nodiscard]] component_view_type component_view(vertex_id u) const {
+		return ComponentView{*this, u};
 	}
 
   private:

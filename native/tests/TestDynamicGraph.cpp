@@ -1152,6 +1152,68 @@ static void test_components_skip_cc_then_continue() {
 	check(O);
 }
 
+template <DynamicGraphLike G>
+static void test_component_view_invalid_vertex_impl() {
+	G g(0);
+
+	// Build a small non-trivial graph so that, if the implementation
+	// accidentally traverses from an invalid vertex, we would see data.
+	std::vector<vertex_id> verts;
+	for (int i = 0; i < 5; ++i) {
+		verts.push_back(g.add_vertex());
+	}
+	for (int i = 0; i + 1 < static_cast<int>(verts.size()); ++i) {
+		[[maybe_unused]] bool ok = g.add_edge(verts[i], verts[i + 1]);
+		(void)ok;
+	}
+
+	auto assert_empty_view = [](const auto &view) {
+		assert(view.size() == 0);
+
+		bool any = false;
+		for (auto v : view.vertices()) {
+			(void)v;
+			any = true;
+		}
+		assert(!any);
+
+		any = false;
+		for (auto e : view.edges()) {
+			(void)e;
+			any = true;
+		}
+		assert(!any);
+
+		any = false;
+		for (auto e : view.tree_edges()) {
+			(void)e;
+			any = true;
+		}
+		assert(!any);
+	};
+
+	// Case 1: vertex id that was never part of the graph (out of range).
+	const vertex_id invalid_never_added = 42;
+	{
+		auto view = g.component_view(invalid_never_added);
+		assert_empty_view(view);
+	}
+
+	// Case 2: vertex that existed but has been erased.
+	const vertex_id erased = verts[2];
+	[[maybe_unused]] bool erased_ok = g.erase_vertex(erased);
+	(void)erased_ok;
+	{
+		auto view = g.component_view(erased);
+		assert_empty_view(view);
+	}
+}
+
+static void test_component_view_invalid_vertex() {
+	test_component_view_invalid_vertex_impl<NaiveDynamicGraph>();
+	test_component_view_invalid_vertex_impl<HolmDeLichtenbergThorup>();
+}
+
 int main() {
 	test_vertex_add_delete_basic();
 	test_cut_all_levels();
@@ -1164,5 +1226,6 @@ int main() {
 	test_components_edges_spanning_tree();
 	test_components_edges_all_edges();
 	test_components_skip_cc_then_continue();
+	test_component_view_invalid_vertex();
 	return 0;
 }
