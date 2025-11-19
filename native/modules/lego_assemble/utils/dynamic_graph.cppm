@@ -13,9 +13,19 @@ export using vertex_id = std::uint32_t;
 export template <class CV>
 concept ComponentViewLike = requires(CV cv) {
 	{ cv.size() } -> std::same_as<std::size_t>;
+	{
+		// Root vertex of the component
+		// This is the starting point for traversals
+		cv.root()
+	} -> std::same_as<vertex_id>;
 	{ cv.vertices() } -> std::same_as<std::generator<vertex_id>>;
 	{
+		// BFS all edges in the component
 		cv.edges()
+	} -> std::same_as<std::generator<std::pair<vertex_id, vertex_id>>>;
+	{
+		// BFS all tree edges in the component
+		cv.tree_edges()
 	} -> std::same_as<std::generator<std::pair<vertex_id, vertex_id>>>;
 };
 
@@ -55,24 +65,31 @@ export class NaiveDynamicGraph {
 			return g_->component_size(root_);
 		}
 
+		[[nodiscard]] vertex_id root() const {
+			return root_;
+		}
+
 		std::generator<vertex_id> vertices() const {
 			if (!g_->valid(root_))
 				co_return;
 
+			// Optimization: Use unordered_set for O(|Component|) memory/init
+			// instead of O(|Graph|) vector.
+			std::pmr::unordered_set<vertex_id> vis(g_->mr_);
 			std::pmr::deque<vertex_id> dq{g_->mr_};
 			std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
-			std::pmr::vector<std::uint8_t> vis(
-			    g_->adj_.size(), static_cast<std::uint8_t>(0), g_->mr_);
 
-			vis[root_] = static_cast<std::uint8_t>(1);
+			vis.insert(root_);
 			q.push(root_);
+
 			while (!q.empty()) {
 				auto x = q.front();
 				q.pop();
 				co_yield x;
+
 				for (auto y : g_->adj_[x]) {
-					if (g_->alive_[y] != 0 && !vis[y]) {
-						vis[y] = static_cast<std::uint8_t>(1);
+					// Only push valid, unvisited neighbors
+					if (g_->alive_[y] != 0 && vis.insert(y).second) {
 						q.push(y);
 					}
 				}
@@ -83,29 +100,52 @@ export class NaiveDynamicGraph {
 			if (!g_->valid(root_))
 				co_return;
 
+			std::pmr::unordered_set<vertex_id> vis(g_->mr_);
 			std::pmr::deque<vertex_id> dq{g_->mr_};
 			std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
-			std::pmr::vector<std::uint8_t> vis(
-			    g_->adj_.size(), static_cast<std::uint8_t>(0), g_->mr_);
-			std::pmr::vector<vertex_id> parent(
-			    g_->adj_.size(), std::numeric_limits<vertex_id>::max(),
-			    g_->mr_);
 
-			vis[root_] = static_cast<std::uint8_t>(1);
-			parent[root_] = root_;
+			vis.insert(root_);
 			q.push(root_);
 
 			while (!q.empty()) {
 				auto x = q.front();
 				q.pop();
 
-				if (x != root_)
-					co_yield {parent[x], x};
+				for (auto y : g_->adj_[x]) {
+					if (g_->alive_[y] == 0)
+						continue;
+
+					// Yield edge exactly once based on ID order
+					if (x < y) {
+						co_yield {x, y};
+					}
+
+					if (vis.insert(y).second) {
+						q.push(y);
+					}
+				}
+			}
+		}
+
+		std::generator<std::pair<vertex_id, vertex_id>> tree_edges() const {
+			if (!g_->valid(root_))
+				co_return;
+
+			std::pmr::unordered_set<vertex_id> vis(g_->mr_);
+			std::pmr::deque<vertex_id> dq{g_->mr_};
+			std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
+
+			vis.insert(root_);
+			q.push(root_);
+
+			while (!q.empty()) {
+				auto x = q.front();
+				q.pop();
 
 				for (auto y : g_->adj_[x]) {
-					if (g_->alive_[y] != 0 && !vis[y]) {
-						vis[y] = static_cast<std::uint8_t>(1);
-						parent[y] = x;
+					if (g_->alive_[y] != 0 && vis.insert(y).second) {
+						// {x, y} is a tree edge discovered by BFS
+						co_yield {x, y};
 						q.push(y);
 					}
 				}
@@ -676,74 +716,92 @@ export class HolmDeLichtenbergThorup {
 			return g_->component_size(root_);
 		}
 
+		[[nodiscard]] vertex_id root() const {
+			return root_;
+		}
+
 		std::generator<vertex_id> vertices() const {
 			if (!g_->valid(root_))
 				co_return;
 
-			std::pmr::deque<vertex_id> dq{g_->mr_};
-			std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
-			std::pmr::vector<std::uint8_t> vis(
-			    g_->alive_.size(), static_cast<std::uint8_t>(0), g_->mr_);
+			// BFS on F0 (Spanning Forest).
+			// Queue stores {current_node, parent_node} to avoid backtracking.
+			// No visited set needed because F0 contains no cycles.
+			std::pmr::deque<std::pair<vertex_id, vertex_id>> dq{g_->mr_};
+			dq.push_back({root_, std::numeric_limits<vertex_id>::max()});
 
-			vis[root_] = static_cast<std::uint8_t>(1);
-			q.push(root_);
+			while (!dq.empty()) {
+				auto [u, p] = dq.front();
+				dq.pop_front();
 
-			while (!q.empty()) {
-				auto x = q.front();
-				q.pop();
-				co_yield x;
+				co_yield u;
 
-				auto push_neighbor = [&](vertex_id y) {
-					if (!g_->valid(y) || vis[y])
-						return;
-					vis[y] = static_cast<std::uint8_t>(1);
-					q.push(y);
-				};
-
-				for (auto y : g_->treeAdj_[x])
-					push_neighbor(y);
-				for (std::uint32_t lvl = 0; lvl <= g_->L_; ++lvl)
-					for (auto y : g_->nonTreeAdj_[lvl][x])
-						push_neighbor(y);
+				for (auto v : g_->treeAdj_[u]) {
+					if (v != p) {
+						dq.push_back({v, u});
+					}
+				}
 			}
 		}
 
+		// Time complexity: O(|V|)
+		std::generator<std::pair<vertex_id, vertex_id>> tree_edges() const {
+			if (!g_->valid(root_))
+				co_return;
+
+			std::pmr::deque<std::pair<vertex_id, vertex_id>> dq{g_->mr_};
+			dq.push_back({root_, std::numeric_limits<vertex_id>::max()});
+
+			while (!dq.empty()) {
+				auto [u, p] = dq.front();
+				dq.pop_front();
+
+				for (auto v : g_->treeAdj_[u]) {
+					if (v != p) {
+						// u -> v is a tree edge directed away from root
+						co_yield {u, v};
+						dq.push_back({v, u});
+					}
+				}
+			}
+		}
+
+		// Time complexity: O(|V| + |E|)
 		std::generator<std::pair<vertex_id, vertex_id>> edges() const {
 			if (!g_->valid(root_))
 				co_return;
 
-			std::pmr::deque<vertex_id> dq{g_->mr_};
-			std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
-			std::pmr::vector<std::uint8_t> vis(
-			    g_->alive_.size(), static_cast<std::uint8_t>(0), g_->mr_);
-			std::pmr::vector<vertex_id> parent(
-			    g_->alive_.size(), std::numeric_limits<vertex_id>::max(),
-			    g_->mr_);
+			// Use BFS on F0 to discover all nodes, then iterate ALL lists.
+			std::pmr::deque<std::pair<vertex_id, vertex_id>> dq{g_->mr_};
+			dq.push_back({root_, std::numeric_limits<vertex_id>::max()});
 
-			vis[root_] = static_cast<std::uint8_t>(1);
-			parent[root_] = root_;
-			q.push(root_);
+			while (!dq.empty()) {
+				auto [u, p] = dq.front();
+				dq.pop_front();
 
-			while (!q.empty()) {
-				auto x = q.front();
-				q.pop();
+				// 1. Process Tree Edges (F0)
+				for (auto v : g_->treeAdj_[u]) {
+					// Yield if u < v to ensure undirected edge yielded once
+					if (u < v) {
+						co_yield {u, v};
+					}
 
-				if (x != root_)
-					co_yield {parent[x], x};
+					// BFS Traversal logic: continue if not parent
+					if (v != p) {
+						dq.push_back({v, u});
+					}
+				}
 
-				auto push_neighbor = [&](vertex_id y) {
-					if (!g_->valid(y) || vis[y])
-						return;
-					vis[y] = static_cast<std::uint8_t>(1);
-					parent[y] = x;
-					q.push(y);
-				};
-
-				for (auto y : g_->treeAdj_[x])
-					push_neighbor(y);
-				for (std::uint32_t lvl = 0; lvl <= g_->L_; ++lvl)
-					for (auto y : g_->nonTreeAdj_[lvl][x])
-						push_neighbor(y);
+				// 2. Process Non-Tree Edges (All levels)
+				// These do not affect traversal (F0 spans the component),
+				// we just yield them.
+				for (std::uint32_t lvl = 0; lvl <= g_->L_; ++lvl) {
+					for (auto v : g_->nonTreeAdj_[lvl][u]) {
+						if (u < v) {
+							co_yield {u, v};
+						}
+					}
+				}
 			}
 		}
 

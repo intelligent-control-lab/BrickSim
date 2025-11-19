@@ -407,8 +407,9 @@ static void test_visit_path_both_impls() {
 		// Components API should see exactly the same connected components.
 		assert_components_equal(G, O);
 
-		// For each implementation, check that component views work and edges()
-		// yields a spanning tree of that component using real graph edges.
+		// For each implementation, check that component views work and
+		// tree_edges() yields a spanning tree of that component using real
+		// graph edges. Also cross-check edges() enumeration.
 		auto validate_components = [&](const auto &graph) {
 			std::size_t total_vertices = 0;
 			for (auto comp : graph.components()) {
@@ -421,8 +422,11 @@ static void test_visit_path_both_impls() {
 				total_vertices += sz;
 
 				std::size_t edge_count = 0;
-				for (auto [a, b] : comp.edges()) {
+				std::unordered_set<std::uint64_t> tree_edge_set;
+				for (auto [a, b] : comp.tree_edges()) {
 					++edge_count;
+					auto key = pack(a, b);
+					tree_edge_set.insert(key);
 					assert(edges.count(pack(a, b)) &&
 					       "component edge must be an actual graph edge");
 				}
@@ -430,6 +434,18 @@ static void test_visit_path_both_impls() {
 					assert(edge_count == sz - 1);
 				else
 					assert(edge_count == 0);
+
+				// edges() should enumerate at least all tree edges, and every
+				// enumerated edge must be an actual graph edge.
+				std::unordered_set<std::uint64_t> all_edge_set;
+				for (auto [a, b] : comp.edges()) {
+					auto key = pack(a, b);
+					assert(edges.count(key) &&
+					       "edges() must yield only real graph edges");
+					all_edge_set.insert(key);
+				}
+				for (auto key : tree_edge_set)
+					assert(all_edge_set.count(key));
 			}
 			assert(total_vertices == graph.num_vertices());
 		};
@@ -437,6 +453,24 @@ static void test_visit_path_both_impls() {
 		validate_components(G);
 		validate_components(O);
 	}
+
+	// Cross-check that edges() over all components matches the inserted edge
+	// set for both implementations.
+	auto collect_component_edges = [&](const auto &graph) {
+		std::unordered_set<std::uint64_t> seen;
+		for (auto comp : graph.components()) {
+			for (auto [a, b] : comp.edges()) {
+				seen.insert(pack(a, b));
+			}
+		}
+		return seen;
+	};
+
+	auto edgesG = collect_component_edges(G);
+	auto edgesO = collect_component_edges(O);
+
+	assert(edgesG == edges);
+	assert(edgesO == edges);
 
 	// A quick "dead vertex" check: erase a vertex and ensure path is empty.
 	assert(G.erase_vertex(5) == O.erase_vertex(5));
@@ -858,6 +892,15 @@ static void test_components_edges_spanning_tree() {
 	NaiveDynamicGraph O(0);
 
 	const int N = 10;
+	auto pack = [](vertex_id a, vertex_id b) -> std::uint64_t {
+		if (a > b)
+			std::swap(a, b);
+		return (static_cast<std::uint64_t>(a) << 32) ^
+		       static_cast<std::uint64_t>(b);
+	};
+
+	std::unordered_set<std::uint64_t> expected_edges;
+
 	for (int i = 0; i < N; ++i) {
 		auto g = G.add_vertex();
 		auto o = O.add_vertex();
@@ -868,6 +911,8 @@ static void test_components_edges_spanning_tree() {
 		bool g = G.add_edge(u, v);
 		bool o = O.add_edge(u, v);
 		assert(g == o);
+		if (g)
+			expected_edges.insert(pack(u, v));
 	};
 
 	// CC1: vertices {0,1,2,3} as a path plus chords
@@ -886,6 +931,7 @@ static void test_components_edges_spanning_tree() {
 	add(8, 9);
 
 	auto validate = [&](const auto &graph) {
+		std::unordered_map<std::uint64_t, int> edge_seen;
 		for (auto comp : graph.components()) {
 			std::vector<vertex_id> verts;
 			for (auto v : comp.vertices())
@@ -896,10 +942,11 @@ static void test_components_edges_spanning_tree() {
 			std::sort(verts.begin(), verts.end());
 
 			std::vector<std::pair<vertex_id, vertex_id>> edges;
-			for (auto e : comp.edges())
+			for (auto e : comp.tree_edges())
 				edges.push_back(e);
 
-			// For a connected component with k vertices, edges() should give a spanning tree: k-1 edges.
+			// For a connected component with k vertices, tree_edges() should
+			// give a spanning tree: k-1 edges.
 			assert(edges.size() == verts.size() - 1);
 
 			std::unordered_map<vertex_id, int> idx;
@@ -935,11 +982,174 @@ static void test_components_edges_spanning_tree() {
 				}
 			}
 			assert(seen == static_cast<int>(verts.size()));
+
+			// edges() should enumerate all edges for this component and be a
+			// superset of the spanning-tree edges.
+			std::unordered_set<std::uint64_t> tree_edge_set;
+			for (auto [a, b] : edges)
+				tree_edge_set.insert(pack(a, b));
+
+			for (auto [a, b] : comp.edges()) {
+				auto itA = idx.find(a);
+				auto itB = idx.find(b);
+				assert(itA != idx.end() && itB != idx.end());
+				auto key = pack(a, b);
+				assert(expected_edges.count(key));
+				++edge_seen[key];
+			}
+
+			for (auto key : tree_edge_set)
+				assert(edge_seen.count(key));
+		}
+
+		// Over all components, edges() should enumerate each undirected edge
+		// exactly once.
+		assert(edge_seen.size() == expected_edges.size());
+		for (auto key : expected_edges) {
+			auto it = edge_seen.find(key);
+			assert(it != edge_seen.end());
+			assert(it->second == 1);
 		}
 	};
 
 	validate(G);
 	validate(O);
+}
+
+static void test_components_edges_all_edges() {
+	HolmDeLichtenbergThorup G(0);
+	NaiveDynamicGraph O(0);
+
+	const int N = 10;
+	for (int i = 0; i < N; ++i) {
+		auto g = G.add_vertex();
+		auto o = O.add_vertex();
+		assert(g == o);
+	}
+
+	auto pack = [](vertex_id a, vertex_id b) -> std::uint64_t {
+		if (a > b)
+			std::swap(a, b);
+		return (static_cast<std::uint64_t>(a) << 32) ^
+		       static_cast<std::uint64_t>(b);
+	};
+
+	std::unordered_set<std::uint64_t> expected;
+
+	auto add = [&](vertex_id u, vertex_id v) {
+		bool g = G.add_edge(u, v);
+		bool o = O.add_edge(u, v);
+		assert(g == o);
+		if (g)
+			expected.insert(pack(u, v));
+	};
+
+	// CC1: {0,1,2,3} chain + chords
+	add(0, 1);
+	add(1, 2);
+	add(2, 3);
+	add(0, 2); // chord
+	add(1, 3); // chord
+
+	// CC2: {4,5,6,7} chain + chords
+	add(4, 5);
+	add(5, 6);
+	add(6, 7);
+	add(4, 6); // chord
+	add(5, 7); // chord
+
+	// CC3: {8}, CC4: {9} isolated (no edges)
+
+	auto validate = [&](const auto &graph) {
+		std::unordered_map<std::uint64_t, int> seen;
+		for (auto comp : graph.components()) {
+			std::vector<vertex_id> verts;
+			for (auto v : comp.vertices())
+				verts.push_back(v);
+			std::sort(verts.begin(), verts.end());
+
+			std::unordered_set<vertex_id> local(verts.begin(), verts.end());
+
+			for (auto [a, b] : comp.edges()) {
+				// Each edge must stay inside the component.
+				assert(local.count(a));
+				assert(local.count(b));
+				auto key = pack(a, b);
+				++seen[key];
+			}
+		}
+
+		// edges() over all components must enumerate each undirected edge
+		// exactly once for this graph.
+		assert(seen.size() == expected.size());
+		for (auto key : expected) {
+			auto it = seen.find(key);
+			assert(it != seen.end());
+			assert(it->second == 1);
+		}
+	};
+
+	validate(G);
+	validate(O);
+}
+
+static void test_components_skip_cc_then_continue() {
+	HolmDeLichtenbergThorup G(0);
+	NaiveDynamicGraph O(0);
+
+	const int N = 6;
+	for (int i = 0; i < N; ++i) {
+		auto g = G.add_vertex();
+		auto o = O.add_vertex();
+		assert(g == o);
+	}
+
+	auto add = [&](vertex_id u, vertex_id v) {
+		bool g = G.add_edge(u, v);
+		bool o = O.add_edge(u, v);
+		assert(g == o);
+	};
+
+	// Same component structure as test_components_direct_basic():
+	//  {0,1,2} chain, {3,4} chain, {5} isolated.
+	add(0, 1);
+	add(1, 2);
+	add(3, 4);
+
+	auto check = [&](const auto &graph) {
+		auto all = collect_components_direct(graph);
+
+		std::vector<std::vector<vertex_id>> after_skip;
+		int idx = 0;
+		for (auto comp : graph.components()) {
+			if (idx == 0) {
+				// Skip the first component entirely.
+				++idx;
+				continue;
+			}
+			std::vector<vertex_id> verts;
+			for (auto v : comp.vertices())
+				verts.push_back(v);
+			std::sort(verts.begin(), verts.end());
+			after_skip.push_back(std::move(verts));
+			++idx;
+		}
+
+		std::sort(all.begin(), all.end());
+		std::sort(after_skip.begin(), after_skip.end());
+
+		// We constructed exactly three components; skipping one should leave two.
+		assert(all.size() == 3);
+		assert(after_skip.size() + 1 == all.size());
+
+		// Every remaining component must be one of the originals.
+		for (const auto &comp : after_skip) {
+			assert(std::find(all.begin(), all.end(), comp) != all.end());
+		}
+	};
+
+	check(G);
+	check(O);
 }
 
 int main() {
@@ -952,5 +1162,7 @@ int main() {
 	// run_performance_benchmarks();
 	test_components_direct_basic();
 	test_components_edges_spanning_tree();
+	test_components_edges_all_edges();
+	test_components_skip_cc_then_continue();
 	return 0;
 }
