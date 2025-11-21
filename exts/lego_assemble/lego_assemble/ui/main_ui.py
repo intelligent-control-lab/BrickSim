@@ -1,22 +1,25 @@
 import carb
-import omni.ui
-import omni.usd
-import omni.physx
 import math
+import omni.client
+import omni.ui
 from lego_assemble.colors import parse_color, Colors
 from lego_assemble.ui.force_monitor import ForceMonitor
 from lego_assemble._native import (
     allocate_brick_part,
     deallocate_all_managed,
     export_lego,
+    import_lego,
     get_assembly_thresholds,
     set_assembly_thresholds,
 )
+from omni.kit.window.filepicker import FilePickerDialog
 
 class LegoUI():
     def __init__(self):
         self._window = omni.ui.Window("LEGO Assemble", width=300, height=300)
         self._window.deferred_dock_in("Console")
+        self._export_dialog = None
+        self._import_dialog = None
         with self._window.frame:
             # Split the window into two vertical panels: left = original settings,
             # middle = inv mass/inertia settings, right = live monitor.
@@ -53,7 +56,7 @@ class LegoUI():
                         self._pos_z_field.model.set_value(0.1)
                     omni.ui.Button("Add Brick", clicked_fn=self._add_brick_clicked)
                     omni.ui.Button("Reset Env", clicked_fn=self._reset_env_clicked)
-                    omni.ui.Button("Save to USD", clicked_fn=self._save_to_usd)
+                    omni.ui.Button("Import", clicked_fn=self._import)
                     omni.ui.Button("Export", clicked_fn=self._export)
 
                 # Middle: thresholds (top) + inv mass/inertia scale settings (bottom)
@@ -136,16 +139,62 @@ class LegoUI():
         env_id = int(env_id_str) if env_id_str else -1
         deallocate_all_managed(env_id)
 
-    def _save_to_usd(self):
-        omni.physx.get_physx_interface().update_transformations(True, True, True, True)
-        omni.physx.get_physx_interface().release_physics_objects()
-        omni.physx.get_physx_interface().force_load_physics_from_usd()
-
     def _export(self):
+        if self._export_dialog is None:
+            self._export_dialog = FilePickerDialog(
+                "Export",
+                apply_button_label="Save",
+                click_apply_handler=self._on_export_dialog_apply,
+            )
+        self._export_dialog.set_file_extension(".json")
+        self._export_dialog.set_filename("lego_topology.json")
+        self._export_dialog.show()
+
+    def _on_export_dialog_apply(self, filename: str, dirname: str):
         env_id_str = self._base_path_field.model.as_string
         env_id = int(env_id_str) if env_id_str else -1
+        dirname = dirname.strip()
+        if dirname and not dirname.endswith("/"):
+            dirname += "/"
+        fullpath = f"{dirname}{filename}"
         topology = export_lego(env_id)
-        carb.log_info(f"Exported topology: {topology}")
+        if fullpath.startswith("omniverse://") or fullpath.startswith("omni://"):
+            omni.client.write_file(fullpath, topology.encode("utf-8"))
+        else:
+            with open(fullpath, "w", encoding="utf-8") as f:
+                f.write(topology)
+        carb.log_info(f"Exported topology to {fullpath}")
+        self._export_dialog.hide()
+
+    def _import(self):
+        if self._import_dialog is None:
+            self._import_dialog = FilePickerDialog(
+                "Import",
+                apply_button_label="Open",
+                click_apply_handler=self._on_import_dialog_apply,
+            )
+        self._import_dialog.set_file_extension(".json")
+        self._import_dialog.show()
+
+    def _on_import_dialog_apply(self, filename: str, dirname: str):
+        env_id_str = self._base_path_field.model.as_string
+        env_id = int(env_id_str) if env_id_str else -1
+        dirname = dirname.strip()
+        if dirname and not dirname.endswith("/"):
+            dirname += "/"
+        fullpath = f"{dirname}{filename}"
+        if fullpath.startswith("omniverse://") or fullpath.startswith("omni://"):
+            result, content = omni.client.read_file(fullpath)
+            if result != omni.client.Result.OK:
+                raise RuntimeError(f"Failed to read {fullpath}: {result}")
+            topology = memoryview(content).tobytes().decode("utf-8")
+        else:
+            with open(fullpath, "r", encoding="utf-8") as f:
+                topology = f.read()
+        # Reference transform uses quaternion order wxyz and stage units.
+        import_lego(topology, env_id, (1.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+        carb.log_info(f"Imported topology from {fullpath}")
+        self._import_dialog.hide()
 
     def _set_threshold(self, name: str, value: float):
         thr = get_assembly_thresholds()
