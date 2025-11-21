@@ -18,7 +18,7 @@ namespace lego_assemble {
 export struct LegoConfig {
 	bool sync_conns_to_usd = true;
 	bool sync_conns_to_physics = true;
-	bool warn_divergence = true;
+	bool warn_divergence = false;
 	AlignPolicy align_policy = AlignPolicy::MoveHoleCC;
 	AssemblyThresholds assembly_thresholds{};
 };

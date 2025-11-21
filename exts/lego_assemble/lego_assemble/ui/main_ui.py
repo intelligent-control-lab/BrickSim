@@ -112,8 +112,13 @@ class LegoUI():
                 #     self._monitor = ForceMonitor()
 
     def destroy(self):
-        self._monitor.destroy()
+        # self._monitor.destroy()
         self._window.destroy()
+
+    def get_env_id(self) -> int:
+        """Return the current env_id from the main UI."""
+        env_id_str = self._base_path_field.model.as_string
+        return int(env_id_str) if env_id_str else -1
 
     def _add_brick_clicked(self):
         width = self._dim_x_field.model.as_int

@@ -1,3 +1,4 @@
+import traceback
 import omni.ext #type: ignore
 
 class LegoExtension(omni.ext.IExt):
@@ -10,6 +11,9 @@ class LegoExtension(omni.ext.IExt):
             self._assembly_selection = None
         if getattr(self, "_ui", None) is not None:
             self._ui.destroy()
+        if getattr(self, "_stabletext2brick_browser", None) is not None:
+            self._stabletext2brick_browser.destroy()
+            self._stabletext2brick_browser = None
 
     def _init_ui(self):
         try:
@@ -28,3 +32,13 @@ class LegoExtension(omni.ext.IExt):
 
         from lego_assemble.ui.main_ui import LegoUI
         self._ui = LegoUI()
+
+        # StableText2Brick dataset browser (optional HF-backed UI).
+        try:
+            from lego_assemble.ui.stabletext2brick_browser import StableText2BrickBrowser
+            # Share env_id with the main UI.
+            self._stabletext2brick_browser = StableText2BrickBrowser(self._ui.get_env_id)
+        except Exception:
+            traceback.print_exc()
+            # Fail fast for the core UI; dataset browser is best-effort.
+            self._stabletext2brick_browser = None
