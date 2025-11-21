@@ -560,7 +560,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	      assembly_checker_{thresholds}, pending_assemblies_{mr},
 	      pending_disassemblies_{mr}, shape_mapping_{mr},
 	      contact_exclusions_{mr} {}
-	~PhysicsLegoGraph() = default;
+	~PhysicsLegoGraph() {
+		unbind_physx_scene();
+		skip_graph_.clear();
+	}
 	PhysicsLegoGraph(const PhysicsLegoGraph &) = delete;
 	PhysicsLegoGraph &operator=(const PhysicsLegoGraph &) = delete;
 	PhysicsLegoGraph(PhysicsLegoGraph &&) = delete;

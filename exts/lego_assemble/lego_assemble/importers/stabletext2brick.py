@@ -20,6 +20,9 @@ Output format (Python dict):
 import re
 from typing import List, Tuple, Dict, Any
 
+BRICK_UNIT_LENGTH = 0.008      # meters per stud
+PLATE_HEIGHT      = 0.0032     # meters per plate
+BRICK_HEIGHT      = 3 * PLATE_HEIGHT  # 1 brick = 3 plates = 0.0096 m
 
 # Regex for lines like: "2x6 (13,12,0)"
 _BRICK_LINE_RE = re.compile(
@@ -126,22 +129,27 @@ def bricks_text_to_topology_json(bricks_text: str) -> Dict[str, Any]:
                 "payload": {
                     "L": int(h),
                     "W": int(w),
-                    # Dataset bricks are one layer tall; we encode that as H=1 plate.
-                    # You can change this to your BrickHeightPerPlate (e.g. 3) if desired.
-                    "H": 1,
+                    "H": 3,
                     "color": [255, 255, 255],
                 },
             }
         )
 
-        # JsonPoseHint
+        # Center of the brick in grid units
+        cx = x + 0.5 * h
+        cy = y + 0.5 * w
+        cz = z + 0.5   # center of a 1-layer-tall brick
+
+        # Convert to meters
+        px = cx * BRICK_UNIT_LENGTH
+        py = cy * BRICK_UNIT_LENGTH
+        pz = cz * BRICK_HEIGHT
+
         pose_hints.append(
             {
                 "part": int(pid),
-                # Positions in "grid units"; you can rescale via T_env_ref in import_lego.
-                "pos": [float(x), float(y), float(z)],
-                # Identity quaternion: w, x, y, z
-                "rot": [1.0, 0.0, 0.0, 0.0],
+                "pos": [px, py, pz],
+                "rot": [1.0, 0.0, 0.0, 0.0],  # identity quaternion (wxyz)
             }
         )
 
