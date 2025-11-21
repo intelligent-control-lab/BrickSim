@@ -112,6 +112,53 @@ export void import_lego(const std::string &json_str, std::int64_t env_id,
 	                                            as<Eigen::Vector3d>(ref_pos)});
 }
 
+export std::tuple<std::vector<std::string>, std::vector<std::string>>
+compute_connected_component(const std::string &part_path_str) {
+	auto &usd_graph = lego_world().usd_graph();
+	pxr::SdfPath part_path{part_path_str};
+	const auto &topology = usd_graph.topology();
+	const PartId *part_id_ptr =
+	    topology.parts().template project_key<pxr::SdfPath, PartId>(part_path);
+	if (!part_id_ptr) {
+		return {{}, {}};
+	}
+	PartId part_id = *part_id_ptr;
+	std::vector<std::string> part_paths;
+	std::vector<std::string> conn_paths;
+	for (PartId pid : topology.component_view(part_id).vertices()) {
+		const pxr::SdfPath *p_path_ptr =
+		    topology.parts().template project_key<PartId, pxr::SdfPath>(pid);
+		if (!p_path_ptr) {
+			log_error("PartId {} has no corresponding path", pid);
+			continue;
+		}
+		part_paths.push_back(p_path_ptr->GetAsString());
+
+		auto add_conn = [&](ConnSegId csid) {
+			const pxr::SdfPath *c_path_ptr =
+			    topology.connection_segments()
+			        .template project<ConnSegId, pxr::SdfPath>(csid);
+			if (!c_path_ptr) {
+				log_error("ConnSegId {} has no corresponding path", csid);
+				return;
+			}
+			conn_paths.push_back(c_path_ptr->GetAsString());
+		};
+		bool visited = topology.parts().visit(pid, [&](const auto &pw) {
+			for (ConnSegId csid : pw.incomings()) {
+				add_conn(csid);
+			}
+			for (ConnSegId csid : pw.outgoings()) {
+				add_conn(csid);
+			}
+		});
+		if (!visited) {
+			log_error("Failed to visit PartId {}", pid);
+		}
+	}
+	return {part_paths, conn_paths};
+}
+
 export using AssemblyThresholds = lego_assemble::AssemblyThresholds;
 
 export std::string repr_assembly_thresholds(const AssemblyThresholds &t) {

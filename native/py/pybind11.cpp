@@ -51,6 +51,12 @@ PYBIND11_MODULE(_native, m) {
 	      "specified environment, applying the given reference-to-environment "
 	      "transform (pose in meters, wxyz quaternion).");
 
+	m.def("compute_connected_component", &compute_connected_component,
+	      pybind11::arg("part_path"),
+	      "Return (part_paths, connection_paths) for the connected component "
+	      "of the specified part path. Returns two empty lists if the part is "
+	      "unknown.");
+
 	pybind11::class_<AssemblyThresholds>(m, "AssemblyThresholds",
 	                                     "Assembly detection thresholds.")
 	    .def(pybind11::init<>())
