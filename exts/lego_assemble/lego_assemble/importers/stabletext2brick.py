@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Convert a StableText2Brick-style brick string into lego_assemble JsonTopology.
 

@@ -185,6 +185,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		             [[maybe_unused]] const InterfaceSpec &hole_spec,
 		             PhysicsConnectionSegmentWrapper &csw,
 		             [[maybe_unused]] PhysicsConnectionBundleWrapper &cbw) {
+			if (!owner_->shape_level_collision_filtering_) {
+				return;
+			}
+
 			const auto &[stud_if_ref, hole_if_ref] = csref;
 
 			// Thread safety: modifying contact_exclusions_ and reading shape_mapping_
@@ -224,6 +228,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		on_disconnecting(ConnSegId csid, const ConnSegRef &csref,
 		                 PhysicsConnectionSegmentWrapper &csw,
 		                 [[maybe_unused]] PhysicsConnectionBundleWrapper &cbw) {
+			if (!owner_->shape_level_collision_filtering_) {
+				return;
+			}
+
 			// Remove contact exclusion
 			if (csw.px_stud_shape != NullActorShapePair &&
 			    csw.px_hole_shape != NullActorShapePair) {
@@ -254,6 +262,36 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			cbw.constraint_handle =
 			    owner_->create_constraint(a_id, b_id, T_a_b);
 
+			if (!owner_->shape_level_collision_filtering_) {
+				// Thread safety: modifying contact_exclusions_
+				std::unique_lock<std::shared_mutex> lock(owner_->sim_mutex_);
+				physx::PxRigidActor *const *actor_a_ptr =
+				    owner_->topology_.parts()
+				        .template project_key<PartId, physx::PxRigidActor *>(
+				            a_id);
+				physx::PxRigidActor *const *actor_b_ptr =
+				    owner_->topology_.parts()
+				        .template project_key<PartId, physx::PxRigidActor *>(
+				            b_id);
+				if (!actor_a_ptr || !actor_b_ptr) {
+					throw std::runtime_error(std::format(
+					    "Part ids {} and {} have no associated PxRigidActors",
+					    a_id, b_id));
+				}
+				physx::PxRigidActor *actor_a = *actor_a_ptr;
+				physx::PxRigidActor *actor_b = *actor_b_ptr;
+				auto [_, inserted] =
+				    owner_->contact_exclusions_.emplace(ContactExclusionPair{
+				        {actor_a, nullptr}, {actor_b, nullptr}});
+				if (!inserted) {
+					throw std::runtime_error(std::format(
+					    "Failed to add contact exclusion for bundle between "
+					    "parts {} and {}",
+					    a_id, b_id));
+				}
+				actor_a->getScene()->resetFiltering(*actor_a);
+			}
+
 			// Update skip graph
 			if (!owner_->skip_graph_.connect(a_id, b_id)) {
 				throw std::runtime_error(std::format(
@@ -271,6 +309,34 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			if (cbw.constraint_handle) {
 				owner_->destroy_constraint(*cbw.constraint_handle);
 				cbw.constraint_handle.reset();
+			}
+
+			if (!owner_->shape_level_collision_filtering_) {
+				// Thread safety: modifying contact_exclusions_
+				std::unique_lock<std::shared_mutex> lock(owner_->sim_mutex_);
+				physx::PxRigidActor *const *actor_a_ptr =
+				    owner_->topology_.parts()
+				        .template project_key<PartId, physx::PxRigidActor *>(
+				            a_id);
+				physx::PxRigidActor *const *actor_b_ptr =
+				    owner_->topology_.parts()
+				        .template project_key<PartId, physx::PxRigidActor *>(
+				            b_id);
+				if (!actor_a_ptr || !actor_b_ptr) {
+					throw std::runtime_error(std::format(
+					    "Part ids {} and {} have no associated PxRigidActors",
+					    a_id, b_id));
+				}
+				physx::PxRigidActor *actor_a = *actor_a_ptr;
+				physx::PxRigidActor *actor_b = *actor_b_ptr;
+				if (owner_->contact_exclusions_.erase(ContactExclusionPair{
+				        {actor_a, nullptr}, {actor_b, nullptr}}) == 0) {
+					throw std::runtime_error(std::format(
+					    "Failed to remove contact exclusion for bundle between "
+					    "parts {} and {}",
+					    a_id, b_id));
+				}
+				actor_a->getScene()->resetFiltering(*actor_a);
 			}
 
 			// Update skip graph
@@ -325,36 +391,43 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 		virtual physx::PxFilterFlags pairFound(
 		    physx::PxU64 pairID, physx::PxFilterObjectAttributes attributes0,
-		    physx::PxFilterData filterData0, const physx::PxActor *a0,
-		    const physx::PxShape *s0,
+		    physx::PxFilterData filterData0, const physx::PxActor *ca0,
+		    const physx::PxShape *cs0,
 		    physx::PxFilterObjectAttributes attributes1,
-		    physx::PxFilterData filterData1, const physx::PxActor *a1,
-		    const physx::PxShape *s1, physx::PxPairFlags &pairFlags) override {
+		    physx::PxFilterData filterData1, const physx::PxActor *ca1,
+		    const physx::PxShape *cs1, physx::PxPairFlags &pairFlags) override {
 
 			physx::PxFilterFlags result =
 			    PxSimulationFilterCallbackProxy::pairFound(
-			        pairID, attributes0, filterData0, a0, s0, attributes1,
-			        filterData1, a1, s1, pairFlags);
+			        pairID, attributes0, filterData0, ca0, cs0, attributes1,
+			        filterData1, ca1, cs1, pairFlags);
 
 			// Only if both actors are rigid actors
-			auto *rb0 = cast_rigid_actor(const_cast<physx::PxActor *>(a0));
+			auto *rb0 = cast_rigid_actor(const_cast<physx::PxActor *>(ca0));
 			if (rb0 == nullptr) {
 				return result;
 			}
-			auto *rb1 = cast_rigid_actor(const_cast<physx::PxActor *>(a1));
+			auto *rb1 = cast_rigid_actor(const_cast<physx::PxActor *>(ca1));
 			if (rb1 == nullptr) {
 				return result;
 			}
+			auto *s0 = const_cast<physx::PxShape *>(cs0);
+			auto *s1 = const_cast<physx::PxShape *>(cs1);
 
 			// Thread safety: reading contact_exclusions_ and part_actors_
 			std::shared_lock<std::shared_mutex> lock(owner_->sim_mutex_);
 
 			// Check contact exclusion
-			ContactExclusionPair exclusion_pair{
-			    {rb0, const_cast<physx::PxShape *>(s0)},
-			    {rb1, const_cast<physx::PxShape *>(s1)}};
-			if (owner_->contact_exclusions_.contains(exclusion_pair)) {
-				return physx::PxFilterFlag::eKILL;
+			std::initializer_list<ContactExclusionPair> exclusion_pairs{
+			    {{rb0, s0}, {rb1, s1}},
+			    {{rb0, nullptr}, {rb1, s1}},
+			    {{rb0, s0}, {rb1, nullptr}},
+			    {{rb0, nullptr}, {rb1, nullptr}},
+			};
+			for (const auto &exclusion_pair : exclusion_pairs) {
+				if (owner_->contact_exclusions_.contains(exclusion_pair)) {
+					return physx::PxFilterFlag::eKILL;
+				}
 			}
 
 			// Enable contact pose report collision between parts
@@ -551,15 +624,17 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	explicit PhysicsLegoGraph(
 	    const MetricSystem &metrics, physx::PxPhysics *px,
 	    Hooks *hooks = nullptr, AssemblyThresholds thresholds = {},
+	    bool shape_level_collision_filtering = true,
 	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
 	    : res_{mr}, metrics_{metrics}, px_{px}, hooks_{hooks},
 	      topology_hooks_{this}, topology_{&topology_hooks_, mr},
 	      skip_graph_{
 	          std::bind_front(&PhysicsLegoGraph::create_aux_constraint, this),
 	          std::bind_front(&PhysicsLegoGraph::destroy_constraint, this), mr},
-	      assembly_checker_{thresholds}, pending_assemblies_{mr},
-	      pending_disassemblies_{mr}, shape_mapping_{mr},
-	      contact_exclusions_{mr} {}
+	      assembly_checker_{thresholds},
+	      shape_level_collision_filtering_{shape_level_collision_filtering},
+	      pending_assemblies_{mr}, pending_disassemblies_{mr},
+	      shape_mapping_{mr}, contact_exclusions_{mr} {}
 	~PhysicsLegoGraph() {
 		unbind_physx_scene();
 		skip_graph_.clear();
@@ -663,6 +738,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	SkipGraph skip_graph_;
 	std::unique_ptr<PhysxBinding> physx_binding_;
 	AssemblyChecker assembly_checker_;
+	bool shape_level_collision_filtering_;
 
 	std::mutex pending_mutex_;
 	std::pmr::vector<PendingAssembly> pending_assemblies_;
