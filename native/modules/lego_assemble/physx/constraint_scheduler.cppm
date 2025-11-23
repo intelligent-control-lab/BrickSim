@@ -57,7 +57,7 @@ class ConstraintScheduler {
   public:
 	using EdgeKey = UnorderedPair<PartId>;
 
-	explicit ConstraintScheduler(
+	ConstraintScheduler(
 	    const Graph *graph, Strategy strategy, CreateEdge create_edge,
 	    DestroyEdge destroy_edge,
 	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
@@ -302,7 +302,7 @@ export template <class Graph> struct ExponentialSkipSchedulingPolicy {
 
 	const std::size_t k;
 
-	explicit ExponentialSkipSchedulingPolicy(std::size_t k_ = 8) : k(k_) {}
+	ExponentialSkipSchedulingPolicy(std::size_t k_ = 8) : k(k_) {}
 
 	std::generator<EdgeKey> compute(const ComponentView &cc) const {
 		// Add edges at distance 1, 2, 4, ..., 2^k
@@ -325,41 +325,140 @@ export template <class Graph> struct ExponentialSkipSchedulingPolicy {
 	}
 };
 
-export template <class Graph> struct FullPlusExponentialSkipSchedulingPolicy {
+export template <class Graph, template <class> class StrategyA,
+                 template <class> class StrategyB>
+struct CombinedSchedulingPolicy {
 	using ComponentView = typename Graph::ComponentView;
 	using EdgeKey = UnorderedPair<PartId>;
 
-	const std::size_t k;
-
-	explicit FullPlusExponentialSkipSchedulingPolicy(std::size_t k_ = 8)
-	    : k(k_) {}
+	CombinedSchedulingPolicy(StrategyA<Graph> strategy_a = {},
+	                         StrategyB<Graph> strategy_b = {})
+	    : strategy_a_(std::move(strategy_a)),
+	      strategy_b_(std::move(strategy_b)) {}
 
 	std::generator<EdgeKey> compute(const ComponentView &cc) const {
-		std::unordered_set<EdgeKey> full_edges;
-		// First add all full graph edges
-		for (auto [u, v] : cc.edges(/*tree_only=*/false)) {
-			EdgeKey ek{u, v};
-			full_edges.insert(ek);
+		std::unordered_set<EdgeKey> yielded_edges;
+		// First yield all edges from strategy A
+		for (auto ek : strategy_a_.compute(cc)) {
+			yielded_edges.insert(ek);
 			co_yield ek;
 		}
-		// Add edges at distance 1, 2, 4, ..., 2^k
-		std::vector<PartId> part_ids;
-		for (PartId pid : cc.vertices()) {
-			part_ids.push_back(pid);
+		// Then yield edges from strategy B that haven't been yielded yet
+		for (auto ek : strategy_b_.compute(cc)) {
+			if (yielded_edges.find(ek) == yielded_edges.end()) {
+				yielded_edges.insert(ek);
+				co_yield ek;
+			}
 		}
-		std::sort(part_ids.begin(), part_ids.end());
-		std::size_t n = part_ids.size();
-		for (std::size_t i = 0; i < n; ++i) {
-			for (std::size_t p = 0; p < k; ++p) {
-				std::size_t skip = std::size_t{1} << p;
-				std::size_t j = i + skip;
-				if (j >= n) {
+	}
+
+  private:
+	StrategyA<Graph> strategy_a_;
+	StrategyB<Graph> strategy_b_;
+};
+
+export template <class Graph> struct RamanujanLikeSchedulingPolicy {
+	using ComponentView = typename Graph::ComponentView;
+	using EdgeKey = UnorderedPair<PartId>;
+
+	const std::size_t degree; // target degree per vertex (even, recommended)
+	const std::uint64_t seed; // deterministic seed per-policy
+
+	RamanujanLikeSchedulingPolicy(std::size_t degree_ = 4,
+	                              std::uint64_t seed_ = 0x9e3779b97f4a7c15ull)
+	    : degree(degree_), seed(seed_) {}
+
+	std::generator<EdgeKey> compute(const ComponentView &cc) const {
+		// Collect and sort vertex ids to get a stable index ordering [0..n-1].
+		std::vector<PartId> verts;
+		verts.reserve(cc.size());
+		for (PartId pid : cc.vertices()) {
+			verts.push_back(pid);
+		}
+		std::sort(verts.begin(), verts.end());
+		const std::size_t n = verts.size();
+		if (n < 2 || degree == 0) {
+			co_return;
+		}
+
+		// Adjacency in index space: i -> neighbors j (on sorted verts).
+		std::vector<std::unordered_set<std::size_t>> adj_index(n);
+
+		// Simple xorshift* RNG in index space, deterministic from (seed, i, round).
+		auto hash3 = [](std::uint64_t x, std::uint64_t y, std::uint64_t z) {
+			std::uint64_t h = 0x9e3779b97f4a7c15ull;
+			auto mix = [](std::uint64_t v) {
+				v ^= v >> 33;
+				v *= 0xff51afd7ed558ccdull;
+				v ^= v >> 33;
+				v *= 0xc4ceb9fe1a85ec53ull;
+				v ^= v >> 33;
+				return v;
+			};
+			h ^= mix(x);
+			h ^= mix(y) + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2);
+			h ^= mix(z) + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2);
+			return h;
+		};
+
+		auto next_neighbor = [&](std::size_t i,
+		                         std::size_t attempt) -> std::size_t {
+			// Use a hash of (seed, i, attempt) to pick a partner index in [0,n).
+			std::uint64_t h = hash3(seed, i, attempt);
+			return static_cast<std::size_t>(h % n);
+		};
+
+		// Greedy degree-filling: do multiple global rounds to avoid getting stuck.
+		const std::size_t max_rounds = degree * 4; // safety factor
+		for (std::size_t round = 0; round < max_rounds; ++round) {
+			bool progress = false;
+			for (std::size_t i = 0; i < n; ++i) {
+				if (adj_index[i].size() >= degree) {
+					continue;
+				}
+				// Try a few candidates for this (i,round).
+				constexpr std::size_t max_attempts_per_round = 8;
+				for (std::size_t a = 0; a < max_attempts_per_round; ++a) {
+					std::size_t j =
+					    next_neighbor(i, round * max_attempts_per_round + a);
+					if (j == i) {
+						continue; // no self-loop
+					}
+					if (adj_index[i].count(j) != 0) {
+						continue; // no multi-edge
+					}
+					if (adj_index[j].size() >= degree) {
+						continue; // keep degree bounded
+					}
+					// Accept edge i<->j
+					adj_index[i].insert(j);
+					adj_index[j].insert(i);
+					progress = true;
 					break;
 				}
-				EdgeKey ek{part_ids[i], part_ids[j]};
-				if (full_edges.find(ek) == full_edges.end()) {
-					co_yield ek;
+			}
+			// Optional early exit if all degrees reached or no edges added.
+			bool all_full = true;
+			for (std::size_t i = 0; i < n; ++i) {
+				if (adj_index[i].size() < degree) {
+					all_full = false;
+					break;
 				}
+			}
+			if (all_full || !progress) {
+				break;
+			}
+		}
+
+		// Emit all edges exactly once, mapped back to PartId space.
+		for (std::size_t i = 0; i < n; ++i) {
+			PartId a = verts[i];
+			for (std::size_t j : adj_index[i]) {
+				if (j <= i) {
+					continue; // ensure one direction
+				}
+				PartId b = verts[j];
+				co_yield EdgeKey{a, b};
 			}
 		}
 	}
