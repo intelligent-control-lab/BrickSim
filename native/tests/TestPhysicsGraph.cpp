@@ -45,7 +45,6 @@ struct TestHooks {
 
 using TestGraph = PhysicsLegoGraph<type_list<BrickPart>, TestHooks>;
 using TopologyGraph = TestGraph::TopologyGraph;
-using SkipGraphT = TestGraph::SkipGraph;
 using ShapeMappingT = TestGraph::ShapeMapping;
 
 static_assert(TopologyGraph::HasAllOnPartAddedHooks);
@@ -61,7 +60,6 @@ static_assert(TestGraph::HasOnDisassembledHook);
 static_assert(
     TopologyGraph::PartKeys::template contains<physx::PxRigidActor *>);
 
-static_assert(std::is_class_v<SkipGraphT>);
 static_assert(std::is_class_v<ShapeMappingT>);
 
 namespace {
@@ -213,14 +211,11 @@ struct PhysicsGraphFixture {
 			assert(csid_opt.has_value());
 			csid = *csid_opt;
 
-			// At this point, topology hooks should have created a base constraint.
 			const auto &bundles = graph.topology().connection_bundles();
 			assert(bundles.size() == 1);
 			ConnectionEndpoint ep{pidA, pidB};
 			auto it = bundles.find(ep);
 			assert(it != bundles.end());
-			const auto &cbw = it->second;
-			assert(cbw.constraint_handle.has_value());
 		}
 	}
 
@@ -274,14 +269,13 @@ static void test_topology_and_constraints() {
 	assert(pA->neighbor_parts().contains(fx.pidB));
 	assert(pB->neighbor_parts().contains(fx.pidA));
 
-	// Connection bundle stores the segment id and has an active constraint.
+	// Connection bundle stores the segment id
 	ConnectionEndpoint ep{fx.pidA, fx.pidB};
 	const auto &bundles = fx.graph.topology().connection_bundles();
 	auto it = bundles.find(ep);
 	assert(it != bundles.end());
 	const auto &cbw = it->second;
 	assert(cbw.wrapped().conn_seg_ids.contains(fx.csid));
-	assert(cbw.constraint_handle.has_value());
 }
 
 // Exercise PhysxBinding::pairFound branches via the PxScene callback.
