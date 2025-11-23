@@ -590,7 +590,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	              type_list<std::equal_to<>>, PhysicsConnectionSegmentWrapper,
 	              type_list<>, type_list<>, type_list<>,
 	              PhysicsConnectionBundleWrapper, TopologyHooks>;
-	using ConstraintSchedulingPolicy = CombinedSchedulingPolicy<TopologyGraph, FullGraphSchedulingPolicy, RamanujanLikeSchedulingPolicy>;
+				  using ConstraintSchedulingPolicy = CombinedSchedulingPolicy<TopologyGraph, TreeOnlySchedulingPolicy, RamanujanLikeSchedulingPolicy>;
+	// using ConstraintSchedulingPolicy = CombinedSchedulingPolicy<TopologyGraph, FullGraphSchedulingPolicy, RamanujanLikeSchedulingPolicy>;
 	// using ConstraintSchedulingPolicy = RamanujanLikeSchedulingPolicy<TopologyGraph>;
 	// using ConstraintSchedulingPolicy = CombinedSchedulingPolicy<TopologyGraph, FullGraphSchedulingPolicy, ExponentialSkipSchedulingPolicy>;
 	// using ConstraintSchedulingPolicy = FullGraphSchedulingPolicy<TopologyGraph>;

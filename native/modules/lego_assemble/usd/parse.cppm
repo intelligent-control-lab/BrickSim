@@ -80,6 +80,9 @@ export struct ConnectionPrimParseResult {
 
 export std::optional<ConnectionPrimParseResult>
 parse_connection_prim(const pxr::UsdPrim &prim) {
+	if (prim.GetTypeName() != LegoTokens->Connection) {
+		return std::nullopt;
+	}
 	pxr::SdfPathVector stud_v, hole_v;
 	prim.GetRelationship(LegoTokens->ConnStud).GetTargets(&stud_v);
 	prim.GetRelationship(LegoTokens->ConnHole).GetTargets(&hole_v);

@@ -308,7 +308,7 @@ export void author_connection(const pxr::UsdStageRefPtr &stage,
 	pxr::SdfChangeBlock _changes;
 	auto prim = pxr::SdfCreatePrimInLayer(layer, path);
 	prim->SetSpecifier(pxr::SdfSpecifierDef);
-	prim->SetTypeName(pxr::UsdGeomTokens->Xform);
+	prim->SetTypeName(LegoTokens->Connection);
 	SetRelationship(prim, LegoTokens->ConnStud, stud);
 	SetRelationship(prim, LegoTokens->ConnHole, hole);
 	SetAttr<int>(prim, LegoTokens->ConnStudInterface,

@@ -11,6 +11,7 @@ using pxr::TfToken;
 
 // clang-format off
 #define LEGO_TOKENS                                                            \
+    ((Connection, "LegoConnection"))                                           \
     ((ConnStud, "lego:conn_stud"))                                             \
     ((ConnHole, "lego:conn_hole"))                                             \
     ((ConnStudInterface, "lego:conn_stud_interface"))                          \
