@@ -225,11 +225,11 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 			if (new_scene == px_scene_) {
 				log_warn("LegoWorld: simulation already set up with the same "
 				         "PxScene");
-				return;
 			} else {
-				throw std::runtime_error(
+				log_error(
 				    "LegoWorld: simulation already set up with a PxScene");
 			}
+			return;
 		}
 		px_scene_ = new_scene;
 		physics_graph_ = std::make_unique<PhysicsGraph>(
@@ -271,6 +271,8 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 			auto *new_scene = static_cast<physx::PxScene *>(
 			    omni_px_->getPhysXPtrFast(object_id));
 			if (new_scene) {
+				log_info("LegoWorld: detected PhysX scene creation for {}",
+				         sdf_path.GetText());
 				setup_simulation(new_scene);
 			}
 		}

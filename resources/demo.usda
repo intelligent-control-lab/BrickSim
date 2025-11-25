@@ -75,15 +75,6 @@ def Xform "World"
         }
     }
 
-    def PhysicsScene "PhysicsScene" (
-        prepend apiSchemas = ["PhysxSceneAPI"]
-    )
-    {
-        bool physxScene:enableCCD = 1
-        bool physxScene:enableStabilization = 0
-        uint physxScene:timeStepsPerSecond = 60
-    }
-
     def Mesh "Cube" (
         prepend apiSchemas = ["PhysicsCollisionAPI", "PhysxCollisionAPI", "PhysxTriangleMeshCollisionAPI", "PhysicsMeshCollisionAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysxConvexHullCollisionAPI"]
     )
@@ -111,6 +102,15 @@ def Xform "World"
         double3 xformOp:translate = (0.050001002848148346, 8.152341024469933e-7, 0.004999994300305843)
         uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
     }
+}
+
+def PhysicsScene "physicsScene" (
+    prepend apiSchemas = ["PhysxSceneAPI"]
+)
+{
+    bool physxScene:enableCCD = 1
+    bool physxScene:enableStabilization = 0
+    uint physxScene:timeStepsPerSecond = 60
 }
 
 def "Render" (
