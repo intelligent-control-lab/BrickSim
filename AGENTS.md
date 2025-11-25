@@ -70,7 +70,7 @@ In `native/modules/lego_assemble`:
 5. If you are looking for Isaac Sim's source, search in `../IsaacSim/`, which contains its source checkout.
 6. If you are looking for PhysX's source, search in `../PhysX/`, which contains its full source. `../IsaacSim/` doesn't contain PhysX's source.
 7. If you are looking for OpenUSD's source, search in `../OpenUSD/`, which contains its full source. `../IsaacSim/` doesn't contain OpenUSD's source.
-8. Omni PhysX is not open-source, so do reverse engineering (disassemble / decompile) on its binaries. You can find the binaries by performing `find -L ../IsaacSim '*.so'` with `grep` to filter what you are looking for.
+8. The source code of Omni PhysX, the extension that bridges Omniverse and PhysX, is located at `../PhysX/omni/`.
 
 ## Safety
 You may operate in:
