@@ -77,9 +77,19 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    extra_paths = [
+        "exts/lego_assemble",
+        "IsaacLab/source/isaaclab",
+        "IsaacLab/source/isaaclab_assets",
+        "IsaacLab/source/isaaclab_mimic",
+        "IsaacLab/source/isaaclab_rl",
+        "IsaacLab/source/isaaclab_tasks",
+    ]
+    extra_paths += collect_isaacsim_extension_paths()
+
     deps_config = {
         "extends": "pyrightconfig.base.json",
-        "extraPaths": collect_isaacsim_extension_paths(),
+        "extraPaths": extra_paths,
     }
 
     if args.dry_run:
