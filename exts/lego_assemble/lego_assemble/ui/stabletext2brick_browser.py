@@ -18,6 +18,7 @@ class StableText2BrickBrowser:
 
     def __init__(self, env_id_provider: Callable[[], int] | None = None) -> None:
         self._window = ui.Window("StableText2Brick", width=500, height=600)
+        self._window.deferred_dock_in("Console")
 
         # Index state
         self._index_loaded: bool = False
