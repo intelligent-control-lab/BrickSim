@@ -8,7 +8,7 @@
     ],
     "typeCheckingMode": "off",
     "extraPaths": [
-        "source/lego_assemble",
+        "exts/lego_assemble",
         "IsaacLab/source/isaaclab",
         "IsaacLab/source/isaaclab_assets",
         "IsaacLab/source/isaaclab_mimic",

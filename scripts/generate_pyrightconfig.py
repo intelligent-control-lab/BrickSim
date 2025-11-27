@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-
 import argparse
 import json
 import os
@@ -79,43 +77,16 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    base_config_path = Path("pyrightconfig.base.json")
-    deps_config_path = Path("pyrightconfig.deps.json")
-
-    # Load base config to get repo-local extraPaths.
-    repo_paths: list[str] = []
-    if base_config_path.is_file():
-        try:
-            with base_config_path.open("r") as f:
-                base_cfg = json.load(f)
-            repo_paths = list(base_cfg.get("extraPaths", []))
-        except Exception as e:
-            raise RuntimeError(f"Failed to read {base_config_path}: {e}") from e
-
-    ext_paths = collect_isaacsim_extension_paths()
-
-    all_paths: list[str] = []
-    seen: set[str] = set()
-
-    def add(path: str) -> None:
-        if path not in seen:
-            seen.add(path)
-            all_paths.append(path)
-
-    for p in repo_paths:
-        add(p)
-    for p in ext_paths:
-        add(p)
-
     deps_config = {
         "extends": "pyrightconfig.base.json",
-        "extraPaths": all_paths,
+        "extraPaths": collect_isaacsim_extension_paths(),
     }
 
     if args.dry_run:
         print(json.dumps(deps_config, indent=4))
         return
 
+    deps_config_path = Path(__file__).parent.parent / "pyrightconfig.deps.json"
     with deps_config_path.open("w") as f:
         json.dump(deps_config, f, indent=4)
     print(f"Wrote {deps_config_path}")
