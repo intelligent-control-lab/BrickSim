@@ -11,7 +11,12 @@ DEBUG_HOST="${DEBUG_HOST:-127.0.0.1}"
 DEBUG_PORT="${DEBUG_PORT:-5678}"
 WAIT_FOR_CLIENT="${WAIT_FOR_CLIENT:-false}"
 
-STAGE_PATH="${STAGE_PATH:-$ROOT_DIR/resources/demo.usda}"
+if [ "$#" -eq 0 ]; then
+  EXEC_COMMAND="open_stage.py ${STAGE_PATH:-$ROOT_DIR/resources/demo.usda}"
+else
+  # Join all args into a single command string for --exec
+  EXEC_COMMAND="$*"
+fi
 
 exec isaacsim "$EXPERIENCE" \
   --ext-folder "$ROOT_DIR/IsaacLab/source" \
@@ -25,5 +30,8 @@ exec isaacsim "$EXPERIENCE" \
   --/exts/omni.kit.debug.python/debugpyLogging=true \
   --/app/content/emptyStageOnStart=false \
   --/crashreporter/enabled=false \
-  --exec "open_stage.py $STAGE_PATH" \
-  -v
+  --/log/outputStreamLevel=info \
+  '--/log/channels/*'=warn \
+  '--/log/channels/lego_assemble'=info \
+  '--/log/channels/lego_assemble.*'=info \
+  --exec "$EXEC_COMMAND"

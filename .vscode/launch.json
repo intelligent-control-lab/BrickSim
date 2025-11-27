@@ -10,7 +10,6 @@
                 "port": 5678
             },
             "justMyCode": false,
-            "preLaunchTask": "Launch IsaacSim",
         },
         {
             "name": "C++: Attach IsaacSim",
@@ -57,6 +56,15 @@
             ],
             "stopAll": true,
             "preLaunchTask": "Launch IsaacSim"
+        },
+        {
+            "name": "Debug C++ & Python (Current File)",
+            "configurations": [
+                "Python: Attach 5678",
+                "C++: Attach IsaacSim"
+            ],
+            "stopAll": true,
+            "preLaunchTask": "Launch IsaacSim & Execute Current File"
         }
     ],
     "inputs": [
