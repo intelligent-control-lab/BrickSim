@@ -1,0 +1,18 @@
+{
+    "exclude": [
+        "**/node_modules",
+        "**/__pycache__"
+    ],
+    "ignore": [
+        "IsaacLab"
+    ],
+    "typeCheckingMode": "off",
+    "extraPaths": [
+        "source/lego_assemble",
+        "IsaacLab/source/isaaclab",
+        "IsaacLab/source/isaaclab_assets",
+        "IsaacLab/source/isaaclab_mimic",
+        "IsaacLab/source/isaaclab_rl",
+        "IsaacLab/source/isaaclab_tasks"
+    ]
+}

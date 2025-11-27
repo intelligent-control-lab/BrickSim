@@ -6,3 +6,4 @@ _toolchain/
 *.egg-info/
 logs/
 outputs/
+pyrightconfig.deps.json

@@ -47,6 +47,13 @@ pip install -e exts/lego_assemble -v
 scripts/launch_isaacsim.sh
 ```
 
+### VS Code Setup (optional)
+```bash
+source .venv/bin/activate
+python scripts/collect_isaacsim_paths.py
+```
+This creates `pyrightconfig.deps.json` for code completion.
+
 ### Issues
 1. `ModuleNotFoundError: No module named '_lzma'`.
 Solution: Reinstall Python. The system Python may miss this package.
