@@ -987,6 +987,9 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 			pxr::SdfPath root_path = root_path_.GetPrimPath();
 			pxr::UsdPrim root_prim = stage_->GetPrimAtPath(root_path);
 			for (pxr::UsdPrim prim : pxr::UsdPrimRange(root_prim)) {
+				if (!prim.IsValid()) {
+					continue;
+				}
 				process_part_prim(prim);
 			}
 		}
@@ -1163,6 +1166,9 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 			pxr::SdfPath root_path = root_path_.GetPrimPath();
 			pxr::UsdPrim root_prim = stage_->GetPrimAtPath(root_path);
 			for (pxr::UsdPrim prim : pxr::UsdPrimRange(root_prim)) {
+				if (!prim.IsValid()) {
+					continue;
+				}
 				pxr::SdfPath path = prim.GetPath();
 				if (dirty_conns.contains(path)) {
 					continue;

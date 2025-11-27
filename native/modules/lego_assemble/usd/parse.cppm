@@ -33,6 +33,9 @@ export class BrickParser {
 
 	std::optional<PartPrimParseResult<BrickPart>>
 	operator()(const pxr::UsdPrim &prim) {
+		if (!prim.IsValid()) {
+			return std::nullopt;
+		}
 		pxr::TfToken part_kind;
 		if (!prim.GetAttribute(LegoTokens->PartKind).Get(&part_kind) ||
 		    part_kind != LegoTokens->PartKindBrick) {
@@ -80,6 +83,9 @@ export struct ConnectionPrimParseResult {
 
 export std::optional<ConnectionPrimParseResult>
 parse_connection_prim(const pxr::UsdPrim &prim) {
+	if (!prim.IsValid()) {
+		return std::nullopt;
+	}
 	if (prim.GetTypeName() != LegoTokens->Connection) {
 		return std::nullopt;
 	}
