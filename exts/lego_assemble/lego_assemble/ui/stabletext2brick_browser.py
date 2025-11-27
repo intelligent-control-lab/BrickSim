@@ -62,8 +62,8 @@ class StableText2BrickBrowser:
                     vertical_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_AS_NEEDED,
                 ):
                     with ui.VStack(spacing=2):
-                        # This is now just a container — no build_fn on it.
                         self._list_frame = ui.Frame()
+                        self._list_frame.set_build_fn(self._build_list_contents)
 
         # Initial population
         self._rebuild_list()
@@ -125,8 +125,7 @@ class StableText2BrickBrowser:
 
         if not index_path.is_file():
             msg = (
-                "Missing index. Run scripts/export_stabletext2brick_index.py "
-                "resources/stabletext2brick/ to build index."
+                "Missing index. Run scripts/generate_stabletext2brick.py"
             )
             carb.log_error(msg)
             self._examples = []
@@ -179,18 +178,14 @@ class StableText2BrickBrowser:
     # ------------ list rebuild ------------
 
     def _rebuild_list(self) -> None:
-        """Clear and rebuild the list frame manually (no set_build_fn)."""
+        """Rebuild the list frame via its build_fn."""
         if self._list_frame is None:
             return
 
         self._ensure_index_loaded()
 
-        # Remove previous children
-        self._list_frame.clear()
-
-        # Build fresh contents
-        with self._list_frame:
-            self._build_list_contents()
+        # Mark frame dirty; omni.ui will call _build_list_contents at a safe time.
+        self._list_frame.rebuild()
 
     def _build_list_contents(self) -> None:
         carb.log_info(

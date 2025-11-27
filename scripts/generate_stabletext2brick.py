@@ -17,22 +17,32 @@ import sys
 import json
 from pathlib import Path
 
-from datasets import load_dataset  # pip install datasets
+from datasets import load_dataset, load_dataset_builder  # pip install datasets
+from tqdm.auto import tqdm  # pip install tqdm
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
+    if len(sys.argv) > 2:
         print(
-            "Usage: python export_stabletext2brick_index.py /path/to/output_dir",
+            "Usage: python export_stabletext2brick_index.py [/path/to/output_dir]",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    out_dir = Path(sys.argv[1])
-    structures_dir = out_dir / "structures"
-
+    if len(sys.argv) == 2:
+        out_dir = Path(sys.argv[1])
+    else:
+        # Default to ../resources/stabletext2brick relative to this script
+        script_dir = Path(__file__).parent
+        out_dir = script_dir / ".." / "resources" / "stabletext2brick"
+    
     out_dir.mkdir(parents=True, exist_ok=True)
+    structures_dir = out_dir / "structures"
     structures_dir.mkdir(parents=True, exist_ok=True)
+
+    # Get total number of examples from dataset metadata so tqdm has a proper total.
+    builder = load_dataset_builder("AvaLovelace/StableText2Brick")
+    total = builder.info.splits["train"].num_examples
 
     # Stream the dataset so we don't load everything into memory at once.
     dataset = load_dataset(
@@ -42,9 +52,8 @@ def main() -> None:
     )
 
     index = []
-    count = 0
 
-    for ex in dataset:
+    for ex in tqdm(dataset, desc="Exporting StableText2Brick", total=total):
         # Fields in the dataset
         structure_id = ex["structure_id"]   # UUID-like string
         captions = ex.get("captions") or []
@@ -64,17 +73,13 @@ def main() -> None:
             }
         )
 
-        count += 1
-        if count % 1000 == 0:
-            print(f"Processed {count} examples...", file=sys.stderr)
-
     # Write index.json
     index_path = out_dir / "index.json"
     index_path.write_text(
         json.dumps(index, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    print(f"Done. Wrote {count} entries to {index_path}", file=sys.stderr)
+    print(f"Done. Index saved to {index_path}", file=sys.stderr)
 
 
 if __name__ == "__main__":
