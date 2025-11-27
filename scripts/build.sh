@@ -22,5 +22,9 @@ cmake --build "$BUILD" --parallel
 
 cp -v "$BUILD/"_native.*.so "exts/lego_assemble/lego_assemble/"
 
-cd "$BUILD"
-ctest --output-on-failure
+# Run tests only when RUN_TESTS is set
+if [ -n "${RUN_TESTS:-}" ]; then
+  cd "$BUILD"
+  ctest --output-on-failure
+  cd "$ROOT_DIR"
+fi

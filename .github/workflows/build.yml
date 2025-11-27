@@ -35,7 +35,7 @@ jobs:
           sudo apt-get install -y build-essential wget xz-utils zstd
       - name: Build and test (${{ matrix.build_type }})
         run: |
-          scripts/build.sh "${{ matrix.build_type }}"
+          RUN_TESTS=1 scripts/build.sh "${{ matrix.build_type }}"
       - name: Upload native extension artifact
         uses: actions/upload-artifact@v4
         with:
