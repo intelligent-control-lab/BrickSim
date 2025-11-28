@@ -1,9 +1,11 @@
 import carb
+import carb.settings
 import math
 import omni.client
 import omni.ui
 from lego_assemble.colors import parse_color, Colors
 from lego_assemble.ui.force_monitor import ForceMonitor
+from lego_assemble.utils import kit_runner
 from lego_assemble._native import (
     allocate_brick_part,
     deallocate_all_managed,
@@ -14,12 +16,19 @@ from lego_assemble._native import (
 )
 from omni.kit.window.filepicker import FilePickerDialog
 
+_HOT_RELOAD_SETTING = "/app/lego_assemble/kit_runner/has_target"
+
 class LegoUI():
     def __init__(self):
         self._window = omni.ui.Window("LEGO Assemble", width=300, height=300)
         self._window.deferred_dock_in("Console")
         self._export_dialog = None
         self._import_dialog = None
+        self._hot_reload_button = None
+        self._settings = carb.settings.get_settings()
+        self._hot_reload_sub = self._settings.subscribe_to_node_change_events(
+            _HOT_RELOAD_SETTING, self._on_hot_reload_setting_changed
+        )
         with self._window.frame:
             # Split the window into two vertical panels: left = original settings,
             # middle = inv mass/inertia settings, right = live monitor.
@@ -58,6 +67,14 @@ class LegoUI():
                     omni.ui.Button("Reset Env", clicked_fn=self._reset_env_clicked)
                     omni.ui.Button("Import", clicked_fn=self._import)
                     omni.ui.Button("Export", clicked_fn=self._export)
+                    # Hot reload button for demo iteration. Visible only when a target
+                    # has been run via kit_runner (driven by carb settings).
+                    self._hot_reload_button = omni.ui.Button(
+                        "Hot Reload",
+                        clicked_fn=self._hot_reload_clicked,
+                    )
+                    enabled = bool(self._settings.get(_HOT_RELOAD_SETTING))
+                    self._hot_reload_button.visible = enabled
 
                 # Middle: thresholds (top) + inv mass/inertia scale settings (bottom)
                 with omni.ui.VStack(height=0, spacing=8):
@@ -114,6 +131,7 @@ class LegoUI():
     def destroy(self):
         # self._monitor.destroy()
         self._window.destroy()
+        self._hot_reload_button = None
 
     def get_env_id(self) -> int:
         """Return the current env_id from the main UI."""
@@ -205,3 +223,15 @@ class LegoUI():
         thr = get_assembly_thresholds()
         setattr(thr, name, value)
         set_assembly_thresholds(thr)
+
+    def _on_hot_reload_setting_changed(self, *args):
+        if self._hot_reload_button is None:
+            return
+        enabled = bool(self._settings.get(_HOT_RELOAD_SETTING))
+        self._hot_reload_button.visible = enabled
+
+    def _hot_reload_clicked(self):
+        try:
+            kit_runner.rerun()
+        except Exception as exc:
+            carb.log_error(f"Hot reload failed: {exc}")
