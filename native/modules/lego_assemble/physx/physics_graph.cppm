@@ -609,8 +609,11 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	      topology_hooks_{this}, topology_{&topology_hooks_, mr},
 	      constraint_scheduler_{
 	          &topology_, ConstraintSchedulingPolicy{},
-	          std::bind_front(&PhysicsLegoGraph::create_constraint, this),
-	          std::bind_front(&PhysicsLegoGraph::destroy_constraint, this), mr},
+	          std::bind_front(&PhysicsLegoGraph::create_constraint_safely,
+	                          this),
+	          std::bind_front(&PhysicsLegoGraph::destroy_constraint_safely,
+	                          this),
+	          mr},
 	      assembly_checker_{thresholds},
 	      shape_level_collision_filtering_{shape_level_collision_filtering},
 	      pending_assemblies_{mr}, pending_disassemblies_{mr},
@@ -643,6 +646,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	// Should be called BEFORE simulation step on USD/Kit thread
 	// Use a StageUpdateNode with order < 10 to implement this
 	void do_pre_step() {
+		flush_physx_ops();
 		sim_running_ = true;
 	}
 
@@ -650,7 +654,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	// Use a StageUpdateNode with order > 10 to implement this
 	void do_post_step() {
 		sim_running_ = false;
-
 		flush_physx_ops();
 
 		std::pmr::vector<PendingAssembly> pending_assemblies{res_};
@@ -733,8 +736,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	std::unordered_map<ConstraintHandle, physx::PxConstraint *>
 	    realized_constraints_;
 	std::unordered_set<ConstraintHandle> constraints_to_remove_;
-	std::unordered_map<ConstraintHandle,
-	                   std::tuple<PartId, PartId, WeldConstraintData>>
+	std::unordered_map<ConstraintHandle, std::tuple<PartId, PartId, Transformd>>
 	    pending_constraints_;
 	ConstraintHandle next_constraint_handle_ = 1;
 	std::unordered_set<PartId> pending_reset_filtering_parts_;
@@ -752,23 +754,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		}
 		constraints_to_remove_.clear();
 		for (auto &[handle, tuple] : pending_constraints_) {
-			auto &[pid_a, pid_b, weld_data] = tuple;
-			physx::PxRigidActor *const *actor_a_ptr =
-			    topology_.parts()
-			        .template project_key<PartId, physx::PxRigidActor *>(pid_a);
-			physx::PxRigidActor *const *actor_b_ptr =
-			    topology_.parts()
-			        .template project_key<PartId, physx::PxRigidActor *>(pid_b);
-			if (!actor_a_ptr || !actor_b_ptr) {
-				log_error("Cannot find actors for part ids {} and {}, skipping "
-				          "constraint realization",
-				          pid_a, pid_b);
-				continue;
-			}
-			physx::PxRigidActor *actor_a = *actor_a_ptr;
-			physx::PxRigidActor *actor_b = *actor_b_ptr;
+			auto &[pid_a, pid_b, tf] = tuple;
 			physx::PxConstraint *constraint =
-			    do_create_constraint(actor_a, actor_b, std::move(weld_data));
+			    do_create_constraint(pid_a, pid_b, tf);
 			auto [it, inserted] =
 			    realized_constraints_.emplace(handle, constraint);
 			if (!inserted) {
@@ -793,43 +781,19 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		pending_reset_filtering_parts_.clear();
 	}
 	ConstraintHandle create_constraint_safely(PartId pid_a, PartId pid_b,
-	                                          WeldConstraintData &&weld_data) {
+	                                          const Transformd &T_a_b) {
+		// Always queue, because the rigid actor might haven't been set up yet
 		ConstraintHandle handle = next_constraint_handle_++;
-		if (sim_running_) {
-			auto [it, inserted] = pending_constraints_.emplace(
-			    handle, std::make_tuple(pid_a, pid_b, std::move(weld_data)));
-			if (!inserted) {
-				throw std::runtime_error(std::format(
-				    "Constraint handle {} already exist in pending constraints",
-				    handle));
-			}
-		} else {
-			physx::PxRigidActor *const *actor_a_ptr =
-			    topology_.parts()
-			        .template project_key<PartId, physx::PxRigidActor *>(pid_a);
-			physx::PxRigidActor *const *actor_b_ptr =
-			    topology_.parts()
-			        .template project_key<PartId, physx::PxRigidActor *>(pid_b);
-			if (!actor_a_ptr || !actor_b_ptr) {
-				throw std::runtime_error(std::format(
-				    "Cannot find actors for part ids {} and {}", pid_a, pid_b));
-			}
-			physx::PxRigidActor *actor_a = *actor_a_ptr;
-			physx::PxRigidActor *actor_b = *actor_b_ptr;
-			physx::PxConstraint *constraint =
-			    do_create_constraint(actor_a, actor_b, std::move(weld_data));
-			auto [it, inserted] =
-			    realized_constraints_.emplace(handle, constraint);
-			if (!inserted) {
-				throw std::runtime_error(
-				    std::format("Constraint handle {} already exist in "
-				                "realized constraints",
-				                handle));
-			}
+		auto [it, inserted] = pending_constraints_.emplace(
+		    handle, std::make_tuple(pid_a, pid_b, T_a_b));
+		if (!inserted) {
+			throw std::runtime_error(std::format(
+			    "Constraint handle {} already exist in pending constraints",
+			    handle));
 		}
 		return handle;
 	}
-	bool destroy_constraint_safely(ConstraintHandle handle) {
+	void destroy_constraint_safely(ConstraintHandle handle) {
 		auto it = realized_constraints_.find(handle);
 		if (it != realized_constraints_.end()) {
 			if (sim_running_) {
@@ -838,20 +802,56 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				do_release_constraint(it->second);
 				realized_constraints_.erase(it);
 			}
-			return true;
+		} else {
+			auto pit = pending_constraints_.find(handle);
+			if (pit != pending_constraints_.end()) {
+				pending_constraints_.erase(pit);
+			} else {
+				log_error("Constraint handle {} not found for destruction",
+				          handle);
+			}
 		}
-		auto pit = pending_constraints_.find(handle);
-		if (pit != pending_constraints_.end()) {
-			pending_constraints_.erase(pit);
-			return true;
-		}
-		return false;
 	}
-	physx::PxConstraint *do_create_constraint(physx::PxRigidActor *actor_a,
-	                                          physx::PxRigidActor *actor_b,
-	                                          WeldConstraintData &&weld_data) {
-		return createWeldConstraint(*px_, actor_a, actor_b,
-		                            std::move(weld_data));
+	physx::PxConstraint *do_create_constraint(PartId a_id, PartId b_id,
+	                                          const Transformd &T_a_b) {
+		// PxConstraint shader uses body frames (COM frames) bA2w/bB2w.
+		// Our T_a_b (from Python) is defined between actor-local origins (bottom centers).
+		// Convert to COM-local frames so the weld aligns the intended anchor points.
+		//
+		// parentLocal (A_com -> B_com) = (A_com -> A_orig) * (A_orig -> B_orig) * (B_orig -> B_com)
+		// childLocal is identity so cB2w = bB2w (B_com).
+		const auto *actor_a_ptr =
+		    topology_.parts()
+		        .template project_key<PartId, physx::PxRigidActor *>(a_id);
+		const auto *actor_b_ptr =
+		    topology_.parts()
+		        .template project_key<PartId, physx::PxRigidActor *>(b_id);
+		if (!actor_a_ptr || !actor_b_ptr) {
+			throw std::runtime_error(std::format(
+			    "Cannot find actors for part ids {} and {}", a_id, b_id));
+		}
+		physx::PxRigidActor *actor_a = *actor_a_ptr;
+		physx::PxRigidActor *actor_b = *actor_b_ptr;
+
+		auto get_com = [this](physx::PxRigidActor *actor) {
+			if (auto *rb = actor->is<physx::PxRigidBody>()) {
+				return metrics_.to_m(as<Transformd>(rb->getCMassLocalPose()));
+			} else {
+				return SE3d{}.identity();
+			}
+		};
+		Transformd T_a_acom = get_com(actor_a);
+		Transformd T_b_bcom = get_com(actor_b);
+		Transformd T_acom_a = inverse(T_a_acom);
+		Transformd parent_local = T_acom_a * T_a_b * T_b_bcom;
+		physx::PxTransform parent_local_px =
+		    as<physx::PxTransform>(metrics_.from_m(parent_local));
+		return createWeldConstraint(
+		    *px_, actor_a, actor_b,
+		    WeldConstraintData{
+		        .parentLocal = parent_local_px,
+		        .childLocal = physx::PxTransform{physx::PxIdentity},
+		    });
 	}
 	void do_release_constraint(physx::PxConstraint *constraint) {
 		constraint->release();
@@ -883,54 +883,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		std::lock_guard lock{pending_mutex_};
 		pending_disassemblies_.emplace_back(
 		    std::forward<decltype(args)>(args)...);
-	}
-
-	ConstraintHandle create_constraint(PartId a_id, PartId b_id,
-	                                   const Transformd &T_a_b) {
-		// PxConstraint shader uses body frames (COM frames) bA2w/bB2w.
-		// Our T_a_b (from Python) is defined between actor-local origins (bottom centers).
-		// Convert to COM-local frames so the weld aligns the intended anchor points.
-		//
-		// parentLocal (A_com -> B_com) = (A_com -> A_orig) * (A_orig -> B_orig) * (B_orig -> B_com)
-		// childLocal is identity so cB2w = bB2w (B_com).
-		const auto *actor_a_ptr =
-		    topology_.parts()
-		        .template project_key<PartId, physx::PxRigidActor *>(a_id);
-		const auto *actor_b_ptr =
-		    topology_.parts()
-		        .template project_key<PartId, physx::PxRigidActor *>(b_id);
-		if (!actor_a_ptr || !actor_b_ptr) {
-			throw std::runtime_error(std::format(
-			    "Cannot find actors for part ids {} and {}", a_id, b_id));
-		}
-		physx::PxRigidActor *actor_a = *actor_a_ptr;
-		physx::PxRigidActor *actor_b = *actor_b_ptr;
-
-		const auto &[q, t] = metrics_.from_m(T_a_b); // Unit conversion
-		auto T_a_b_px = as<physx::PxTransform>(q, t);
-		physx::PxTransform A_o2com(physx::PxIdentity);
-		physx::PxTransform B_o2com(physx::PxIdentity);
-		if (auto *rbA = actor_a->is<physx::PxRigidBody>()) {
-			A_o2com = rbA->getCMassLocalPose();
-		}
-		if (auto *rbB = actor_b->is<physx::PxRigidBody>()) {
-			B_o2com = rbB->getCMassLocalPose();
-		}
-		physx::PxTransform A_com2o = A_o2com.getInverse();
-		physx::PxTransform parentLocal = A_com2o * T_a_b_px * B_o2com;
-		physx::PxTransform childLocal(physx::PxIdentity);
-		return create_constraint_safely(a_id, b_id,
-		                                {
-		                                    .parentLocal = parentLocal,
-		                                    .childLocal = childLocal,
-		                                });
-	}
-
-	void destroy_constraint(ConstraintHandle constraint) {
-		if (!destroy_constraint_safely(constraint)) {
-			log_error("Constraint handle {} not found for destruction",
-			          constraint);
-		}
 	}
 
 	static_assert(TopologyGraph::HasAllOnPartAddedHooks);
