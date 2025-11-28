@@ -139,6 +139,10 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	}
 	~UsdPhysicsBridge() {
 		tear_down();
+		if (physx_obj_sub_.has_value()) {
+			omni_px_->unsubscribeObjectChangeNotifications(*physx_obj_sub_);
+			physx_obj_sub_.reset();
+		}
 	}
 	UsdPhysicsBridge(const UsdPhysicsBridge &) = delete;
 	UsdPhysicsBridge &operator=(const UsdPhysicsBridge &) = delete;
@@ -611,9 +615,8 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	}
 
 	void tear_down() {
-		if (physx_obj_sub_.has_value()) {
-			omni_px_->unsubscribeObjectChangeNotifications(*physx_obj_sub_);
-			physx_obj_sub_.reset();
+		if (!active_) {
+			return;
 		}
 		if (usd_graph_->get_hooks() == &hooks_) {
 			usd_graph_->set_hooks(nullptr);

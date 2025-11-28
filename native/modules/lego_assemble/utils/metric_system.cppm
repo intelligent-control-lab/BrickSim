@@ -1,7 +1,6 @@
 export module lego_assemble.utils.metric_system;
 
 import std;
-import lego_assemble.physx.scene_patcher;
 import lego_assemble.utils.transforms;
 import lego_assemble.vendor;
 

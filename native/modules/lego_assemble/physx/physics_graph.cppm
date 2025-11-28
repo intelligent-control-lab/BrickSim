@@ -7,7 +7,7 @@ import lego_assemble.core.connections;
 import lego_assemble.core.assembly;
 import lego_assemble.physx.constraint_scheduler;
 import lego_assemble.physx.weld_constraint;
-import lego_assemble.physx.scene_patcher;
+import lego_assemble.physx.patcher;
 import lego_assemble.utils.type_list;
 import lego_assemble.utils.poly_store;
 import lego_assemble.utils.transforms;
@@ -349,37 +349,14 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		}
 	};
 
-	class PhysxBinding : private PxSimulationFilterCallbackProxy,
-	                     private PxSimulationEventCallbackProxy {
+	class PhysxBinding : private PxSimulationFilterPatch,
+	                     private PxSimulationEventPatch {
 	  public:
 		explicit PhysxBinding(Self *owner, physx::PxScene *px_scene)
-		    : owner_{owner}, px_scene_{px_scene} {
-			// Register callbacks
-
-			if (!patchPxScene(px_scene_))
-				goto err_patchPxScene;
-
-			if (!setPxSimulationFilterCallback(this))
-				goto err_setPxSimulationFilterCallback;
-
-			if (!setPxSimulationEventCallback(this))
-				goto err_setPxSimulationEventCallback;
-
-			return;
-
-		err_setPxSimulationEventCallback:
-
-			clearPxSimulationFilterCallback();
-		err_setPxSimulationFilterCallback:
-
-			unpatchPxScene(px_scene_);
-		err_patchPxScene:
-			throw std::runtime_error(
-			    "PhysxBinding: failed to set up PhysX simulation callbacks");
-		}
-		~PhysxBinding() {
-			unpatchPxScene(true);
-		}
+		    : PxSimulationFilterPatch{px_scene},
+		      PxSimulationEventPatch{px_scene}, owner_{owner},
+		      px_scene_{px_scene} {}
+		~PhysxBinding() {}
 		PhysxBinding(const PhysxBinding &) = delete;
 		PhysxBinding &operator=(const PhysxBinding &) = delete;
 		PhysxBinding(PhysxBinding &&) = delete;
@@ -397,10 +374,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		    physx::PxFilterData filterData1, const physx::PxActor *ca1,
 		    const physx::PxShape *cs1, physx::PxPairFlags &pairFlags) override {
 
-			physx::PxFilterFlags result =
-			    PxSimulationFilterCallbackProxy::pairFound(
-			        pairID, attributes0, filterData0, ca0, cs0, attributes1,
-			        filterData1, ca1, cs1, pairFlags);
+			physx::PxFilterFlags result = PxSimulationFilterPatch::pairFound(
+			    pairID, attributes0, filterData0, ca0, cs0, attributes1,
+			    filterData1, ca1, cs1, pairFlags);
 
 			// Only if both actors are rigid actors
 			auto *rb0 = cast_rigid_actor(const_cast<physx::PxActor *>(ca0));
@@ -443,7 +419,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		                       const physx::PxContactPair *pairs,
 		                       physx::PxU32 nbPairs) override {
 
-			PxSimulationEventCallbackProxy::onContact(header, pairs, nbPairs);
+			PxSimulationEventPatch::onContact(header, pairs, nbPairs);
 
 			// Ignore removed actors
 			if (header.flags.isSet(
@@ -463,7 +439,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			// Thread safety: reading shape_mapping_
 			std::shared_lock<std::shared_mutex> lock(owner_->sim_mutex_);
 
-			physx::PxReal dt = getElapsedTime(px_scene_);
+			physx::PxReal dt = getPxSceneElapsedTime(px_scene_);
 
 			// Iterate over contact pairs
 			physx::PxContactPairExtraDataIterator extra_it(
@@ -590,7 +566,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	              type_list<std::equal_to<>>, PhysicsConnectionSegmentWrapper,
 	              type_list<>, type_list<>, type_list<>,
 	              PhysicsConnectionBundleWrapper, TopologyHooks>;
-				  using ConstraintSchedulingPolicy = CombinedSchedulingPolicy<TopologyGraph, TreeOnlySchedulingPolicy, RamanujanLikeSchedulingPolicy>;
+	using ConstraintSchedulingPolicy =
+	    CombinedSchedulingPolicy<TopologyGraph, TreeOnlySchedulingPolicy,
+	                             RamanujanLikeSchedulingPolicy>;
 	// using ConstraintSchedulingPolicy = CombinedSchedulingPolicy<TopologyGraph, FullGraphSchedulingPolicy, RamanujanLikeSchedulingPolicy>;
 	// using ConstraintSchedulingPolicy = RamanujanLikeSchedulingPolicy<TopologyGraph>;
 	// using ConstraintSchedulingPolicy = CombinedSchedulingPolicy<TopologyGraph, FullGraphSchedulingPolicy, ExponentialSkipSchedulingPolicy>;

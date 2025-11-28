@@ -3,7 +3,7 @@ import lego_assemble.core.graph;
 import lego_assemble.core.connections;
 import lego_assemble.core.assembly;
 import lego_assemble.physx.physics_graph;
-import lego_assemble.physx.scene_patcher;
+import lego_assemble.physx.patcher;
 import lego_assemble.utils.type_list;
 import lego_assemble.utils.metric_system;
 import lego_assemble.utils.transforms;
@@ -281,7 +281,7 @@ static void test_topology_and_constraints() {
 // Exercise PhysxBinding::pairFound branches via the PxScene callback.
 static void test_filter_callback_pairFound() {
 	PhysicsGraphFixture fx;
-	// Mirror the offsets used by lego_assemble.physx.scene_patcher to locate
+	// Mirror the offsets used by lego_assemble.physx.patcher to locate
 	// the internal Sc::Scene::mFilterCallback pointer.
 	constexpr std::size_t offset_NpScene_mScene = 1440;
 	constexpr std::size_t offset_NpScene_mScene_mFilterCallback =
@@ -296,7 +296,7 @@ static void test_filter_callback_pairFound() {
 	    locate_mFilterCallback(fx.env.scene);
 	assert(cb_ptr && *cb_ptr);
 
-	auto *proxy = dynamic_cast<PxSimulationFilterCallbackProxy *>(*cb_ptr);
+	auto *proxy = dynamic_cast<PxSimulationFilterPatch *>(*cb_ptr);
 	assert(proxy != nullptr);
 
 	physx::PxFilterData fd{};
@@ -405,7 +405,7 @@ static void test_event_callback_onContact() {
 		physx::PxSimulationEventCallback *cb_base =
 		    fx.env.scene->getSimulationEventCallback();
 		assert(cb_base != nullptr);
-		auto *proxy = dynamic_cast<PxSimulationEventCallbackProxy *>(cb_base);
+		auto *proxy = dynamic_cast<PxSimulationEventPatch *>(cb_base);
 		assert(proxy != nullptr);
 
 		ContactPayload payload =
@@ -431,7 +431,7 @@ static void test_event_callback_onContact() {
 		physx::PxSimulationEventCallback *cb_base =
 		    fx.env.scene->getSimulationEventCallback();
 		assert(cb_base != nullptr);
-		auto *proxy = dynamic_cast<PxSimulationEventCallbackProxy *>(cb_base);
+		auto *proxy = dynamic_cast<PxSimulationEventPatch *>(cb_base);
 		assert(proxy != nullptr);
 
 		physx::PxShape *unmappedA = nullptr;
@@ -472,7 +472,7 @@ static void test_event_callback_onContact() {
 		physx::PxSimulationEventCallback *cb_base =
 		    fx.env.scene->getSimulationEventCallback();
 		assert(cb_base != nullptr);
-		auto *proxy = dynamic_cast<PxSimulationEventCallbackProxy *>(cb_base);
+		auto *proxy = dynamic_cast<PxSimulationEventPatch *>(cb_base);
 		assert(proxy != nullptr);
 
 		ContactPayload payload =
@@ -498,7 +498,7 @@ static void test_event_callback_onContact() {
 		physx::PxSimulationEventCallback *cb_base =
 		    fx.env.scene->getSimulationEventCallback();
 		assert(cb_base != nullptr);
-		auto *proxy = dynamic_cast<PxSimulationEventCallbackProxy *>(cb_base);
+		auto *proxy = dynamic_cast<PxSimulationEventPatch *>(cb_base);
 		assert(proxy != nullptr);
 
 		physx::PxTransform poseStud(physx::PxVec3(0.0f, 0.0f, 0.0f));
