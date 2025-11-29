@@ -10,6 +10,9 @@
                 "port": 5678
             },
             "justMyCode": false,
+            "presentation": {
+                "hidden": true
+            }
         },
         {
             "name": "C++: Attach IsaacSim",
@@ -20,7 +23,10 @@
             "stopOnEntry": false,
             "initCommands": [
                 "process handle --stop false --notify false SIGWINCH"
-            ]
+            ],
+            "presentation": {
+                "hidden": true
+            }
         },
         {
             "name": "Python: Current File",
@@ -33,6 +39,22 @@
         },
     ],
     "compounds": [
+        {
+            "name": "Debug Python",
+            "configurations": [
+                "Python: Attach 5678"
+            ],
+            "stopAll": true,
+            "preLaunchTask": "Launch IsaacSim"
+        },
+        {
+            "name": "Debug Python (Current File)",
+            "configurations": [
+                "Python: Attach 5678"
+            ],
+            "stopAll": true,
+            "preLaunchTask": "Launch IsaacSim & Execute Current File"
+        },
         {
             "name": "Debug C++ & Python",
             "configurations": [
