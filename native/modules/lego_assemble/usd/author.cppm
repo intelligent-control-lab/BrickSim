@@ -161,6 +161,12 @@ export struct SimpleBrickAuthor {
 		              pxr::UsdPhysicsTokens->physicsCollisionEnabled, true);
 		SetAttr<float>(bodyCollider, pxr::UsdPhysicsTokens->physicsMass,
 		               metrics.from_kg(part.mass()));
+		SetAttr<float>(bodyCollider,
+		               pxr::UsdPhysicsTokens->physicsStaticFriction, 1.0f);
+		SetAttr<float>(bodyCollider,
+		               pxr::UsdPhysicsTokens->physicsDynamicFriction, 0.8f);
+		SetAttr<float>(bodyCollider, pxr::UsdPhysicsTokens->physicsRestitution,
+		               0.1f);
 
 		auto topCollider = pxr::SdfCreatePrimInLayer(
 		    layer, root_path.AppendChild(LegoTokens->TopCollider));
@@ -193,6 +199,12 @@ export struct SimpleBrickAuthor {
 		SetAttr<bool>(topCollider,
 		              pxr::UsdPhysicsTokens->physicsCollisionEnabled, true);
 		SetAttr<float>(topCollider, pxr::UsdPhysicsTokens->physicsMass, 0.0f);
+		SetAttr<float>(topCollider,
+		               pxr::UsdPhysicsTokens->physicsStaticFriction, 2.0f);
+		SetAttr<float>(topCollider,
+		               pxr::UsdPhysicsTokens->physicsDynamicFriction, 1.8f);
+		SetAttr<float>(topCollider, pxr::UsdPhysicsTokens->physicsRestitution,
+		               0.2f);
 
 		auto body = pxr::SdfCreatePrimInLayer(
 		    layer, root_path.AppendChild(LegoTokens->Body));
