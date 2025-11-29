@@ -24,9 +24,6 @@
             "initCommands": [
                 "process handle --stop false --notify false SIGWINCH"
             ],
-            "presentation": {
-                "hidden": true
-            }
         },
         {
             "name": "Python: Current File",
