@@ -86,7 +86,16 @@ def run(target: str, *args: Any, **kwargs: Any) -> asyncio.Task[Any]:
             f"Target '{module_or_path}:{func_name}' did not return an awaitable coroutine"
         )
 
-    task = _async_engine.run_coroutine(coro)
+    async def wrapper_coro():
+        try:
+            await coro
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(f"Exception in kit_runner target '{target}':")
+            import traceback
+            traceback.print_exc()
+    task = _async_engine.run_coroutine(wrapper_coro())
     _current_task = task
     return task
 
