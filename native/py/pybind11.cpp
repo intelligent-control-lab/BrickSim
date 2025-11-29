@@ -22,6 +22,23 @@ PYBIND11_MODULE(_native, m) {
 	m.def("deallocate_part", &deallocate_part, pybind11::arg("part_path"),
 	      "Deallocate the specified managed part. Returns true if successful.");
 
+	m.def("compute_graph_transform", &compute_graph_transform,
+	      pybind11::arg("a_path"), pybind11::arg("b_path"),
+	      "Compute the gain-graph relative transform between two parts given "
+	      "their prim paths. Returns (rot, pos) in meters, where rot is a wxyz "
+	      "quaternion for {}^{a}T_b (a<-b). Throws if the parts are "
+	      "disconnected or unknown.");
+
+	m.def("compute_connection_transform", &compute_connection_transform,
+	      pybind11::arg("stud_path"), pybind11::arg("stud_if"),
+	      pybind11::arg("hole_path"), pybind11::arg("hole_if"),
+	      pybind11::arg("offset"), pybind11::arg("yaw"),
+	      "Compute the relative transform induced by a single connection "
+	      "segment between the specified stud and hole interfaces with the "
+	      "given grid offset and yaw index (0..3). Returns (rot, pos) for "
+	      "{}^{stud}T_hole in meters, without modifying USD or the topology. "
+	      "Throws if parts or interfaces are unknown.");
+
 	m.def("create_connection", &create_connection, pybind11::arg("stud_path"),
 	      pybind11::arg("stud_if"), pybind11::arg("hole_path"),
 	      pybind11::arg("hole_if"), pybind11::arg("offset"),

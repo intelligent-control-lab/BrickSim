@@ -8,6 +8,20 @@ def allocate_brick_part(
 
 def deallocate_part(part_path: str) -> bool: ...
 
+def compute_graph_transform(
+    a_path: str,
+    b_path: str,
+) -> tuple[tuple[float, float, float, float], tuple[float, float, float]]: ...
+
+def compute_connection_transform(
+    stud_path: str,
+    stud_if: int,
+    hole_path: str,
+    hole_if: int,
+    offset: tuple[int, int],
+    yaw: int,
+) -> tuple[tuple[float, float, float, float], tuple[float, float, float]]: ...
+
 def create_connection(
     stud_path: str,
     stud_if: int,

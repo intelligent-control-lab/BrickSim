@@ -49,6 +49,66 @@ export bool deallocate_part(const std::string &part_path) {
 	return usd_graph.remove_part(path);
 }
 
+export std::tuple<std::array<double, 4>, std::array<double, 3>>
+compute_graph_transform(const std::string &a_path_str,
+                        const std::string &b_path_str) {
+	auto &usd_graph = lego_world().usd_graph();
+	pxr::SdfPath a_path{a_path_str};
+	pxr::SdfPath b_path{b_path_str};
+	auto result = usd_graph.topology().lookup_transform(a_path, b_path);
+	if (!result) {
+		throw std::runtime_error(
+		    std::format("No connection path found between parts {} and {}",
+		                a_path_str, b_path_str));
+	}
+	const auto &[R, t] = *result;
+	return {as_array<double>(R), as_array<double, 3>(t)};
+}
+
+export std::tuple<std::array<double, 4>, std::array<double, 3>>
+compute_connection_transform(const std::string &stud_path_str,
+                             InterfaceId stud_if,
+                             const std::string &hole_path_str,
+                             InterfaceId hole_if,
+                             std::array<BrickUnit, 2> offset, int yaw) {
+	auto &usd_graph = lego_world().usd_graph();
+	pxr::SdfPath stud_path{stud_path_str};
+	pxr::SdfPath hole_path{hole_path_str};
+	const auto &topology = usd_graph.topology();
+	const auto *stud_pid_ptr =
+	    topology.parts().template project_key<pxr::SdfPath, PartId>(stud_path);
+	if (!stud_pid_ptr) {
+		throw std::runtime_error(std::format(
+		    "Stud path {} does not correspond to a known part", stud_path_str));
+	}
+	const auto *hole_pid_ptr =
+	    topology.parts().template project_key<pxr::SdfPath, PartId>(hole_path);
+	if (!hole_pid_ptr) {
+		throw std::runtime_error(std::format(
+		    "Hole path {} does not correspond to a known part", hole_path_str));
+	}
+	InterfaceRef stud_ref{*stud_pid_ptr, stud_if};
+	InterfaceRef hole_ref{*hole_pid_ptr, hole_if};
+	ConnectionSegment seg{
+	    .offset = as<Eigen::Vector2i>(offset),
+	    .yaw = to_c4(yaw),
+	};
+	auto stud_spec = topology.get_interface_spec(stud_ref);
+	if (!stud_spec) {
+		throw std::runtime_error(
+		    std::format("Stud interface {} on part {} is not found", stud_if,
+		                stud_path_str));
+	}
+	auto hole_spec = topology.get_interface_spec(hole_ref);
+	if (!hole_spec) {
+		throw std::runtime_error(
+		    std::format("Hole interface {} on part {} is not found", hole_if,
+		                hole_path_str));
+	}
+	auto [R, t] = seg.compute_transform(*stud_spec, *hole_spec);
+	return {as_array<double>(R), as_array<double, 3>(t)};
+}
+
 export std::string create_connection(const std::string &stud_path_str,
                                      InterfaceId stud_if,
                                      const std::string &hole_path_str,
@@ -72,8 +132,10 @@ export std::string create_connection(const std::string &stud_path_str,
 	}
 	InterfaceRef stud_ref{*stud_pid_ptr, stud_if};
 	InterfaceRef hole_ref{*hole_pid_ptr, hole_if};
-	ConnectionSegment seg{.offset = as<Eigen::Vector2i>(offset),
-	                      .yaw = to_c4(yaw)};
+	ConnectionSegment seg{
+	    .offset = as<Eigen::Vector2i>(offset),
+	    .yaw = to_c4(yaw),
+	};
 	auto connected = usd_graph.connect(stud_ref, hole_ref, seg);
 	if (!connected) {
 		throw std::runtime_error(std::format(
