@@ -263,6 +263,11 @@ def _rebuild_select_button_group():
     """
     Rebuild the SelectButtonGroup instance on the main toolbar so that it
     picks up our patched SelectModeModel and menu definitions.
+
+    We intentionally avoid calling `clean()` on the old group here: doing so
+    while the UI is live can invalidate models that omni.ui ToolButtons still
+    reference, which later causes AbstractValueModel::get_value_as_bool to be
+    called on an invalid model during the UI draw.
     """
     import omni.kit.widget.toolbar.extension as tb_ext  # type: ignore
     from omni.kit.widget.toolbar.builtin_tools.select_button_group import (  # type: ignore  # noqa: E501
@@ -280,7 +285,6 @@ def _rebuild_select_button_group():
     old_group = getattr(builtin, "_select_button_group", None)
     if old_group is not None:
         toolbar.remove_widget(old_group)
-        old_group.clean()
         builtin._select_button_group = None
 
     new_group = SelectButtonGroup()
