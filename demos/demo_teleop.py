@@ -14,6 +14,7 @@ from lerobot.teleoperators.so101_leader import SO101LeaderConfig, SO101Leader
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LEADER_PORT = "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5A7C123160-if00"
 LEADER_ID = "my_lerobot_leader"
+MAX_JOINT_STEP = 0.05  # rad per physics step (~3 degrees)
 
 def connect_leader():
     leader_config = SO101LeaderConfig(port=LEADER_PORT, id=LEADER_ID)
@@ -143,7 +144,13 @@ async def main():
                     disconnect_leader(leader)
                     leader = None
 
-            robot.apply_action(ArticulationAction(joint_positions=leader_action))
+            # Smooth / limit joint motion before sending it to physics
+            q = robot.get_joint_positions().cpu().numpy()
+            desired = leader_action
+            delta = desired - q
+            delta = np.clip(delta, -MAX_JOINT_STEP, MAX_JOINT_STEP)
+            q_target = q + delta
+            robot.apply_action(ArticulationAction(joint_positions=q_target))
             await app.next_update_async()
 
     except asyncio.CancelledError:
