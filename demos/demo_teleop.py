@@ -2,11 +2,11 @@ import asyncio
 import os
 import traceback
 import numpy as np
-import torch
 import omni.kit.app  # pyright: ignore
 from typing import Optional
 from isaacsim.core.api.world import World
 from isaacsim.core.prims import SingleArticulation, SingleXFormPrim
+from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.core.utils.stage import open_stage_async, add_reference_to_stage
 from lerobot.teleoperators.so101_leader import SO101LeaderConfig, SO101Leader
 
@@ -105,8 +105,7 @@ async def main():
                     disconnect_leader(leader)
                     leader = None
 
-            q = torch.as_tensor(leader_action, device=world.device, dtype=torch.float32)
-            robot.set_joint_positions(q)
+            robot.apply_action(ArticulationAction(joint_positions=leader_action))
             await app.next_update_async()
 
     except asyncio.CancelledError:
