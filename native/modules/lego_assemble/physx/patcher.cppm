@@ -125,7 +125,7 @@ export class PxSimulationEventPatch : public physx::PxSimulationEventCallback {
 		log_info("PxSimulationEventPatch: patched PxSimulationEventCallback");
 	}
 	virtual ~PxSimulationEventPatch() {
-		log_info("PxSimulationEventPatch: undoing patch on destruction");
+		log_info("PxSimulationEventPatch: unpatch on destruction");
 		if (scene_->getSimulationEventCallback() == this) {
 			scene_->setSimulationEventCallback(wrapped_);
 		} else {
