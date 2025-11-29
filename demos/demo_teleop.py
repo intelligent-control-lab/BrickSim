@@ -8,6 +8,7 @@ from isaacsim.core.api.world import World
 from isaacsim.core.prims import SingleArticulation, SingleXFormPrim
 from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.core.utils.stage import open_stage_async, add_reference_to_stage
+from lego_assemble import allocate_brick_part, parse_color, create_connection
 from lerobot.teleoperators.so101_leader import SO101LeaderConfig, SO101Leader
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -71,13 +72,50 @@ async def main():
     # Set robot pose
     robot_xf = SingleXFormPrim(prim_path=robot_prim_path, name="Robot")
     robot_xf.set_world_pose(
-        position=(-0.1, 0.0, 0.0),
+        position=(-0.1, 0.1, 0.0),
         orientation=(1.0, 0.0, 0.0, 0.0),
     )
 
     # Create robot articulation
     robot = SingleArticulation(prim_path=robot_prim_path, name="Robot")
     world.scene.add(robot)
+
+    # Spawn some lego
+    base_plate = allocate_brick_part(
+        dimensions=(20, 20, 1),
+        color=parse_color("Light Gray"),
+        env_id=-1,
+        rot=(1.0, 0.0, 0.0, 0.0),
+        pos=(0.10, 0.1, 0.01),
+    )
+    brick_1 = allocate_brick_part(
+        dimensions=(2, 4, 3),
+        color=parse_color("Red"),
+        env_id=-1,
+        rot=(1.0, 0.0, 0.0, 0.0),
+        pos=(0.00, -0.05, 0.05),
+    )
+    brick_2 = allocate_brick_part(
+        dimensions=(2, 4, 3),
+        color=parse_color("Blue"),
+        env_id=-1,
+        rot=(1.0, 0.0, 0.0, 0.0),
+        pos=(0.05, -0.05, 0.05),
+    )
+    brick_3 = allocate_brick_part(
+        dimensions=(2, 6, 3),
+        color=parse_color("Pink"),
+        env_id=-1,
+        rot=(1.0, 0.0, 0.0, 0.0),
+        pos=(0.10, -0.05, 0.05),
+    )
+    brick_4 = allocate_brick_part(
+        dimensions=(2, 2, 3),
+        color=parse_color("Green"),
+        env_id=-1,
+        rot=(1.0, 0.0, 0.0, 0.0),
+        pos=(0.15, -0.05, 0.05),
+    )
 
     # Start simulation loop
     await world.reset_async()
