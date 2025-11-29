@@ -1,9 +1,11 @@
+from typing import Optional
+
 def allocate_brick_part(
     dimensions: tuple[int, int, int],
     color: tuple[int, int, int],
     env_id: int,
-    rot: tuple[float, float, float, float],
-    pos: tuple[float, float, float],
+    rot: Optional[tuple[float, float, float, float]] = None,
+    pos: Optional[tuple[float, float, float]] = None,
 ) -> str: ...
 
 def deallocate_part(part_path: str) -> bool: ...
@@ -40,11 +42,22 @@ def export_lego(env_id: int) -> str: ...
 def import_lego(
     json_str: str,
     env_id: int,
-    ref_rot: tuple[float, float, float, float],
-    ref_pos: tuple[float, float, float],
+    ref_rot: Optional[tuple[float, float, float, float]] = None,
+    ref_pos: Optional[tuple[float, float, float]] = None,
 ) -> None: ...
 
 def compute_connected_component(part_path: str) -> tuple[list[str], list[str]]: ...
+
+def arrange_bricks_on_table(
+    parts_to_arrange: list[str],
+    parts_to_avoid: list[str],
+    obstacles: Optional[list[tuple[float, float, float, float]]],
+    table_xy: tuple[float, float, float, float],
+    table_z: float,
+    clearance_xy: Optional[float],
+    grid_resolution: Optional[float],
+    allow_rotation: Optional[bool],
+) -> tuple[list[str], list[str]]: ...
 
 class AssemblyThresholds:
     def __init__(self) -> None: ...

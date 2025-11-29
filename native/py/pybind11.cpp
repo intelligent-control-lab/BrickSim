@@ -14,7 +14,8 @@ PYBIND11_MODULE(_native, m) {
 	m.def(
 	    "allocate_brick_part", &allocate_brick_part,
 	    pybind11::arg("dimensions"), pybind11::arg("color"),
-	    pybind11::arg("env_id"), pybind11::arg("rot"), pybind11::arg("pos"),
+	    pybind11::arg("env_id"), pybind11::arg("rot") = std::nullopt,
+	    pybind11::arg("pos") = std::nullopt,
 	    "Allocate a new brick part in the specified environment with given "
 	    "dimensions, color and pose (in meters, wxyz quaternion). Returns the "
 	    "allocated brick path.");
@@ -62,8 +63,8 @@ PYBIND11_MODULE(_native, m) {
 	      "string (schema 'lego_assemble/lego_topology@1').");
 
 	m.def("import_lego", &import_lego, pybind11::arg("json_str"),
-	      pybind11::arg("env_id"), pybind11::arg("ref_rot"),
-	      pybind11::arg("ref_pos"),
+	      pybind11::arg("env_id"), pybind11::arg("ref_rot") = std::nullopt,
+	      pybind11::arg("ref_pos") = std::nullopt,
 	      "Import the lego topology from the given JSON string into the "
 	      "specified environment, applying the given reference-to-environment "
 	      "transform (pose in meters, wxyz quaternion).");
@@ -73,6 +74,22 @@ PYBIND11_MODULE(_native, m) {
 	      "Return (part_paths, connection_paths) for the connected component "
 	      "of the specified part path. Returns two empty lists if the part is "
 	      "unknown.");
+
+	m.def("arrange_bricks_on_table", &arrange_bricks_on_table,
+	      pybind11::arg("parts_to_arrange"), pybind11::arg("parts_to_avoid"),
+	      pybind11::arg("obstacles") = std::nullopt, pybind11::arg("table_xy"),
+	      pybind11::arg("table_z"),
+	      pybind11::arg("clearance_xy") = std::nullopt,
+	      pybind11::arg("grid_resolution") = std::nullopt,
+	      pybind11::arg("allow_rotation") = std::nullopt,
+	      "Arrange the specified bricks on a rectangular table region in the "
+	      "environment frame. Parts to arrange and avoid are given as USD prim "
+	      "paths. Obstacles, if provided, are a list of rectangles given as "
+	      "(x_min, y_min, x_max, y_max) in meters. table_xy is the table "
+	      "bounding box (x_min, y_min, x_max, y_max) in meters and table_z is "
+	      "the table height in meters. Clearance, grid_resolution and "
+	      "allow_rotation are optional tuning parameters. Returns "
+	      "(placed_paths, not_placed_paths).");
 
 	pybind11::class_<AssemblyThresholds>(m, "AssemblyThresholds",
 	                                     "Assembly detection thresholds.")

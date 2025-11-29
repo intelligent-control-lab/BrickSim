@@ -5,6 +5,7 @@ import lego_assemble.core.specs;
 import lego_assemble.core.graph;
 import lego_assemble.core.connections;
 import lego_assemble.core.assembly;
+import lego_assemble.usd.arrange;
 import lego_assemble.omni.lego_runtime;
 import lego_assemble.utils.conversions;
 import lego_assemble.utils.transforms;
@@ -24,10 +25,11 @@ World &lego_world() {
 	return *world;
 }
 
-export std::string allocate_brick_part(std::array<BrickUnit, 3> dimensions,
-                                       BrickColor color, std::int64_t env_id,
-                                       std::array<double, 4> rot,
-                                       std::array<double, 3> pos) {
+export std::string
+allocate_brick_part(std::array<BrickUnit, 3> dimensions, BrickColor color,
+                    std::int64_t env_id,
+                    std::optional<std::array<double, 4>> rot,
+                    std::optional<std::array<double, 3>> pos) {
 	auto &usd_graph = lego_world().usd_graph();
 	BrickPart part{dimensions[0], dimensions[1], dimensions[2], color};
 	auto added =
@@ -38,8 +40,15 @@ export std::string allocate_brick_part(std::array<BrickUnit, 3> dimensions,
 		    dimensions[0], dimensions[1], dimensions[2], env_id));
 	}
 	const auto &[pid, path] = *added;
-	usd_graph.set_component_transform(
-	    pid, {as<Eigen::Quaterniond>(rot), as<Eigen::Vector3d>(pos)});
+	if (rot || pos) {
+		auto rot_val = rot.value_or({1.0, 0.0, 0.0, 0.0});
+		auto pos_val = pos.value_or({0.0, 0.0, 0.0});
+		Transformd T_env_part{
+		    as<Eigen::Quaterniond>(rot_val),
+		    as<Eigen::Vector3d>(pos_val),
+		};
+		usd_graph.set_component_transform(pid, T_env_part);
+	}
 	return path.GetAsString();
 }
 
@@ -165,13 +174,17 @@ export std::string export_lego(std::int64_t env_id) {
 }
 
 export void import_lego(const std::string &json_str, std::int64_t env_id,
-                        std::array<double, 4> ref_rot,
-                        std::array<double, 3> ref_pos) {
+                        std::optional<std::array<double, 4>> ref_rot,
+                        std::optional<std::array<double, 3>> ref_pos) {
 	nlohmann::ordered_json json = nlohmann::ordered_json::parse(json_str);
 	auto &usd_graph = lego_world().usd_graph();
-	LegoRuntime::Serializer{}.import(json, usd_graph, env_id,
-	                                 Transformd{as<Eigen::Quaterniond>(ref_rot),
-	                                            as<Eigen::Vector3d>(ref_pos)});
+	auto ref_rot_val = ref_rot.value_or({1.0, 0.0, 0.0, 0.0});
+	auto ref_pos_val = ref_pos.value_or({0.0, 0.0, 0.0});
+	Transformd T_env_ref{
+	    as<Eigen::Quaterniond>(ref_rot_val),
+	    as<Eigen::Vector3d>(ref_pos_val),
+	};
+	LegoRuntime::Serializer{}.import(json, usd_graph, env_id, T_env_ref);
 }
 
 export std::tuple<std::vector<std::string>, std::vector<std::string>>
@@ -219,6 +232,100 @@ compute_connected_component(const std::string &part_path_str) {
 		}
 	}
 	return {part_paths, conn_paths};
+}
+
+export std::tuple<std::vector<std::string>, std::vector<std::string>>
+arrange_bricks_on_table(
+    std::vector<std::string> parts_to_arrange,
+    std::vector<std::string> parts_to_avoid,
+    std::optional<std::vector<std::array<double, 4>>> obstacles,
+    std::array<double, 4> table_xy, double table_z,
+    std::optional<double> clearance_xy, std::optional<double> grid_resolution,
+    std::optional<bool> allow_rotation) {
+	ArrangeConfig config;
+	config.region = {
+	    .x_min = table_xy[0],
+	    .y_min = table_xy[1],
+	    .x_max = table_xy[2],
+	    .y_max = table_xy[3],
+	    .z = table_z,
+	};
+	if (clearance_xy) {
+		config.clearance_xy = *clearance_xy;
+	}
+	if (grid_resolution) {
+		config.grid_resolution = *grid_resolution;
+	}
+	if (allow_rotation) {
+		config.allow_rotation = *allow_rotation;
+	}
+	const auto &topology = lego_world().usd_graph().topology();
+	std::vector<PartId> arrange_pids;
+	arrange_pids.reserve(parts_to_arrange.size());
+	for (const auto &part_path_str : parts_to_arrange) {
+		pxr::SdfPath part_path{part_path_str};
+		const auto *part_id_ptr =
+		    topology.parts().template project_key<pxr::SdfPath, PartId>(
+		        part_path);
+		if (!part_id_ptr) {
+			throw std::runtime_error(std::format(
+			    "arrange_bricks_on_table: part path {} does not exist in graph",
+			    part_path_str));
+		}
+		arrange_pids.push_back(*part_id_ptr);
+	}
+	std::vector<PartId> avoid_pids;
+	avoid_pids.reserve(parts_to_avoid.size());
+	for (const auto &part_path_str : parts_to_avoid) {
+		pxr::SdfPath part_path{part_path_str};
+		const auto *part_id_ptr =
+		    topology.parts().template project_key<pxr::SdfPath, PartId>(
+		        part_path);
+		if (!part_id_ptr) {
+			throw std::runtime_error(std::format(
+			    "arrange_bricks_on_table: part path {} does not exist in graph",
+			    part_path_str));
+		}
+		avoid_pids.push_back(*part_id_ptr);
+	}
+	std::vector<BBox2d> avoid_zones;
+	if (obstacles) {
+		avoid_zones.reserve(obstacles->size());
+		for (const auto &obs_arr : *obstacles) {
+			avoid_zones.push_back({
+			    .min = {obs_arr[0], obs_arr[1]},
+			    .max = {obs_arr[2], obs_arr[3]},
+			});
+		}
+	}
+	ArrangeResult result =
+	    arrange_bricks_on_table(lego_world().usd_graph(), config, arrange_pids,
+	                            avoid_pids, avoid_zones);
+	std::vector<std::string> placed_paths;
+	placed_paths.reserve(result.placed.size());
+	for (PartId pid : result.placed) {
+		const pxr::SdfPath *part_path_ptr =
+		    topology.parts().template project_key<PartId, pxr::SdfPath>(pid);
+		if (!part_path_ptr) {
+			throw std::runtime_error(std::format(
+			    "arrange_bricks_on_table: part id {} has no corresponding path",
+			    pid));
+		}
+		placed_paths.push_back(part_path_ptr->GetAsString());
+	}
+	std::vector<std::string> not_placed_paths;
+	not_placed_paths.reserve(result.not_placed.size());
+	for (PartId pid : result.not_placed) {
+		const pxr::SdfPath *part_path_ptr =
+		    topology.parts().template project_key<PartId, pxr::SdfPath>(pid);
+		if (!part_path_ptr) {
+			throw std::runtime_error(std::format(
+			    "arrange_bricks_on_table: part id {} has no corresponding path",
+			    pid));
+		}
+		not_placed_paths.push_back(part_path_ptr->GetAsString());
+	}
+	return {placed_paths, not_placed_paths};
 }
 
 export using AssemblyThresholds = lego_assemble::AssemblyThresholds;

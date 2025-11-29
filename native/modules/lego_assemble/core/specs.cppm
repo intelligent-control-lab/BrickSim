@@ -45,10 +45,23 @@ export struct InterfaceSpec {
 
 export using BrickColor = std::array<std::uint8_t, 3>; // RGB
 
+export struct BBox2d {
+	Eigen::Vector2d min;
+	Eigen::Vector2d max;
+	bool operator==(const BBox2d &other) const = default;
+};
+
+export struct BBox3d {
+	Eigen::Vector3d min;
+	Eigen::Vector3d max;
+	bool operator==(const BBox3d &other) const = default;
+};
+
 export template <class P>
 concept PartLike = requires(const P &p) {
 	{ p.mass() } -> std::convertible_to<double>;
 	{ p.color() } -> std::convertible_to<BrickColor>;
+	{ p.bbox() } -> std::convertible_to<BBox3d>;
 } && std::equality_comparable<P>;
 
 export template <class... Ps>
@@ -200,6 +213,19 @@ export class BrickPart {
 			std::unreachable();
 		}
 	}
+	BBox3d bbox() const {
+		return BBox3d{.min =
+		                  Eigen::Vector3d{
+		                      -((L_ * BrickUnitLength) / 2.0),
+		                      -((W_ * BrickUnitLength) / 2.0),
+		                      0.0,
+		                  },
+		              .max = Eigen::Vector3d{
+		                  (L_ * BrickUnitLength) / 2.0,
+		                  (W_ * BrickUnitLength) / 2.0,
+		                  H_ * PlateUnitHeight + StudHeight,
+		              }};
+	}
 
 	bool operator==(const BrickPart &other) const = default;
 
@@ -216,9 +242,19 @@ static_assert(PartWithFixedInterfaces<BrickPart>);
 export struct CustomPart {
   public:
 	CustomPart(double mass, BrickColor color,
+	           std::initializer_list<InterfaceSpec> ifs, BBox3d bbox,
+	           std::pmr::memory_resource *r = std::pmr::get_default_resource())
+	    : mass_{mass}, color_{color}, interfaces_{ifs, r},
+	      bbox_{std::move(bbox)} {}
+
+	CustomPart(double mass, BrickColor color,
 	           std::initializer_list<InterfaceSpec> ifs,
 	           std::pmr::memory_resource *r = std::pmr::get_default_resource())
-	    : mass_{mass}, color_{color}, interfaces_{ifs, r} {}
+	    : mass_{mass}, color_{color}, interfaces_{ifs, r},
+	      bbox_{
+	          .min = {0.0, 0.0, 0.0},
+	          .max = {0.0, 0.0, 0.0},
+	      } {}
 
 	double mass() const {
 		return mass_;
@@ -238,6 +274,9 @@ export struct CustomPart {
 		}
 		return nullptr;
 	}
+	BBox3d bbox() const {
+		return bbox_;
+	}
 
 	bool operator==(const CustomPart &other) const = default;
 
@@ -245,6 +284,7 @@ export struct CustomPart {
 	double mass_;
 	BrickColor color_;
 	std::pmr::vector<InterfaceSpec> interfaces_;
+	BBox3d bbox_;
 };
 static_assert(PartWithDynamicInterfaces<CustomPart>);
 

@@ -177,6 +177,7 @@ add_lego_test(TestUsdLegoGraph tests/TestUsdLegoGraph.cpp)
 add_lego_test(TestJsonIO tests/TestJsonIO.cpp)
 add_lego_test(TestConstraintScheduler tests/TestConstraintScheduler.cpp)
 add_lego_test(TestRamanujanLikeSchedulingPolicy tests/TestRamanujanLikeSchedulingPolicy.cpp)
+add_lego_test(TestPack2dMaxrect tests/TestPack2dMaxrect.cpp)
 
 # Ensure the CMake-provided std modules provider compiles <iostream>
 # with the "no-symver" path by overriding bits/c++config.h just for
