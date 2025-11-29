@@ -23,7 +23,7 @@ async def main():
     await world.initialize_simulation_context_async()
 
     # Spawn the robot
-    robot_usd = os.path.join(SCRIPT_DIR, "../resources/robots/r1lite/robot.usd")
+    robot_usd = os.path.join(SCRIPT_DIR, "../resources/robots/r1lite/robot/robot.usd")
     robot_prim_path = "/World/Robot"
     add_reference_to_stage(usd_path=robot_usd, prim_path=robot_prim_path)
 
