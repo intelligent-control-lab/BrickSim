@@ -29,6 +29,17 @@ export struct AssemblyThresholds {
 	double PositionTolerance = 0.002;
 };
 
+export struct AssemblyDebugInfo {
+	bool accepted;
+	double relative_distance;
+	double tilt;
+	double projected_force;
+	double yaw_error;
+	double position_error;
+	Eigen::Vector2d grid_pos;
+	Eigen::Vector2i grid_pos_snapped;
+};
+
 export class AssemblyChecker {
   public:
 	// Do not modify this while PhysX is stepping, really.
@@ -40,7 +51,8 @@ export class AssemblyChecker {
 	std::optional<ConnectionSegment>
 	detect_assembly(const InterfaceSpec &stud_iface,
 	                const InterfaceSpec &hole_iface, const Transformd &T_stud,
-	                const Transformd &T_hole, const Eigen::Vector3d &force
+	                const Transformd &T_hole, const Eigen::Vector3d &force,
+	                AssemblyDebugInfo *debug = nullptr
 	                // TODO: add moment
 	) const {
 		// Compute useful transforms
@@ -92,6 +104,16 @@ export class AssemblyChecker {
 		              (std::abs(yaw_err) <= thresholds.YawTolerance) &&
 		              (p_err <= thresholds.PositionTolerance) &&
 		              ((overlap(0) > 0) && (overlap(1) > 0));
+		if (debug) {
+			debug->accepted = accept;
+			debug->relative_distance = rel_dist;
+			debug->tilt = tilt;
+			debug->projected_force = fz;
+			debug->yaw_error = yaw_err;
+			debug->position_error = p_err;
+			debug->grid_pos = p0;
+			debug->grid_pos_snapped = p0_snap;
+		}
 		if (!accept) {
 			return std::nullopt;
 		}

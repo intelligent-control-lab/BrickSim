@@ -80,6 +80,10 @@ physx::PxRigidActor *cast_rigid_actor(physx::PxActor *actor) {
 	}
 }
 
+export struct PhysicsAssemblyDebugInfo : AssemblyDebugInfo {
+	ConnSegRef csref;
+};
+
 export template <class Ps, class Hooks> class PhysicsLegoGraph;
 
 export template <PartLike... Ps, class Hooks>
@@ -534,9 +538,33 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			    metrics.to_Ns(as<Eigen::Vector3d>(impulse_px));
 			Eigen::Vector3d force = impulse / static_cast<double>(dt);
 
+			PhysicsAssemblyDebugInfo debug_info;
+			PhysicsAssemblyDebugInfo *debug_info_ptr;
+			if (owner_->collect_assembly_debug_info_) {
+				debug_info_ptr = &debug_info;
+			} else {
+				debug_info_ptr = nullptr;
+			}
+
 			std::optional<ConnectionSegment> result =
-			    owner_->assembly_checker_.detect_assembly(if0, if1, pose0,
-			                                              pose1, force);
+			    owner_->assembly_checker_.detect_assembly(
+			        if0, if1, pose0, pose1, force, debug_info_ptr);
+
+			if (owner_->collect_assembly_debug_info_) {
+				const InterfaceRef *ifref0 =
+				    owner_->shape_mapping_
+				        .template project<ActorShapePair, InterfaceRef>(
+				            {rb0, s0});
+				const InterfaceRef *ifref1 =
+				    owner_->shape_mapping_
+				        .template project<ActorShapePair, InterfaceRef>(
+				            {rb1, s1});
+				if (ifref0 && ifref1) {
+					debug_info.csref = {*ifref0, *ifref1};
+					owner_->enqueue_assembly_debug_info(debug_info);
+				}
+			}
+
 			if (!result.has_value()) {
 				return;
 			}
@@ -604,6 +632,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	    const MetricSystem &metrics, physx::PxPhysics *px,
 	    Hooks *hooks = nullptr, AssemblyThresholds thresholds = {},
 	    bool shape_level_collision_filtering = true,
+	    bool collect_assembly_debug_info = true,
 	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
 	    : res_{mr}, metrics_{metrics}, px_{px}, hooks_{hooks},
 	      topology_hooks_{this}, topology_{&topology_hooks_, mr},
@@ -616,6 +645,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	          mr},
 	      assembly_checker_{thresholds},
 	      shape_level_collision_filtering_{shape_level_collision_filtering},
+	      collect_assembly_debug_info_{collect_assembly_debug_info},
 	      pending_assemblies_{mr}, pending_disassemblies_{mr},
 	      shape_mapping_{mr}, contact_exclusions_{mr} {}
 	~PhysicsLegoGraph() {
@@ -643,10 +673,19 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		return assembly_checker_;
 	}
 
+	std::vector<PhysicsAssemblyDebugInfo> get_assembly_debug_infos() const {
+		std::lock_guard lock{pending_mutex_};
+		return {assembly_debug_infos_.begin(), assembly_debug_infos_.end()};
+	}
+
 	// Should be called BEFORE simulation step on USD/Kit thread
 	// Use a StageUpdateNode with order < 10 to implement this
 	void do_pre_step() {
 		flush_physx_ops();
+		{
+			std::lock_guard lock{pending_mutex_};
+			assembly_debug_infos_.clear();
+		}
 		sim_running_ = true;
 	}
 
@@ -722,10 +761,12 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	std::unique_ptr<PhysxBinding> physx_binding_;
 	AssemblyChecker assembly_checker_;
 	bool shape_level_collision_filtering_;
+	bool collect_assembly_debug_info_;
 
-	std::mutex pending_mutex_;
+	mutable std::mutex pending_mutex_;
 	std::pmr::vector<PendingAssembly> pending_assemblies_;
 	std::pmr::vector<PendingDisassembly> pending_disassemblies_;
+	std::pmr::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_;
 
 	std::shared_mutex sim_mutex_;
 	ShapeMapping shape_mapping_;
@@ -877,6 +918,15 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	void enqueue_pending_assembly(auto &&...args) {
 		std::lock_guard lock{pending_mutex_};
 		pending_assemblies_.emplace_back(std::forward<decltype(args)>(args)...);
+	}
+
+	void enqueue_assembly_debug_info(auto &&...args) {
+		if (!collect_assembly_debug_info_) {
+			return;
+		}
+		std::lock_guard lock{pending_mutex_};
+		assembly_debug_infos_.emplace_back(
+		    std::forward<decltype(args)>(args)...);
 	}
 
 	void enqueue_pending_disassembly(auto &&...args) {

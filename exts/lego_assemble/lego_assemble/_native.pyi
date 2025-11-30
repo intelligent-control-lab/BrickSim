@@ -72,3 +72,20 @@ class AssemblyThresholds:
 def set_assembly_thresholds(thresholds: AssemblyThresholds) -> None: ...
 
 def get_assembly_thresholds() -> AssemblyThresholds: ...
+
+class AssemblyDebugInfo:
+    def __repr__(self) -> str: ...
+    accepted: bool
+    relative_distance: float
+    tilt: float
+    projected_force: float
+    yaw_error: float
+    position_error: float
+    grid_pos: tuple[float, float]
+    grid_pos_snapped: tuple[int, int]
+    stud_path: str
+    stud_interface: int
+    hole_path: str
+    hole_interface: int
+
+def get_assembly_debug_infos() -> list[AssemblyDebugInfo]: ...

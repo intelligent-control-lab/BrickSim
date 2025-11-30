@@ -111,4 +111,27 @@ PYBIND11_MODULE(_native, m) {
 
 	m.def("get_assembly_thresholds", &get_assembly_thresholds,
 	      "Get the current assembly detection thresholds.");
+
+	pybind11::class_<PyAssemblyDebugInfo>(m, "AssemblyDebugInfo",
+	                                      "Debug information for assembly "
+	                                      "detection of a connection segment.")
+	    .def_readonly("accepted", &PyAssemblyDebugInfo::accepted)
+	    .def_readonly("relative_distance",
+	                  &PyAssemblyDebugInfo::relative_distance)
+	    .def_readonly("tilt", &PyAssemblyDebugInfo::tilt)
+	    .def_readonly("projected_force", &PyAssemblyDebugInfo::projected_force)
+	    .def_readonly("yaw_error", &PyAssemblyDebugInfo::yaw_error)
+	    .def_readonly("position_error", &PyAssemblyDebugInfo::position_error)
+	    .def_readonly("grid_pos", &PyAssemblyDebugInfo::grid_pos)
+	    .def_readonly("grid_pos_snapped",
+	                  &PyAssemblyDebugInfo::grid_pos_snapped)
+	    .def_readonly("stud_path", &PyAssemblyDebugInfo::stud_path)
+	    .def_readonly("stud_interface", &PyAssemblyDebugInfo::stud_interface)
+	    .def_readonly("hole_path", &PyAssemblyDebugInfo::hole_path)
+	    .def_readonly("hole_interface", &PyAssemblyDebugInfo::hole_interface)
+	    .def("__repr__", &PyAssemblyDebugInfo::repr);
+
+	m.def("get_assembly_debug_infos", &get_assembly_debug_infos,
+	      "Get the assembly detection debug information for all detected "
+	      "connection segments since the last simulation step.");
 }

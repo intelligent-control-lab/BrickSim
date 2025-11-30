@@ -5,7 +5,9 @@ import lego_assemble.core.specs;
 import lego_assemble.core.graph;
 import lego_assemble.core.connections;
 import lego_assemble.core.assembly;
+import lego_assemble.physx.physics_graph;
 import lego_assemble.usd.arrange;
+import lego_assemble.omni.usd_physics_bridge;
 import lego_assemble.omni.lego_runtime;
 import lego_assemble.utils.conversions;
 import lego_assemble.utils.transforms;
@@ -345,6 +347,108 @@ export void set_assembly_thresholds(const AssemblyThresholds &thr) {
 
 export AssemblyThresholds get_assembly_thresholds() {
 	return LegoRuntime::instance().get_assembly_thresholds();
+}
+
+std::optional<std::string> lookup_path_by_physx_pid(PartId physx_pid) {
+	using PhysicsPartId = World::Bridge::PhysicsPartId;
+	using UsdPartId = World::Bridge::UsdPartId;
+	auto *bridge = lego_world().bridge();
+	if (!bridge) {
+		return std::nullopt;
+	}
+	const auto &mapping = bridge->part_mapping();
+	const UsdPartId *usd_pid_ptr =
+	    mapping.template project<PhysicsPartId, UsdPartId>(
+	        PhysicsPartId{physx_pid});
+	if (!usd_pid_ptr) {
+		return std::nullopt;
+	}
+	const auto &usd_topology = lego_world().usd_graph().topology();
+	PartId usd_pid = usd_pid_ptr->value();
+	const pxr::SdfPath *part_path_ptr =
+	    usd_topology.parts().template project_key<PartId, pxr::SdfPath>(
+	        usd_pid);
+	if (!part_path_ptr) {
+		return std::nullopt;
+	}
+	return part_path_ptr->GetAsString();
+}
+
+export struct PyAssemblyDebugInfo {
+	bool accepted;
+	double relative_distance;
+	double tilt;
+	double projected_force;
+	double yaw_error;
+	double position_error;
+	std::array<double, 2> grid_pos;
+	std::array<int, 2> grid_pos_snapped;
+	std::string stud_path;
+	InterfaceId stud_interface;
+	std::string hole_path;
+	InterfaceId hole_interface;
+
+	std::string repr() const {
+		return std::format(
+		    "AssemblyDebugInfo(accepted={}, relative_distance={}, tilt={}, "
+		    "projected_force={}, yaw_error={}, position_error={}, "
+		    "grid_pos=[{}, {}], "
+		    "grid_pos_snapped=[{}, {}], stud_path='{}', stud_interface={}, "
+		    "hole_path='{}', hole_interface={})",
+		    accepted, relative_distance, tilt, projected_force, yaw_error,
+		    position_error, grid_pos[0], grid_pos[1], grid_pos_snapped[0],
+		    grid_pos_snapped[1], stud_path, stud_interface, hole_path,
+		    hole_interface);
+	}
+
+	static std::optional<PyAssemblyDebugInfo>
+	from(const PhysicsAssemblyDebugInfo &info) {
+		const auto &[stud_ref, hole_ref] = info.csref;
+		const auto &[stud_pid, stud_if] = stud_ref;
+		const auto &[hole_pid, hole_if] = hole_ref;
+		auto stud_path_opt = lookup_path_by_physx_pid(stud_pid);
+		auto hole_path_opt = lookup_path_by_physx_pid(hole_pid);
+		if (!stud_path_opt || !hole_path_opt) {
+			return std::nullopt;
+		}
+		return PyAssemblyDebugInfo{
+		    .accepted = info.accepted,
+		    .relative_distance = info.relative_distance,
+		    .tilt = info.tilt,
+		    .projected_force = info.projected_force,
+		    .yaw_error = info.yaw_error,
+		    .position_error = info.position_error,
+		    .grid_pos =
+		        {
+		            info.grid_pos(0),
+		            info.grid_pos(1),
+		        },
+		    .grid_pos_snapped =
+		        {
+		            info.grid_pos_snapped(0),
+		            info.grid_pos_snapped(1),
+		        },
+		    .stud_path = *stud_path_opt,
+		    .stud_interface = stud_if,
+		    .hole_path = *hole_path_opt,
+		    .hole_interface = hole_if,
+		};
+	}
+};
+
+export std::vector<PyAssemblyDebugInfo> get_assembly_debug_infos() {
+	std::vector<PyAssemblyDebugInfo> result;
+	auto *physics_graph = lego_world().physics_graph();
+	if (!physics_graph) {
+		return result;
+	}
+	for (auto &&info : physics_graph->get_assembly_debug_infos()) {
+		auto py_info_opt = PyAssemblyDebugInfo::from(info);
+		if (py_info_opt) {
+			result.push_back(*py_info_opt);
+		}
+	}
+	return result;
 }
 
 } // namespace lego_assemble::py
