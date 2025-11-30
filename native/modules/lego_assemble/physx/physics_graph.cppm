@@ -647,6 +647,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	      shape_level_collision_filtering_{shape_level_collision_filtering},
 	      collect_assembly_debug_info_{collect_assembly_debug_info},
 	      pending_assemblies_{mr}, pending_disassemblies_{mr},
+	      assembly_debug_infos_cur_{mr}, assembly_debug_infos_prev_{mr},
 	      shape_mapping_{mr}, contact_exclusions_{mr} {}
 	~PhysicsLegoGraph() {
 		unbind_physx_scene();
@@ -675,17 +676,14 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 	std::vector<PhysicsAssemblyDebugInfo> get_assembly_debug_infos() const {
 		std::lock_guard lock{pending_mutex_};
-		return {assembly_debug_infos_.begin(), assembly_debug_infos_.end()};
+		return {assembly_debug_infos_prev_.begin(),
+		        assembly_debug_infos_prev_.end()};
 	}
 
 	// Should be called BEFORE simulation step on USD/Kit thread
 	// Use a StageUpdateNode with order < 10 to implement this
 	void do_pre_step() {
 		flush_physx_ops();
-		{
-			std::lock_guard lock{pending_mutex_};
-			assembly_debug_infos_.clear();
-		}
 		sim_running_ = true;
 	}
 
@@ -701,6 +699,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			std::lock_guard lock{pending_mutex_};
 			pending_assemblies.swap(pending_assemblies_);
 			pending_disassemblies.swap(pending_disassemblies_);
+			assembly_debug_infos_prev_.clear();
+			assembly_debug_infos_prev_.swap(assembly_debug_infos_cur_);
 		}
 		for (const auto &[csid] : pending_disassemblies) {
 			bool disconnected = topology_.disconnect(csid).has_value();
@@ -766,7 +766,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	mutable std::mutex pending_mutex_;
 	std::pmr::vector<PendingAssembly> pending_assemblies_;
 	std::pmr::vector<PendingDisassembly> pending_disassemblies_;
-	std::pmr::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_;
+	std::pmr::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_cur_;
+	std::pmr::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_prev_;
 
 	std::shared_mutex sim_mutex_;
 	ShapeMapping shape_mapping_;
@@ -925,7 +926,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			return;
 		}
 		std::lock_guard lock{pending_mutex_};
-		assembly_debug_infos_.emplace_back(
+		assembly_debug_infos_cur_.emplace_back(
 		    std::forward<decltype(args)>(args)...);
 	}
 
