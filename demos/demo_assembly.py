@@ -12,7 +12,7 @@ from isaacsim.core.utils.nucleus import get_assets_root_path
 from isaacsim.core.utils.numpy.rotations import quats_to_rot_matrices, rot_matrices_to_quats
 from isaacsim.robot_motion.motion_generation import RmpFlow, ArticulationMotionPolicy
 from isaacsim.robot_motion.motion_generation.interface_config_loader import load_supported_motion_policy_config
-from lego_assemble import allocate_brick_part, parse_color, arrange_bricks_on_table, get_brick_dimensions, compute_connection_transform, set_assembly_thresholds, AssemblyThresholds
+from lego_assemble import allocate_brick_part, parse_color, arrange_bricks_on_table, get_brick_dimensions, compute_connection_transform, set_assembly_thresholds, AssemblyThresholds, wait_for_physics_step
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -56,6 +56,7 @@ def inverse_transform(T_pos, T_quat):
     return T_inv_pos, T_inv_quat
 
 async def move_ee_to(
+    world: World,
     robot: SingleArticulation,
     rmpflow: RmpFlow,
     motion_policy: ArticulationMotionPolicy,
@@ -72,7 +73,6 @@ async def move_ee_to(
     (within tolerance) or we hit timeout.
     """
     print(f"Moving end-effector to pos={target_pos}, quat={target_quat}")
-    app = omni.kit.app.get_app()
 
     # Prim that tracks RMPflow's EE frame over time
     ee_prim = rmpflow.get_end_effector_as_prim()
@@ -80,7 +80,7 @@ async def move_ee_to(
     elapsed = 0.0
     time_reached = None # Timestamp when tolerances were first met
     while True:
-        dt = await app.next_update_async()
+        dt = await wait_for_physics_step(world)
         elapsed += dt
 
         # --- RMPflow update ---
@@ -119,18 +119,27 @@ async def move_ee_to(
             print(f"Timeout reached: pos_err={pos_err:.4f}, ang_err={ang_err:.4f}, max_vel={max_vel:.4f}")
             return False
 
-async def set_gripper(robot: SingleArticulation, target_width: float, timeout: float = 5.0) -> bool:
+async def set_gripper(world: World, robot: SingleArticulation, target_width: Optional[float] = None, *, delta_width: Optional[float] = None, timeout: float = 5.0) -> bool:
     """
     Controls the Franka gripper to reach a target width.
     Includes robust grasp detection (detects velocity stall when closing).
     """
-    app = omni.kit.app.get_app()
-
     # Identify gripper joints
     gripper_indices = [
         robot.get_dof_index("panda_finger_joint1"),
         robot.get_dof_index("panda_finger_joint2"),
     ]
+
+    # Store initial width to reliably detect if we are opening or closing
+    initial_positions = robot.get_joint_positions()
+    initial_width = initial_positions[gripper_indices[0]] + initial_positions[gripper_indices[1]]
+
+    if target_width is None:
+        if delta_width is None:
+            raise ValueError("Either target_width or delta_width must be specified.")
+        target_width = initial_width + delta_width
+
+    is_closing = target_width < initial_width
 
     # Target position per finger
     target_pos = target_width / 2.0
@@ -145,16 +154,12 @@ async def set_gripper(robot: SingleArticulation, target_width: float, timeout: f
     )
 
     elapsed = 0.0
-    # Store initial width to reliably detect if we are opening or closing
-    initial_positions = robot.get_joint_positions()
-    initial_width = initial_positions[gripper_indices[0]] + initial_positions[gripper_indices[1]]
-    is_closing = target_width < initial_width
 
     # Apply the action once (sets the target for the PD controller)
     robot.apply_action(action)
 
     while True:
-        dt = await app.next_update_async()
+        dt = await wait_for_physics_step(world)
         elapsed += dt
 
         # Check current state
@@ -181,11 +186,12 @@ async def set_gripper(robot: SingleArticulation, target_width: float, timeout: f
             return False
 
 async def grasp_lego_part(
+    world: World,
     robot: SingleArticulation,
     rmpflow: RmpFlow,
     motion_policy: ArticulationMotionPolicy,
     brick_prim_path: str,
-) -> tuple[bool, Optional[np.ndarray]]:
+) -> bool:
     """
     Executes a sequence to grasp a specified lego brick and lift it.
     It uses a top-down grasp approach relative to the brick's frame, 
@@ -197,13 +203,12 @@ async def grasp_lego_part(
     TCP_TO_FINGER_TIP = 0.0090 # 9.0 mm from Franka TCP to finger tips
     GRASP_DEPTH       = 0.001  # 1.0 mm into the brick
 
-    app = omni.kit.app.get_app()
     print(f"--- Attempting to grasp brick: {brick_prim_path} ---")
 
     # Get Brick Info
     dimensions = get_brick_dimensions(brick_prim_path)
     if dimensions is None:
-        return False, None
+        return False
     
     L, W, H = dimensions
 
@@ -276,7 +281,7 @@ async def grasp_lego_part(
     pre_grasp_pos = target_pos + approach_vector_W * pre_grasp_offset
     
     # Lift vertically in world frame after grasp
-    lift_height = 0.15
+    lift_height = 0.10
     post_grasp_pos = pre_grasp_pos.copy()
     post_grasp_pos[2] += lift_height # Lift higher in world Z
 
@@ -286,84 +291,60 @@ async def grasp_lego_part(
     # Add safety margin (1.5cm) and clamp to max Franka opening (0.08m)
     open_width = min(grasp_width + 0.015, 0.08)
     print(f"-> Opening gripper to width: {open_width:.3f}m (Grasp width: {grasp_width:.3f}m)")
-    if not await set_gripper(robot, open_width):
-        return False, None
+    if not await set_gripper(world, robot, open_width):
+        return False
 
     # 2. Move to Pre-grasp Pose
     print("-> Moving to pre-grasp pose.")
     success = await move_ee_to(
-        robot, rmpflow, motion_policy, pre_grasp_pos, target_quat,
+        world, robot, rmpflow, motion_policy, pre_grasp_pos, target_quat,
         pos_tol=0.02,
-        rot_tol=0.2,
+        rot_tol=0.1,
         vel_tol=None,
         timeout=10.0,
     )
     if not success:
-        return False, None
+        return False
 
     # 3. Move to Grasp Pose
     print("-> Moving to grasp pose.")
     # Use tighter tolerances for the final approach
     success = await move_ee_to(
-        robot, rmpflow, motion_policy, target_pos, target_quat,
+        world, robot, rmpflow, motion_policy, target_pos, target_quat,
         pos_tol=0.003,
         rot_tol=0.05,
         vel_tol=0.10,
         timeout=10.0,
     )
     if not success:
-        return False, None
+        return False
 
     # 4. Close Gripper
     print("-> Closing gripper.")
     # Command target width to 0.0 to ensure firm contact and trigger robust grasp detection
-    if not await set_gripper(robot, 0.0):
+    if not await set_gripper(world, robot, 0.0):
          print("Warning: Gripper closing sequence reported timeout.")
-
-    # Wait a moment for the grasp to stabilize in physics
-    for _ in range(30):
-        await app.next_update_async()
-
-    # Measure the actual relative transform after the grasp is stable.
-    # T_B_G = inverse(T_W_B) @ T_W_G
-    
-    print("-> Calculating actual grasp transform T_B_G.")
-    ee_prim = rmpflow.get_end_effector_as_prim()
-    
-    # Get actual poses T_W_G and T_W_B
-    T_W_G_actual_pos, T_W_G_actual_quat = ee_prim.get_world_pose()
-    T_W_B_actual_pos, T_W_B_actual_quat = brick_xf.get_world_pose()
-
-    # Calculate inverse(T_W_B) => T_B_W
-    T_B_W_actual_pos, T_B_W_actual_quat = inverse_transform(T_W_B_actual_pos, T_W_B_actual_quat)
-
-    # Calculate T_B_G = T_B_W @ T_W_G
-    T_B_G_actual_pos, T_B_G_actual_quat = compose_transforms(
-        T_B_W_actual_pos, T_B_W_actual_quat,
-        T_W_G_actual_pos, T_W_G_actual_quat
-    )
-    actual_grasp_transform = (T_B_G_actual_pos, T_B_G_actual_quat)
 
     # 5. Move to Post-grasp Pose (Lift)
     print("-> Lifting brick.")
     success = await move_ee_to(
-        robot, rmpflow, motion_policy, post_grasp_pos, target_quat,
+        world, robot, rmpflow, motion_policy, post_grasp_pos, target_quat,
         pos_tol=0.02,
-        rot_tol=0.2,
+        rot_tol=0.1,
         vel_tol=None,
         timeout=10.0,
     )
 
     print("--- Grasp sequence finished. ---")
-    return success, actual_grasp_transform
+    return success
 
 async def assemble_lego_part(
+    world: World,
     robot: SingleArticulation,
     rmpflow: RmpFlow,
     motion_policy: ArticulationMotionPolicy,
     stud_brick_path: str,      # The brick on the table/structure (Stud provider)
     hole_brick_path: str,      # The brick currently held by the robot (Hole provider)
-    T_hole_G: tuple[np.ndarray, np.ndarray], # Transform from hole brick to Grasp TCP (pos, quat_wxyz)
     offset: tuple[int, int],   # Grid offset (stud interface frame)
     yaw_index: int,            # C4 Yaw index (0, 1, 2, or 3)
 ):
@@ -372,10 +353,9 @@ async def assemble_lego_part(
     specified connection parameters. It relies on physical interaction (pressing)
     to trigger the automatic assembly connection detection.
     """
-    press_depth = 0.0
+    press_depth = 0.001
     press_duration = 1.0
 
-    app = omni.kit.app.get_app()
     print(f"--- Attempting to assemble {hole_brick_path} onto {stud_brick_path} ---")
     print(f"-> Offset: {offset}, Yaw Index: {yaw_index}")
 
@@ -386,7 +366,7 @@ async def assemble_lego_part(
     # Interpret press_force into motion parameters (kinematic proxy for force control)
     # Higher force -> slightly deeper penetration target and longer pressing time
     # This ensures contact force is generated by the underlying PD controllers.
-    assembly_height_offset = 0.08 # 8 cm approach height
+    assembly_height_offset = 0.04 # 4 cm approach height
 
     # 1. Calculate Required Relative Transform (T_S_H)
     # compute_connection_transform returns (WXYZ quat, pos)
@@ -409,7 +389,30 @@ async def assemble_lego_part(
 
     # 3. Calculate Target Gripper Pose (T_W_G_target)
     # T_W_G = T_W_S @ T_S_H @ T_H_G
+
+    ####
+    # Measure the actual relative transform after the grasp is stable.
+    # T_B_G = inverse(T_W_B) @ T_W_G
     
+    print("-> Calculating actual grasp transform T_B_G.")
+    ee_prim = rmpflow.get_end_effector_as_prim()
+    brick_xf = SingleXFormPrim(prim_path=hole_brick_path, name="assembly_grasped_hole")
+    
+    # Get actual poses T_W_G and T_W_B
+    T_W_G_actual_pos, T_W_G_actual_quat = ee_prim.get_world_pose()
+    T_W_B_actual_pos, T_W_B_actual_quat = brick_xf.get_world_pose()
+
+    # Calculate inverse(T_W_B) => T_B_W
+    T_B_W_actual_pos, T_B_W_actual_quat = inverse_transform(T_W_B_actual_pos, T_W_B_actual_quat)
+
+    # Calculate T_B_G = T_B_W @ T_W_G
+    T_B_G_actual_pos, T_B_G_actual_quat = compose_transforms(
+        T_B_W_actual_pos, T_B_W_actual_quat,
+        T_W_G_actual_pos, T_W_G_actual_quat
+    )
+    T_hole_G = (T_B_G_actual_pos, T_B_G_actual_quat)
+    ####
+
     T_H_G_pos, T_H_G_quat = T_hole_G
 
     # Combine T_W_S @ T_S_H => T_W_H
@@ -447,24 +450,24 @@ async def assemble_lego_part(
     # 6.1 Move to Pre-assembly Pose
     print("-> Moving to pre-assembly pose.")
     success = await move_ee_to(
-        robot, rmpflow, motion_policy, pre_assembly_pos, T_W_G_target_quat,
+        world, robot, rmpflow, motion_policy, pre_assembly_pos, T_W_G_target_quat,
         pos_tol=0.02,
-        rot_tol=0.2,
+        rot_tol=0.10,
         vel_tol=None,
         timeout=10.0,
     )
     if not success:
-        return False
+        print("Failed to reach pre-assembly pose.")
         
     # 6.2 Move down to Pressing Pose and Hold
     print(f"-> Moving to assembly pose and pressing (depth={press_depth*1000:.1f}mm, duration={press_duration:.1f}s).")
     # Use tight tolerances for alignment. 
     # The settle_time ensures the command is maintained, allowing force to build up and the physics snap to occur.
     success = await move_ee_to(
-        robot, rmpflow, motion_policy, press_assembly_pos, T_W_G_target_quat,
-        pos_tol=0.0015,
-        rot_tol=0.035,
-        vel_tol=None,
+        world, robot, rmpflow, motion_policy, press_assembly_pos, T_W_G_target_quat,
+        pos_tol=0.002,
+        rot_tol=0.050,
+        vel_tol=0.20,
         timeout=10.0,
         settle_time=press_duration,
     )
@@ -476,18 +479,14 @@ async def assemble_lego_part(
 
     # 6.3 Release Gripper
     print("-> Releasing brick.")
-    # Open gripper wide (0.08m for Franka)
-    if not await set_gripper(robot, 0.08):
+    # Open gripper wide
+    if not await set_gripper(world, robot, delta_width=+0.015):
         print("Warning: Gripper opening sequence reported timeout.")
-
-    # Wait briefly for the release to complete
-    for _ in range(30):
-        await app.next_update_async()
 
     # 6.4 Retreat
     print("-> Retreating.")
     success = await move_ee_to(
-        robot, rmpflow, motion_policy, retreat_pos, T_W_G_target_quat,
+        world, robot, rmpflow, motion_policy, retreat_pos, T_W_G_target_quat,
         pos_tol=0.02,
         rot_tol=0.2,
         vel_tol=None,
@@ -534,9 +533,9 @@ async def main():
     # Set physics material for tabletop
     table_material = PhysicsMaterial(
         prim_path="/World/PhysicsMaterials/Tabletop",
-        static_friction=1.0,
-        dynamic_friction=0.8,
-        restitution=0.0,
+        static_friction=5.0,
+        dynamic_friction=4.0,
+        restitution=0.5,
     )
     SingleGeometryPrim(prim_path="/World/scene/roomScene/colliders/table/tableTopActor").apply_physics_material(table_material)
 
@@ -545,7 +544,7 @@ async def main():
     thresholds.distance_tolerance = 0.001
     thresholds.max_penetration = 0.005
     thresholds.z_angle_tolerance = 5.0 * (math.pi / 180.0)
-    thresholds.required_force = 3.0
+    thresholds.required_force = 1.0
     thresholds.yaw_tolerance = 5.0 * (math.pi / 180.0)
     thresholds.position_tolerance = 0.002
     set_assembly_thresholds(thresholds)
@@ -572,7 +571,7 @@ async def main():
         color=parse_color("Light Gray"),
         env_id=-1,
         rot=(1.0, 0.0, 0.0, 0.0),
-        pos=(0.2, 0.0, 0.0),
+        pos=(0.3, 0.0, 0.0),
     )
 
     # Place bricks
@@ -596,6 +595,8 @@ async def main():
         table_xy=(0.2, -0.2, 0.5, 0.2),
         table_z=0.0,
         allow_rotation=True,
+        clearance_xy=0.016,
+        grid_resolution=0.008,
     )
     if len(not_placed) > 0:
         raise RuntimeError(f"Failed to place all bricks on table; not placed: {not_placed}")
@@ -604,32 +605,15 @@ async def main():
     await world.reset_async()
     await world.play_async()
 
-    # Grasp brick
-    target_brick_path = str(brick_paths[0])
-    success_grasp, grasp_transform = await grasp_lego_part(
-            robot,
-            rmpflow,
-            motion_policy,
-            target_brick_path
-    )
+    async def assemble(stud_path: str, hole_path: str, offset: tuple[int, int], yaw: int):
+        success = await grasp_lego_part(world, robot, rmpflow, motion_policy, hole_path)
+        if not success:
+            raise RuntimeError("Grasp failed; cannot proceed to assembly.")
+        success = await assemble_lego_part(world, robot, rmpflow, motion_policy, stud_path, hole_path, offset, yaw)
+        if not success:
+            raise RuntimeError("Assembly failed during motion execution.")
 
-    if grasp_transform is not None:
-        # Assemble onto the base plate
-        # Define connection parameters: Center the 2x4 brick on the 20x20 base plate.
-        # Base(20,20), Brick(2,4). Yaw=0 (aligned).
-        # Offset calculation: (Base_Dim - Brick_Dim) / 2
-        # Offset L: (20-2)/2 = 9
-        # Offset W: (20-4)/2 = 8
-        assembly_offset = (9, 8)
-        assembly_yaw = 1
-        
-        await assemble_lego_part(
-            robot=robot,
-            rmpflow=rmpflow,
-            motion_policy=motion_policy,
-            stud_brick_path=base_plate,
-            hole_brick_path=target_brick_path,
-            T_hole_G=grasp_transform,
-            offset=assembly_offset,
-            yaw_index=assembly_yaw,
-        )
+    await assemble(base_plate, brick_paths[0], offset=(9, 8), yaw=1)
+    await assemble(brick_paths[0], brick_paths[1], offset=(0, 2), yaw=0)
+    await assemble(brick_paths[1], brick_paths[2], offset=(0, 0), yaw=0)
+    await assemble(brick_paths[2], brick_paths[3], offset=(1, 0), yaw=0)
