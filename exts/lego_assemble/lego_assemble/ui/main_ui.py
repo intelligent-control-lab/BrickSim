@@ -140,11 +140,15 @@ class LegoUI():
         env_id_str = self._base_path_field.model.as_string
         return int(env_id_str) if env_id_str else -1
 
+    def get_selected_color(self) -> tuple[int, int, int]:
+        """Return the currently selected color as an RGB tuple."""
+        color = self._color_options[self._color_combo.model.get_item_value_model().as_int]
+        return parse_color(color)
+
     def _add_brick_clicked(self):
         width = self._dim_x_field.model.as_int
         length = self._dim_y_field.model.as_int
         height = self._dim_z_field.model.as_int
-        color = self._color_options[self._color_combo.model.get_item_value_model().as_int]
         pos_x = self._pos_x_field.model.as_float
         pos_y = self._pos_y_field.model.as_float
         pos_z = self._pos_z_field.model.as_float
@@ -153,7 +157,7 @@ class LegoUI():
         env_id = int(env_id_str) if env_id_str else -1
         brick_path = allocate_brick_part(
             dimensions=(width, length, height),
-            color=parse_color(color),
+            color=self.get_selected_color(),
             env_id=env_id,
             rot=(1.0, 0.0, 0.0, 0.0),
             pos=(pos_x, pos_y, pos_z),
@@ -219,7 +223,7 @@ class LegoUI():
         # Try to detect StableText2Brick format and convert if needed.
         if is_bricks_text(topology):
             carb.log_info("Detected StableText2Brick format, converting to topology JSON")
-            topology = json.dumps(bricks_text_to_topology_json(topology))
+            topology = json.dumps(bricks_text_to_topology_json(topology, color=self.get_selected_color()))
         # Reference transform uses quaternion order wxyz and stage units.
         import_lego(topology, env_id, (1.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
         carb.log_info(f"Imported topology from {fullpath}")

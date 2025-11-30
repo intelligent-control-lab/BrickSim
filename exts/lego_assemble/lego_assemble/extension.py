@@ -37,7 +37,7 @@ class LegoExtension(omni.ext.IExt):
         try:
             from lego_assemble.ui.stabletext2brick_browser import StableText2BrickBrowser
             # Share env_id with the main UI.
-            self._stabletext2brick_browser = StableText2BrickBrowser(self._ui.get_env_id)
+            self._stabletext2brick_browser = StableText2BrickBrowser(self._ui)
         except Exception:
             traceback.print_exc()
             # Fail fast for the core UI; dataset browser is best-effort.

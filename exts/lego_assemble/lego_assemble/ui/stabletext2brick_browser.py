@@ -7,6 +7,7 @@ import omni.ui as ui
 
 from lego_assemble._native import import_lego
 from lego_assemble.importers.stabletext2brick import bricks_text_to_topology_json
+from lego_assemble.ui.main_ui import LegoUI
 
 Example = Tuple[str, str, int]  # (uuid, caption, dataset_index)
 
@@ -16,7 +17,7 @@ class StableText2BrickBrowser:
 
     MAX_VISIBLE = 100
 
-    def __init__(self, env_id_provider: Callable[[], int] | None = None) -> None:
+    def __init__(self, main_ui: LegoUI) -> None:
         self._window = ui.Window("StableText2Brick", width=500, height=600)
         self._window.deferred_dock_in("Console")
 
@@ -36,7 +37,7 @@ class StableText2BrickBrowser:
         self._list_frame: ui.Frame | None = None
 
         # Env id provider from main LEGO UI
-        self._get_env_id = env_id_provider
+        self._main_ui = main_ui
 
         # When the search text changes, just recompute + rebuild list.
         def _on_search_changed(model: ui.AbstractValueModel) -> None:
@@ -287,9 +288,13 @@ class StableText2BrickBrowser:
             self._set_status("Error reading structure file. See console.")
             return
 
+        color = None
+        if self._main_ui is not None:
+            color = self._main_ui.get_selected_color()
+
         # Convert text -> topology
         try:
-            topology = bricks_text_to_topology_json(bricks_text)
+            topology = bricks_text_to_topology_json(bricks_text, color=color)
         except Exception as exc:
             carb.log_error(f"[StableText2Brick] conversion error: {exc}")
             self._set_status("Conversion error. See console.")
@@ -307,11 +312,8 @@ class StableText2BrickBrowser:
 
         # Resolve env id
         env_id = -1
-        if self._get_env_id is not None:
-            try:
-                env_id = int(self._get_env_id())
-            except Exception:
-                env_id = -1
+        if self._main_ui is not None:
+            env_id = int(self._main_ui.get_env_id())
 
         # Import into world
         try:
