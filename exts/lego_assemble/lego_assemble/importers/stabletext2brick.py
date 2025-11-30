@@ -17,7 +17,7 @@ Output format (Python dict):
 """
 
 import re
-from typing import List, Tuple, Dict, Any
+from typing import Any
 
 BRICK_UNIT_LENGTH = 0.008      # meters per stud
 PLATE_HEIGHT      = 0.0032     # meters per plate
@@ -38,13 +38,13 @@ HOLE_IFACE_ID = 0
 STUD_IFACE_ID = 1
 
 
-def _parse_bricks_text(bricks_text: str) -> List[Tuple[int, int, int, int, int]]:
+def _parse_bricks_text(bricks_text: str) -> list[tuple[int, int, int, int, int]]:
     """
     Parse StableText2Brick 'bricks' text into a list of (h, w, x, y, z).
 
     Each line: "hxw (x,y,z)".
     """
-    bricks: List[Tuple[int, int, int, int, int]] = []
+    bricks: list[tuple[int, int, int, int, int]] = []
     for line in bricks_text.splitlines():
         line = line.strip()
         if not line:
@@ -61,7 +61,18 @@ def _parse_bricks_text(bricks_text: str) -> List[Tuple[int, int, int, int, int]]
     return bricks
 
 
-def bricks_text_to_topology_json(bricks_text: str) -> Dict[str, Any]:
+def is_bricks_text(text: str) -> bool:
+    """
+    Heuristic check if the given text is in StableText2Brick 'bricks' format by checking the first non-empty line.
+    """
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        return _BRICK_LINE_RE.match(line) is not None
+    return False
+
+def bricks_text_to_topology_json(bricks_text: str, color: tuple[int, int, int] = (255, 255, 255)) -> dict[str, Any]:
     """
     Convert a StableText2Brick brick string into a JsonTopology dict
     matching your C++ lego_assemble.io.json schema.
@@ -129,7 +140,7 @@ def bricks_text_to_topology_json(bricks_text: str) -> Dict[str, Any]:
                     "L": int(h),
                     "W": int(w),
                     "H": 3,
-                    "color": [255, 255, 255],
+                    "color": [color[0], color[1], color[2]],
                 },
             }
         )

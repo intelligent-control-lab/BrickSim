@@ -1,3 +1,4 @@
+import json
 import carb
 import carb.settings
 import math
@@ -14,6 +15,7 @@ from lego_assemble._native import (
     get_assembly_thresholds,
     set_assembly_thresholds,
 )
+from lego_assemble.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
 from omni.kit.window.filepicker import FilePickerDialog
 
 _HOT_RELOAD_SETTING = "/app/lego_assemble/kit_runner/has_target"
@@ -214,6 +216,10 @@ class LegoUI():
         else:
             with open(fullpath, "r", encoding="utf-8") as f:
                 topology = f.read()
+        # Try to detect StableText2Brick format and convert if needed.
+        if is_bricks_text(topology):
+            carb.log_info("Detected StableText2Brick format, converting to topology JSON")
+            topology = json.dumps(bricks_text_to_topology_json(topology))
         # Reference transform uses quaternion order wxyz and stage units.
         import_lego(topology, env_id, (1.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
         carb.log_info(f"Imported topology from {fullpath}")
