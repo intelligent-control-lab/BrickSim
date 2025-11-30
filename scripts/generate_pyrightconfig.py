@@ -84,6 +84,7 @@ def main() -> None:
         "IsaacLab/source/isaaclab_mimic",
         "IsaacLab/source/isaaclab_rl",
         "IsaacLab/source/isaaclab_tasks",
+        "BrickGPT/src",
     ]
     extra_paths += collect_isaacsim_extension_paths()
 

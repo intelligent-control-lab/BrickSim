@@ -1,3 +1,6 @@
 [submodule "IsaacLab"]
 	path = IsaacLab
 	url = https://github.com/isaac-sim/IsaacLab.git
+[submodule "BrickGPT"]
+	path = BrickGPT
+	url = https://github.com/AvaLovelace1/BrickGPT.git
