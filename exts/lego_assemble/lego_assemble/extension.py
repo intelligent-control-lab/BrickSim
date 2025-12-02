@@ -1,3 +1,4 @@
+import carb
 import importlib.util
 import traceback
 import omni.ext #type: ignore
@@ -50,10 +51,8 @@ class LegoExtension(omni.ext.IExt):
 
         # BrickGPT prompt window (optional; only if brickgpt.infer is available).
         self._brickgpt_window = None
-        try:
-            if importlib.util.find_spec("brickgpt.infer") is not None:
-                from lego_assemble.ui.brickgpt_prompt import BrickGPTPromptWindow
-                self._brickgpt_window = BrickGPTPromptWindow(self._ui)
-        except Exception:
-            traceback.print_exc()
-            self._brickgpt_window = None
+        if importlib.util.find_spec("brickgpt.infer") is None:
+            carb.log_warn("brickgpt.infer not found; skipping BrickGPT UI")
+        else:
+            from lego_assemble.ui.brickgpt_prompt import BrickGPTPromptWindow
+            self._brickgpt_window = BrickGPTPromptWindow(self._ui)
