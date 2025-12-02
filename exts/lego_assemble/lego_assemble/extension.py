@@ -51,8 +51,8 @@ class LegoExtension(omni.ext.IExt):
 
         # BrickGPT prompt window (optional; only if brickgpt.infer is available).
         self._brickgpt_window = None
-        if importlib.util.find_spec("brickgpt.infer") is None:
-            carb.log_warn("brickgpt.infer not found; skipping BrickGPT UI")
-        else:
+        try:
             from lego_assemble.ui.brickgpt_prompt import BrickGPTPromptWindow
             self._brickgpt_window = BrickGPTPromptWindow(self._ui)
+        except ImportError as e:
+            carb.log_warn(f"BrickGPT UI not available: {e}")
