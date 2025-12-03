@@ -10,6 +10,7 @@ EXPERIENCE="isaacsim.exp.full"
 DEBUG_HOST="${DEBUG_HOST:-127.0.0.1}"
 DEBUG_PORT="${DEBUG_PORT:-5678}"
 WAIT_FOR_CLIENT="${WAIT_FOR_CLIENT:-false}"
+HEADLESS="${HEADLESS:-false}"
 
 ISAAC_ARGS=(
   "$EXPERIENCE"
@@ -29,6 +30,10 @@ ISAAC_ARGS=(
   '--/log/channels/lego_assemble'=info
   '--/log/channels/lego_assemble.*'=info
 )
+
+if [[ "$HEADLESS" == "true" ]]; then
+  ISAAC_ARGS+=( --no-window )
+fi
 
 if [ "$#" -ge 1 ]; then
   # First argument is treated as the target (module, module:func, or script path)
