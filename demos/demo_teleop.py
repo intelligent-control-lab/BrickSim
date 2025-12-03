@@ -59,7 +59,7 @@ async def main():
     stage_path = os.path.join(SCRIPT_DIR, "../resources/demo.usda")
     await open_stage_async(stage_path)
     world: World = World(
-        backend="torch",
+        backend="numpy",
         device="cpu",
         physics_prim_path="/physicsScene"
     ) 
@@ -145,7 +145,7 @@ async def main():
                     leader = None
 
             # Smooth / limit joint motion before sending it to physics
-            q = robot.get_joint_positions().cpu().numpy()
+            q = robot.get_joint_positions()
             desired = leader_action
             delta = desired - q
             delta = np.clip(delta, -MAX_JOINT_STEP, MAX_JOINT_STEP)

@@ -5,6 +5,7 @@ from isaacsim.core.api.world import World
 from isaacsim.core.prims import SingleArticulation, SingleXFormPrim
 from isaacsim.core.utils.stage import open_stage_async, add_reference_to_stage
 from lego_assemble import allocate_brick_part, parse_color, create_connection
+import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -16,7 +17,7 @@ async def main():
     stage_path = os.path.join(SCRIPT_DIR, "../resources/demo.usda")
     await open_stage_async(stage_path)
     world: World = World(
-        backend="torch",
+        backend="numpy",
         device="cpu",
         physics_prim_path="/physicsScene"
     ) 
@@ -70,7 +71,7 @@ async def main():
     while True:
 
         # Random actions
-        q = 0.1 * (torch.rand((robot.num_dof,), device=world.device) * 2.0 - 1.0)
+        q = 0.01 * (np.random.rand(robot.num_dof) * 2.0 - 1.0)
 
         robot.set_joint_positions(q)
         dt = await app.next_update_async()
