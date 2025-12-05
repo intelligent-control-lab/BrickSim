@@ -26,6 +26,11 @@ python3.11 -m venv --symlinks --prompt lego --upgrade-deps .venv
 source .venv/bin/activate
 ```
 
+### Additional packages
+```bash
+lerobot
+```
+
 ### Install Isaac Sim 5.1.0
 ```bash
 pip install "isaacsim[all,extscache]==5.1.0" --extra-index-url https://pypi.nvidia.com
