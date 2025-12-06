@@ -33,6 +33,24 @@ jobs:
         run: |
           df -h
           du -h -d1 "$GITHUB_WORKSPACE" 2>/dev/null | sort -hr | head -20
+      - name: Free disk space
+        run: |
+          df -h
+          echo "Removing hostedtoolcache..."
+          sudo rm -rf /opt/hostedtoolcache || true
+          echo "Removing Android SDK..."
+          sudo rm -rf /usr/local/lib/android || true
+          echo "Removing .NET SDKs..."
+          sudo rm -rf /usr/share/dotnet /etc/skel/.dotnet || true
+          echo "Removing Miniconda..."
+          sudo rm -rf /usr/share/miniconda /usr/bin/conda || true
+          echo "Removing Haskell toolchain..."
+          sudo rm -rf /usr/local/.ghcup /etc/skel/.ghcup || true
+          echo "Removing browsers (Chrome/Chromium) and drivers..."
+          sudo rm -rf /usr/local/share/chromium /usr/local/share/chromedriver-linux64 || true
+          sudo rm -rf /opt/google/chrome || true
+          sudo rm -f /usr/bin/google-chrome /usr/bin/google-chrome-stable /usr/bin/chromium /usr/bin/chromium-browser || true
+          df -h
       - name: Install system dependencies
         run: |
           sudo apt-get update
