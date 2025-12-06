@@ -30,6 +30,35 @@ GCC_DEB_SHA256S=(
 
 ####
 
+download_with_retry() {
+    local url="$1"
+    local dest="$2"
+    local expected_sha256="$3"
+
+    if [[ -f "$dest" ]]; then
+        local existing_sha256
+        existing_sha256=$(sha256sum "$dest" | awk '{print $1}')
+        if [[ "$existing_sha256" == "$expected_sha256" ]]; then
+            return 0
+        fi
+        echo "Existing file has wrong SHA256, redownloading: $dest" >&2
+        rm -f "$dest"
+    fi
+
+    echo "Downloading with retry: ${url}" >&2
+    if ! wget --tries=10 --retry-on-http-error=500 -O "$dest" "$url"; then
+        echo "Download failed for $url" >&2
+        exit 1
+    fi
+
+    local actual_sha256
+    actual_sha256=$(sha256sum "$dest" | awk '{print $1}')
+    if [[ "$actual_sha256" != "$expected_sha256" ]]; then
+        echo "SHA256 mismatch for $dest (expected: $expected_sha256, actual: $actual_sha256)" >&2
+        exit 1
+    fi
+}
+
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
 
@@ -43,12 +72,7 @@ CMAKE_DIRNAME="$(basename "$CMAKE_URL" .tar.gz)"
 CMAKE_DIR="$TC_DIR/$CMAKE_DIRNAME"
 if [[ ! -d "$CMAKE_DIR" ]]; then
     CMAKE_ARCHIVE_PATH="$TC_DOWNLOADS_DIR/$(basename "$CMAKE_URL")"
-    [ -f "$CMAKE_ARCHIVE_PATH" ] || wget -O "$CMAKE_ARCHIVE_PATH" "$CMAKE_URL"
-    CMAKE_SHA256_ACTUAL=$(sha256sum "$CMAKE_ARCHIVE_PATH" | awk '{print $1}')
-    if [[ "$CMAKE_SHA256_ACTUAL" != "$CMAKE_SHA256" ]]; then
-        echo "CMake download is corrupted (expected SHA256: $CMAKE_SHA256, actual: $CMAKE_SHA256_ACTUAL)"
-        exit 1
-    fi
+    download_with_retry "$CMAKE_URL" "$CMAKE_ARCHIVE_PATH" "$CMAKE_SHA256"
     tar -xzf "$CMAKE_ARCHIVE_PATH" -C "$TC_DIR"
 fi
 
@@ -57,12 +81,7 @@ P7ZIP_DIRNAME="$(basename "$P7ZIP_URL" .tar.xz)"
 P7ZIP_DIR="$TC_DIR/$P7ZIP_DIRNAME"
 if [[ ! -d "$P7ZIP_DIR" ]]; then
     P7ZIP_ARCHIVE_PATH="$TC_DOWNLOADS_DIR/$(basename "$P7ZIP_URL")"
-    [ -f "$P7ZIP_ARCHIVE_PATH" ] || wget -O "$P7ZIP_ARCHIVE_PATH" "$P7ZIP_URL"
-    P7ZIP_SHA256_ACTUAL=$(sha256sum "$P7ZIP_ARCHIVE_PATH" | awk '{print $1}')
-    if [[ "$P7ZIP_SHA256_ACTUAL" != "$P7ZIP_SHA256" ]]; then
-        echo "p7zip download is corrupted (expected SHA256: $P7ZIP_SHA256, actual: $P7ZIP_SHA256_ACTUAL)"
-        exit 1
-    fi
+    download_with_retry "$P7ZIP_URL" "$P7ZIP_ARCHIVE_PATH" "$P7ZIP_SHA256"
     mkdir -p "$P7ZIP_DIR"
     tar -xJf "$P7ZIP_ARCHIVE_PATH" -C "$P7ZIP_DIR"
 fi
@@ -73,12 +92,7 @@ NINJA_DIRNAME="$(basename "$NINJA_FILENAME" .zip)"
 NINJA_DIR="$TC_DIR/$NINJA_DIRNAME"
 if [[ ! -d "$NINJA_DIR" ]]; then
     NINJA_ARCHIVE_PATH="$TC_DOWNLOADS_DIR/$NINJA_FILENAME"
-    [ -f "$NINJA_ARCHIVE_PATH" ] || wget -O "$NINJA_ARCHIVE_PATH" "$NINJA_URL"
-    NINJA_SHA256_ACTUAL=$(sha256sum "$NINJA_ARCHIVE_PATH" | awk '{print $1}')
-    if [[ "$NINJA_SHA256_ACTUAL" != "$NINJA_SHA256" ]]; then
-        echo "Ninja download is corrupted (expected SHA256: $NINJA_SHA256, actual: $NINJA_SHA256_ACTUAL)"
-        exit 1
-    fi
+    download_with_retry "$NINJA_URL" "$NINJA_ARCHIVE_PATH" "$NINJA_SHA256"
     mkdir -p "$NINJA_DIR"
     "$P7ZIP_BIN" x "$NINJA_ARCHIVE_PATH" -o"$NINJA_DIR" -y
 fi
@@ -88,12 +102,7 @@ LLVM_DIRNAME="$(basename "$LLVM_URL" .tar.xz)"
 LLVM_DIR="$TC_DIR/$LLVM_DIRNAME"
 if [[ ! -d "$LLVM_DIR" ]]; then
     LLVM_ARCHIVE_PATH="$TC_DOWNLOADS_DIR/$(basename "$LLVM_URL")"
-    [ -f "$LLVM_ARCHIVE_PATH" ] || wget -O "$LLVM_ARCHIVE_PATH" "$LLVM_URL"
-    LLVM_SHA256_ACTUAL=$(sha256sum "$LLVM_ARCHIVE_PATH" | awk '{print $1}')
-    if [[ "$LLVM_SHA256_ACTUAL" != "$LLVM_SHA256" ]]; then
-        echo "LLVM download is corrupted (expected SHA256: $LLVM_SHA256, actual: $LLVM_SHA256_ACTUAL)"
-        exit 1
-    fi
+    download_with_retry "$LLVM_URL" "$LLVM_ARCHIVE_PATH" "$LLVM_SHA256"
     mkdir -p "$LLVM_DIR"
     tar -xJf "$LLVM_ARCHIVE_PATH" -C "$LLVM_DIR" --strip-components=1
 fi
@@ -115,17 +124,18 @@ extract_deb() {
 }
 GCC_DIR="$TC_DIR/$GCC_DIRNAME"
 if [[ ! -d "$GCC_DIR" ]]; then
-    mkdir -p "$GCC_DIR"
+    # Ensure all GCC debs are downloaded and verified before creating the target dir.
     for i in "${!GCC_DEB_URLS[@]}"; do
         DEB_URL="${GCC_DEB_URLS[$i]}"
         DEB_SHA256="${GCC_DEB_SHA256S[$i]}"
         DEB_ARCHIVE_PATH="$TC_DOWNLOADS_DIR/$(basename "$DEB_URL")"
-        [ -f "$DEB_ARCHIVE_PATH" ] || wget -O "$DEB_ARCHIVE_PATH" "$DEB_URL"
-        DEB_SHA256_ACTUAL=$(sha256sum "$DEB_ARCHIVE_PATH" | awk '{print $1}')
-        if [[ "$DEB_SHA256_ACTUAL" != "$DEB_SHA256" ]]; then
-            echo "GCC download $(basename "$DEB_URL") is corrupted (expected SHA256: $DEB_SHA256, actual: $DEB_SHA256_ACTUAL)"
-            exit 1
-        fi
+        download_with_retry "$DEB_URL" "$DEB_ARCHIVE_PATH" "$DEB_SHA256"
+    done
+
+    mkdir -p "$GCC_DIR"
+    for i in "${!GCC_DEB_URLS[@]}"; do
+        DEB_URL="${GCC_DEB_URLS[$i]}"
+        DEB_ARCHIVE_PATH="$TC_DOWNLOADS_DIR/$(basename "$DEB_URL")"
         extract_deb "$DEB_ARCHIVE_PATH" "$GCC_DIR"
     done
     # Patch libstdc++ modules JSON paths to be relative
