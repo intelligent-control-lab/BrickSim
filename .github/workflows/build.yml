@@ -29,6 +29,10 @@ jobs:
           key: isaac-deps-${{ runner.os }}-${{ hashFiles('native/cmake/FetchIsaacDeps.cmake') }}
           restore-keys: |
             isaac-deps-${{ runner.os }}-
+      - name: Check disk usage (before build)
+        run: |
+          df -h
+          du -h -d1 "$GITHUB_WORKSPACE" 2>/dev/null | sort -hr | head -20
       - name: Install system dependencies
         run: |
           sudo apt-get update
