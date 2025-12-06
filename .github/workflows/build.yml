@@ -11,28 +11,6 @@ jobs:
       matrix:
         build_type: [Debug, Release]
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Cache toolchain downloads
-        uses: actions/cache@v4
-        with:
-          path: _toolchain/downloads
-          key: toolchain-downloads-${{ runner.os }}-${{ hashFiles('scripts/setup_toolchain.sh') }}
-          restore-keys: |
-            toolchain-downloads-${{ runner.os }}-
-      - name: Cache Isaac Sim deps
-        uses: actions/cache@v4
-        with:
-          path: native/_deps
-          key: isaac-deps-${{ runner.os }}-${{ hashFiles('native/cmake/FetchIsaacDeps.cmake') }}
-          restore-keys: |
-            isaac-deps-${{ runner.os }}-
-      - name: Check disk usage (before build)
-        run: |
-          df -h
-          du -h -d1 "$GITHUB_WORKSPACE" 2>/dev/null | sort -hr | head -20
       - name: Free disk space
         run: |
           df -h
@@ -51,6 +29,24 @@ jobs:
           sudo rm -rf /opt/google/chrome || true
           sudo rm -f /usr/bin/google-chrome /usr/bin/google-chrome-stable /usr/bin/chromium /usr/bin/chromium-browser || true
           df -h
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Cache toolchain downloads
+        uses: actions/cache@v4
+        with:
+          path: _toolchain/downloads
+          key: toolchain-downloads-${{ runner.os }}-${{ hashFiles('scripts/setup_toolchain.sh') }}
+          restore-keys: |
+            toolchain-downloads-${{ runner.os }}-
+      - name: Cache Isaac Sim deps
+        uses: actions/cache@v4
+        with:
+          path: native/_deps
+          key: isaac-deps-${{ runner.os }}-${{ hashFiles('native/cmake/FetchIsaacDeps.cmake') }}
+          restore-keys: |
+            isaac-deps-${{ runner.os }}-
       - name: Install system dependencies
         run: |
           sudo apt-get update
