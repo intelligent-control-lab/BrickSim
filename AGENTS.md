@@ -35,7 +35,7 @@ In `native/modules/lego_assemble`:
  * Everything else in this directory is old code.
 
 ## Build & Test
-1. Only if you modified the C++ code, run `scripts/build.sh` to build and sanity‑check.
+1. Only if you modified the C++ code, run `RUN_TESTS=1 scripts/build.sh` to build and sanity‑check.
 
 ## Coding Style
 1. Fail fast: if something might error and we can’t recover, let it error. Don’t add catch‑and‑rethrow or cosmetic error handling—keep code concise.

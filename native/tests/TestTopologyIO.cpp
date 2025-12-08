@@ -199,8 +199,9 @@ static void test_json_topology_roundtrip_and_optional_fields() {
 	assert(topo3.connections.empty());
 	assert(topo3.pose_hints.empty());
 
-	// Completely empty object: all optional vectors remain empty.
+	// Object with only schema: all optional vectors remain empty.
 	ordered_json j_empty = ordered_json::object();
+	j_empty["schema"] = "lego_assemble/lego_topology@1";
 	JsonTopology topo4{};
 	from_json(j_empty, topo4);
 	assert(topo4.parts.empty());
