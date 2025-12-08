@@ -5,7 +5,7 @@ import omni.kit.app # pyright: ignore
 from typing import Optional
 from isaacsim.core.api.world import World
 from isaacsim.core.api.materials import PhysicsMaterial
-from isaacsim.core.prims import SingleArticulation, SingleXFormPrim, SingleGeometryPrim
+from isaacsim.core.prims import SingleArticulation, SingleXFormPrim, SingleGeometryPrim, SingleRigidPrim
 from isaacsim.core.utils.stage import open_stage_async, add_reference_to_stage, get_current_stage
 from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.core.utils.nucleus import get_assets_root_path
@@ -573,6 +573,9 @@ async def main():
         rot=(1.0, 0.0, 0.0, 0.0),
         pos=(0.3, 0.0, 0.0),
     )
+    # Uncomment to fix the base plate in place
+    # base_plate_prim = get_current_stage().GetPrimAtPath(base_plate)
+    # base_plate_prim.GetAttribute("physics:kinematicEnabled").Set(True)
 
     # Place bricks
     bricks_to_place = [
