@@ -7,7 +7,7 @@ import lego_assemble.usd.author;
 import lego_assemble.usd.parse;
 import lego_assemble.utils.type_list;
 import lego_assemble.omni.lego_world;
-import lego_assemble.io.json;
+import lego_assemble.io.topology;
 import lego_assemble.vendor;
 
 namespace lego_assemble {

@@ -2,7 +2,7 @@ import std;
 import lego_assemble.core.specs;
 import lego_assemble.core.connections;
 import lego_assemble.core.graph;
-import lego_assemble.io.json;
+import lego_assemble.io.topology;
 import lego_assemble.usd.usd_graph;
 import lego_assemble.usd.allocator;
 import lego_assemble.usd.author;

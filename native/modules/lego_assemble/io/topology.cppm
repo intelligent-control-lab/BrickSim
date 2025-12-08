@@ -1,4 +1,4 @@
-export module lego_assemble.io.json;
+export module lego_assemble.io.topology;
 
 import std;
 import lego_assemble.core.specs;
