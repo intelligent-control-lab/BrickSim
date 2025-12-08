@@ -148,6 +148,17 @@ export void to_json(nlohmann::ordered_json &j, const JsonTopology &topology) {
 }
 
 export void from_json(const nlohmann::ordered_json &j, JsonTopology &topology) {
+	if (!j.contains("schema")) {
+		throw std::runtime_error(
+		    "JsonTopology: missing required field 'schema'");
+	}
+	auto schema = j.at("schema").get<std::string>();
+	if (schema != SchemaString) {
+		throw std::runtime_error(
+		    std::format("JsonTopology: unsupported schema '{}' (expected '{}')",
+		                schema, SchemaString));
+	}
+
 	if (j.contains("parts")) {
 		j.at("parts").get_to(topology.parts);
 	}

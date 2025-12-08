@@ -1,5 +1,4 @@
 import carb
-import importlib.util
 import traceback
 import omni.ext #type: ignore
 
@@ -13,6 +12,10 @@ class LegoExtension(omni.ext.IExt):
             self._assembly_selection = None
         if getattr(self, "_ui", None) is not None:
             self._ui.destroy()
+            self._ui = None
+        if getattr(self, "_structures_browser", None) is not None:
+            self._structures_browser.destroy()
+            self._structures_browser = None
         if getattr(self, "_stabletext2brick_browser", None) is not None:
             self._stabletext2brick_browser.destroy()
             self._stabletext2brick_browser = None
@@ -38,21 +41,27 @@ class LegoExtension(omni.ext.IExt):
         from lego_assemble.ui.main_ui import LegoUI
         self._ui = LegoUI()
 
+        # Lego Structures dataset browser.
+        from lego_assemble.ui.structures_browsers import LegoStructuresBrowser
+        self._structures_browser = LegoStructuresBrowser(self._ui)
+
         # StableText2Brick dataset browser (optional HF-backed UI).
         self._stabletext2brick_browser = None
-        try:
-            from lego_assemble.ui.stabletext2brick_browser import StableText2BrickBrowser
-            # Share env_id with the main UI.
-            self._stabletext2brick_browser = StableText2BrickBrowser(self._ui)
-        except Exception:
-            traceback.print_exc()
-            # Fail fast for the core UI; dataset browser is best-effort.
-            self._stabletext2brick_browser = None
+        #### Disabled
+        # try:
+        #     from lego_assemble.ui.stabletext2brick_browser import StableText2BrickBrowser
+        #     # Share env_id with the main UI.
+        #     self._stabletext2brick_browser = StableText2BrickBrowser(self._ui)
+        # except Exception:
+        #     traceback.print_exc()
+        #     # Fail fast for the core UI; dataset browser is best-effort.
+        #     self._stabletext2brick_browser = None
 
         # BrickGPT prompt window (optional; only if brickgpt.infer is available).
+        #### Disabled
         self._brickgpt_window = None
-        try:
-            from lego_assemble.ui.brickgpt_prompt import BrickGPTPromptWindow
-            self._brickgpt_window = BrickGPTPromptWindow(self._ui)
-        except ImportError as e:
-            carb.log_warn(f"BrickGPT UI not available: {e}")
+        # try:
+        #     from lego_assemble.ui.brickgpt_prompt import BrickGPTPromptWindow
+        #     self._brickgpt_window = BrickGPTPromptWindow(self._ui)
+        # except ImportError as e:
+        #     carb.log_warn(f"BrickGPT UI not available: {e}")
