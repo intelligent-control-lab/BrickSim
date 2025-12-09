@@ -11,7 +11,7 @@ export constexpr std::int64_t kNoEnv = -1;
 static const pxr::SdfPath WorldPath("/World");
 static const pxr::SdfPath EnvRootPath("/World/envs");
 
-export pxr::SdfPath pathForEnv(std::int64_t env_id) {
+export pxr::SdfPath path_for_env(std::int64_t env_id) {
 	if (env_id == kNoEnv) {
 		return WorldPath;
 	} else {
@@ -20,7 +20,7 @@ export pxr::SdfPath pathForEnv(std::int64_t env_id) {
 	}
 }
 
-export std::optional<std::int64_t> envIdFromPath(const pxr::SdfPath &path) {
+export std::optional<std::int64_t> env_id_from_path(const pxr::SdfPath &path) {
 	pxr::SdfPath p = path.GetPrimPath();
 	if (!p.IsAbsolutePath()) {
 		return std::nullopt;

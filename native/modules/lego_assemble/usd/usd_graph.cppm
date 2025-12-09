@@ -455,7 +455,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 
 	std::generator<std::tuple<PartId, pxr::SdfPath>>
 	parts_in_env(std::int64_t env_id) const {
-		pxr::SdfPath env_path = pathForEnv(env_id);
+		pxr::SdfPath env_path = path_for_env(env_id);
 		for (const auto &[part_path, part_info] :
 		     subtree_range(part_path_table_, env_path)) {
 			if (part_info.pid.has_value()) {
@@ -466,7 +466,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 
 	std::generator<std::tuple<ConnSegId, pxr::SdfPath>>
 	conns_in_env(std::int64_t env_id) const {
-		pxr::SdfPath env_path = pathForEnv(env_id);
+		pxr::SdfPath env_path = path_for_env(env_id);
 		for (const auto &[conn_path, conn_info] :
 		     subtree_range(conn_path_table_, env_path)) {
 			if (conn_info.csid.has_value()) {
@@ -481,7 +481,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		if (!prim_path_ptr) {
 			return std::nullopt;
 		}
-		return envIdFromPath(*prim_path_ptr);
+		return env_id_from_path(*prim_path_ptr);
 	}
 
 	std::optional<std::int64_t> conn_env_id(ConnSegId csid) const {
@@ -491,7 +491,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		if (!conn_path_ptr) {
 			return std::nullopt;
 		}
-		return envIdFromPath(*conn_path_ptr);
+		return env_id_from_path(*conn_path_ptr);
 	}
 
 	// Returns {}^{env}T_part in SI units (meters), if the part has
@@ -507,13 +507,13 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		const pxr::SdfPath &prim_path = *prim_path_ptr;
 
 		// 2. Determine env id and env root path (/World or /World/envs/env_X)
-		auto env_id_opt = envIdFromPath(prim_path);
+		auto env_id_opt = env_id_from_path(prim_path);
 		if (!env_id_opt) {
 			// Part is not under a known env root
 			return std::nullopt;
 		}
 		std::int64_t env_id = *env_id_opt;
-		pxr::SdfPath env_path = pathForEnv(env_id);
+		pxr::SdfPath env_path = path_for_env(env_id);
 
 		// 3. Look up prims on the stage
 		pxr::UsdPrim prim = stage_->GetPrimAtPath(prim_path);
@@ -547,7 +547,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		const pxr::SdfPath &u0_path = *u0_path_ptr;
 
 		// Resolve env root for this part.
-		auto env_id_opt = envIdFromPath(u0_path);
+		auto env_id_opt = env_id_from_path(u0_path);
 		if (!env_id_opt.has_value()) {
 			log_warn("UsdLegoGraph::set_component_transform: anchor prim {} is "
 			         "outside any known env",
@@ -555,7 +555,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 			return 0;
 		}
 		std::int64_t env_id = *env_id_opt;
-		pxr::SdfPath env_path = pathForEnv(env_id);
+		pxr::SdfPath env_path = path_for_env(env_id);
 
 		pxr::UsdPrim env_prim = stage_->GetPrimAtPath(env_path);
 		if (!env_prim) {
@@ -594,7 +594,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 
 			// All parts in a connected component are expected to live in the
 			// same env. If not, skip and warn.
-			auto v_env_id_opt = envIdFromPath(v_path);
+			auto v_env_id_opt = env_id_from_path(v_path);
 			if (!v_env_id_opt.has_value() || v_env_id_opt.value() != env_id) {
 				log_warn("UsdLegoGraph::set_component_transform: part {} at "
 				         "path {} is in a different env; skipping",

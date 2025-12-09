@@ -764,14 +764,14 @@ static void test_remove_part_with_unrealized_connection() {
 
 	// Hole path lives in the same env, but we deliberately do not
 	// author a brick there so that the connection is unrealized.
-	pxr::SdfPath hole_path = pathForEnv(env_id)
+	pxr::SdfPath hole_path = path_for_env(env_id)
 	                             .AppendChild(pxr::TfToken("managed"))
 	                             .AppendChild(pxr::TfToken("Parts"))
 	                             .AppendChild(pxr::TfToken("HoleOnly"));
 
 	// Author a managed connection between part_path and hole_path.
 	ConnectionSegment cs{};
-	pxr::SdfPath conn_path = pathForEnv(env_id)
+	pxr::SdfPath conn_path = path_for_env(env_id)
 	                             .AppendChild(pxr::TfToken("managed"))
 	                             .AppendChild(pxr::TfToken("Conns"))
 	                             .AppendChild(pxr::TfToken("ConnUnrealized"));
@@ -781,7 +781,7 @@ static void test_remove_part_with_unrealized_connection() {
 	{
 		auto layer = stage->GetEditTarget().GetLayer();
 		pxr::SdfPath managed_root =
-		    pathForEnv(env_id).AppendChild(pxr::TfToken("managed"));
+		    path_for_env(env_id).AppendChild(pxr::TfToken("managed"));
 		if (!layer->GetPrimAtPath(managed_root)) {
 			pxr::SdfChangeBlock _changes;
 			auto managed_prim = pxr::SdfCreatePrimInLayer(layer, managed_root);
@@ -1333,7 +1333,7 @@ static void test_set_component_transform_two_parts_connected() {
 
 	// Check A's env-local pose matches the requested one.
 	pxr::UsdPrim env_prim =
-	    stage->GetPrimAtPath(pathForEnv(env_id)); // /World/envs/env_7
+	    stage->GetPrimAtPath(path_for_env(env_id)); // /World/envs/env_7
 
 	pxr::GfMatrix4d M_env_A = ComputeRelativeTransform(primA, env_prim);
 	pxr::GfMatrix4d M_env_B = ComputeRelativeTransform(primB, env_prim);

@@ -40,7 +40,7 @@ export class LegoAllocator {
 	std::tuple<pxr::SdfPath, InterfaceCollidersVector>
 	allocate_part_unmanaged(const pxr::SdfPath &path,
 	                        const typename PA::PartType &part) {
-		auto env_id = envIdFromPath(path);
+		auto env_id = env_id_from_path(path);
 		if (!env_id.has_value()) [[unlikely]] {
 			throw std::invalid_argument(
 			    "Cannot allocate unmanaged part outside of an environment.");
@@ -54,8 +54,8 @@ export class LegoAllocator {
 	                                   const pxr::SdfPath &hole,
 	                                   InterfaceId hole_if,
 	                                   const ConnectionSegment &conn_seg) {
-		auto stud_env = envIdFromPath(stud);
-		auto hole_env = envIdFromPath(hole);
+		auto stud_env = env_id_from_path(stud);
+		auto hole_env = env_id_from_path(hole);
 		if (!stud_env.has_value() || !hole_env.has_value() ||
 		    stud_env.value() != hole_env.value()) [[unlikely]] {
 			throw std::invalid_argument(
@@ -72,9 +72,9 @@ export class LegoAllocator {
 	                             const pxr::SdfPath &stud, InterfaceId stud_if,
 	                             const pxr::SdfPath &hole, InterfaceId hole_if,
 	                             const ConnectionSegment &conn_seg) {
-		auto conn_env = envIdFromPath(conn_path);
-		auto stud_env = envIdFromPath(stud);
-		auto hole_env = envIdFromPath(hole);
+		auto conn_env = env_id_from_path(conn_path);
+		auto stud_env = env_id_from_path(stud);
+		auto hole_env = env_id_from_path(hole);
 		if (!conn_env.has_value() || !stud_env.has_value() ||
 		    !hole_env.has_value() || conn_env.value() != stud_env.value() ||
 		    stud_env.value() != hole_env.value()) [[unlikely]] {
@@ -111,7 +111,7 @@ export class LegoAllocator {
 
 	bool deallocate_managed(const pxr::SdfPath &path,
 	                        const pxr::TfToken &group) {
-		auto env_id = envIdFromPath(path);
+		auto env_id = env_id_from_path(path);
 		if (!env_id.has_value()) [[unlikely]] {
 			return false;
 		}
@@ -162,7 +162,7 @@ export class LegoAllocator {
 	}
 
 	pxr::SdfPath get_managed_root(std::int64_t env_id) {
-		return pathForEnv(env_id).AppendChild(kManaged);
+		return path_for_env(env_id).AppendChild(kManaged);
 	}
 
 	pxr::SdfPath get_managed_group(std::int64_t env_id,
