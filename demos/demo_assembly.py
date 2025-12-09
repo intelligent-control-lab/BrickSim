@@ -593,13 +593,13 @@ async def main():
     ]
     _, not_placed = arrange_bricks_on_table(
         parts_to_arrange=brick_paths,
-        parts_to_avoid=[base_plate],
         obstacles=None,
         table_xy=(0.2, -0.2, 0.5, 0.2),
         table_z=0.0,
         allow_rotation=True,
         clearance_xy=0.016,
         grid_resolution=0.008,
+        avoid_all_other_parts=True,
     )
     if len(not_placed) > 0:
         raise RuntimeError(f"Failed to place all bricks on table; not placed: {not_placed}")

@@ -32,6 +32,10 @@ export struct ArrangeConfig {
 	// Whether the 2D packer is allowed to rotate rectangles
 	// (swap width/height).
 	bool allow_rotation{false};
+
+	// Whether to avoid all other parts in the environment,
+	// or only those in parts_to_avoid. If true, parts_to_avoid is ignored.
+	bool avoid_all_other_parts{false};
 };
 
 export struct ArrangeResult {
@@ -180,6 +184,7 @@ arrange_bricks_on_table(UsdGraph &g, const ArrangeConfig &config,
 	std::int32_t Ny =
 	    std::max(1, static_cast<std::int32_t>(std::ceil(region_h / grid)));
 	pack2d::Bin bin{Nx, Ny};
+	std::vector<pack2d::Rect> obstacles;
 
 	// Helpers
 	std::optional<std::int64_t> env_id;
@@ -226,11 +231,14 @@ arrange_bricks_on_table(UsdGraph &g, const ArrangeConfig &config,
 			return std::numeric_limits<std::int32_t>::max();
 		return static_cast<std::int32_t>(cells_i);
 	};
-
-	// Build obstacle list
-	std::vector<pack2d::Rect> obstacles;
-	for (PartId pid : parts_to_avoid) {
-		ensure_env(pid);
+	auto add_obstacle_box = [&](const BBox2d &box) {
+		BBox2i grid_box =
+		    discretize_bbox_xy(box, config.region, config.grid_resolution);
+		if (!grid_box.empty()) {
+			obstacles.push_back(static_cast<pack2d::Rect>(grid_box));
+		}
+	};
+	auto add_obstacle_part = [&](PartId pid) {
 		BBox3d bbox = get_part_bbox(pid);
 		auto T_env_part = g.part_pose_relative_to_env(pid);
 		if (!T_env_part) {
@@ -238,22 +246,15 @@ arrange_bricks_on_table(UsdGraph &g, const ArrangeConfig &config,
 			    "arrange_bricks_on_table: part id {} has no pose", pid));
 		}
 		BBox2d box_xy = project_bbox_xy(bbox, *T_env_part);
-		BBox2i grid_box =
-		    discretize_bbox_xy(box_xy, config.region, config.grid_resolution);
-		if (!grid_box.empty()) {
-			obstacles.push_back(static_cast<pack2d::Rect>(grid_box));
-		}
-	}
-	for (const auto &zone : avoid_zones) {
-		BBox2i grid_box =
-		    discretize_bbox_xy(zone, config.region, config.grid_resolution);
-		if (!grid_box.empty()) {
-			obstacles.push_back(static_cast<pack2d::Rect>(grid_box));
-		}
-	}
+		add_obstacle_box(box_xy);
+	};
 
 	// Result object
 	ArrangeResult result;
+	if (parts_to_arrange.empty()) {
+		// Ensure ensure_env is called at least once and env_id is set
+		return result;
+	}
 
 	// Collect parts to arrange
 	std::vector<PartId> part_ids;
@@ -287,6 +288,25 @@ arrange_bricks_on_table(UsdGraph &g, const ArrangeConfig &config,
 		    .width = w_cells,
 		    .height = h_cells,
 		});
+	}
+
+	// Build obstacle list
+	for (const auto &zone : avoid_zones) {
+		add_obstacle_box(zone);
+	}
+	if (config.avoid_all_other_parts) {
+		std::unordered_set<PartId> arrange_set(parts_to_arrange.begin(),
+		                                       parts_to_arrange.end());
+		for (auto [pid, path] : g.parts_in_env(*env_id)) {
+			if (!arrange_set.contains(pid)) {
+				add_obstacle_part(pid);
+			}
+		}
+	} else {
+		for (PartId pid : parts_to_avoid) {
+			ensure_env(pid);
+			add_obstacle_part(pid);
+		}
 	}
 
 	// Solve packing

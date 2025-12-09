@@ -239,11 +239,12 @@ compute_connected_component(const std::string &part_path_str) {
 export std::tuple<std::vector<std::string>, std::vector<std::string>>
 arrange_bricks_on_table(
     std::vector<std::string> parts_to_arrange,
-    std::vector<std::string> parts_to_avoid,
+    std::optional<std::vector<std::string>> parts_to_avoid,
     std::optional<std::vector<std::array<double, 4>>> obstacles,
     std::array<double, 4> table_xy, double table_z,
     std::optional<double> clearance_xy, std::optional<double> grid_resolution,
-    std::optional<bool> allow_rotation) {
+    std::optional<bool> allow_rotation,
+    std::optional<bool> avoid_all_other_parts) {
 	ArrangeConfig config;
 	config.region = {
 	    .x_min = table_xy[0],
@@ -261,6 +262,9 @@ arrange_bricks_on_table(
 	if (allow_rotation) {
 		config.allow_rotation = *allow_rotation;
 	}
+	if (avoid_all_other_parts) {
+		config.avoid_all_other_parts = *avoid_all_other_parts;
+	}
 	const auto &topology = lego_world().usd_graph().topology();
 	std::vector<PartId> arrange_pids;
 	arrange_pids.reserve(parts_to_arrange.size());
@@ -277,18 +281,21 @@ arrange_bricks_on_table(
 		arrange_pids.push_back(*part_id_ptr);
 	}
 	std::vector<PartId> avoid_pids;
-	avoid_pids.reserve(parts_to_avoid.size());
-	for (const auto &part_path_str : parts_to_avoid) {
-		pxr::SdfPath part_path{part_path_str};
-		const auto *part_id_ptr =
-		    topology.parts().template project_key<pxr::SdfPath, PartId>(
-		        part_path);
-		if (!part_id_ptr) {
-			throw std::runtime_error(std::format(
-			    "arrange_bricks_on_table: part path {} does not exist in graph",
-			    part_path_str));
+	if (parts_to_avoid) {
+		avoid_pids.reserve(parts_to_avoid->size());
+		for (const auto &part_path_str : *parts_to_avoid) {
+			pxr::SdfPath part_path{part_path_str};
+			const auto *part_id_ptr =
+			    topology.parts().template project_key<pxr::SdfPath, PartId>(
+			        part_path);
+			if (!part_id_ptr) {
+				throw std::runtime_error(
+				    std::format("arrange_bricks_on_table: part path {} does "
+				                "not exist in graph",
+				                part_path_str));
+			}
+			avoid_pids.push_back(*part_id_ptr);
 		}
-		avoid_pids.push_back(*part_id_ptr);
 	}
 	std::vector<BBox2d> avoid_zones;
 	if (obstacles) {

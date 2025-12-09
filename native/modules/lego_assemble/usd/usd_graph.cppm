@@ -453,6 +453,28 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		return true;
 	}
 
+	std::generator<std::tuple<PartId, pxr::SdfPath>>
+	parts_in_env(std::int64_t env_id) const {
+		pxr::SdfPath env_path = pathForEnv(env_id);
+		for (const auto &[part_path, part_info] :
+		     subtree_range(part_path_table_, env_path)) {
+			if (part_info.pid.has_value()) {
+				co_yield {*(part_info.pid), part_path};
+			}
+		}
+	}
+
+	std::generator<std::tuple<ConnSegId, pxr::SdfPath>>
+	conns_in_env(std::int64_t env_id) const {
+		pxr::SdfPath env_path = pathForEnv(env_id);
+		for (const auto &[conn_path, conn_info] :
+		     subtree_range(conn_path_table_, env_path)) {
+			if (conn_info.csid.has_value()) {
+				co_yield {*(conn_info.csid), conn_path};
+			}
+		}
+	}
+
 	std::optional<std::int64_t> part_env_id(PartId pid) const {
 		const pxr::SdfPath *prim_path_ptr =
 		    topology_.parts().template project_key<PartId, pxr::SdfPath>(pid);

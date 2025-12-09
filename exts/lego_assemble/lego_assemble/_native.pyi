@@ -50,13 +50,14 @@ def compute_connected_component(part_path: str) -> tuple[list[str], list[str]]: 
 
 def arrange_bricks_on_table(
     parts_to_arrange: list[str],
-    parts_to_avoid: list[str],
+    parts_to_avoid: Optional[list[str]],
     obstacles: Optional[list[tuple[float, float, float, float]]],
     table_xy: tuple[float, float, float, float],
     table_z: float,
     clearance_xy: Optional[float],
     grid_resolution: Optional[float],
     allow_rotation: Optional[bool],
+    avoid_all_other_parts: Optional[bool],
 ) -> tuple[list[str], list[str]]: ...
 
 class AssemblyThresholds:

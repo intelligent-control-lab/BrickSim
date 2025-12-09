@@ -76,12 +76,14 @@ PYBIND11_MODULE(_native, m) {
 	      "unknown.");
 
 	m.def("arrange_bricks_on_table", &arrange_bricks_on_table,
-	      pybind11::arg("parts_to_arrange"), pybind11::arg("parts_to_avoid"),
+	      pybind11::arg("parts_to_arrange"),
+	      pybind11::arg("parts_to_avoid") = std::nullopt,
 	      pybind11::arg("obstacles") = std::nullopt, pybind11::arg("table_xy"),
 	      pybind11::arg("table_z"),
 	      pybind11::arg("clearance_xy") = std::nullopt,
 	      pybind11::arg("grid_resolution") = std::nullopt,
 	      pybind11::arg("allow_rotation") = std::nullopt,
+	      pybind11::arg("avoid_all_other_parts") = std::nullopt,
 	      "Arrange the specified bricks on a rectangular table region in the "
 	      "environment frame. Parts to arrange and avoid are given as USD prim "
 	      "paths. Obstacles, if provided, are a list of rectangles given as "
