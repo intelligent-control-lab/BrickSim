@@ -1,10 +1,12 @@
+import carb
 import json
 import threading
 import omni.kit.app  # type: ignore
 import omni.ui as ui
 from lego_assemble.ui.main_ui import LegoUI
-from lego_assemble.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
-from lego_assemble._native import import_lego
+from lego_assemble.importers.stabletext2brick import bricks_text_to_topology_json
+from lego_assemble._native import import_lego, arrange_parts_in_workspace
+from lego_assemble.utils.usd_parse import get_env_path
 
 class BrickGPTPromptWindow:
     """Simple BrickGPT prompt window attached to the Console."""
@@ -114,4 +116,16 @@ class BrickGPTPromptWindow:
     def do_import(self, bricks_text: str):
         topology = json.dumps(bricks_text_to_topology_json(bricks_text, color=self._main_ui.get_selected_color()))
         env_id = self._main_ui.get_env_id()
-        import_lego(topology, env_id, (1.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+        imported_parts, _ = import_lego(topology, env_id)
+
+        workspace_path = get_env_path(env_id) + "/LegoWorkspace"
+        try:
+            _, not_placed = arrange_parts_in_workspace(workspace_path, imported_parts, [1] * len(imported_parts))
+        except Exception as exc:
+            carb.log_warn(f"Failed to arrange parts in workspace: {exc}")
+            self._set_status("Arrangement in workspace failed.")
+            return
+        if not_placed:
+            carb.log_warn(f"Could not place parts {not_placed} in workspace {workspace_path}")
+            self._set_status("Some parts could not be placed in workspace.")
+            return

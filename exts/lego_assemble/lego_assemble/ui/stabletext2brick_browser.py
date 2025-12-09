@@ -4,9 +4,10 @@ from pathlib import Path
 import carb
 import omni.ui as ui
 
-from lego_assemble._native import import_lego
+from lego_assemble._native import import_lego, arrange_parts_in_workspace
 from lego_assemble.importers.stabletext2brick import bricks_text_to_topology_json
 from lego_assemble.ui.main_ui import LegoUI
+from lego_assemble.utils.usd_parse import get_env_path
 
 DatasetItem = tuple[str, str, int]  # (uuid, caption, dataset_index)
 
@@ -243,15 +244,22 @@ class StableText2BrickBrowser:
 
         # Import into world
         try:
-            import_lego(
-                topology_str,
-                env_id,
-                (1.0, 0.0, 0.0, 0.0),  # wxyz
-                (0.0, 0.0, 0.0),
-            )
+            imported_parts, _ = import_lego(topology_str, env_id)
         except Exception as e:
             carb.log_error(f"[StableText2Brick] import_lego failed: {e}")
             self._set_status(f"Import failed: {e}")
+            return
+
+        workspace_path = get_env_path(env_id) + "/LegoWorkspace"
+        try:
+            _, not_placed = arrange_parts_in_workspace(workspace_path, imported_parts, [1] * len(imported_parts))
+        except Exception as exc:
+            carb.log_warn(f"Failed to arrange parts in workspace: {exc}")
+            self._set_status("Arrangement in workspace failed.")
+            return
+        if not_placed:
+            carb.log_warn(f"Could not place parts {not_placed} in workspace {workspace_path}")
+            self._set_status("Some parts could not be placed in workspace.")
             return
 
         carb.log_info(f"[StableText2Brick] Imported structure {uuid} into env_id={env_id}")

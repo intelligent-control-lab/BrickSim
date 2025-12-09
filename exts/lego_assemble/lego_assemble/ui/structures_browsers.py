@@ -5,9 +5,10 @@ from pathlib import Path
 import carb
 import omni.ui as ui
 
-from lego_assemble._native import import_lego
+from lego_assemble._native import import_lego, arrange_parts_in_workspace
 from lego_assemble.importers.legolization import legolization_json_to_topology_json
 from lego_assemble.ui.main_ui import LegoUI
+from lego_assemble.utils.usd_parse import get_env_path
 
 
 @dataclass
@@ -281,17 +282,24 @@ class LegoStructuresBrowser:
             env_id = int(self._main_ui.get_env_id())
 
         try:
-            import_lego(
-                topology_str,
-                env_id,
-                (1.0, 0.0, 0.0, 0.0),  # wxyz
-                (0.0, 0.0, 0.0),
-            )
+            imported_parts, _ = import_lego(topology_str, env_id)
         except Exception as e:
             carb.log_error(f"[LegoStructures] import_lego failed: {e}")
             self._set_status(f"Import failed: {e}")
             return
 
         carb.log_info(f"[LegoStructures] Imported structure {item.category}/{item.model_id} from {item.json_path} into env_id={env_id}")
-        self._set_status("Import completed.")
 
+        workspace_path = get_env_path(env_id) + "/LegoWorkspace"
+        try:
+            _, not_placed = arrange_parts_in_workspace(workspace_path, imported_parts, [1] * len(imported_parts))
+        except Exception as exc:
+            carb.log_warn(f"Failed to arrange parts in workspace: {exc}")
+            self._set_status("Arrangement in workspace failed.")
+            return
+        if not_placed:
+            carb.log_warn(f"Could not place parts {not_placed} in workspace {workspace_path}")
+            self._set_status("Some parts could not be placed in workspace.")
+            return
+
+        self._set_status("Import completed.")

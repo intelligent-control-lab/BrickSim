@@ -250,7 +250,6 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	void stop_simulation() {
 		if (px_scene_ == nullptr) {
 			// This could happen if LegoWorld is constructed while simulation is active
-			log_warn("LegoWorld: simulation is not set up; cannot stop");
 			return;
 		}
 		bridge_.reset();

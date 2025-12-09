@@ -175,9 +175,10 @@ export std::string export_lego(std::int64_t env_id) {
 	return json.dump();
 }
 
-export void import_lego(const std::string &json_str, std::int64_t env_id,
-                        std::optional<std::array<double, 4>> ref_rot,
-                        std::optional<std::array<double, 3>> ref_pos) {
+export std::tuple<std::vector<std::string>, std::vector<std::string>>
+import_lego(const std::string &json_str, std::int64_t env_id,
+            std::optional<std::array<double, 4>> ref_rot,
+            std::optional<std::array<double, 3>> ref_pos) {
 	nlohmann::ordered_json json = nlohmann::ordered_json::parse(json_str);
 	auto &usd_graph = lego_world().usd_graph();
 	auto ref_rot_val = ref_rot.value_or({1.0, 0.0, 0.0, 0.0});
@@ -186,7 +187,35 @@ export void import_lego(const std::string &json_str, std::int64_t env_id,
 	    as<Eigen::Quaterniond>(ref_rot_val),
 	    as<Eigen::Vector3d>(ref_pos_val),
 	};
-	LegoRuntime::Serializer{}.import(json, usd_graph, env_id, T_env_ref);
+	auto [parts, conns] =
+	    LegoRuntime::Serializer{}.import(json, usd_graph, env_id, T_env_ref);
+	std::vector<std::string> part_paths;
+	part_paths.reserve(parts.size());
+	for (PartId pid : parts) {
+		const pxr::SdfPath *part_path_ptr =
+		    usd_graph.topology()
+		        .parts()
+		        .template project_key<PartId, pxr::SdfPath>(pid);
+		if (!part_path_ptr) {
+			throw std::runtime_error(std::format(
+			    "Imported PartId {} has no corresponding path", pid));
+		}
+		part_paths.push_back(part_path_ptr->GetAsString());
+	}
+	std::vector<std::string> conn_paths;
+	conn_paths.reserve(conns.size());
+	for (ConnSegId csid : conns) {
+		const pxr::SdfPath *conn_path_ptr =
+		    usd_graph.topology()
+		        .connection_segments()
+		        .template project<ConnSegId, pxr::SdfPath>(csid);
+		if (!conn_path_ptr) {
+			throw std::runtime_error(std::format(
+			    "Imported ConnSegId {} has no corresponding path", csid));
+		}
+		conn_paths.push_back(conn_path_ptr->GetAsString());
+	}
+	return {part_paths, conn_paths};
 }
 
 export std::tuple<std::vector<std::string>, std::vector<std::string>>
@@ -237,14 +266,15 @@ compute_connected_component(const std::string &part_path_str) {
 }
 
 export std::tuple<std::vector<std::string>, std::vector<std::string>>
-arrange_bricks_on_table(
+arrange_parts_on_table(
     std::vector<std::string> parts_to_arrange,
     std::optional<std::vector<std::string>> parts_to_avoid,
     std::optional<std::vector<std::array<double, 4>>> obstacles,
     std::array<double, 4> table_xy, double table_z,
     std::optional<double> clearance_xy, std::optional<double> grid_resolution,
     std::optional<bool> allow_rotation,
-    std::optional<bool> avoid_all_other_parts) {
+    std::optional<bool> avoid_all_other_parts,
+    std::optional<std::vector<std::int32_t>> structure_ids) {
 	ArrangeConfig config;
 	config.region = {
 	    .x_min = table_xy[0],
@@ -275,7 +305,7 @@ arrange_bricks_on_table(
 		        part_path);
 		if (!part_id_ptr) {
 			throw std::runtime_error(std::format(
-			    "arrange_bricks_on_table: part path {} does not exist in graph",
+			    "arrange_parts_on_table: part path {} does not exist in graph",
 			    part_path_str));
 		}
 		arrange_pids.push_back(*part_id_ptr);
@@ -290,26 +320,31 @@ arrange_bricks_on_table(
 			        part_path);
 			if (!part_id_ptr) {
 				throw std::runtime_error(
-				    std::format("arrange_bricks_on_table: part path {} does "
+				    std::format("arrange_parts_on_table: part path {} does "
 				                "not exist in graph",
 				                part_path_str));
 			}
 			avoid_pids.push_back(*part_id_ptr);
 		}
 	}
-	std::vector<BBox2d> avoid_zones;
+	std::vector<BBox2d> regions_to_avoid;
 	if (obstacles) {
-		avoid_zones.reserve(obstacles->size());
+		regions_to_avoid.reserve(obstacles->size());
 		for (const auto &obs_arr : *obstacles) {
-			avoid_zones.push_back({
+			regions_to_avoid.push_back({
 			    .min = {obs_arr[0], obs_arr[1]},
 			    .max = {obs_arr[2], obs_arr[3]},
 			});
 		}
 	}
-	ArrangeResult result =
-	    arrange_bricks_on_table(lego_world().usd_graph(), config, arrange_pids,
-	                            avoid_pids, avoid_zones);
+	std::span<const std::int32_t> structure_ids_view{};
+	if (structure_ids) {
+		structure_ids_view = *structure_ids;
+	}
+
+	ArrangeResult result = arrange_parts_on_table(
+	    lego_world().usd_graph(), config, arrange_pids, avoid_pids,
+	    regions_to_avoid, structure_ids_view);
 	std::vector<std::string> placed_paths;
 	placed_paths.reserve(result.placed.size());
 	for (PartId pid : result.placed) {
@@ -317,7 +352,7 @@ arrange_bricks_on_table(
 		    topology.parts().template project_key<PartId, pxr::SdfPath>(pid);
 		if (!part_path_ptr) {
 			throw std::runtime_error(std::format(
-			    "arrange_bricks_on_table: part id {} has no corresponding path",
+			    "arrange_parts_on_table: part id {} has no corresponding path",
 			    pid));
 		}
 		placed_paths.push_back(part_path_ptr->GetAsString());
@@ -329,8 +364,106 @@ arrange_bricks_on_table(
 		    topology.parts().template project_key<PartId, pxr::SdfPath>(pid);
 		if (!part_path_ptr) {
 			throw std::runtime_error(std::format(
-			    "arrange_bricks_on_table: part id {} has no corresponding path",
+			    "arrange_parts_on_table: part id {} has no corresponding path",
 			    pid));
+		}
+		not_placed_paths.push_back(part_path_ptr->GetAsString());
+	}
+	return {placed_paths, not_placed_paths};
+}
+
+export std::vector<std::array<double, 4>>
+compute_obstacle_regions(std::vector<std::string> obstacle_paths,
+                         std::array<double, 4> table_xy, double table_z,
+                         double clearance_height) {
+	TableRect table_region{
+	    .x_min = table_xy[0],
+	    .y_min = table_xy[1],
+	    .x_max = table_xy[2],
+	    .y_max = table_xy[3],
+	    .z = table_z,
+	};
+	const pxr::UsdStageRefPtr &stage = lego_world().usd_graph().stage();
+	std::vector<pxr::SdfPath> obstacle_paths_pxr;
+	obstacle_paths_pxr.reserve(obstacle_paths.size());
+	for (auto &path_str : obstacle_paths) {
+		obstacle_paths_pxr.emplace_back(path_str);
+	}
+	std::vector<std::array<double, 4>> result;
+	std::vector<BBox2d> regions = compute_regions_to_avoid(
+	    stage, table_region, clearance_height, obstacle_paths_pxr);
+	result.reserve(regions.size());
+	for (auto &region : regions) {
+		result.push_back({
+		    region.min.x(),
+		    region.min.y(),
+		    region.max.x(),
+		    region.max.y(),
+		});
+	}
+	return result;
+}
+
+export std::tuple<std::vector<std::string>, std::vector<std::string>>
+arrange_parts_in_workspace(
+    std::string workspace_path, std::vector<std::string> parts_to_arrange,
+    std::optional<std::vector<std::int32_t>> structure_ids) {
+	auto &usd_graph = lego_world().usd_graph();
+	const pxr::UsdStageRefPtr &stage = usd_graph.stage();
+	pxr::UsdPrim workspace_prim =
+	    stage->GetPrimAtPath(pxr::SdfPath{workspace_path});
+	std::optional<WorkspaceConfig> workspace_config =
+	    WorkspaceConfig::from_prim(workspace_prim);
+	if (!workspace_config) {
+		throw std::runtime_error(std::format(
+		    "arrange_parts_in_workspace: {} is not a valid workspace prim",
+		    workspace_path));
+	}
+	const auto &topology = usd_graph.topology();
+	std::vector<PartId> arrange_pids;
+	arrange_pids.reserve(parts_to_arrange.size());
+	for (const auto &part_path_str : parts_to_arrange) {
+		pxr::SdfPath part_path{part_path_str};
+		const auto *part_id_ptr =
+		    topology.parts().template project_key<pxr::SdfPath, PartId>(
+		        part_path);
+		if (!part_id_ptr) {
+			throw std::runtime_error(
+			    std::format("arrange_parts_in_workspace: part path {} does not "
+			                "exist in graph",
+			                part_path_str));
+		}
+		arrange_pids.push_back(*part_id_ptr);
+	}
+	std::span<const std::int32_t> structure_ids_view{};
+	if (structure_ids) {
+		structure_ids_view = *structure_ids;
+	}
+	ArrangeResult result = arrange_parts_in_workspace(
+	    usd_graph, *workspace_config, arrange_pids, structure_ids_view);
+	std::vector<std::string> placed_paths;
+	placed_paths.reserve(result.placed.size());
+	for (PartId pid : result.placed) {
+		const pxr::SdfPath *part_path_ptr =
+		    topology.parts().template project_key<PartId, pxr::SdfPath>(pid);
+		if (!part_path_ptr) {
+			throw std::runtime_error(
+			    std::format("arrange_parts_in_workspace: part id {} has no "
+			                "corresponding path",
+			                pid));
+		}
+		placed_paths.push_back(part_path_ptr->GetAsString());
+	}
+	std::vector<std::string> not_placed_paths;
+	not_placed_paths.reserve(result.not_placed.size());
+	for (PartId pid : result.not_placed) {
+		const pxr::SdfPath *part_path_ptr =
+		    topology.parts().template project_key<PartId, pxr::SdfPath>(pid);
+		if (!part_path_ptr) {
+			throw std::runtime_error(
+			    std::format("arrange_parts_in_workspace: part id {} has no "
+			                "corresponding path",
+			                pid));
 		}
 		not_placed_paths.push_back(part_path_ptr->GetAsString());
 	}

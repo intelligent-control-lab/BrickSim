@@ -3,8 +3,12 @@ export module lego_assemble.usd.arrange;
 import std;
 import lego_assemble.core.specs;
 import lego_assemble.core.graph;
+import lego_assemble.usd.tokens;
 import lego_assemble.utils.transforms;
 import lego_assemble.utils.pack2d_maxrect;
+import lego_assemble.utils.metric_system;
+import lego_assemble.utils.usd_envs;
+import lego_assemble.utils.conversions;
 import lego_assemble.vendor;
 
 namespace lego_assemble {
@@ -31,11 +35,11 @@ export struct ArrangeConfig {
 
 	// Whether the 2D packer is allowed to rotate rectangles
 	// (swap width/height).
-	bool allow_rotation{false};
+	bool allow_rotation{true};
 
 	// Whether to avoid all other parts in the environment,
 	// or only those in parts_to_avoid. If true, parts_to_avoid is ignored.
-	bool avoid_all_other_parts{false};
+	bool avoid_all_other_parts{true};
 };
 
 export struct ArrangeResult {
@@ -47,133 +51,90 @@ export struct ArrangeResult {
 	}
 };
 
-BBox2d project_bbox_xy(const BBox3d &local_box, const Transformd &T_env_part) {
-	const auto &[q, t] = T_env_part;
-
-	Eigen::Vector2d min_xy{std::numeric_limits<double>::infinity(),
-	                       std::numeric_limits<double>::infinity()};
-	Eigen::Vector2d max_xy{-std::numeric_limits<double>::infinity(),
-	                       -std::numeric_limits<double>::infinity()};
-
-	// Enumerate 8 corners of the local AABB
+BBox3d transform_bbox_3d(const BBox3d &box, const Transformd &T) {
+	const auto &[q, t] = T;
+	constexpr double inf = std::numeric_limits<double>::infinity();
+	Eigen::Vector3d min{inf, inf, inf};
+	Eigen::Vector3d max{-inf, -inf, -inf};
 	for (int ix = 0; ix < 2; ++ix) {
-		double cx = (ix == 0) ? local_box.min.x() : local_box.max.x();
+		double cx = (ix == 0) ? box.min.x() : box.max.x();
 		for (int iy = 0; iy < 2; ++iy) {
-			double cy = (iy == 0) ? local_box.min.y() : local_box.max.y();
+			double cy = (iy == 0) ? box.min.y() : box.max.y();
 			for (int iz = 0; iz < 2; ++iz) {
-				double cz = (iz == 0) ? local_box.min.z() : local_box.max.z();
+				double cz = (iz == 0) ? box.min.z() : box.max.z();
 				Eigen::Vector3d p_local{cx, cy, cz};
-
-				// env-frame position
-				Eigen::Vector3d p_env = q * p_local + t;
-
-				min_xy.x() = std::min(min_xy.x(), p_env.x());
-				min_xy.y() = std::min(min_xy.y(), p_env.y());
-				max_xy.x() = std::max(max_xy.x(), p_env.x());
-				max_xy.y() = std::max(max_xy.y(), p_env.y());
+				Eigen::Vector3d p = q * p_local + t;
+				min = min.cwiseMin(p);
+				max = max.cwiseMax(p);
 			}
 		}
 	}
-
-	return {.min = min_xy, .max = max_xy};
+	return {.min = min, .max = max};
 }
 
-BBox2d bbox_xy(const BBox3d &box) {
+void expand_to_include(BBox3d &box, const BBox3d &other) {
+	box.min = box.min.cwiseMin(other.min);
+	box.max = box.max.cwiseMax(other.max);
+}
+
+BBox2d to_bbox_2d(const BBox3d &box) {
 	return {
 	    .min = box.min.head<2>(),
 	    .max = box.max.head<2>(),
 	};
 }
 
-struct BBox2i {
-	// Half-open integer ranges: [min, max)
-	Eigen::Vector2i min;
-	Eigen::Vector2i max;
-
-	bool operator==(const BBox2i &other) const = default;
-
-	int width() const {
-		return max.x() - min.x();
-	}
-	int height() const {
-		return max.y() - min.y();
-	}
-	bool empty() const {
-		return width() <= 0 || height() <= 0;
-	}
-	operator lego_assemble::pack2d::Rect() const {
-		return {
-		    .x = min.x(),
-		    .y = min.y(),
-		    .w = width(),
-		    .h = height(),
-		};
-	}
-};
-
-// Returns the smallest half-open integer AABB of grid cells that covers the
-// intersection of `box` with `region`.
-//
-// - `grid_resolution` is meters per cell.
-// - The logical grid origin (cell 0,0) is at (region.x_min, region.y_min).
-// - If there is no intersection, returns min==max (empty box).
-BBox2i discretize_bbox_xy(const BBox2d &box, const TableRect &region,
-                          double grid_resolution) noexcept {
-	double gx = region.x_min;
-	double gy = region.y_min;
-
-	// Clip to region first
-	double x0 = std::max(box.min.x(), region.x_min);
-	double x1 = std::min(box.max.x(), region.x_max);
-	double y0 = std::max(box.min.y(), region.y_min);
-	double y1 = std::min(box.max.y(), region.y_max);
-
-	// No overlap with region -> empty
-	if (x1 <= x0 || y1 <= y0) {
-		return {.min = {0, 0}, .max = {0, 0}};
-	}
-
-	double region_w = region.x_max - region.x_min;
-	double region_h = region.y_max - region.y_min;
-
-	// Total grid size; we use ceil so the entire region is covered.
-	int Nx =
-	    std::max(1, static_cast<int>(std::ceil(region_w / grid_resolution)));
-	int Ny =
-	    std::max(1, static_cast<int>(std::ceil(region_h / grid_resolution)));
-
-	auto cell_min = [&](double coord, double origin) -> int {
-		return static_cast<int>(std::floor((coord - origin) / grid_resolution));
+pack2d::Rect discretize_bbox_2d(const BBox2d &box, const TableRect &region,
+                                double grid) {
+	auto discretize =
+	    [&](double box_min, double box_max, double region_min,
+	        double region_max) -> std::tuple<std::int32_t, std::int32_t> {
+		double x0 = std::max(box_min, region_min);
+		double x1 = std::min(box_max, region_max);
+		if (x1 <= x0) {
+			return {0, 0};
+		}
+		std::int32_t cell_min =
+		    static_cast<std::int32_t>(std::floor((x0 - region_min) / grid));
+		std::int32_t cell_max =
+		    static_cast<std::int32_t>(std::ceil((x1 - region_min) / grid));
+		return {cell_min, cell_max - cell_min};
 	};
-	auto cell_max = [&](double coord, double origin) -> int {
-		return static_cast<int>(std::ceil((coord - origin) / grid_resolution));
-	};
+	auto [cell_x, cell_w] =
+	    discretize(box.min.x(), box.max.x(), region.x_min, region.x_max);
+	auto [cell_y, cell_h] =
+	    discretize(box.min.y(), box.max.y(), region.y_min, region.y_max);
+	return {.x = cell_x, .y = cell_y, .w = cell_w, .h = cell_h};
+}
 
-	int ix0 = cell_min(x0, gx);
-	int ix1 = cell_max(x1, gx);
-	int iy0 = cell_min(y0, gy);
-	int iy1 = cell_max(y1, gy);
-
-	ix0 = std::clamp(ix0, 0, Nx);
-	ix1 = std::clamp(ix1, 0, Nx);
-	iy0 = std::clamp(iy0, 0, Ny);
-	iy1 = std::clamp(iy1, 0, Ny);
-
-	// Ensure half-open ordering
-	if (ix1 < ix0)
-		std::swap(ix0, ix1);
-	if (iy1 < iy0)
-		std::swap(iy0, iy1);
-
-	return {.min = {ix0, iy0}, .max = {ix1, iy1}};
+BBox3d get_part_bbox(auto &g, PartId pid) {
+	bool visited = false;
+	BBox3d bbox;
+	g.topology().parts().visit(pid, [&](const auto &pw) {
+		bbox = pw.wrapped().bbox();
+		visited = true;
+	});
+	if (!visited) {
+		throw std::runtime_error(std::format(
+		    "get_part_bbox: part id {} does not exist in graph", pid));
+	}
+	return bbox;
 }
 
 export template <class UsdGraph>
 ArrangeResult
-arrange_bricks_on_table(UsdGraph &g, const ArrangeConfig &config,
-                        std::span<const PartId> parts_to_arrange,
-                        std::span<const PartId> parts_to_avoid,
-                        std::span<const BBox2d> avoid_zones = {}) {
+arrange_parts_on_table(UsdGraph &g, const ArrangeConfig &config,
+                       std::span<const PartId> parts_to_arrange,
+                       std::span<const PartId> parts_to_avoid = {},
+                       std::span<const BBox2d> regions_to_avoid = {},
+                       std::span<const std::int32_t> structure_ids = {}) {
+	if (!structure_ids.empty() &&
+	    structure_ids.size() != parts_to_arrange.size()) {
+		throw std::invalid_argument(
+		    "arrange_parts_on_table: structure_ids size must match "
+		    "parts_to_arrange size.");
+	}
+
 	// Compute bin size in cells.
 	const auto &region = config.region;
 	double grid = config.grid_resolution;
@@ -184,21 +145,20 @@ arrange_bricks_on_table(UsdGraph &g, const ArrangeConfig &config,
 	std::int32_t Ny =
 	    std::max(1, static_cast<std::int32_t>(std::ceil(region_h / grid)));
 	pack2d::Bin bin{Nx, Ny};
-	std::vector<pack2d::Rect> obstacles;
 
-	// Helpers
+	// Determine environment id, ensure all parts are in the same env
 	std::optional<std::int64_t> env_id;
 	auto ensure_env = [&](PartId pid) {
 		auto e = g.part_env_id(pid);
 		if (!e) {
 			throw std::runtime_error(std::format(
-			    "arrange_bricks_on_table: part id {} does not exist in graph",
+			    "arrange_parts_on_table: part id {} does not exist in graph",
 			    pid));
 		}
 		if (env_id) {
 			if (*e != *env_id) {
 				throw std::runtime_error(std::format(
-				    "arrange_bricks_on_table: part id {} is in env {}, "
+				    "arrange_parts_on_table: part id {} is in env {}, "
 				    "different from other parts in env {}",
 				    pid, *e, *env_id));
 			}
@@ -206,122 +166,181 @@ arrange_bricks_on_table(UsdGraph &g, const ArrangeConfig &config,
 			env_id = *e;
 		}
 	};
-	auto get_part_bbox = [&](PartId pid) -> BBox3d {
-		bool visited = false;
-		BBox3d bbox;
-		g.topology().parts().visit(pid, [&](const auto &pw) {
-			bbox = pw.wrapped().bbox();
-			visited = true;
-		});
-		if (!visited) {
-			throw std::runtime_error(std::format(
-			    "arrange_bricks_on_table: part id {} does not exist in graph",
-			    pid));
-		}
-		return bbox;
-	};
-	auto to_cells = [grid](double len) -> std::int32_t {
-		if (len <= 0.0)
-			return 1;
-		double cells_f = std::ceil(len / grid);
-		auto cells_i = static_cast<std::int64_t>(cells_f);
-		if (cells_i <= 0)
-			return 1;
-		if (cells_i > std::numeric_limits<std::int32_t>::max())
-			return std::numeric_limits<std::int32_t>::max();
-		return static_cast<std::int32_t>(cells_i);
-	};
-	auto add_obstacle_box = [&](const BBox2d &box) {
-		BBox2i grid_box =
-		    discretize_bbox_xy(box, config.region, config.grid_resolution);
-		if (!grid_box.empty()) {
-			obstacles.push_back(static_cast<pack2d::Rect>(grid_box));
-		}
-	};
-	auto add_obstacle_part = [&](PartId pid) {
-		BBox3d bbox = get_part_bbox(pid);
-		auto T_env_part = g.part_pose_relative_to_env(pid);
-		if (!T_env_part) {
-			throw std::runtime_error(std::format(
-			    "arrange_bricks_on_table: part id {} has no pose", pid));
-		}
-		BBox2d box_xy = project_bbox_xy(bbox, *T_env_part);
-		add_obstacle_box(box_xy);
-	};
-
-	// Result object
-	ArrangeResult result;
-	if (parts_to_arrange.empty()) {
-		// Ensure ensure_env is called at least once and env_id is set
-		return result;
-	}
 
 	// Collect parts to arrange
-	std::vector<PartId> part_ids;
-	std::vector<BBox3d> part_bboxes;
-	std::vector<pack2d::RectInput> rects;
-	std::size_t N = parts_to_arrange.size();
-	part_ids.reserve(N);
-	part_bboxes.reserve(N);
-	rects.reserve(N);
-	for (PartId pid : parts_to_arrange) {
-		ensure_env(pid);
-		BBox3d bbox = get_part_bbox(pid);
-		BBox2d box_xy = bbox_xy(bbox);
-		double w = box_xy.max.x() - box_xy.min.x();
-		double h = box_xy.max.y() - box_xy.min.y();
-		if (w <= 0.0 || h <= 0.0) {
-			result.not_placed.push_back(pid);
+	struct ComponentInfo {
+		PartId root_pid;
+		std::int32_t structure_id;
+		Transformd T_s_root;
+		std::vector<PartId> arranged_part_ids;
+	};
+	struct StructureInfo {
+		std::size_t root_cc_idx;
+
+		// BBox in root CC's root part frame
+		BBox3d bbox;
+
+		// Transform from env to structure root CC root part frame
+		Transformd T_env_s;
+
+		// Whether the structure is valid for packing
+		bool valid;
+
+		std::optional<Transformd> arranged_T_env_s;
+	};
+	std::vector<ComponentInfo> components;
+	std::unordered_map<std::int32_t, StructureInfo> structures;
+
+	// Map from part id to index in components
+	std::unordered_map<PartId, std::size_t> arranged_parts;
+
+	// Collect connected components
+	for (std::size_t idx_u = 0; idx_u < parts_to_arrange.size(); idx_u++) {
+		PartId u = parts_to_arrange[idx_u];
+		auto arranged_parts_it = arranged_parts.find(u);
+		if (arranged_parts_it != arranged_parts.end()) {
+			// Already arranged as part of another component
+			ComponentInfo &cc_info = components[arranged_parts_it->second];
+			if (!structure_ids.empty() &&
+			    cc_info.structure_id != structure_ids[idx_u]) {
+				throw std::runtime_error(std::format(
+				    "arrange_parts_on_table: part id {} is specified to be in "
+				    "{}, but it's already in structure {}",
+				    u, structure_ids[idx_u], cc_info.structure_id));
+			}
+			cc_info.arranged_part_ids.emplace_back(u);
 			continue;
 		}
 
+		// New component
+		ensure_env(u);
+		std::size_t cc_idx = components.size();
+		ComponentInfo &cc = components.emplace_back();
+		cc.root_pid = u;
+		cc.arranged_part_ids.emplace_back(u);
+
+		// Lookup root part pose
+		auto T_env_u = g.part_pose_relative_to_env(u);
+		if (!T_env_u) {
+			throw std::runtime_error(std::format(
+			    "arrange_parts_on_table: part id {} has no pose", u));
+		}
+
+		cc.structure_id = structure_ids.empty() ? idx_u : structure_ids[idx_u];
+		StructureInfo *structure;
+		auto structures_it = structures.find(cc.structure_id);
+		if (structures_it == structures.end()) {
+			// First time seeing this structure id
+			// Make current CC its root
+			constexpr double inf = std::numeric_limits<double>::infinity();
+			auto [new_it, inserted] = structures.emplace(
+			    cc.structure_id,
+			    StructureInfo{
+			        .root_cc_idx = cc_idx,
+			        .bbox = {.min = {inf, inf, inf}, .max = {-inf, -inf, -inf}},
+			        .T_env_s = *T_env_u,
+			        .valid = false,
+			        .arranged_T_env_s = std::nullopt,
+			    });
+			if (!inserted) {
+				throw std::runtime_error(
+				    "Internal error: structure insertion failed");
+			}
+			structure = &new_it->second;
+			cc.T_s_root = SE3d{}.identity();
+		} else {
+			// Compute relative transform to existing structure root
+			structure = &structures_it->second;
+			cc.T_s_root = inverse(structure->T_env_s) * (*T_env_u);
+		}
+
+		// Expand the structure's bbox
+		const auto &T_s_u = cc.T_s_root;
+		for (auto [v, T_u_v] : g.topology().component_view(u).transforms()) {
+			arranged_parts.emplace(v, cc_idx);
+			Transformd T_s_v = T_s_u * T_u_v;
+			BBox3d bbox_local = get_part_bbox(g, v);
+			BBox3d bbox_in_s = transform_bbox_3d(bbox_local, T_s_v);
+			expand_to_include(structure->bbox, bbox_in_s);
+		}
+	}
+
+	// Prepare structure rectangles for packing
+	std::vector<pack2d::RectInput> structure_rects;
+	for (auto &[structure_id, structure] : structures) {
+		BBox2d bbox_2d = to_bbox_2d(structure.bbox);
+		double w = bbox_2d.max.x() - bbox_2d.min.x();
+		double h = bbox_2d.max.y() - bbox_2d.min.y();
+		structure.valid = w > 0.0 && h > 0.0;
+		if (!structure.valid) {
+			continue;
+		}
 		w += 2.0 * config.clearance_xy;
 		h += 2.0 * config.clearance_xy;
-
-		std::int32_t w_cells = to_cells(w);
-		std::int32_t h_cells = to_cells(h);
-		std::size_t idx = rects.size();
-		part_ids.push_back(pid);
-		part_bboxes.push_back(bbox);
-		rects.push_back(pack2d::RectInput{
-		    .id = static_cast<std::int32_t>(idx),
+		std::int32_t w_cells = static_cast<std::int32_t>(std::ceil(w / grid));
+		std::int32_t h_cells = static_cast<std::int32_t>(std::ceil(h / grid));
+		structure_rects.push_back({
+		    .id = structure_id,
 		    .width = w_cells,
 		    .height = h_cells,
 		});
 	}
 
+	if (!env_id) {
+		// No parts to arrange
+		return {};
+	}
+
 	// Build obstacle list
-	for (const auto &zone : avoid_zones) {
-		add_obstacle_box(zone);
+	std::vector<pack2d::Rect> obstacles;
+	auto add_obstacle_bbox = [&](const BBox2d &bbox) {
+		pack2d::Rect rect =
+		    discretize_bbox_2d(bbox, config.region, config.grid_resolution);
+		if (rect.w > 0 && rect.h > 0) {
+			obstacles.emplace_back(rect);
+		}
+	};
+	auto add_obstacle_part = [&](PartId pid) {
+		BBox3d bbox_local = get_part_bbox(g, pid);
+		auto T_env_part = g.part_pose_relative_to_env(pid);
+		if (!T_env_part) {
+			throw std::runtime_error(std::format(
+			    "arrange_parts_on_table: part id {} has no pose", pid));
+		}
+		BBox3d bbox_env = transform_bbox_3d(bbox_local, *T_env_part);
+		BBox2d bbox_env_2d = to_bbox_2d(bbox_env);
+		add_obstacle_bbox(bbox_env_2d);
+	};
+	for (const auto &zone : regions_to_avoid) {
+		add_obstacle_bbox(zone);
 	}
 	if (config.avoid_all_other_parts) {
-		std::unordered_set<PartId> arrange_set(parts_to_arrange.begin(),
-		                                       parts_to_arrange.end());
 		for (auto [pid, path] : g.parts_in_env(*env_id)) {
-			if (!arrange_set.contains(pid)) {
+			if (!arranged_parts.contains(pid)) {
 				add_obstacle_part(pid);
 			}
 		}
 	} else {
 		for (PartId pid : parts_to_avoid) {
 			ensure_env(pid);
-			add_obstacle_part(pid);
+			if (!arranged_parts.contains(pid)) {
+				add_obstacle_part(pid);
+			}
 		}
 	}
 
 	// Solve packing
 	pack2d::PackResult pack_result = pack2d::pack_all(
-	    bin, rects, obstacles, pack2d::Heuristic::BestShortSideFit,
+	    bin, structure_rects, obstacles, pack2d::Heuristic::BestShortSideFit,
 	    config.allow_rotation);
 
-	for (const auto &packed : pack_result.packed) {
-		std::size_t idx = static_cast<std::size_t>(packed.id);
-		PartId pid = part_ids[idx];
-		const BBox3d &bbox = part_bboxes[idx];
+	// Compute arranged transforms
+	for (auto &packed_rect : pack_result.packed) {
+		StructureInfo &structure = structures.at(packed_rect.id);
 
 		// Determine rotation
 		Eigen::Quaterniond q;
-		if (packed.rotated) {
+		if (packed_rect.rotated) {
 			// 90 deg around +z
 			q = Eigen::Quaterniond(Eigen::AngleAxisd(std::numbers::pi / 2.0,
 			                                         Eigen::Vector3d::UnitZ()));
@@ -329,36 +348,230 @@ arrange_bricks_on_table(UsdGraph &g, const ArrangeConfig &config,
 			q = Eigen::Quaterniond::Identity();
 		}
 
-		// Calculate geometric center
-		Eigen::Vector3d local_center = 0.5 * (bbox.min + bbox.max);
-
 		// Calculate the target center in the env frame.
 		// The packer returns integer coordinates for the bottom-left corner.
-		Eigen::Vector2d world_xy_min{region.x_min + (packed.x * grid),
-		                             region.y_min + (packed.y * grid)};
+		Eigen::Vector2d world_xy_min{region.x_min + (packed_rect.x * grid),
+		                             region.y_min + (packed_rect.y * grid)};
 
 		// The allocated size in meters
-		Eigen::Vector2d alloc_size_xy{packed.width * grid,
-		                              packed.height * grid};
+		Eigen::Vector2d alloc_size_xy{packed_rect.width * grid,
+		                              packed_rect.height * grid};
 
 		// The geometric center of the allocated space on the table
 		Eigen::Vector2d target_center_xy = world_xy_min + 0.5 * alloc_size_xy;
 
+		// Calculate geometric center
+		Eigen::Vector3d local_center =
+		    0.5 * (structure.bbox.min + structure.bbox.max);
+
 		// Calculate translation
 		Eigen::Vector3d t;
 		t.head<2>() = target_center_xy - (q * local_center).head<2>();
-		t.z() = region.z - bbox.min.z();
+		t.z() = region.z - structure.bbox.min.z();
 
-		// Set part transform
-		Transformd T_env_part{q, t};
-		g.set_component_transform(pid, T_env_part);
-		result.placed.push_back(pid);
+		structure.arranged_T_env_s = {q, t};
 	}
 
-	for (std::int32_t id : pack_result.not_packed_ids) {
-		result.not_placed.push_back(part_ids[static_cast<std::size_t>(id)]);
+	// Apply arranged transforms to parts
+	ArrangeResult result;
+	for (ComponentInfo &cc : components) {
+		StructureInfo &structure = structures.at(cc.structure_id);
+		if (!structure.arranged_T_env_s) {
+			// Structure was not packed
+			result.not_placed.insert(result.not_placed.end(),
+			                         cc.arranged_part_ids.begin(),
+			                         cc.arranged_part_ids.end());
+			continue;
+		}
+		Transformd T_env_s = *structure.arranged_T_env_s;
+		Transformd T_env_root = T_env_s * cc.T_s_root;
+		g.set_component_transform(cc.root_pid, T_env_root);
+		result.placed.insert(result.placed.end(), cc.arranged_part_ids.begin(),
+		                     cc.arranged_part_ids.end());
 	}
 	return result;
+}
+
+export std::vector<BBox2d>
+compute_regions_to_avoid(const pxr::UsdStageRefPtr &stage,
+                         const TableRect &table_region, double clearance_height,
+                         std::span<const pxr::SdfPath> obstacle_paths) {
+	MetricSystem metrics{stage};
+
+	double z_band_min = table_region.z;
+	double z_band_max = table_region.z + clearance_height;
+	if (z_band_min > z_band_max) {
+		// Negative clearance
+		std::swap(z_band_min, z_band_max);
+	}
+
+	// Configure a bbox cache for the env, using common purposes.
+	pxr::TfTokenVector purposes;
+	purposes.push_back(pxr::UsdGeomTokens->default_);
+	purposes.push_back(pxr::UsdGeomTokens->render);
+	purposes.push_back(pxr::UsdGeomTokens->proxy);
+	purposes.push_back(pxr::UsdGeomTokens->guide);
+	pxr::UsdGeomBBoxCache bbox_cache(pxr::UsdTimeCode::Default(), purposes,
+	                                 /*useExtentsHint=*/true);
+
+	std::vector<BBox2d> zones;
+	zones.reserve(obstacle_paths.size());
+
+	std::optional<std::int64_t> env_id;
+	pxr::UsdPrim env_prim;
+
+	for (const pxr::SdfPath &path : obstacle_paths) {
+		pxr::UsdPrim prim = stage->GetPrimAtPath(path);
+		if (!prim.IsValid()) {
+			continue;
+		}
+
+		// Determine env prim
+		auto e = env_id_from_path(path);
+		if (!e) {
+			continue;
+		}
+		if (env_id) {
+			if (*e != *env_id) {
+				continue;
+			}
+		} else {
+			env_id = *e;
+			pxr::SdfPath env_path = path_for_env(*env_id);
+			env_prim = stage->GetPrimAtPath(env_path);
+			if (!env_prim.IsValid()) {
+				throw std::runtime_error(
+				    std::format("compute_avoid_zones: env prim {} not found",
+				                env_path.GetText()));
+			}
+		}
+
+		// Compute the obstacle's bbox in the env frame (STAGE UNITS).
+		pxr::GfBBox3d bbox_stage =
+		    bbox_cache.ComputeRelativeBound(prim, env_prim);
+		pxr::GfRange3d range_stage = bbox_stage.ComputeAlignedRange();
+		if (range_stage.IsEmpty()) {
+			continue;
+		}
+
+		auto bbox_min = metrics.to_m(as<Eigen::Vector3d>(range_stage.GetMin()));
+		auto bbox_max = metrics.to_m(as<Eigen::Vector3d>(range_stage.GetMax()));
+
+		double bbox_z_min = bbox_min.z();
+		double bbox_z_max = bbox_max.z();
+		if (bbox_z_max < z_band_min || bbox_z_min > z_band_max) {
+			// No overlap in z
+			continue;
+		}
+
+		zones.push_back({
+		    .min = bbox_min.head<2>(),
+		    .max = bbox_max.head<2>(),
+		});
+	}
+
+	return zones;
+}
+
+export struct WorkspaceConfig {
+	std::int64_t env_id{kNoEnv};
+	Eigen::Vector3d bbox_min{0.0, 0.0, 0.0};
+	Eigen::Vector3d bbox_max{0.0, 0.0, 0.0};
+	double clearance_xy{0.008};
+	double grid_resolution{0.008};
+	double allow_rotation{true};
+	std::vector<pxr::SdfPath> obstacle_paths;
+
+	TableRect table_rect() const {
+		return {
+		    .x_min = bbox_min.x(),
+		    .y_min = bbox_min.y(),
+		    .x_max = bbox_max.x(),
+		    .y_max = bbox_max.y(),
+		    .z = bbox_min.z(),
+		};
+	}
+
+	ArrangeConfig arrange_config() const {
+		ArrangeConfig config;
+		config.region = table_rect();
+		config.clearance_xy = clearance_xy;
+		config.grid_resolution = grid_resolution;
+		config.allow_rotation = static_cast<bool>(allow_rotation);
+		return config;
+	}
+
+	double clearance_height() const {
+		return bbox_max.z() - bbox_min.z();
+	}
+
+	static std::optional<WorkspaceConfig> from_prim(const pxr::UsdPrim &prim) {
+		if (!prim.IsValid()) {
+			return std::nullopt;
+		}
+		pxr::SdfPath prim_path = prim.GetPath();
+		std::optional<std::int64_t> env_id = env_id_from_path(prim_path);
+		if (!env_id) {
+			return std::nullopt;
+		}
+		pxr::UsdPrim env_prim =
+		    prim.GetStage()->GetPrimAtPath(path_for_env(*env_id));
+		if (!env_prim.IsValid()) {
+			return std::nullopt;
+		}
+		MetricSystem metrics{prim.GetStage()};
+
+		pxr::TfTokenVector purposes;
+		purposes.push_back(pxr::UsdGeomTokens->default_);
+		purposes.push_back(pxr::UsdGeomTokens->render);
+		purposes.push_back(pxr::UsdGeomTokens->proxy);
+		purposes.push_back(pxr::UsdGeomTokens->guide);
+		pxr::UsdGeomBBoxCache bbox_cache(pxr::UsdTimeCode::Default(), purposes,
+		                                 /*useExtentsHint=*/true);
+		pxr::GfBBox3d bbox_stage =
+		    bbox_cache.ComputeRelativeBound(prim, env_prim);
+		pxr::GfRange3d range_stage = bbox_stage.ComputeAlignedRange();
+		if (range_stage.IsEmpty()) {
+			return std::nullopt;
+		}
+
+		WorkspaceConfig result;
+		result.env_id = *env_id;
+		result.bbox_min =
+		    metrics.to_m(as<Eigen::Vector3d>(range_stage.GetMin()));
+		result.bbox_max =
+		    metrics.to_m(as<Eigen::Vector3d>(range_stage.GetMax()));
+
+		prim.GetAttribute(LegoTokens->LegoWorkspaceClearance)
+		    .Get(&result.clearance_xy);
+		prim.GetAttribute(LegoTokens->LegoWorkspaceGridResolution)
+		    .Get(&result.grid_resolution);
+		prim.GetAttribute(LegoTokens->LegoWorkspaceAllowRotation)
+		    .Get(&result.allow_rotation);
+
+		pxr::SdfPathVector obstacle_paths;
+		prim.GetRelationship(LegoTokens->LegoWorkspaceObstacles)
+		    .GetTargets(&obstacle_paths);
+		result.obstacle_paths.reserve(obstacle_paths.size());
+		for (const pxr::SdfPath &path : obstacle_paths) {
+			result.obstacle_paths.emplace_back(
+			    path.MakeAbsolutePath(prim_path));
+		}
+		return result;
+	}
+};
+
+export template <class UsdGraph>
+ArrangeResult
+arrange_parts_in_workspace(UsdGraph &g, const WorkspaceConfig &workspace,
+                           std::span<const PartId> parts_to_arrange,
+                           std::span<const std::int32_t> structure_ids = {}) {
+	std::vector<BBox2d> regions_to_avoid = compute_regions_to_avoid(
+	    g.stage(), workspace.table_rect(), workspace.clearance_height(),
+	    workspace.obstacle_paths);
+	return arrange_parts_on_table(g, workspace.arrange_config(),
+	                              parts_to_arrange, {}, regions_to_avoid,
+	                              structure_ids);
 }
 
 } // namespace lego_assemble

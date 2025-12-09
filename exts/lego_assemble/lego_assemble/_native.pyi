@@ -44,11 +44,11 @@ def import_lego(
     env_id: int,
     ref_rot: Optional[tuple[float, float, float, float]] = None,
     ref_pos: Optional[tuple[float, float, float]] = None,
-) -> None: ...
+) -> tuple[list[str], list[str]]: ...
 
 def compute_connected_component(part_path: str) -> tuple[list[str], list[str]]: ...
 
-def arrange_bricks_on_table(
+def arrange_parts_on_table(
     parts_to_arrange: list[str],
     parts_to_avoid: Optional[list[str]],
     obstacles: Optional[list[tuple[float, float, float, float]]],
@@ -58,6 +58,20 @@ def arrange_bricks_on_table(
     grid_resolution: Optional[float],
     allow_rotation: Optional[bool],
     avoid_all_other_parts: Optional[bool],
+    structure_ids: Optional[list[int]],
+) -> tuple[list[str], list[str]]: ...
+
+def compute_obstacle_regions(
+    obstacle_paths: list[str],
+    table_xy: tuple[float, float, float, float],
+    table_z: float,
+    clearance_height: float,
+) -> list[tuple[float, float, float, float]]: ...
+
+def arrange_parts_in_workspace(
+    workspace_path: str,
+    parts_to_arrange: list[str],
+    structure_ids: Optional[list[int]],
 ) -> tuple[list[str], list[str]]: ...
 
 class AssemblyThresholds:

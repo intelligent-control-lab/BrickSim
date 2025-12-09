@@ -12,7 +12,7 @@ from isaacsim.core.utils.nucleus import get_assets_root_path
 from isaacsim.core.utils.numpy.rotations import quats_to_rot_matrices, rot_matrices_to_quats
 from isaacsim.robot_motion.motion_generation import RmpFlow, ArticulationMotionPolicy
 from isaacsim.robot_motion.motion_generation.interface_config_loader import load_supported_motion_policy_config
-from lego_assemble import allocate_brick_part, parse_color, arrange_bricks_on_table, get_brick_dimensions, compute_connection_transform, set_assembly_thresholds, AssemblyThresholds, wait_for_physics_step
+from lego_assemble import allocate_brick_part, parse_color, arrange_parts_on_table, get_brick_dimensions, compute_connection_transform, set_assembly_thresholds, AssemblyThresholds, wait_for_physics_step
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -591,7 +591,7 @@ async def main():
             env_id=-1,
         ) for dims, color in bricks_to_place
     ]
-    _, not_placed = arrange_bricks_on_table(
+    _, not_placed = arrange_parts_on_table(
         parts_to_arrange=brick_paths,
         obstacles=None,
         table_xy=(0.2, -0.2, 0.5, 0.2),

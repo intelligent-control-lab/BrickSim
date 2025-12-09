@@ -1,5 +1,9 @@
 module;
 
+// See pxr/base/arch/defines.h
+#define _GLIBCXX_PERMIT_BACKWARD_HASH
+#define ARCH_HAS_GNU_STL_EXTENSIONS
+
 // ==== STL ====
 #include <format>
 #include <source_location>
@@ -218,6 +222,7 @@ using carb::getCachedInterface;
 
 // ==== pxr ====
 export namespace pxr {
+using pxr::GfBBox3d;
 using pxr::GfIsGfMatrix;
 using pxr::GfIsGfQuat;
 using pxr::GfIsGfVec;
@@ -229,6 +234,11 @@ using pxr::GfMatrix4d;
 using pxr::GfMatrix4f;
 using pxr::GfQuatd;
 using pxr::GfQuatf;
+using pxr::GfRange1d;
+using pxr::GfRange1f;
+using pxr::GfRange2d;
+using pxr::GfRange2f;
+using pxr::GfRange3d;
 using pxr::GfRotation;
 using pxr::GfTransform;
 using pxr::GfVec2d;
@@ -272,8 +282,10 @@ using pxr::TfNotice;
 using pxr::TfRefPtr;
 using pxr::TfStaticData;
 using pxr::TfToken;
+using pxr::TfTokenVector;
 using pxr::TfWeakBase;
 using pxr::TfWeakPtr;
+using pxr::UsdGeomBBoxCache;
 using pxr::UsdGeomGetStageMetersPerUnit;
 using pxr::UsdGeomTokens;
 using pxr::UsdGeomXformable;
@@ -288,6 +300,8 @@ using pxr::UsdStage;
 using pxr::UsdStageCache;
 using pxr::UsdStageRefPtr;
 using pxr::UsdStageWeakPtr;
+using pxr::UsdTimeCode;
+using pxr::UsdTimeCodeTokens;
 using pxr::UsdTokens;
 using pxr::UsdUtilsStageCache;
 using pxr::VtIntArray;

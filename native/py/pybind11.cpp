@@ -67,7 +67,8 @@ PYBIND11_MODULE(_native, m) {
 	      pybind11::arg("ref_pos") = std::nullopt,
 	      "Import the lego topology from the given JSON string into the "
 	      "specified environment, applying the given reference-to-environment "
-	      "transform (pose in meters, wxyz quaternion).");
+	      "transform (pose in meters, wxyz quaternion). Returns "
+	      "(part_paths, connection_paths) for the imported objects.");
 
 	m.def("compute_connected_component", &compute_connected_component,
 	      pybind11::arg("part_path"),
@@ -75,7 +76,19 @@ PYBIND11_MODULE(_native, m) {
 	      "of the specified part path. Returns two empty lists if the part is "
 	      "unknown.");
 
-	m.def("arrange_bricks_on_table", &arrange_bricks_on_table,
+	m.def("compute_obstacle_regions", &compute_obstacle_regions,
+	      pybind11::arg("obstacle_paths"), pybind11::arg("table_xy"),
+	      pybind11::arg("table_z"), pybind11::arg("clearance_height"),
+	      "Compute 2D obstacle bounding boxes on the table for the given "
+	      "obstacle prim paths. obstacle_paths must all belong to the same "
+	      "environment. table_xy is the table bounding box (x_min, y_min, "
+	      "x_max, y_max) in meters and table_z is the table height in "
+	      "meters. clearance_height specifies the vertical band around the "
+	      "table in meters within which obstacles are considered. Returns a "
+	      "list of rectangles (x_min, y_min, x_max, y_max) in meters in the "
+	      "environment frame.");
+
+	m.def("arrange_parts_on_table", &arrange_parts_on_table,
 	      pybind11::arg("parts_to_arrange"),
 	      pybind11::arg("parts_to_avoid") = std::nullopt,
 	      pybind11::arg("obstacles") = std::nullopt, pybind11::arg("table_xy"),
@@ -84,14 +97,35 @@ PYBIND11_MODULE(_native, m) {
 	      pybind11::arg("grid_resolution") = std::nullopt,
 	      pybind11::arg("allow_rotation") = std::nullopt,
 	      pybind11::arg("avoid_all_other_parts") = std::nullopt,
-	      "Arrange the specified bricks on a rectangular table region in the "
-	      "environment frame. Parts to arrange and avoid are given as USD prim "
-	      "paths. Obstacles, if provided, are a list of rectangles given as "
+	      pybind11::arg("structure_ids") = std::nullopt,
+	      "Arrange the specified parts on a rectangular table region in the "
+	      "environment frame. Each entry in parts_to_arrange is treated as a "
+	      "seed. If structure_ids is not provided, each connected component "
+	      "formed by the seeds is treated as an independent structure and "
+	      "packed as a single rectangle. If structure_ids is provided, seeds "
+	      "sharing the same structure id are grouped into a structure; all "
+	      "connected components belonging to a structure are moved as a rigid "
+	      "group, preserving relative poses between components in the same "
+	      "structure. Parts to arrange and avoid are given as USD prim paths. "
+	      "Obstacles, if provided, are a list of rectangles given as "
 	      "(x_min, y_min, x_max, y_max) in meters. table_xy is the table "
 	      "bounding box (x_min, y_min, x_max, y_max) in meters and table_z is "
 	      "the table height in meters. Clearance, grid_resolution and "
 	      "allow_rotation are optional tuning parameters. Returns "
-	      "(placed_paths, not_placed_paths).");
+	      "(placed_paths, not_placed_paths), where the paths are the subset of "
+	      "seed paths that were placed or not placed.");
+
+	m.def(
+	    "arrange_parts_in_workspace", &arrange_parts_in_workspace,
+	    pybind11::arg("workspace_path"), pybind11::arg("parts_to_arrange"),
+	    pybind11::arg("structure_ids") = std::nullopt,
+	    "Arrange the specified parts inside a workspace region defined by a "
+	    "workspace prim. workspace_path is the USD prim path of the "
+	    "workspace; parts_to_arrange are USD prim paths for the parts to "
+	    "move. If structure_ids is provided, seeds sharing the same structure "
+	    "id are grouped and moved as rigid structures, preserving their "
+	    "internal relative poses. Returns (placed_paths, not_placed_paths) "
+	    "for the subset of seed paths that were placed or not placed.");
 
 	pybind11::class_<AssemblyThresholds>(m, "AssemblyThresholds",
 	                                     "Assembly detection thresholds.")

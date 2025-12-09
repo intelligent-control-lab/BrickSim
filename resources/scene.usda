@@ -21,7 +21,7 @@
             string boundCamera = "/World/Camera"
         }
         dictionary omni_layer = {
-            string authoring_layer = "./scene.usd"
+            string authoring_layer = "./scene.usda"
             dictionary locked = {
             }
             dictionary muteness = {

@@ -14,10 +14,12 @@ from lego_assemble._native import (
     import_lego,
     get_assembly_thresholds,
     set_assembly_thresholds,
+    arrange_parts_in_workspace,
 )
 from lego_assemble.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
 from lego_assemble.importers.legolization import legolization_json_to_topology_json, is_legolization_json
 from lego_assemble.utils.ui import show_file_picker_dialog
+from lego_assemble.utils.usd_parse import get_env_path
 
 _HOT_RELOAD_SETTING = "/app/lego_assemble/kit_runner/has_target"
 
@@ -56,14 +58,6 @@ class LegoUI():
                         omni.ui.Label("Env id:", width=100)
                         self._base_path_field = omni.ui.StringField()
                         self._base_path_field.model.set_value("")
-                    with omni.ui.HStack(spacing=10):
-                        omni.ui.Label("Position:", width=100)
-                        self._pos_x_field = omni.ui.FloatField()
-                        self._pos_x_field.model.set_value(0)
-                        self._pos_y_field = omni.ui.FloatField()
-                        self._pos_y_field.model.set_value(0)
-                        self._pos_z_field = omni.ui.FloatField()
-                        self._pos_z_field.model.set_value(0.1)
                     omni.ui.Button("Add Brick", clicked_fn=self._add_brick_clicked)
                     omni.ui.Button("Reset Env", clicked_fn=self._reset_env_clicked)
                     omni.ui.Button("Import", clicked_fn=lambda: asyncio.ensure_future(self._import_async()))
@@ -148,9 +142,6 @@ class LegoUI():
         width = self._dim_x_field.model.as_int
         length = self._dim_y_field.model.as_int
         height = self._dim_z_field.model.as_int
-        pos_x = self._pos_x_field.model.as_float
-        pos_y = self._pos_y_field.model.as_float
-        pos_z = self._pos_z_field.model.as_float
 
         env_id_str = self._base_path_field.model.as_string
         env_id = int(env_id_str) if env_id_str else -1
@@ -158,9 +149,17 @@ class LegoUI():
             dimensions=(width, length, height),
             color=self.get_selected_color(),
             env_id=env_id,
-            rot=(1.0, 0.0, 0.0, 0.0),
-            pos=(pos_x, pos_y, pos_z),
         )
+        carb.log_info(f"Added brick {brick_path} to env {env_id}")
+
+        workspace_path = get_env_path(env_id) + "/LegoWorkspace"
+        try:
+            _, not_placed = arrange_parts_in_workspace(workspace_path, [brick_path])
+        except Exception as exc:
+            carb.log_warn(f"Failed to arrange part in workspace: {exc}")
+            return
+        if not_placed:
+            carb.log_warn(f"Could not place part {not_placed} in workspace {workspace_path}")
 
     def _reset_env_clicked(self):
         env_id_str = self._base_path_field.model.as_string
@@ -211,8 +210,17 @@ class LegoUI():
             )
 
         env_id = self.get_env_id()
-        import_lego(topology, env_id, (1.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+        imported_parts, _ = import_lego(topology, env_id)
         carb.log_info(f"Imported topology from {fullpath}")
+
+        workspace_path = get_env_path(env_id) + "/LegoWorkspace"
+        try:
+            _, not_placed = arrange_parts_in_workspace(workspace_path, imported_parts, [1] * len(imported_parts))
+        except Exception as exc:
+            carb.log_warn(f"Failed to arrange parts in workspace: {exc}")
+            return
+        if not_placed:
+            carb.log_warn(f"Could not place parts {not_placed} in workspace {workspace_path}")
 
     def _set_threshold(self, name: str, value: float):
         thr = get_assembly_thresholds()

@@ -27,6 +27,10 @@ using pxr::TfToken;
     ((Body, "Body"))                                                           \
     ((Studs, "Studs"))                                                         \
     ((StudPrototype, "StudPrototype"))                                         \
+    ((LegoWorkspaceObstacles, "lego:workspace_obstacles"))                     \
+    ((LegoWorkspaceClearance, "lego:workspace_clearance"))                     \
+    ((LegoWorkspaceGridResolution, "lego:workspace_grid_resolution"))          \
+    ((LegoWorkspaceAllowRotation, "lego:workspace_allow_rotation"))            \
 // clang-format on
 
 export {

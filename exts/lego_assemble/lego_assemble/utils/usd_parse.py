@@ -1,6 +1,9 @@
 from pxr import Gf, Usd
 from isaacsim.core.utils.stage import get_current_stage
 
+def get_env_path(env_id: int) -> str:
+    return "/World" if env_id == -1 else f"/World/envs/env_{env_id}"
+
 def get_brick_dimensions(brick_path: str) -> tuple[int, int, int]:
     """Get the dimensions of a brick part.
 

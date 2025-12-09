@@ -309,10 +309,12 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 	}
 
 	template <class UsdGraph>
-	void import(const JsonTopology &topology, UsdGraph &g,
-	            std::int64_t env_id = kNoEnv,
-	            const Transformd &T_env_ref = SE3d{}.identity()) const {
+	std::tuple<std::vector<PartId>, std::vector<ConnSegId>>
+	import(const JsonTopology &topology, UsdGraph &g,
+	       std::int64_t env_id = kNoEnv,
+	       const Transformd &T_env_ref = SE3d{}.identity()) const {
 		// 1) Import parts
+		std::vector<PartId> imported_parts;
 		std::unordered_map<std::int64_t, PartId> id_map;
 		for (const JsonPart &jp : topology.parts) {
 			bool matched =
@@ -330,6 +332,7 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 				    }
 				    const auto &[pid, path] = *added;
 				    id_map[jp.id] = pid;
+				    imported_parts.push_back(pid);
 			    });
 			if (!matched) {
 				log_warn(
@@ -340,6 +343,7 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 		}
 
 		// 2) Import connections
+		std::vector<ConnSegId> imported_conns;
 		for (const JsonConnection &jc : topology.connections) {
 			auto it_stud = id_map.find(jc.stud_id);
 			auto it_hole = id_map.find(jc.hole_id);
@@ -364,7 +368,10 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 				log_warn("TopologySerializer: failed to import connection "
 				         "between {}:{} and {}:{}",
 				         jc.stud_id, jc.stud_iface, jc.hole_id, jc.hole_iface);
+				continue;
 			}
+			const auto &[csid, conn_path] = *connected;
+			imported_conns.push_back(csid);
 		}
 
 		// 3) Apply pose hints
@@ -380,6 +387,7 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 			Transformd T_env_part = T_env_ref * T_ref_part;
 			g.set_component_transform(pid, T_env_part);
 		}
+		return {std::move(imported_parts), std::move(imported_conns)};
 	}
 
   private:

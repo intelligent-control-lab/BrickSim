@@ -3,7 +3,7 @@
     customLayerData = {
         dictionary cameraSettings = {
             dictionary Front = {
-                double3 position = (5.000000111758711, 0, 0)
+                double3 position = (5.0, 0, 0)
                 double radius = 5
             }
             dictionary Perspective = {
@@ -11,11 +11,11 @@
                 double3 target = (0.02704102214096804, -0.08263544388882572, 0.04543437798038675)
             }
             dictionary Right = {
-                double3 position = (0, -5.000000111758711, 0)
+                double3 position = (0, -5.0, 0)
                 double radius = 5
             }
             dictionary Top = {
-                double3 position = (0, 0, 5.000000111758711)
+                double3 position = (0, 0, 5.0)
                 double radius = 5
             }
             string boundCamera = "/OmniverseKit_Persp"
@@ -26,18 +26,19 @@
             int version = 1
         }
         dictionary omni_layer = {
-            string authoring_layer = "./demo.usd"
+            string authoring_layer = "./demo.usda"
             dictionary locked = {
             }
             dictionary muteness = {
             }
         }
         dictionary renderSettings = {
+            bool "rtx:raytracing:fractionalCutoutOpacity" = 1
         }
     }
     defaultPrim = "World"
     endTimeCode = 1000000
-    metersPerUnit = 0.9999999776482582
+    metersPerUnit = 1.0
     startTimeCode = 0
     timeCodesPerSecond = 60
     upAxis = "Z"
@@ -46,13 +47,12 @@
 def Xform "World"
 {
     def "scene" (
-        delete payload = @./scene.usd@
         prepend payload = @./scene.usda@
     )
     {
         quatf xformOp:orient = (1, 0, 0, 0)
         float3 xformOp:scale = (1, 1, 1)
-        double3 xformOp:scale:unitsResolve = (0.010000000223517424, 0.010000000223517424, 0.010000000223517424)
+        double3 xformOp:scale:unitsResolve = (0.01, 0.01, 0.01)
         double3 xformOp:translate = (0, 0, 0)
         uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale", "xformOp:scale:unitsResolve"]
 
@@ -85,22 +85,83 @@ def Xform "World"
         normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, -1), (0, 0, -1), (0, 0, -1), (0, 0, -1), (0, 1, 0), (0, 1, 0), (0, 1, 0), (0, 1, 0), (0, -1, 0), (0, -1, 0), (0, -1, 0), (0, -1, 0), (-1, 0, 0), (-1, 0, 0), (-1, 0, 0), (-1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0)] (
             interpolation = "faceVarying"
         )
-        vector3f physics:angularVelocity = (0.2486608, 1.9312484, 0.004528933)
         uniform token physics:approximation = "convexHull"
         bool physics:collisionEnabled = 1
         bool physics:kinematicEnabled = 0
         float physics:mass = 0.01
         bool physics:rigidBodyEnabled = 1
-        vector3f physics:velocity = (0.00006229257, -0.00010708689, -0.00021283371)
         point3f[] points = [(-0.5, -0.5, 0.5), (0.5, -0.5, 0.5), (-0.5, 0.5, 0.5), (0.5, 0.5, 0.5), (-0.5, -0.5, -0.5), (0.5, -0.5, -0.5), (-0.5, 0.5, -0.5), (0.5, 0.5, -0.5)]
         texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1), (1, 0), (1, 1), (0, 1), (0, 0), (0, 1), (0, 0), (1, 0), (1, 1), (0, 0), (1, 0), (1, 1), (0, 1), (0, 0), (1, 0), (1, 1), (0, 1), (1, 0), (1, 1), (0, 1), (0, 0)] (
             interpolation = "faceVarying"
         )
         uniform token subdivisionScheme = "none"
-        quatd xformOp:orient = (0.9999999972185525, -0.00004290811698587771, 0.00006100555085088209, -3.3359837602578634e-7)
+        quatd xformOp:orient = (1.0, 0.0, 0.0, 0.0)
         double3 xformOp:scale = (0.01, 0.01, 0.01)
-        double3 xformOp:translate = (0.050001002848148346, 8.152341024469933e-7, 0.004999994300305843)
+        double3 xformOp:translate = (0.05, 0.0, 0.005)
         uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+    }
+
+    def Mesh "LegoWorkspace" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        uniform bool doubleSided = 0
+        float3[] extent = [(-0.5, -0.5, -0.5), (0.5, 0.5, 0.5)]
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [0, 1, 3, 2, 4, 6, 7, 5, 6, 2, 3, 7, 4, 5, 1, 0, 4, 0, 2, 6, 5, 7, 3, 1]
+        rel material:binding = </World/Looks/GreenTranslucent> (
+            bindMaterialAs = "weakerThanDescendants"
+        )
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, -1), (0, 0, -1), (0, 0, -1), (0, 0, -1), (0, 1, 0), (0, 1, 0), (0, 1, 0), (0, 1, 0), (0, -1, 0), (0, -1, 0), (0, -1, 0), (0, -1, 0), (-1, 0, 0), (-1, 0, 0), (-1, 0, 0), (-1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0)] (
+            interpolation = "faceVarying"
+        )
+        point3f[] points = [(-0.5, -0.5, 0.5), (0.5, -0.5, 0.5), (-0.5, 0.5, 0.5), (0.5, 0.5, 0.5), (-0.5, -0.5, -0.5), (0.5, -0.5, -0.5), (-0.5, 0.5, -0.5), (0.5, 0.5, -0.5)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1), (1, 0), (1, 1), (0, 1), (0, 0), (0, 1), (0, 0), (1, 0), (1, 1), (0, 0), (1, 0), (1, 1), (0, 1), (0, 0), (1, 0), (1, 1), (0, 1), (1, 0), (1, 1), (0, 1), (0, 0)] (
+            interpolation = "faceVarying"
+        )
+        uniform token purpose = "guide"
+        bool singleSided = 1
+        uniform token subdivisionScheme = "none"
+        token visibility = "inherited"
+        quatd xformOp:orient = (1, 0, 0, 0)
+        double3 xformOp:scale = (1.8, 0.8, 0.2)
+        double3 xformOp:translate = (0, 0, 0.1)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        rel lego:workspace_obstacles = [
+            <../Cube>
+        ]
+    }
+
+    def Scope "Looks"
+    {
+        def Material "GreenTranslucent"
+        {
+            token outputs:mdl:displacement.connect = </World/Looks/GreenTranslucent/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </World/Looks/GreenTranslucent/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </World/Looks/GreenTranslucent/Shader.outputs:out>
+
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                float inputs:albedo_add = 0
+                float inputs:albedo_brightness = 1
+                float inputs:ao_to_diffuse = 0
+                color3f inputs:diffuse_color_constant = (0, 1, 0)
+                bool inputs:enable_opacity = 1
+                float inputs:metallic_constant = 0
+                float inputs:opacity_constant = 0.3
+                int inputs:opacity_mode = 1
+                float inputs:opacity_threshold = 0
+                float inputs:reflection_roughness_constant = 0.5
+                float inputs:reflection_roughness_texture_influence = 0
+                float inputs:specular_level = 0.5
+                token outputs:out (
+                    renderType = "material"
+                )
+            }
+        }
     }
 }
 
@@ -144,8 +205,10 @@ def "Render" (
                 bool omni:rtx:pt:lightcache:cached:dontResolveConflicts = 1
                 int omni:rtx:pt:maxSamplesPerLaunch = 2073600
                 int omni:rtx:pt:mgpu:maxPixelsPerRegionExponent = 12
+                token omni:rtx:rendermode
                 color3f omni:rtx:rt:ambientLight:color = (0.1, 0.1, 0.1)
                 bool omni:rtx:rt:demoire = 0
+                bool omni:rtx:rt:fractionalOpacity = 1
                 bool omni:rtx:rt:lightcache:spatialCache:dontResolveConflicts = 1
                 bool omni:rtx:scene:hydra:materialSyncLoads = 1
                 bool omni:rtx:scene:hydra:mdlMaterialWarmup = 1

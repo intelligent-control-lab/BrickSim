@@ -126,6 +126,10 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 	UsdLegoGraph(UsdLegoGraph &&) = delete;
 	UsdLegoGraph &operator=(UsdLegoGraph &&) = delete;
 
+	pxr::UsdStageRefPtr stage() const {
+		return stage_;
+	}
+
 	// Direct edit to topology is disallowed.
 	const TopologyGraph &topology() const {
 		return topology_;
