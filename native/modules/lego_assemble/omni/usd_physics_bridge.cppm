@@ -208,21 +208,12 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		const auto &[physics_stud_ref, physics_hole_ref] = physics_csref;
 		const auto &[physics_stud_pid, stud_ifid] = physics_stud_ref;
 		const auto &[physics_hole_pid, hole_ifid] = physics_hole_ref;
-		PhysicsPartId t_physics_stud_pid{physics_stud_pid};
-		PhysicsPartId t_physics_hole_pid{physics_hole_pid};
-		const UsdPartId *t_usd_stud_pid_ptr =
-		    pid_mapping_.template find_key<UsdPartId>(t_physics_stud_pid);
-		const UsdPartId *t_usd_hole_pid_ptr =
-		    pid_mapping_.template find_key<UsdPartId>(t_physics_hole_pid);
-		if (!t_usd_stud_pid_ptr || !t_usd_hole_pid_ptr) [[unlikely]] {
-			log_error("UsdPhysicsBridge: failed to find USD part ids for "
-			          "physics part ids {} and {} during connection "
-			          "creation writeback",
-			          physics_stud_pid, physics_hole_pid);
-			return false;
-		}
-		PartId usd_stud_pid = t_usd_stud_pid_ptr->value();
-		PartId usd_hole_pid = t_usd_hole_pid_ptr->value();
+		PartId usd_stud_pid =
+		    pid_mapping_.key_of<UsdPartId>(PhysicsPartId{physics_stud_pid})
+		        .value();
+		PartId usd_hole_pid =
+		    pid_mapping_.key_of<UsdPartId>(PhysicsPartId{physics_hole_pid})
+		        .value();
 		SuppressUsdCallbacks _suppress_cbk{this};
 		auto usd_conn_opt = usd_graph_->connect({usd_stud_pid, stud_ifid},
 		                                        {usd_hole_pid, hole_ifid},
@@ -445,8 +436,8 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 			return false;
 		}
 		ConnSegId physics_csid = *physics_csid_opt;
-		PhysicsConnSegId t_physics_csid{physics_csid};
-		if (!csid_mapping_.emplace(t_physics_csid, t_usd_csid)) [[unlikely]] {
+		if (!csid_mapping_.emplace(PhysicsConnSegId{physics_csid}, t_usd_csid))
+		    [[unlikely]] {
 			log_error("UsdPhysicsBridge: failed to map physics conn seg id {} "
 			          "and USD conn seg id {}",
 			          physics_csid, usd_csid);
