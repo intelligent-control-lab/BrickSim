@@ -65,16 +65,13 @@ int main() {
 
 	// Part A (pid 0): one stud and one hole
 	std::initializer_list<InterfaceSpec> aifs{stud(10, 2, 2), hole(20, 2, 2)};
-	assert(
-	    g.add_part<CustomPart>(std::tuple<>{}, 0.1, BrickColor{1, 2, 3}, aifs));
+	assert(g.add_part<CustomPart>(0.1, BrickColor{1, 2, 3}, aifs));
 	// Part B (pid 1)
 	std::initializer_list<InterfaceSpec> bifs{stud(11, 2, 2), hole(21, 2, 2)};
-	assert(
-	    g.add_part<CustomPart>(std::tuple<>{}, 0.2, BrickColor{4, 5, 6}, bifs));
+	assert(g.add_part<CustomPart>(0.2, BrickColor{4, 5, 6}, bifs));
 
 	ConnectionSegment cs{}; // default offset (0,0)
 	// If any allocation falls back to default PMR (fail), this will abort.
-	assert(g.connect(InterfaceRef{0, 10}, InterfaceRef{1, 21}, std::tuple<>{},
-	                 cs));
+	assert(g.connect(InterfaceRef{0, 10}, InterfaceRef{1, 21}, cs));
 	return 0;
 }

@@ -32,18 +32,14 @@ int main() {
 	                                          hole(22)};
 	std::initializer_list<InterfaceSpec> bifs{stud(11), stud(13), hole(21),
 	                                          hole(23)};
-	assert(
-	    g.add_part<CustomPart>(std::tuple<>{}, 0.1, BrickColor{1, 2, 3}, aifs));
-	assert(
-	    g.add_part<CustomPart>(std::tuple<>{}, 0.2, BrickColor{4, 5, 6}, bifs));
+	assert(g.add_part<CustomPart>(0.1, BrickColor{1, 2, 3}, aifs));
+	assert(g.add_part<CustomPart>(0.2, BrickColor{4, 5, 6}, bifs));
 
 	ConnectionSegment cs{}; // default offset(0,0), yaw 0
 	// First connection succeeds
-	assert(g.connect(InterfaceRef{0, 10}, InterfaceRef{1, 21}, std::tuple<>{},
-	                 cs));
+	assert(g.connect(InterfaceRef{0, 10}, InterfaceRef{1, 21}, cs));
 	// Second connection with matching transform between same endpoint must also succeed
 	// If connect() unconditionally calls dynamic_graph_.add_edge() again, this will crash.
-	assert(g.connect(InterfaceRef{0, 12}, InterfaceRef{1, 23}, std::tuple<>{},
-	                 cs));
+	assert(g.connect(InterfaceRef{0, 12}, InterfaceRef{1, 23}, cs));
 	return 0;
 }

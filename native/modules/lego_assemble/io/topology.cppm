@@ -200,48 +200,34 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 		JsonTopology result;
 
 		// Serialize parts
-		[&]<PartWrapperLike... PWs>(type_list<PWs...>) {
-			(
-			    [&]<PartWrapperLike PW>(
-			        const pmr_vector_storage<PW, PartId> &storage) {
-				    using P = typename PW::wrapped_type;
-				    using PS = SerializerFor<P>;
-
-				    // TODO: a bug in clang (?) causes us to be unable to use zip
-				    // for (const auto &[pid, pw] : std::views::zip(storage.ids, storage.data)) {
-				    for (std::size_t i = 0; i < storage.ids.size(); ++i) {
-					    PartId pid = storage.ids[i];
-					    if (!part_filter(pid)) {
-						    continue;
-					    }
-					    const PW &pw = storage.data[i];
-
-					    const P &part = pw.wrapped();
-					    result.parts.push_back({
-					        .id = static_cast<std::int64_t>(pid),
-					        .type = std::string{PS::TypeString},
-					        .payload = PS{}.to_json(part),
-					    });
-				    }
-			    }(g.parts().template storage_for<PWs>()),
-			    ...);
-		}(typename Graph::WrappedPartList{});
+		g.parts().for_each([&](auto &&keys, auto &&pw) {
+			PartId pid =
+			    std::get<Graph::PartKeys::template index_of<PartId>>(keys);
+			if (!part_filter(pid)) {
+				return;
+			}
+			using PW = std::remove_cvref_t<decltype(pw)>;
+			using P = typename PW::wrapped_type;
+			using PS = SerializerFor<P>;
+			const P &part = pw.wrapped();
+			result.parts.push_back({
+			    .id = static_cast<std::int64_t>(pid),
+			    .type = std::string{PS::TypeString},
+			    .payload = PS{}.to_json(part),
+			});
+		});
 
 		// Serialize connections
-		static constexpr std::size_t IdxConnSegId =
-		    Graph::ConnSegKeys::template index_of<ConnSegId>;
-		static constexpr std::size_t IdxConnSegRef =
-		    Graph::ConnSegKeys::template index_of<ConnSegRef>;
-		for (const auto &[cs_keys, csw] : g.connection_segments().view()) {
-			ConnSegId csid = std::get<IdxConnSegId>(cs_keys);
+		for (const auto &entry : g.connection_segments().view()) {
+			ConnSegId csid = entry.template key<ConnSegId>();
 			if (!conn_filter(csid)) {
 				continue;
 			}
-			const ConnSegRef &cs_ref = std::get<IdxConnSegRef>(cs_keys);
+			const ConnSegRef &cs_ref = entry.template key<ConnSegRef>();
 			const auto &[stud_ref, hole_ref] = cs_ref;
 			const auto &[stud_pid, stud_ifid] = stud_ref;
 			const auto &[hole_pid, hole_ifid] = hole_ref;
-			const ConnectionSegment &cs = csw.wrapped();
+			const ConnectionSegment &cs = entry.value().wrapped();
 			result.connections.push_back({
 			    .stud_id = static_cast<std::int64_t>(stud_pid),
 			    .stud_iface = static_cast<std::int64_t>(stud_ifid),
@@ -319,7 +305,7 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 		for (const JsonPart &jp : topology.parts) {
 			bool matched =
 			    visit_by_type_string(jp.type, [&](auto &&serializer) {
-				    using PS = std::decay_t<decltype(serializer)>;
+				    using PS = std::remove_cvref_t<decltype(serializer)>;
 				    using P = PS::PartType;
 				    P part = serializer.from_json(jp.payload);
 				    auto added =

@@ -174,15 +174,13 @@ static void test_initial_sync_prepopulated_stage() {
 	assert(g.topology().connection_bundles().size() == 1);
 
 	// Path → PartId mapping
-	const PartId *pidA =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA = g.topology().parts().find_key<PartId>(pathA);
+	const PartId *pidB = g.topology().parts().find_key<PartId>(pathB);
 	assert(pidA && pidB);
 
 	using PW = UsdPartWrapper<BrickPart>;
-	const PW *pA = g.topology().parts().get<PW>(*pidA);
-	const PW *pB = g.topology().parts().get<PW>(*pidB);
+	const PW *pA = g.topology().parts().find_value<PW>(*pidA);
+	const PW *pB = g.topology().parts().find_value<PW>(*pidB);
 	assert(pA && pB);
 	assert_brick_colliders(*pA, pathA);
 	assert_brick_colliders(*pB, pathB);
@@ -194,10 +192,8 @@ static void test_initial_sync_prepopulated_stage() {
 	assert(pB->neighbor_parts().contains(*pidA));
 
 	// Dynamic graph connectivity
-	const DgVertexId *a_dg =
-	    g.topology().parts().project_key<PartId, DgVertexId>(*pidA);
-	const DgVertexId *b_dg =
-	    g.topology().parts().project_key<PartId, DgVertexId>(*pidB);
+	const DgVertexId *a_dg = g.topology().parts().find_key<DgVertexId>(*pidA);
+	const DgVertexId *b_dg = g.topology().parts().find_key<DgVertexId>(*pidB);
 	assert(a_dg && b_dg);
 	assert(
 	    g.topology().dynamic_graph().connected(a_dg->value(), b_dg->value()));
@@ -239,10 +235,8 @@ static void test_incremental_alloc_via_allocator() {
 	assert(g.topology().connection_segments().size() == 0);
 	assert(g.topology().connection_bundles().size() == 0);
 
-	const PartId *pidA =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA = g.topology().parts().find_key<PartId>(pathA);
+	const PartId *pidB = g.topology().parts().find_key<PartId>(pathB);
 	assert(pidA && pidB);
 
 	// Now author a connection; graph must realize it
@@ -255,8 +249,8 @@ static void test_incremental_alloc_via_allocator() {
 	assert(g.topology().connection_bundles().size() == 1);
 
 	using PW = UsdPartWrapper<BrickPart>;
-	const PW *pA = g.topology().parts().get<PW>(*pidA);
-	const PW *pB = g.topology().parts().get<PW>(*pidB);
+	const PW *pA = g.topology().parts().find_value<PW>(*pidA);
+	const PW *pB = g.topology().parts().find_value<PW>(*pidB);
 	assert(pA && pB);
 	assert_brick_colliders(*pA, pathA);
 	assert_brick_colliders(*pB, pathB);
@@ -266,10 +260,8 @@ static void test_incremental_alloc_via_allocator() {
 	assert(pA->neighbor_parts().contains(*pidB));
 	assert(pB->neighbor_parts().contains(*pidA));
 
-	const DgVertexId *a_dg =
-	    g.topology().parts().project_key<PartId, DgVertexId>(*pidA);
-	const DgVertexId *b_dg =
-	    g.topology().parts().project_key<PartId, DgVertexId>(*pidB);
+	const DgVertexId *a_dg = g.topology().parts().find_key<DgVertexId>(*pidA);
+	const DgVertexId *b_dg = g.topology().parts().find_key<DgVertexId>(*pidB);
 	assert(a_dg && b_dg);
 	assert(
 	    g.topology().dynamic_graph().connected(a_dg->value(), b_dg->value()));
@@ -312,15 +304,13 @@ static void test_connection_before_parts_unrealized_then_realized() {
 	assert(g.topology().connection_segments().size() == 1);
 	assert(g.topology().connection_bundles().size() == 1);
 
-	const PartId *pidA =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA = g.topology().parts().find_key<PartId>(pathA);
+	const PartId *pidB = g.topology().parts().find_key<PartId>(pathB);
 	assert(pidA && pidB);
 
 	using PW = UsdPartWrapper<BrickPart>;
-	const PW *pA = g.topology().parts().get<PW>(*pidA);
-	const PW *pB = g.topology().parts().get<PW>(*pidB);
+	const PW *pA = g.topology().parts().find_value<PW>(*pidA);
+	const PW *pB = g.topology().parts().find_value<PW>(*pidB);
 	assert(pA && pB);
 	assert_brick_colliders(*pA, pathA);
 	assert_brick_colliders(*pB, pathB);
@@ -330,10 +320,8 @@ static void test_connection_before_parts_unrealized_then_realized() {
 	assert(pA->neighbor_parts().contains(*pidB));
 	assert(pB->neighbor_parts().contains(*pidA));
 
-	const DgVertexId *a_dg =
-	    g.topology().parts().project_key<PartId, DgVertexId>(*pidA);
-	const DgVertexId *b_dg =
-	    g.topology().parts().project_key<PartId, DgVertexId>(*pidB);
+	const DgVertexId *a_dg = g.topology().parts().find_key<DgVertexId>(*pidA);
+	const DgVertexId *b_dg = g.topology().parts().find_key<DgVertexId>(*pidB);
 	assert(a_dg && b_dg);
 	assert(
 	    g.topology().dynamic_graph().connected(a_dg->value(), b_dg->value()));
@@ -369,15 +357,13 @@ static void test_deallocate_managed_removes_graph_state() {
 	assert(g.topology().connection_segments().size() == 1);
 	assert(g.topology().connection_bundles().size() == 1);
 
-	const PartId *pidA =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA = g.topology().parts().find_key<PartId>(pathA);
+	const PartId *pidB = g.topology().parts().find_key<PartId>(pathB);
 	assert(pidA && pidB);
 
 	using PW = UsdPartWrapper<BrickPart>;
-	const PW *pA = g.topology().parts().get<PW>(*pidA);
-	const PW *pB = g.topology().parts().get<PW>(*pidB);
+	const PW *pA = g.topology().parts().find_value<PW>(*pidA);
+	const PW *pB = g.topology().parts().find_value<PW>(*pidB);
 	assert(pA && pB);
 	assert_brick_colliders(*pA, pathA);
 	assert_brick_colliders(*pB, pathB);
@@ -392,8 +378,8 @@ static void test_deallocate_managed_removes_graph_state() {
 	assert(g.topology().connection_segments().size() == 0);
 	assert(g.topology().connection_bundles().size() == 0);
 
-	pA = g.topology().parts().get<PW>(*pidA);
-	pB = g.topology().parts().get<PW>(*pidB);
+	pA = g.topology().parts().find_value<PW>(*pidA);
+	pB = g.topology().parts().find_value<PW>(*pidB);
 	assert(pA && pB);
 	assert(pA->outgoings().size() == 0);
 	assert(pB->incomings().size() == 0);
@@ -434,11 +420,10 @@ static void test_resync_part_modified_updates_brick() {
 	assert(g.topology().connection_segments().size() == 0);
 	assert(g.topology().connection_bundles().size() == 0);
 
-	const PartId *pid_before =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(path);
+	const PartId *pid_before = g.topology().parts().find_key<PartId>(path);
 	assert(pid_before);
 	using PW = UsdPartWrapper<BrickPart>;
-	const PW *p_before = g.topology().parts().get<PW>(*pid_before);
+	const PW *p_before = g.topology().parts().find_value<PW>(*pid_before);
 	assert(p_before);
 	assert_brick_colliders(*p_before, path);
 	assert(p_before->wrapped().color() == red);
@@ -449,10 +434,9 @@ static void test_resync_part_modified_updates_brick() {
 	pxr::GfVec3i new_color_gf(0, 255, 0);
 	prim.GetAttribute(LegoTokens->BrickColor).Set(new_color_gf);
 
-	const PartId *pid_after =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(path);
+	const PartId *pid_after = g.topology().parts().find_key<PartId>(path);
 	assert(pid_after);
-	const PW *p_after = g.topology().parts().get<PW>(*pid_after);
+	const PW *p_after = g.topology().parts().find_value<PW>(*pid_after);
 	assert(p_after);
 	assert_brick_colliders(*p_after, path);
 	assert(p_after->wrapped().color() == green);
@@ -537,12 +521,11 @@ static void test_resync_connection_modified_segment_updates_topology() {
 	                  BrickPart::HoleId, cs_modified);
 
 	const lego_assemble::ConnSegId *csid_after =
-	    g.topology()
-	        .connection_segments()
-	        .project<pxr::SdfPath, lego_assemble::ConnSegId>(connPath);
+	    g.topology().connection_segments().find_key<lego_assemble::ConnSegId>(
+	        connPath);
 	assert(csid_after);
 	const SimpleWrapper<ConnectionSegment> *csw_after =
-	    g.topology().connection_segments().find(*csid_after);
+	    g.topology().connection_segments().find_value(*csid_after);
 	assert(csw_after);
 	assert(csw_after->wrapped().offset == cs_modified.offset);
 	assert(csw_after->wrapped().yaw == cs_modified.yaw);
@@ -618,8 +601,7 @@ static void test_add_part_graph_to_usd() {
 	pxr::UsdPrim primA = stage->GetPrimAtPath(pathA);
 	assert(primA.IsValid());
 
-	const PartId *pidA =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
+	const PartId *pidA = g.topology().parts().find_key<PartId>(pathA);
 	assert(pidA);
 
 	// Regular env -> /World/envs/env_X/managed/Parts/...
@@ -632,8 +614,7 @@ static void test_add_part_graph_to_usd() {
 	pxr::UsdPrim primB = stage->GetPrimAtPath(pathB);
 	assert(primB.IsValid());
 
-	const PartId *pidB =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidB = g.topology().parts().find_key<PartId>(pathB);
 	assert(pidB);
 
 	// Two realized parts, no connections, nothing unrealized.
@@ -861,10 +842,8 @@ static void test_connect_and_disconnect_realized_graph_api() {
 	[[maybe_unused]] auto [ignored_pidA2, pathA] = *pathA_opt;
 	[[maybe_unused]] auto [ignored_pidB2, pathB] = *pathB_opt;
 
-	const PartId *pidA =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA = g.topology().parts().find_key<PartId>(pathA);
+	const PartId *pidB = g.topology().parts().find_key<PartId>(pathB);
 	assert(pidA && pidB);
 
 	InterfaceRef stud_if{*pidA, BrickPart::StudId};
@@ -880,8 +859,8 @@ static void test_connect_and_disconnect_realized_graph_api() {
 	assert(g.topology().connection_bundles().size() == 1);
 
 	using PW = UsdPartWrapper<BrickPart>;
-	const PW *pA = g.topology().parts().get<PW>(*pidA);
-	const PW *pB = g.topology().parts().get<PW>(*pidB);
+	const PW *pA = g.topology().parts().find_value<PW>(*pidA);
+	const PW *pB = g.topology().parts().find_value<PW>(*pidB);
 	assert(pA && pB);
 	assert_brick_colliders(*pA, pathA);
 	assert_brick_colliders(*pB, pathB);
@@ -901,8 +880,8 @@ static void test_connect_and_disconnect_realized_graph_api() {
 	assert(g.topology().connection_segments().size() == 0);
 	assert(g.topology().connection_bundles().size() == 0);
 
-	pA = g.topology().parts().get<PW>(*pidA);
-	pB = g.topology().parts().get<PW>(*pidB);
+	pA = g.topology().parts().find_value<PW>(*pidA);
+	pB = g.topology().parts().find_value<PW>(*pidB);
 	assert(pA && pB);
 	assert(pA->outgoings().size() == 0);
 	assert(pB->incomings().size() == 0);
@@ -952,10 +931,8 @@ static void test_connect_align_move_hole_component() {
 	[[maybe_unused]] auto [ignored_pidA3, pathA] = *pathA_opt;
 	[[maybe_unused]] auto [ignored_pidB3, pathB] = *pathB_opt;
 
-	const PartId *pidA =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA = g.topology().parts().find_key<PartId>(pathA);
+	const PartId *pidB = g.topology().parts().find_key<PartId>(pathB);
 	assert(pidA && pidB);
 
 	// Give the stud's connected component (A) a non-trivial env-local pose.
@@ -1041,10 +1018,8 @@ static void test_connect_align_move_stud_component() {
 	[[maybe_unused]] auto [ignored_pidA4, pathA] = *pathA_opt;
 	[[maybe_unused]] auto [ignored_pidB4, pathB] = *pathB_opt;
 
-	const PartId *pidA =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA = g.topology().parts().find_key<PartId>(pathA);
+	const PartId *pidB = g.topology().parts().find_key<PartId>(pathB);
 	assert(pidA && pidB);
 
 	// Give the hole's connected component (B) a non-trivial env-local pose.
@@ -1124,10 +1099,8 @@ static void test_connect_align_policy_none_preserves_env_poses() {
 	[[maybe_unused]] auto [ignored_pidA5, pathA] = *pathA_opt;
 	[[maybe_unused]] auto [ignored_pidB5, pathB] = *pathB_opt;
 
-	const PartId *pidA =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA = g.topology().parts().find_key<PartId>(pathA);
+	const PartId *pidB = g.topology().parts().find_key<PartId>(pathB);
 	assert(pidA && pidB);
 
 	// Give both components distinct env-local poses while they are still
@@ -1240,8 +1213,7 @@ static void test_set_component_transform_single_part() {
 	assert(path_opt.has_value());
 	[[maybe_unused]] auto [ignored_pid_single, path] = *path_opt;
 
-	const PartId *pid =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(path);
+	const PartId *pid = g.topology().parts().find_key<PartId>(path);
 	assert(pid);
 
 	// Desired env-local pose for the anchor (in meters).
@@ -1300,10 +1272,8 @@ static void test_set_component_transform_two_parts_connected() {
 	[[maybe_unused]] auto [ignored_pidA6, pathA] = *pathA_opt;
 	[[maybe_unused]] auto [ignored_pidB6, pathB] = *pathB_opt;
 
-	const PartId *pidA =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA = g.topology().parts().find_key<PartId>(pathA);
+	const PartId *pidB = g.topology().parts().find_key<PartId>(pathB);
 	assert(pidA && pidB);
 
 	// Connect stud(A) to hole(B) with default ConnectionSegment,
@@ -1387,8 +1357,7 @@ static void test_part_pose_relative_to_env_single_part() {
 	assert(path_opt.has_value());
 	[[maybe_unused]] auto [ignored_pid_pose, path] = *path_opt;
 
-	const PartId *pid =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(path);
+	const PartId *pid = g.topology().parts().find_key<PartId>(path);
 	assert(pid);
 
 	std::optional<Transformd> pose_opt = g.part_pose_relative_to_env(*pid);
@@ -1422,10 +1391,8 @@ static void test_part_pose_relative_to_env_two_parts_connected() {
 	[[maybe_unused]] auto [ignored_pidA7, pathA] = *pathA_opt;
 	[[maybe_unused]] auto [ignored_pidB7, pathB] = *pathB_opt;
 
-	const PartId *pidA =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA = g.topology().parts().find_key<PartId>(pathA);
+	const PartId *pidB = g.topology().parts().find_key<PartId>(pathB);
 	assert(pidA && pidB);
 
 	// Connect A and B with default ConnectionSegment.
@@ -1528,14 +1495,14 @@ struct Hooks {
 		++added_calls;
 		last_added_pid = pid;
 		const auto *stored =
-		    g->topology().parts().template get<UsdPartWrapper<P>>(pid);
+		    g->topology().parts().template find_value<UsdPartWrapper<P>>(pid);
 		added_pw_matches_store = (stored == &pw);
 	}
 
 	template <class P>
 	void on_part_removing(PartId pid, UsdPartWrapper<P> &pw) {
 		++removing_calls;
-		removing_alive_in_store = g->topology().parts().alive(pid);
+		removing_alive_in_store = g->topology().parts().contains(pid);
 		removing_has_any_connections =
 		    (!pw.incomings().empty() || !pw.outgoings().empty());
 	}
@@ -1626,10 +1593,8 @@ static void test_usd_lego_graph_hooks_part_added_and_get_set() {
 	auto [pidA_added, pathA] = *pathA_opt;
 	auto [pidB_added, pathB] = *pathB_opt;
 
-	const PartId *pidA =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA = g.topology().parts().find_key<PartId>(pathA);
+	const PartId *pidB = g.topology().parts().find_key<PartId>(pathB);
 	assert(pidA && pidB);
 
 	// Hooks must have observed both part additions.
@@ -1662,10 +1627,8 @@ static void test_usd_lego_graph_hooks_connection_lifecycle() {
 	[[maybe_unused]] auto [ignored_pidA8, pathA] = *pathA_opt;
 	[[maybe_unused]] auto [ignored_pidB8, pathB] = *pathB_opt;
 
-	const PartId *pidA =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA = g.topology().parts().find_key<PartId>(pathA);
+	const PartId *pidB = g.topology().parts().find_key<PartId>(pathB);
 	assert(pidA && pidB);
 
 	InterfaceRef stud_if{*pidA, BrickPart::StudId};

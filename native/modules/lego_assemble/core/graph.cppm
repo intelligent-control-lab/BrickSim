@@ -147,7 +147,6 @@ export struct NullChangeBlock {
 
 export template <
     class Ps, template <class> class PartWrapper = SimplePartWrapper,
-    template <class, class> class PartUnderlyingStorage = pmr_vector_storage,
     class PartExtraKeys = type_list<>, class PartExtraKeysHash = type_list<>,
     class PartExtraKeysEq = type_list<>,
     class ConnSegWrapper = SimpleWrapper<ConnectionSegment>,
@@ -158,15 +157,13 @@ export template <
     class Hooks = NoHooks, class DynamicGraph = HolmDeLichtenbergThorup>
 class LegoGraph;
 
-export template <class... Ps, template <class> class PartWrapper,
-                 template <class, class> class PartUnderlyingStorage,
-                 class... PEKs, class... PEKHs, class... PEKEqs,
-                 class ConnSegWrapper, class... CSEKs, class... CSEKHs,
-                 class... CSEKEqs, class ConnBundleWrapper, class Hooks,
-                 class DynamicGraph>
-class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
-                type_list<PEKs...>, type_list<PEKHs...>, type_list<PEKEqs...>,
-                ConnSegWrapper, type_list<CSEKs...>, type_list<CSEKHs...>,
+export template <class... Ps, template <class> class PartWrapper, class... PEKs,
+                 class... PEKHs, class... PEKEqs, class ConnSegWrapper,
+                 class... CSEKs, class... CSEKHs, class... CSEKEqs,
+                 class ConnBundleWrapper, class Hooks, class DynamicGraph>
+class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
+                type_list<PEKHs...>, type_list<PEKEqs...>, ConnSegWrapper,
+                type_list<CSEKs...>, type_list<CSEKHs...>,
                 type_list<CSEKEqs...>, ConnBundleWrapper, Hooks, DynamicGraph> {
 	static_assert((PartLike<Ps> && ...),
 	              "LegoGraph: all Ps... must satisfy PartLike concept");
@@ -180,11 +177,6 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 	static_assert(ConnSegWrapperLike<ConnSegWrapper>,
 	              "LegoGraph: ConnSegWrapper must satisfy "
 	              "ConnSegWrapperLike concept");
-	static_assert((StorageLike<PartUnderlyingStorage<PartWrapper<Ps>, PartId>,
-	                           PartWrapper<Ps>, PartId> &&
-	               ...),
-	              "LegoGraph: PartUnderlyingStorage<T,Id> must satisfy "
-	              "StorageLike concept for all part wrapper types T");
 	static_assert(
 	    DynamicGraphLike<DynamicGraph>,
 	    "LegoGraph: DynamicGraph must satisfy DynamicGraphLike concept");
@@ -192,12 +184,11 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 	              "LegoGraph: Hooks must be a class type");
 
   public:
-	using Self =
-	    LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
-	              type_list<PEKs...>, type_list<PEKHs...>, type_list<PEKEqs...>,
-	              ConnSegWrapper, type_list<CSEKs...>, type_list<CSEKHs...>,
-	              type_list<CSEKEqs...>, ConnBundleWrapper, Hooks,
-	              DynamicGraph>;
+	using Self = LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
+	                       type_list<PEKHs...>, type_list<PEKEqs...>,
+	                       ConnSegWrapper, type_list<CSEKs...>,
+	                       type_list<CSEKHs...>, type_list<CSEKEqs...>,
+	                       ConnBundleWrapper, Hooks, DynamicGraph>;
 	using PartTypeList = PartList<Ps...>;
 	using WrappedPartList = type_list<PartWrapper<Ps>...>;
 	using PartKeys = type_list<PartId, DgVertexId, PEKs...>;
@@ -205,8 +196,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 	    type_list<std::hash<PartId>, std::hash<DgVertexId>, PEKHs...>;
 	using PartKeysEq = type_list<std::equal_to<>, std::equal_to<>, PEKEqs...>;
 	using PartStore =
-	    PolyStore<PartKeys, WrappedPartList, PartUnderlyingStorage,
-	              PartKeysHash, PartKeysEq>;
+	    PolyStore<PartKeys, WrappedPartList, PartKeysHash, PartKeysEq>;
 	using ConnSegKeys = type_list<ConnSegId, ConnSegRef, CSEKs...>;
 	using ConnSegKeysHash =
 	    type_list<std::hash<ConnSegId>, ConnSegRefHash, CSEKHs...>;
@@ -347,33 +337,19 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		}
 
 		[[nodiscard]] std::size_t size() const {
-			const DgVertexId *dgid =
-			    g_->parts_.template project_key<PartId, DgVertexId>(root_);
-			if (!dgid) {
-				return 0;
-			}
-			return g_->dynamic_graph_.component_view(dgid->value()).size();
+			DgVertexId dgid = g_->parts_.template key_of<DgVertexId>(root_);
+			return g_->dynamic_graph_.component_view(dgid.value()).size();
 		}
 
 		// Yields PartIds in the component
 		std::generator<PartId> vertices() const {
-			const DgVertexId *root_dgid =
-			    g_->parts_.template project_key<PartId, DgVertexId>(root_);
-			if (!root_dgid) {
-				co_return;
-			}
+			DgVertexId root_dgid =
+			    g_->parts_.template key_of<DgVertexId>(root_);
 
 			for (vertex_id vid :
-			     g_->dynamic_graph_.component_view(root_dgid->value())
+			     g_->dynamic_graph_.component_view(root_dgid.value())
 			         .vertices()) {
-				const PartId *pid =
-				    g_->parts_.template project_key<DgVertexId, PartId>(
-				        DgVertexId(vid));
-				if (pid) {
-					co_yield *pid;
-				} else {
-					std::unreachable();
-				}
+				co_yield g_->parts_.template key_of<PartId>(DgVertexId{vid});
 			}
 		}
 
@@ -381,40 +357,27 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		// Optional boolean: tree_only (default false returns all edges, true returns spanning forest)
 		std::generator<std::pair<PartId, PartId>>
 		edges(bool tree_only = false) const {
-			const DgVertexId *root_dgid =
-			    g_->parts_.template project_key<PartId, DgVertexId>(root_);
-			if (!root_dgid) {
-				co_return;
-			}
+			DgVertexId root_dgid =
+			    g_->parts_.template key_of<DgVertexId>(root_);
 
-			auto view = g_->dynamic_graph_.component_view(root_dgid->value());
+			auto view = g_->dynamic_graph_.component_view(root_dgid.value());
 
 			// Select generator based on flag
 			auto edge_gen = tree_only ? view.tree_edges() : view.edges();
 
 			for (auto [u_vid, v_vid] : edge_gen) {
-				const PartId *u_pid =
-				    g_->parts_.template project_key<DgVertexId, PartId>(
-				        DgVertexId(u_vid));
-				const PartId *v_pid =
-				    g_->parts_.template project_key<DgVertexId, PartId>(
-				        DgVertexId(v_vid));
-				if (u_pid && v_pid) {
-					co_yield {*u_pid, *v_pid};
-				} else {
-					std::unreachable();
-				}
+				co_yield {
+				    g_->parts_.template key_of<PartId>(DgVertexId{u_vid}),
+				    g_->parts_.template key_of<PartId>(DgVertexId{v_vid}),
+				};
 			}
 		}
 
 		// Calculates transforms on the fly by traversing the HLT spanning tree.
 		// Complexity: O(N) where N is component size. No cycle checks needed.
 		std::generator<std::pair<PartId, Transformd>> transforms() const {
-			const DgVertexId *root_dgid =
-			    g_->parts_.template project_key<PartId, DgVertexId>(root_);
-			if (!root_dgid) {
-				co_return;
-			}
+			DgVertexId root_dgid =
+			    g_->parts_.template key_of<DgVertexId>(root_);
 
 			// 1. Yield Identity for root
 			Transformd identity = SE3d{}.identity();
@@ -430,36 +393,19 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			// 3. Traverse the Spanning Tree (F0) from DynamicGraph
 			//    tree_edges() is guaranteed to yield edges {parent, child} in a BFS/traversal order
 			//    stemming from the view's root.
-			auto view = g_->dynamic_graph_.component_view(root_dgid->value());
+			auto view = g_->dynamic_graph_.component_view(root_dgid.value());
 
 			for (auto [parent_vid, child_vid] : view.tree_edges()) {
-				const PartId *p_pid_ptr =
-				    g_->parts_.template project_key<DgVertexId, PartId>(
-				        DgVertexId(parent_vid));
-				const PartId *c_pid_ptr =
-				    g_->parts_.template project_key<DgVertexId, PartId>(
-				        DgVertexId(child_vid));
+				PartId parent_id =
+				    g_->parts_.template key_of<PartId>(DgVertexId{parent_vid});
+				PartId child_id =
+				    g_->parts_.template key_of<PartId>(DgVertexId{child_vid});
 
-				if (!p_pid_ptr || !c_pid_ptr) {
-					std::unreachable();
-				}
-				PartId parent_id = *p_pid_ptr;
-				PartId child_id = *c_pid_ptr;
-
-				// Retrieve parent's transform (must exist due to tree traversal order)
-				auto it_p = cache.find(parent_id);
-				if (it_p == cache.end()) {
-					std::unreachable();
-				}
-				const Transformd &T_root_parent = it_p->second;
+				const Transformd &T_root_parent = cache.at(parent_id);
 
 				// Retrieve connection transform T_parent_child
-				auto bundle_it = g_->conn_bundles_.find({parent_id, child_id});
-				if (bundle_it == g_->conn_bundles_.end()) {
-					std::unreachable();
-				}
-
-				const ConnectionBundle &bundle = bundle_it->second.wrapped();
+				const auto &cbw = g_->conn_bundles_.at({parent_id, child_id});
+				const ConnectionBundle &bundle = cbw.wrapped();
 				const Transformd &T_parent_child =
 				    (parent_id < child_id) ? bundle.T_a_b : bundle.T_b_a;
 
@@ -503,44 +449,32 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		return dynamic_graph_;
 	}
 
+	// Requires u and v are valid
 	bool is_connected(PartId u, PartId v) const {
-		const auto *u_dgid = parts_.template project_key<PartId, DgVertexId>(u);
-		const auto *v_dgid = parts_.template project_key<PartId, DgVertexId>(v);
-		if (!u_dgid || !v_dgid) {
-			return false;
-		}
-		return dynamic_graph_.connected(u_dgid->value(), v_dgid->value());
+		DgVertexId u_dgid = parts_.template key_of<DgVertexId>(u);
+		DgVertexId v_dgid = parts_.template key_of<DgVertexId>(v);
+		return dynamic_graph_.connected(u_dgid.value(), v_dgid.value());
 	}
 
+	// Requires u and v are valid
 	template <class InputId = PartId, class OutputId = InputId>
 	std::generator<std::pair<OutputId, OutputId>>
 	part_path(const InputId &u, const InputId &v) const
 	    requires(PartKeys::template contains<InputId> &&
 	             PartKeys::template contains<OutputId>)
 	{
-		const auto *u_dgid =
-		    parts_.template project_key<InputId, DgVertexId>(u);
-		const auto *v_dgid =
-		    parts_.template project_key<InputId, DgVertexId>(v);
-		if (!u_dgid || !v_dgid) {
-			co_return;
-		}
+		DgVertexId u_dgid = parts_.template key_of<DgVertexId>(u);
+		DgVertexId v_dgid = parts_.template key_of<DgVertexId>(v);
 		for (auto [p_vid, q_vid] :
-		     dynamic_graph_.path(u_dgid->value(), v_dgid->value())) {
-			const auto *p_id =
-			    parts_.template project_key<DgVertexId, OutputId>(
-			        DgVertexId(p_vid));
-			const auto *q_id =
-			    parts_.template project_key<DgVertexId, OutputId>(
-			        DgVertexId(q_vid));
-			if (p_id && q_id) {
-				co_yield std::make_pair(*p_id, *q_id);
-			} else {
-				std::unreachable();
-			}
+		     dynamic_graph_.path(u_dgid.value(), v_dgid.value())) {
+			co_yield {
+			    parts_.template key_of<OutputId>(DgVertexId{p_vid}),
+			    parts_.template key_of<OutputId>(DgVertexId{q_vid}),
+			};
 		}
 	}
 
+	// Requires u and v are valid
 	template <class Id = PartId>
 	std::optional<Transformd> lookup_transform(const Id &u, const Id &v) const
 	    requires(PartKeys::template contains<Id>)
@@ -548,70 +482,75 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		Transformd T = SE3d{}.identity();
 		bool has_path = false;
 		for (auto [a_pid, b_pid] : part_path<Id, PartId>(u, v)) {
-			const auto it = conn_bundles_.find({a_pid, b_pid});
-			if (it == conn_bundles_.end()) {
-				std::unreachable();
-			}
-			const auto &bundle = it->second.wrapped();
+			const auto &cbw = conn_bundles_.at({a_pid, b_pid});
+			const auto &bundle = cbw.wrapped();
 			const auto &T_a_b = a_pid < b_pid ? bundle.T_a_b : bundle.T_b_a;
 			T = T * T_a_b;
 			has_path = true;
 		}
-		if (has_path) {
+		if (has_path || u == v) {
 			return T;
 		}
-		// Is u equal to v and valid?
-		if (u == v && parts_.alive(u)) {
-			return T;
-		} else {
-			return std::nullopt;
-		}
+		return std::nullopt;
 	}
 
+	// Requires root is valid
 	ComponentView component_view(PartId root) const {
+		if (!parts_.template contains<PartId>(root)) {
+			throw std::out_of_range(
+			    "LegoGraph::component_view: root part id not found");
+		}
 		return ComponentView{*this, root};
 	}
 
 	std::generator<ComponentView> components() const {
 		for (auto dg_view : dynamic_graph_.components()) {
-			const auto *root_pid =
-			    parts_.template project_key<DgVertexId, PartId>(
-			        DgVertexId(dg_view.root()));
-			if (root_pid) {
-				co_yield ComponentView{*this, *root_pid};
-			} else {
-				std::unreachable();
-			}
+			PartId root_pid =
+			    parts_.template key_of<PartId>(DgVertexId{dg_view.root()});
+			co_yield ComponentView{*this, root_pid};
 		}
 	}
 
 	std::optional<InterfaceSpec>
-	get_interface_spec(const InterfaceRef &iref) const {
+	find_interface_spec(const InterfaceRef &iref) const {
 		const auto &[part_id, interface_id] = iref;
-		std::optional<InterfaceSpec> result;
-		parts_.visit(part_id, [&](const auto &pw) {
-			const auto &part = pw.wrapped();
-			result = get_interface_at(part, interface_id);
-		});
-		return result;
+		std::optional<std::optional<InterfaceSpec>> res =
+		    parts_.try_visit(part_id, [&](const auto &pw) {
+			    return get_interface_at(pw.wrapped(), interface_id);
+		    });
+		if (res) {
+			return std::move(*res);
+		} else {
+			return std::nullopt;
+		}
 	}
 
-	template <class P, class... PEKArgs, class... PWArgs>
-	    requires(in_pack<P, Ps...> && sizeof...(PEKArgs) == sizeof...(PEKs) &&
-	             ((std::same_as<PEKs, std::remove_cvref_t<PEKArgs>>) && ... &&
-	              true) &&
-	             std::constructible_from<PartWrapper<P>, PWArgs...,
-	                                     std::pmr::memory_resource *>)
-	std::optional<PartId> add_part(std::tuple<PEKArgs...> &&keys,
-	                               PWArgs &&...args) {
+	// Throws if not found
+	InterfaceSpec interface_spec_at(const InterfaceRef &iref) const {
+		const auto &[part_id, interface_id] = iref;
+		return parts_.visit(part_id, [&](const auto &pw) {
+			auto iface = get_interface_at(pw.wrapped(), interface_id);
+			if (!iface) {
+				throw std::out_of_range(
+				    "LegoGraph::interface_spec_at: interface id not found");
+			}
+			return std::move(*iface);
+		});
+	}
+
+	template <in_pack<Ps...> P, class... Args>
+	    requires(sizeof...(Args) >= sizeof...(PEKs) &&
+	             type_list<Args...>::template take_front<
+	                 sizeof...(PEKs)>::template convertible_to<PEKs...> &&
+	             type_list<Args...>::template drop_front<sizeof...(
+	                 PEKs)>::template append<std::pmr::memory_resource *>::
+	                 template can_construct<PartWrapper<P>>)
+	std::optional<PartId> add_part(Args &&...args) {
 		auto _changes = acquire_change_block();
 
 		PartId id = next_part_id_;
 		DgVertexId dgid{dynamic_graph_.add_vertex()};
-		if (!parts_.template emplace<PartWrapper<P>>(
-		        std::tuple_cat(std::make_tuple(id, dgid),
-		                       std::forward<std::tuple<PEKArgs...>>(keys)),
-		        std::forward<PWArgs>(args)..., res_)) {
+		if (!parts_.template emplace<PartWrapper<P>>(id, dgid, args..., res_)) {
 			// rollback
 			dynamic_graph_.erase_vertex(dgid.value());
 			return std::nullopt;
@@ -621,16 +560,17 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		return id;
 	}
 
+	// Returns nullopt if part not found
 	template <class PK>
 	    requires(PartKeys::template contains<PK>)
 	std::optional<PartId> remove_part(const PK &key) {
 		auto _changes = acquire_change_block();
 
-		const PartId *pid_ptr = parts_.template project_key<PK, PartId>(key);
-		if (!pid_ptr) {
+		auto entry = parts_.find(key);
+		if (!entry) {
 			return std::nullopt;
 		}
-		PartId pid = *pid_ptr;
+		PartId pid = entry->template key<PartId>();
 
 		std::optional<std::pmr::vector<std::tuple<ConnSegId, ConnSegRef>>>
 		    removed_cs;
@@ -644,7 +584,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		}
 
 		// Remove connections
-		bool visited = parts_.visit(pid, [&]<PartLike P>(PartWrapper<P> &pw) {
+		entry->visit([&]<PartLike P>(PartWrapper<P> &pw) {
 			call_on_disconnecting_for_all<P>(pid, pw);
 			call_on_bundle_removing_for_all<P>(pid, pw);
 			call_on_part_removing<P>(pid, pw);
@@ -652,25 +592,13 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			for (ConnSegId csid : pw.incomings()) {
 				// Delete from the other side
 				// This is hole, so other side is stud
-				const ConnSegRef *csref_ptr =
-				    conn_segs_.template project<ConnSegId, ConnSegRef>(csid);
-				if (!csref_ptr) {
-					std::unreachable();
-				}
-				ConnSegRef csref = *csref_ptr; // Copy because we need it later
+				ConnSegRef csref = conn_segs_.template key_of<ConnSegRef>(csid);
 				const auto &[stud_if_ref, hole_if_ref] = csref;
 				const auto &[stud_pid, stud_ifid] = stud_if_ref;
-				bool visited = parts_.visit(stud_pid, [&](auto &stud_pw) {
-					if (!stud_pw.outgoings().remove(csid)) {
-						std::unreachable();
-					}
+				parts_.visit(stud_pid, [&](auto &stud_pw) {
+					stud_pw.outgoings().remove(csid);
 				});
-				if (!visited) {
-					std::unreachable();
-				}
-				if (!conn_segs_.erase_by_key(csid)) {
-					std::unreachable();
-				}
+				conn_segs_.erase(csid);
 				if (removed_cs) {
 					removed_cs->emplace_back(csid, std::move(csref));
 				}
@@ -678,61 +606,34 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			for (ConnSegId csid : pw.outgoings()) {
 				// Delete from the other side
 				// This is stud, so other side is hole
-				const ConnSegRef *csref_ptr =
-				    conn_segs_.template project<ConnSegId, ConnSegRef>(csid);
-				if (!csref_ptr) {
-					std::unreachable();
-				}
-				ConnSegRef csref = *csref_ptr; // Copy because we need it later
+				ConnSegRef csref = conn_segs_.template key_of<ConnSegRef>(csid);
 				const auto &[stud_if_ref, hole_if_ref] = csref;
 				const auto &[hole_pid, hole_ifid] = hole_if_ref;
-				bool visited = parts_.visit(hole_pid, [&](auto &hole_pw) {
-					if (!hole_pw.incomings().remove(csid)) {
-						std::unreachable();
-					}
+				parts_.visit(hole_pid, [&](auto &hole_pw) {
+					hole_pw.incomings().remove(csid);
 				});
-				if (!visited) {
-					std::unreachable();
-				}
-				if (!conn_segs_.erase_by_key(csid)) {
-					std::unreachable();
-				}
+				conn_segs_.erase(csid);
 				if (removed_cs) {
 					removed_cs->emplace_back(csid, std::move(csref));
 				}
 			}
 			for (PartId npid : pw.neighbor_parts()) {
-				bool visited = parts_.visit(npid, [&](auto &npw) {
-					if (!npw.neighbor_parts().remove(pid)) {
-						std::unreachable();
-					}
-				});
-				if (!visited) {
-					std::unreachable();
-				}
-				if (!conn_bundles_.erase({pid, npid})) {
-					std::unreachable();
-				}
+				parts_.visit(
+				    npid, [&](auto &npw) { npw.neighbor_parts().remove(pid); });
+				conn_bundles_.erase({pid, npid});
 				if (removed_bundles) {
 					removed_bundles->emplace_back(pid, npid);
 				}
 			}
 		});
-		if (!visited) {
-			std::unreachable();
-		}
 
 		// Remove from dynamic graph
-		const DgVertexId *dgid =
-		    parts_.template project_key<PartId, DgVertexId>(pid);
-		if (!(dgid && dynamic_graph_.erase_vertex(dgid->value()))) {
-			std::unreachable();
-		}
+		DgVertexId dgid = entry->template key<DgVertexId>();
+		dynamic_graph_.erase_vertex(dgid.value());
 
 		// Finally remove the part itself
-		if (!parts_.erase_by_key(key)) {
-			std::unreachable();
-		}
+		parts_.erase(pid);
+		// entry is now invalid
 
 		// Call hooks
 		if (removed_cs) {
@@ -750,38 +651,51 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		return pid;
 	}
 
-	template <class... CSEKArgs, class... CSWArgs>
-	    requires(sizeof...(CSEKArgs) == sizeof...(CSEKs) &&
-	             ((std::same_as<CSEKs, std::remove_cvref_t<CSEKArgs>>) && ... &&
-	              true) &&
-	             std::constructible_from<ConnSegWrapper, CSWArgs...,
-	                                     std::pmr::memory_resource *>)
-	std::optional<ConnSegId>
-	connect(const InterfaceRef &stud_if, const InterfaceRef &hole_if,
-	        std::tuple<CSEKArgs...> &&keys, CSWArgs &&...args) {
+	// Returns nullopt if connection segment could not be created
+	// due to invalid parts, interfaces, self-connection, transform mismatch,
+	// or existing connection segment between the same interfaces
+	template <class... Args>
+	    requires(sizeof...(Args) >= sizeof...(CSEKs) &&
+	             type_list<Args...>::template take_front<
+	                 sizeof...(CSEKs)>::template convertible_to<CSEKs...> &&
+	             type_list<Args...>::template drop_front<sizeof...(
+	                 CSEKs)>::template append<std::pmr::memory_resource *>::
+	                 template can_construct<ConnSegWrapper>)
+	std::optional<ConnSegId> connect(const InterfaceRef &stud_if,
+	                                 const InterfaceRef &hole_if,
+	                                 Args &&...args) {
 		auto _changes = acquire_change_block();
 
 		ConnSegRef csref{stud_if, hole_if};
 		if (conn_segs_.contains(csref)) {
+			// already connected
 			return std::nullopt;
 		}
-		std::optional<InterfaceSpec> stud_spec = get_interface_spec(stud_if);
-		std::optional<InterfaceSpec> hole_spec = get_interface_spec(hole_if);
+		std::optional<InterfaceSpec> stud_spec = find_interface_spec(stud_if);
+		std::optional<InterfaceSpec> hole_spec = find_interface_spec(hole_if);
 		if (!stud_spec || !hole_spec) {
+			// part or interface not found
 			return std::nullopt;
 		}
 		if (!(stud_spec->type == InterfaceType::Stud &&
 		      hole_spec->type == InterfaceType::Hole)) {
+			// invalid interface types
 			return std::nullopt;
 		}
 
 		const auto &[stud_pid, stud_ifid] = stud_if;
 		const auto &[hole_pid, hole_ifid] = hole_if;
 		if (stud_pid == hole_pid) {
+			// self-connection not allowed
 			return std::nullopt;
 		}
 
-		ConnSegWrapper csw(std::forward<CSWArgs>(args)..., res_);
+		auto csw = std::make_from_tuple<ConnSegWrapper>(
+		    select_forward_as_tuple<
+		        typename type_list<Args..., std::pmr::memory_resource *>::
+		            template drop_front_seq<sizeof...(CSEKs)>>(
+		        std::forward<Args>(args)..., res_));
+
 		Transformd new_transform = SE3d{}.project(
 		    csw.wrapped().compute_transform(*stud_spec, *hole_spec));
 
@@ -803,25 +717,21 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 				return std::nullopt;
 			}
 		}
-		if (bundle_exists && !existent_transform) {
-			std::unreachable();
-		}
 
 		ConnSegId csid = next_conn_seg_id_;
-		if (!conn_segs_.insert(
+		if (!conn_segs_.emplace(
 		        std::tuple_cat(std::make_tuple(csid, csref),
-		                       std::forward<std::tuple<CSEKArgs...>>(keys)),
+		                       select_forward_as_tuple<
+		                           std::make_index_sequence<sizeof...(CSEKs)>>(
+		                           std::forward<Args>(args)...)),
 		        std::move(csw))) {
 			return std::nullopt;
 		}
 		next_conn_seg_id_++;
 
 		if (!bundle_exists) {
-			auto [new_it, inserted] =
-			    conn_bundles_.emplace(conn_endpoint, ConnBundleWrapper(res_));
-			if (!inserted) {
-				std::unreachable();
-			}
+			auto [new_it, _] =
+			    conn_bundles_.emplace(conn_endpoint, ConnBundleWrapper{res_});
 			conn_bundle_it = new_it;
 			ConnectionBundle &bundle = conn_bundle_it->second.wrapped();
 			if (stud_pid < hole_pid) {
@@ -832,51 +742,22 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 				bundle.T_a_b = inverse(new_transform);
 			}
 
-			const DgVertexId *stud_dgid_ptr =
-			    parts_.template project_key<PartId, DgVertexId>(stud_pid);
-			const DgVertexId *hole_dgid_ptr =
-			    parts_.template project_key<PartId, DgVertexId>(hole_pid);
-			if (stud_dgid_ptr && hole_dgid_ptr) {
-				if (!dynamic_graph_.add_edge(stud_dgid_ptr->value(),
-				                             hole_dgid_ptr->value())) {
-					std::unreachable();
-				}
-			} else {
-				std::unreachable();
-			}
+			DgVertexId stud_dgid = parts_.template key_of<DgVertexId>(stud_pid);
+			DgVertexId hole_dgid = parts_.template key_of<DgVertexId>(hole_pid);
+			dynamic_graph_.add_edge(stud_dgid.value(), hole_dgid.value());
 		}
 		ConnectionBundle &bundle = conn_bundle_it->second.wrapped();
-		if (!bundle.conn_seg_ids.add(csid)) {
-			std::unreachable();
-		}
+		bundle.conn_seg_ids.add(csid);
 
-		bool stud_visited = parts_.visit(stud_pid, [&](auto &stud_pw) {
-			if (!stud_pw.outgoings().add(csid)) {
-				std::unreachable();
-			}
-			bool neighbor_already_exists =
-			    !stud_pw.neighbor_parts().add(hole_pid);
-			if (bundle_exists != neighbor_already_exists) {
-				std::unreachable();
-			}
+		parts_.visit(stud_pid, [&](auto &stud_pw) {
+			stud_pw.outgoings().add(csid);
+			stud_pw.neighbor_parts().add(hole_pid);
 		});
-		if (!stud_visited) {
-			std::unreachable();
-		}
 
-		bool hole_visited = parts_.visit(hole_pid, [&](auto &hole_pw) {
-			if (!hole_pw.incomings().add(csid)) {
-				std::unreachable();
-			}
-			bool neighbor_already_exists =
-			    !hole_pw.neighbor_parts().add(stud_pid);
-			if (bundle_exists != neighbor_already_exists) {
-				std::unreachable();
-			}
+		parts_.visit(hole_pid, [&](auto &hole_pw) {
+			hole_pw.incomings().add(csid);
+			hole_pw.neighbor_parts().add(stud_pid);
 		});
-		if (!hole_visited) {
-			std::unreachable();
-		}
 		if (!bundle_exists) {
 			call_on_bundle_created(conn_endpoint, conn_bundle_it->second);
 		}
@@ -885,95 +766,57 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 		return csid;
 	}
 
+	// Returns nullopt if connection segment not found
+	// Otherwise returns the disconnected ConnSegId
 	template <class ConnId>
 	    requires(ConnSegKeys::template contains<ConnId>)
 	std::optional<ConnSegId> disconnect(const ConnId &conn_id) {
 		auto _changes = acquire_change_block();
 
-		const ConnSegId *csid_ptr =
-		    conn_segs_.template project<ConnId, ConnSegId>(conn_id);
-		if (!csid_ptr) {
+		if (!conn_segs_.contains(conn_id)) {
 			return std::nullopt;
 		}
-		ConnSegId csid = *csid_ptr;
-
-		const ConnSegRef *csref_ptr =
-		    conn_segs_.template project<ConnId, ConnSegRef>(conn_id);
-		if (!csref_ptr) {
-			std::unreachable();
-		}
-		ConnSegRef csref = *csref_ptr; // Copy because we need it later
+		ConnSegId csid = conn_segs_.template key_of<ConnSegId>(conn_id);
+		ConnSegRef csref = conn_segs_.template key_of<ConnSegRef>(csid);
 
 		const auto &[stud_if_ref, hole_if_ref] = csref;
 		const auto &[stud_pid, stud_ifid] = stud_if_ref;
 		const auto &[hole_pid, hole_ifid] = hole_if_ref;
 
 		ConnectionEndpoint conn_endpoint{stud_pid, hole_pid};
-		auto conn_bundle_it = conn_bundles_.find(conn_endpoint);
-		if (conn_bundle_it == conn_bundles_.end()) {
-			std::unreachable();
-		}
-		ConnectionBundle &bundle = conn_bundle_it->second.wrapped();
+		auto &cbw = conn_bundles_.at(conn_endpoint);
+		ConnectionBundle &bundle = cbw.wrapped();
 
-		call_on_disconnecting(csid, csref, conn_bundle_it->second);
+		call_on_disconnecting(csid, csref, cbw);
 		bool part_disconnected = bundle.conn_seg_ids.size() == 1;
 		if (part_disconnected) {
-			call_on_bundle_removing(conn_endpoint, conn_bundle_it->second);
+			call_on_bundle_removing(conn_endpoint, cbw);
 		}
 
-		if (!bundle.conn_seg_ids.remove(csid)) {
-			std::unreachable();
-		}
+		bundle.conn_seg_ids.remove(csid);
 
 		if (part_disconnected) {
-			if (!conn_bundles_.erase(conn_endpoint)) {
-				std::unreachable();
-			}
-			const DgVertexId *stud_dgid_ptr =
-			    parts_.template project_key<PartId, DgVertexId>(stud_pid);
-			const DgVertexId *hole_dgid_ptr =
-			    parts_.template project_key<PartId, DgVertexId>(hole_pid);
-			if (stud_dgid_ptr && hole_dgid_ptr) {
-				if (!dynamic_graph_.erase_edge(stud_dgid_ptr->value(),
-				                               hole_dgid_ptr->value())) {
-					std::unreachable();
-				}
-			} else {
-				std::unreachable();
-			}
+			conn_bundles_.erase(conn_endpoint);
+			DgVertexId stud_dgid = parts_.template key_of<DgVertexId>(stud_pid);
+			DgVertexId hole_dgid = parts_.template key_of<DgVertexId>(hole_pid);
+			dynamic_graph_.erase_edge(stud_dgid.value(), hole_dgid.value());
 		}
 
-		bool stud_visited = parts_.visit(stud_pid, [&](auto &stud_pw) {
-			if (!stud_pw.outgoings().remove(csid)) {
-				std::unreachable();
-			}
+		parts_.visit(stud_pid, [&](auto &stud_pw) {
+			stud_pw.outgoings().remove(csid);
 			if (part_disconnected) {
-				if (!stud_pw.neighbor_parts().remove(hole_pid)) {
-					std::unreachable();
-				}
+				stud_pw.neighbor_parts().remove(hole_pid);
 			}
 		});
-		if (!stud_visited) {
-			std::unreachable();
-		}
 
-		bool hole_visited = parts_.visit(hole_pid, [&](auto &hole_pw) {
-			if (!hole_pw.incomings().remove(csid)) {
-				std::unreachable();
-			}
+		parts_.visit(hole_pid, [&](auto &hole_pw) {
+			hole_pw.incomings().remove(csid);
 			if (part_disconnected) {
-				if (!hole_pw.neighbor_parts().remove(stud_pid)) {
-					std::unreachable();
-				}
+				hole_pw.neighbor_parts().remove(stud_pid);
 			}
 		});
-		if (!hole_visited) {
-			std::unreachable();
-		}
 
-		if (!conn_segs_.erase_by_key(csid)) {
-			std::unreachable();
-		}
+		conn_segs_.erase(csid);
 
 		// Call hooks
 		call_on_disconnected(csid, csref);
@@ -1022,11 +865,8 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			if (!hooks_) {
 				return;
 			}
-			PartWrapper<P> *pw_ptr = parts_.template get<PartWrapper<P>>(id);
-			if (!pw_ptr) {
-				std::unreachable();
-			}
-			hooks_->template on_part_added<P>(id, *pw_ptr);
+			PartWrapper<P> &pw = parts_.template value_of<PartWrapper<P>>(id);
+			hooks_->template on_part_added<P>(id, pw);
 		}
 	}
 
@@ -1049,12 +889,8 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			if (!hooks_) {
 				return;
 			}
-			ConnSegWrapper *csw_ptr = conn_segs_.find(csid);
-			if (!csw_ptr) {
-				std::unreachable();
-			}
-			hooks_->on_connected(csid, csref, stud_spec, hole_spec, *csw_ptr,
-			                     cbw);
+			ConnSegWrapper &csw = conn_segs_.value_of(csid);
+			hooks_->on_connected(csid, csref, stud_spec, hole_spec, csw, cbw);
 		}
 	}
 
@@ -1064,11 +900,8 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			if (!hooks_) {
 				return;
 			}
-			ConnSegWrapper *csw_ptr = conn_segs_.find(csid);
-			if (!csw_ptr) {
-				std::unreachable();
-			}
-			hooks_->on_disconnecting(csid, csref, *csw_ptr, cbw);
+			ConnSegWrapper &csw = conn_segs_.value_of(csid);
+			hooks_->on_disconnecting(csid, csref, csw, cbw);
 		}
 	}
 
@@ -1082,45 +915,25 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			}
 			for (ConnSegId csid : pw.incomings()) {
 				// This is hole, so other side is stud
-				const ConnSegRef *csref_ptr =
-				    conn_segs_.template project<ConnSegId, ConnSegRef>(csid);
-				if (!csref_ptr) {
-					std::unreachable();
-				}
-				const auto &[stud_if_ref, hole_if_ref] = *csref_ptr;
+				const ConnSegRef &csref =
+				    conn_segs_.template key_of<ConnSegRef>(csid);
+				const auto &[stud_if_ref, hole_if_ref] = csref;
 				const auto &[stud_pid, stud_ifid] = stud_if_ref;
 				ConnectionEndpoint ep{stud_pid, pid};
-				auto conn_bundle_it = conn_bundles_.find(ep);
-				if (conn_bundle_it == conn_bundles_.end()) {
-					std::unreachable();
-				}
-				auto csw_ptr = conn_segs_.find(csid);
-				if (!csw_ptr) {
-					std::unreachable();
-				}
-				hooks_->on_disconnecting(csid, *csref_ptr, *csw_ptr,
-				                         conn_bundle_it->second);
+				auto &cbw = conn_bundles_.at(ep);
+				auto &csw = conn_segs_.value_of(csid);
+				hooks_->on_disconnecting(csid, csref, csw, cbw);
 			}
 			for (ConnSegId csid : pw.outgoings()) {
 				// This is stud, so other side is hole
-				const ConnSegRef *csref_ptr =
-				    conn_segs_.template project<ConnSegId, ConnSegRef>(csid);
-				if (!csref_ptr) {
-					std::unreachable();
-				}
-				const auto &[stud_if_ref, hole_if_ref] = *csref_ptr;
+				const ConnSegRef &csref =
+				    conn_segs_.template key_of<ConnSegRef>(csid);
+				const auto &[stud_if_ref, hole_if_ref] = csref;
 				const auto &[hole_pid, hole_ifid] = hole_if_ref;
 				ConnectionEndpoint ep{pid, hole_pid};
-				auto conn_bundle_it = conn_bundles_.find(ep);
-				if (conn_bundle_it == conn_bundles_.end()) {
-					std::unreachable();
-				}
-				auto csw_ptr = conn_segs_.find(csid);
-				if (!csw_ptr) {
-					std::unreachable();
-				}
-				hooks_->on_disconnecting(csid, *csref_ptr, *csw_ptr,
-				                         conn_bundle_it->second);
+				auto &cbw = conn_bundles_.at(ep);
+				auto &csw = conn_segs_.value_of(csid);
+				hooks_->on_disconnecting(csid, csref, csw, cbw);
 			}
 		}
 	}
@@ -1155,11 +968,8 @@ class LegoGraph<type_list<Ps...>, PartWrapper, PartUnderlyingStorage,
 			}
 			for (PartId npid : pw.neighbor_parts()) {
 				ConnectionEndpoint ep{pid, npid};
-				auto conn_bundle_it = conn_bundles_.find(ep);
-				if (conn_bundle_it == conn_bundles_.end()) {
-					std::unreachable();
-				}
-				hooks_->on_bundle_removing(ep, conn_bundle_it->second);
+				auto &cbw = conn_bundles_.at(ep);
+				hooks_->on_bundle_removing(ep, cbw);
 			}
 		}
 	}

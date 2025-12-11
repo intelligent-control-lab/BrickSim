@@ -224,16 +224,14 @@ static void build_simple_brick_graph(GraphG &g) {
 	BrickColor green{0, 255, 0};
 
 	// Two bricks with a single connection between them.
-	auto pid0 =
-	    g.add_part<BrickPart>(std::tuple<>{}, 2, 4, BrickHeightPerPlate, red);
-	auto pid1 =
-	    g.add_part<BrickPart>(std::tuple<>{}, 2, 4, BrickHeightPerPlate, green);
+	auto pid0 = g.add_part<BrickPart>(2, 4, BrickHeightPerPlate, red);
+	auto pid1 = g.add_part<BrickPart>(2, 4, BrickHeightPerPlate, green);
 	assert(pid0.has_value() && pid1.has_value());
 
 	ConnectionSegment cs{}; // default offset (0,0), yaw=0
 	InterfaceRef stud{*pid0, BrickPart::StudId};
 	InterfaceRef hole{*pid1, BrickPart::HoleId};
-	assert(g.connect(stud, hole, std::tuple<>{}, cs));
+	assert(g.connect(stud, hole, cs));
 }
 
 static void test_topology_serializer_export_graph_default_filters() {
@@ -261,7 +259,7 @@ static void test_topology_serializer_export_graph_default_filters() {
 		assert(jp.type == "brick");
 
 		using PW = SimplePartWrapper<BrickPart>;
-		const PW *pw = g.parts().get<PW>(pid);
+		const PW *pw = g.parts().find_value<PW>(pid);
 		assert(pw);
 		const BrickPart &bp = pw->wrapped();
 		ordered_json expected = BrickSerializer{}.to_json(bp);
@@ -352,10 +350,8 @@ static void test_topology_serializer_export_usd_graph_env_and_pose_hints() {
 	[[maybe_unused]] auto [ignored_pidA, pathA] = *pathA_opt;
 	[[maybe_unused]] auto [ignored_pidB, pathB] = *pathB_opt;
 
-	const PartId *pidA =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA = g.topology().parts().find_key<PartId>(pathA);
+	const PartId *pidB = g.topology().parts().find_key<PartId>(pathB);
 	assert(pidA && pidB);
 
 	InterfaceRef stud_if{*pidA, BrickPart::StudId};
@@ -407,10 +403,8 @@ static void test_topology_serializer_export_usd_graph_env_filtering() {
 	[[maybe_unused]] auto [ignored_pidA2, pathA] = *pathA_opt;
 	[[maybe_unused]] auto [ignored_pidB2, pathB] = *pathB_opt;
 
-	const PartId *pidA =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathA);
-	const PartId *pidB =
-	    g.topology().parts().project_key<pxr::SdfPath, PartId>(pathB);
+	const PartId *pidA = g.topology().parts().find_key<PartId>(pathA);
+	const PartId *pidB = g.topology().parts().find_key<PartId>(pathB);
 	assert(pidA && pidB);
 
 	InterfaceRef stud_if{*pidA, BrickPart::StudId};

@@ -108,17 +108,8 @@ pack2d::Rect discretize_bbox_2d(const BBox2d &box, const TableRect &region,
 }
 
 BBox3d get_part_bbox(auto &g, PartId pid) {
-	bool visited = false;
-	BBox3d bbox;
-	g.topology().parts().visit(pid, [&](const auto &pw) {
-		bbox = pw.wrapped().bbox();
-		visited = true;
-	});
-	if (!visited) {
-		throw std::runtime_error(std::format(
-		    "get_part_bbox: part id {} does not exist in graph", pid));
-	}
-	return bbox;
+	return g.topology().parts().visit(
+	    pid, [&](const auto &pw) { return pw.wrapped().bbox(); });
 }
 
 export template <class UsdGraph>

@@ -1,13 +1,11 @@
 import std;
 import lego_assemble.utils.type_list;
 import lego_assemble.utils.poly_store;
-import lego_assemble.utils.multi_key_map;
 
 #include <cassert>
 
 using namespace std;
 using namespace lego_assemble;
-using namespace std::string_literals;
 
 namespace {
 template <class... Ts> using TL = type_list<Ts...>;
@@ -35,15 +33,6 @@ struct counting_resource : pmr::memory_resource {
 	}
 };
 
-// Small tagged storage to verify T -> Storage<T, Anchor> mapping & anchor ids.
-template <class T, class Anchor> struct TaggedStorage {
-	using value_type = T;
-	pmr::vector<T> data;
-	pmr::vector<Anchor> ids; // stores the anchor key
-	int tag = 42;
-	explicit TaggedStorage(pmr::memory_resource *r) : data{r}, ids{r} {}
-};
-
 // Test payload types
 struct Player {
 	int hp;
@@ -56,227 +45,385 @@ struct Chest {
 	int gold;
 };
 
-// Helper to exercise const overloads of get()
-template <class T, class S, class K> const T *cget(const S &s, const K &k) {
-	return s.template get<T>(k);
-}
-
 } // namespace
 
 int main() {
-	// ------------ Multi-key store aliases ------------
-	using Keys = TL<uint32_t, std::string, uint64_t>;
-
-	using Types = TL<Player, Enemy, Chest>;
-	using MStore = PolyStore<Keys, Types, pmr_vector_storage>;
-	using TStore = PolyStore<Keys, Types, TaggedStorage>;
-
-	// ------------ Resource wiring ------------
-	counting_resource counter;
+	// ----------------- basic meta sanity on type_list -----------------
 	{
-		MStore store{&counter};
-		assert(store.resource() == &counter);
+		using Types = TL<Player, Enemy, Chest>;
+		static_assert(Types::size == 3);
+		static_assert(in_pack<Player, Player, Enemy, Chest>);
+		static_assert(!in_pack<double, Player, Enemy, Chest>);
+		static_assert(index_in_pack<Player, Player, Enemy, Chest> == 0);
+		static_assert(index_in_pack<Enemy, Player, Enemy, Chest> == 1);
+		static_assert(index_in_pack<Chest, Player, Enemy, Chest> == 2);
+		static_assert(unique_types<Player, Enemy, Chest>);
+	}
 
-		// reserve<T>
-		store.reserve<Enemy>(8);
-		assert(store.storage_for<Enemy>().data.capacity() >= 8);
-		assert(store.storage_for<Enemy>().ids.capacity() >= 8);
+	counting_resource counter;
 
-		// ------------ Inserts covering all emplace paths ------------
-		// 1) emplace
+	// ====================== multi-key PolyStore ======================
+	{
+		using Keys = TL<std::uint32_t, std::string, std::uint64_t>;
+		using Types = TL<Player, Enemy, Chest>;
+		using Store = PolyStore<Keys, Types>;
+
+		Store store{&counter};
+
+		// Reserve APIs (not deeply observable, but we want them exercised)
+		store.reserve_for_type<Enemy>(8);
+		store.reserve(4, 8, 4); // Player, Enemy, Chest
+
+		// -------- emplace: tuple-of-keys + value args --------
 		bool ins_p = store.emplace<Player>(
-		    std::forward_as_tuple(uint32_t(1001u), "alice"s, uint64_t(0xA1ull)),
+		    std::forward_as_tuple(std::uint32_t(1001u), "alice"s,
+		                          std::uint64_t(0xA1ull)),
 		    100, "Alice"s);
 		assert(ins_p);
 
-		// 2) emplace (separate key args)
-		bool ins_e1 = store.emplace<Enemy>(uint32_t(2001u), "goblin"s,
-		                                     uint64_t(0xB1ull), 1.0f, 2.0f);
+		// -------- emplace: separate key args + value args --------
+		bool ins_e1 = store.emplace<Enemy>(std::uint32_t(2001u), "goblin"s,
+		                                   std::uint64_t(0xB1ull), 1.0f, 2.0f);
 		assert(ins_e1);
 
-		// 3) emplace
+		// -------- emplace: keys_type directly + value args --------
 		bool ins_c1 = store.emplace<Chest>(
-		    MStore::keys_tuple{uint32_t(3001u), "box-1"s, uint64_t(0xC1ull)},
+		    Store::keys_type{std::uint32_t(3001u), "box-1"s,
+		                     std::uint64_t(0xC1ull)},
 		    250);
 		assert(ins_c1);
 
-		// More enemies to exercise erase-branches
-		bool ins_e2 = store.emplace<Enemy>(uint32_t(2002u), "orc"s,
-		                                     uint64_t(0xB2ull), 3.0f, 4.0f);
-		bool ins_e3 = store.emplace<Enemy>(uint32_t(2003u), "troll"s,
-		                                     uint64_t(0xB3ull), 5.0f, 6.0f);
+		// more enemies to exercise erase paths
+		bool ins_e2 = store.emplace<Enemy>(std::uint32_t(2002u), "orc"s,
+		                                   std::uint64_t(0xB2ull), 3.0f, 4.0f);
+		bool ins_e3 = store.emplace<Enemy>(std::uint32_t(2003u), "troll"s,
+		                                   std::uint64_t(0xB3ull), 5.0f, 6.0f);
 		assert(ins_e2 && ins_e3);
 
-		// Duplicate keys should be rejected (directory insert fails)
-		bool dup_sameT = store.emplace<Player>(uint32_t(1001u), "alice"s,
-		                                         uint64_t(0xA1ull), 1, "Dup"s);
-		bool dup_diffT = store.emplace<Enemy>(uint32_t(1001u), "alice"s,
-		                                        uint64_t(0xA1ull), 9.9f, 9.9f);
+		// duplicate key set should be rejected, regardless of value type
+		bool dup_sameT = store.emplace<Player>(
+		    std::uint32_t(1001u), "alice"s, std::uint64_t(0xA1ull), 1, "Dup"s);
+		bool dup_diffT = store.emplace<Enemy>(
+		    std::uint32_t(1001u), "alice"s, std::uint64_t(0xA1ull), 9.0f, 9.0f);
 		assert(!dup_sameT && !dup_diffT);
 
-		// size across categories: 1P + 3E + 1C
+		// total size and per-type size
 		assert(store.size() == 5);
+		assert(store.size_of_type<Player>() == 1);
+		assert(store.size_of_type<Enemy>() == 3);
+		assert(store.size_of_type<Chest>() == 1);
+		assert(!store.empty());
 
-		// ------------ typed get<T>(K) ------------
-		// success via anchor
+		// ---------------- find_value / value_of ----------------
 		{
-			Player *pp = store.get<Player>(uint32_t(1001u));
+			// correct type
+			Player *pp = store.find_value<Player>(std::uint32_t(1001u));
 			assert(pp && pp->hp == 100 && pp->name == "Alice");
-			// type mismatch (found record, wrong T)
-			assert(store.get<Enemy>(uint32_t(1001u)) == nullptr);
-			// const overload
-			const MStore &cs = store;
-			const Player *cpp = cget<Player>(cs, uint32_t(1001u));
-			assert(cpp && cpp->hp == 100);
-		}
-		// success via non-anchor key
-		{
-			Enemy *pe = store.get<Enemy>(std::string{"goblin"});
-			assert(pe && pe->x == 1.0f && pe->y == 2.0f);
 
-			const Chest *pc = store.get<Chest>(uint64_t(0xC1ull));
-			assert(pc && pc->gold == 250);
-		}
-		// not found
-		assert(store.get<Player>(uint32_t(999999u)) == nullptr);
+			const Chest &c =
+			    std::as_const(store).value_of<Chest>(std::uint64_t(0xC1ull));
+			assert(c.gold == 250);
 
-		// ------------ project_key<From, To> ------------
-		{
-			const uint32_t *id_from_name =
-			    store.project_key<std::string, uint32_t>("orc"s);
-			assert(id_from_name && *id_from_name == uint32_t(2002u));
+			// wrong type: find_value returns nullptr or throws; value_of throws
+			bool threw = false;
+			try {
+				(void)store.value_of<Enemy>(std::uint32_t(1001u));
+			} catch (...) {
+				threw = true;
+			}
+			assert(threw);
 
-			const std::string *name_from_tok =
-			    store.project_key<uint64_t, std::string>(uint64_t(0xB3ull));
-			assert(name_from_tok && *name_from_tok == "troll");
-
-			assert(
-			    (store.project_key<std::string, uint32_t>("zzz"s) == nullptr));
+			// not found
+			assert(store.find_value<Player>(std::uint32_t(999999u)) == nullptr);
 		}
 
-		// ------------ visit<K>(key, f) ------------
+		// ---------------- key_of / keys_of (projection) ----------------
 		{
-			bool ok1 = store.visit(uint32_t(2001u), [](auto &obj) {
-				using T = std::decay_t<decltype(obj)>;
-				if constexpr (std::same_as<T, Enemy>)
-					obj.x += 0.5f;
-			});
-			assert(ok1 && store.get<Enemy>(uint32_t(2001u))->x == 1.5f);
+			std::uint32_t id_from_name =
+			    store.key_of<std::uint32_t>("orc"s); // From name -> id
+			assert(id_from_name == 2002u);
 
-			bool ok2 = store.visit(std::string{"box-1"}, [](auto &obj) {
-				using T = std::decay_t<decltype(obj)>;
-				if constexpr (std::same_as<T, Chest>)
-					obj.gold += 5;
-			});
-			assert(ok2 && store.get<Chest>(uint64_t(0xC1ull))->gold == 255);
+			std::string name_from_tok =
+			    store.key_of<std::string>(std::uint64_t(0xB3ull));
+			assert(name_from_tok == "troll");
 
-			bool ok3 = store.visit(uint64_t(0xDEADBEEFull), [](auto &) {});
-			assert(!ok3); // missing key
+			const auto &keys = store.keys_of(std::uint32_t(3001u));
+			assert(std::get<0>(keys) == 3001u);
+			assert(std::get<1>(keys) == "box-1");
+			assert(std::get<2>(keys) == std::uint64_t(0xC1ull));
 		}
 
-		// ------------ view<T> (non-const & const) ------------
+		// ---------------- contains ----------------
 		{
-			auto enemies = store.view<Enemy>();
+			assert(store.contains(std::uint32_t(1001u)));
+			assert(store.contains(std::string{"goblin"}));
+			assert(store.contains(std::uint64_t(0xB1ull)));
+			assert(!store.contains(std::uint32_t(999999u)));
+		}
+
+		// ---------------- value_view<T> (non-const & const) ----------------
+		{
+			auto enemies = store.value_view<Enemy>();
 			assert(enemies.size() == 3);
-			float sumx = 0;
+			float sumx = 0.f;
 			for (auto &e : enemies)
 				sumx += e.x;
-			assert(sumx == (1.5f + 3.0f + 5.0f)); // e1 was bumped by +0.5
+			assert(sumx == (1.0f + 3.0f + 5.0f));
 
-			const auto cenemies = std::as_const(store).view<Enemy>();
+			const auto &cstore = std::as_const(store);
+			auto cenemies = cstore.value_view<Enemy>();
 			static_assert(std::same_as<std::remove_cvref_t<decltype(cenemies)>,
 			                           std::span<const Enemy>>);
 			assert(cenemies.size() == 3);
 		}
 
-		// ------------ erase_by_key: victim == last ------------
+		// ---------------- entry_of / EntryRef ----------------
 		{
-			// enemy order in block: [e1(2001), e2(2002), e3(2003)] → erase last by anchor
-			bool erased = store.erase_by_key(uint32_t(2003u));
-			assert(erased);
-			assert(store.get<Enemy>(uint32_t(2003u)) == nullptr);
-			assert(!store.alive(uint32_t(2003u)));
-			// all keys of the removed record should be gone
-			assert(!store.alive(std::string{"troll"}));
-			assert(!store.alive(uint64_t(0xB3ull)));
-			assert(store.size() == 4);
+			auto e = store.entry_of(std::uint32_t(2002u));
+			assert(e.is<Enemy>());
+			assert(e.key<std::uint32_t>() == 2002u);
+			Enemy &ref = e.value<Enemy>();
+			ref.x = 42.0f;
+			assert(store.value_of<Enemy>(std::uint32_t(2002u)).x == 42.0f);
+
+			// const_entry_reference from const store
+			auto ce = std::as_const(store).entry_of(std::uint64_t(0xB2ull));
+			assert(ce.is<Enemy>());
+			const Enemy &eref = ce.value<Enemy>();
+			assert(eref.x == 42.0f);
+
+			// EntryRef::visit
+			int visited_type = 0;
+			e.visit([&](auto &obj) {
+				using T = std::remove_cvref_t<decltype(obj)>;
+				if constexpr (std::same_as<T, Enemy>)
+					visited_type = 1;
+			});
+			assert(visited_type == 1);
 		}
 
-		// ------------ erase_by_key: victim != last (swap-remove + directory fix) ------------
+		// ---------------- try_visit (void visitor) ----------------
 		{
-			auto &Eblk = store.storage_for<Enemy>();
-			assert(Eblk.data.size() == 2);
-			uint32_t moved_anchor = Eblk.ids.back(); // should be 2002 (e2)
+			bool ok1 = store.try_visit(std::uint32_t(2001u), [](auto &obj) {
+				using T = std::remove_cvref_t<decltype(obj)>;
+				if constexpr (std::same_as<T, Enemy>) {
+					obj.x += 0.5f;
+				}
+			});
+			assert(ok1);
+			assert(store.value_of<Enemy>(std::uint32_t(2001u)).x == 1.5f);
 
-			// erase first enemy by a NON-ANCHOR key → victim=0, last=1
-			bool erased = store.erase_by_key(std::string{"goblin"});
+			bool ok_missing =
+			    store.try_visit(std::uint64_t(0xDEADBEEFull), [](auto &) {});
+			assert(!ok_missing);
+		}
+
+		// ---------------- try_visit (value visitor) ----------------
+		{
+			auto r = store.try_visit(
+			    std::uint32_t(2002u), [](auto &obj) -> std::string {
+				    using T = std::remove_cvref_t<decltype(obj)>;
+				    if constexpr (std::same_as<T, Enemy>)
+					    return "Enemy";
+				    else if constexpr (std::same_as<T, Player>)
+					    return "Player";
+				    else
+					    return "Other";
+			    });
+			assert(r.has_value() && *r == "Enemy");
+
+			auto r_missing =
+			    store.try_visit(std::uint32_t(999999u),
+			                    [](auto &) -> std::string { return "x"; });
+			assert(!r_missing.has_value());
+		}
+
+		// ---------------- visit (throwing on missing) ----------------
+		{
+			bool threw_missing = false;
+			try {
+				store.visit(std::uint32_t(999999u), [](auto &) {});
+			} catch (const std::out_of_range &) {
+				threw_missing = true;
+			}
+			assert(threw_missing);
+
+			// valid visit mutating y
+			store.visit(std::uint32_t(2002u), [](auto &obj) {
+				using T = std::remove_cvref_t<decltype(obj)>;
+				if constexpr (std::same_as<T, Enemy>) {
+					obj.y += 1.0f;
+				}
+			});
+			assert(store.value_of<Enemy>(std::uint32_t(2002u)).y == 5.0f);
+		}
+
+		// ---------------- erase: victim == last branch ----------------
+		{
+			// Enemies: [e1(2001), e2(2002), e3(2003)] → erase last by anchor
+			bool erased = store.erase(std::uint32_t(2003u));
 			assert(erased);
-			assert(store.get<Enemy>(uint32_t(2001u)) == nullptr);
-			assert(!store.alive(uint32_t(2001u)));
+			assert(!store.contains(std::uint32_t(2003u)));
+			assert(!store.contains(std::string{"troll"}));
+			assert(!store.contains(std::uint64_t(0xB3ull)));
+			assert(store.size() == 4);
+			assert(store.size_of_type<Enemy>() == 2);
+		}
+
+		// ---------------- erase: victim != last (swap-remove) ----------------
+		{
+			// Now Enemy storage holds [2001, 2002]; erase by non-anchor key of 2001
+			bool erased = store.erase(std::string{"goblin"});
+			assert(erased);
+			assert(!store.contains(std::string{"goblin"}));
+			assert(!store.contains(std::uint32_t(2001u)));
+			assert(store.size_of_type<Enemy>() == 1);
 			assert(store.size() == 3);
 
-			// After swap, directory must map moved_anchor to slot 0
-			assert(Eblk.ids.size() == 1 && Eblk.ids[0] == moved_anchor);
-			Enemy *moved_ptr_by_anchor = store.get<Enemy>(moved_anchor);
-			assert(moved_ptr_by_anchor == &Eblk.data[0]);
-			// non-anchor key of the moved record must also resolve
-			Enemy *moved_ptr_by_name = store.get<Enemy>(std::string{"orc"});
-			assert(moved_ptr_by_name == &Eblk.data[0]);
+			// 2002 must still be alive and accessible
+			assert(store.contains(std::uint32_t(2002u)));
+			Enemy &e = store.value_of<Enemy>(std::uint32_t(2002u));
+			(void)e;
 		}
 
-		// ------------ erase_by_key: key not found ------------
-		assert(!store.erase_by_key(uint32_t(0xFFFFFFFFu)));
-
-		// ------------ erase(keys_tuple) (delegates to anchor) ------------
+		// ---------------- erase: key not found ----------------
 		{
-			assert(store.alive(uint32_t(1001u)) &&
-			       store.alive(std::string{"alice"}) &&
-			       store.alive(uint64_t(0xA1ull)));
-			bool ok =
-			    store.erase({uint32_t(1001u), "alice"s, uint64_t(0xA1ull)});
-			assert(ok);
-			assert(!store.alive(uint32_t(1001u)));
-			assert(!store.alive(std::string{"alice"}));
-			assert(!store.alive(uint64_t(0xA1ull)));
-			assert(store.size() == 2); // 1 Enemy (2002) + 1 Chest
+			assert(!store.erase(std::uint32_t(0xFFFFFFFFu)));
 		}
 
-		// ------------ storage_for<T> mutation ------------
+		// ---------------- clear_type<Enemy> ----------------
 		{
-			auto &Eblk = store.storage_for<Enemy>();
-			assert(Eblk.data.size() == 1 && Eblk.ids.size() == 1 &&
-			       Eblk.ids[0] == uint32_t(2002u));
-			Eblk.data[0].x = 42.0f;
-			assert(store.get<Enemy>(std::string{"orc"})->x == 42.0f);
+			store.clear_type<Enemy>();
+			assert(store.size_of_type<Enemy>() == 0);
+			// Player & Chest should remain
+			assert(store.contains(std::uint32_t(1001u)));
+			assert(store.contains(std::uint64_t(0xC1ull)));
+			assert(store.size() == 2);
 		}
 
-		// ------------ clear() ------------
-		store.clear();
-		assert(store.size() == 0);
-		assert(!store.alive(uint32_t(2002u)));
-		assert(!store.alive(std::string{"orc"}));
-		assert(!store.alive(uint64_t(0xB2ull)));
+		// ---------------- clear() ----------------
+		{
+			store.clear();
+			assert(store.size() == 0);
+			assert(store.empty());
+			assert(!store.contains(std::uint32_t(1001u)));
+			assert(!store.contains(std::uint64_t(0xC1ull)));
 
-		// After clear, reusing old keys should succeed
-		bool re = store.emplace<Enemy>(uint32_t(2001u), "goblin"s,
-		                                 uint64_t(0xB1ull), 9.0f, 9.0f);
-		assert(re);
+			// After clear, keys can be reused
+			bool re = store.emplace<Enemy>(
+			    std::forward_as_tuple(std::uint32_t(2002u), "orc"s,
+			                          std::uint64_t(0xB2ull)),
+			    9.0f, 9.0f);
+			assert(re);
+			assert(store.size() == 1);
+			auto vs = store.value_view<Enemy>();
+			assert(vs.size() == 1);
+		}
 	}
 
-	// We should have seen allocations routed through the counting_resource.
+	// We should have seen allocations routed through counting_resource
 	assert(counter.alloc_calls > 0);
 
-	// ------------ Custom storage policy smoke (multi-key) ------------
+	// ====================== single-key PolyStore ======================
 	{
-		TStore store{&counter};
-		bool ok = store.emplace<Enemy>(uint32_t(7001u), "z1"s,
-		                                 uint64_t(0xEE11ull), 1.0f, 1.0f);
-		assert(ok);
-		auto &blk = store.storage_for<Enemy>();
-		assert(blk.tag == 42);
-		assert(blk.ids.size() == 1 &&
-		       blk.ids[0] == uint32_t(7001u)); // anchor stored
-		assert(store.get<Enemy>(uint32_t(7001u)));
+		using MyTypes = TL<Player, Enemy, Chest>;
+		using Keys = TL<int>;
+		using Store = PolyStore<Keys, MyTypes>;
+		using SingleStore = PolyStore<Keys, TL<Player>>;
+
+		// -------- multi-type single-key store --------
+		{
+			Store store{&counter};
+
+			store.reserve_for_type<Enemy>(16);
+
+			// simple emplace using key + value args
+			assert(store.emplace<Player>(0, 100, "Alice"));
+			assert(store.emplace<Enemy>(1, 1.0f, 2.0f));
+			assert(store.emplace<Chest>(2, 250));
+			assert(store.emplace<Enemy>(3, 3.0f, 4.0f));
+			assert(store.emplace<Enemy>(4, 5.0f, 6.0f));
+
+			assert(store.size() == 5);
+			assert(store.size_of_type<Enemy>() == 3);
+
+			// typed lookup
+			{
+				auto *p = store.find_value<Player>(0);
+				assert(p && p->hp == 100 && p->name == "Alice");
+
+				const Store &cs = store;
+				const Player *cp = cs.find_value<Player>(0);
+				assert(cp && cp->hp == 100);
+
+				assert(store.find_value<Enemy>(0) == nullptr);
+			}
+
+			// value_view<Enemy>
+			{
+				auto enemies = store.value_view<Enemy>();
+				assert(enemies.size() == 3);
+				float sumx = 0;
+				for (auto &e : enemies)
+					sumx += e.x;
+				assert(sumx == (1.0f + 3.0f + 5.0f));
+			}
+
+			// visit / try_visit
+			{
+				bool ok1 = store.try_visit(1, [](auto &obj) {
+					using T = std::remove_cvref_t<decltype(obj)>;
+					if constexpr (std::same_as<T, Enemy>)
+						obj.x += 0.5f;
+				});
+				assert(ok1);
+				assert(store.value_of<Enemy>(1).x == 1.5f);
+
+				bool ok_missing = store.try_visit(999999, [](auto &) {});
+				assert(!ok_missing);
+
+				bool threw_missing = false;
+				try {
+					store.visit(999999, [](auto &) {});
+				} catch (const std::out_of_range &) {
+					threw_missing = true;
+				}
+				assert(threw_missing);
+			}
+
+			// erase branches
+			{
+				// enemies ids: [1,3,4] → erase last
+				bool erased = store.erase(4);
+				assert(erased);
+				assert(!store.contains(4));
+				assert(store.size() == 4);
+
+				// now enemies ids: [1,3]; erase first → swap-remove
+				bool erased2 = store.erase(1);
+				assert(erased2);
+				assert(!store.contains(1));
+				assert(store.size() == 3);
+			}
+
+			// clear & reuse
+			{
+				store.clear();
+				assert(store.size() == 0);
+				assert(store.empty());
+				assert(store.emplace<Player>(0, 1, "X"));
+				assert(store.size() == 1);
+			}
+		}
+
+		// -------- single-type single-key store --------
+		{
+			SingleStore s;
+			assert(s.emplace<Player>(1, 50, "Solo"));
+			assert(s.size() == 1);
+			Player &p = s.value_of<Player>(1);
+			assert(p.hp == 50 && p.name == "Solo");
+		}
 	}
 
 	return 0;

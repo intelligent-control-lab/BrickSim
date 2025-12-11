@@ -62,6 +62,14 @@ constexpr decltype(auto) select_forward_as_tuple(Args &&...args) {
 	}(Seq{});
 }
 
+export template <class T>
+concept tuple_like =
+    requires { typename std::tuple_size<std::remove_cvref_t<T>>::type; };
+
+export template <class T, std::size_t N>
+concept tuple_of_size =
+    tuple_like<T> && (std::tuple_size_v<std::remove_cvref_t<T>> == N);
+
 // TODO: Workaround for https://github.com/clangd/clangd/issues/2529
 template <std::size_t N, class... Ts> struct _type_list_at {
 	using type = Ts...[N];
@@ -92,6 +100,9 @@ export template <class... Ts> struct type_list {
 
 	template <class... Us>
 	static constexpr bool same_as = (std::same_as<Ts, Us> && ...);
+
+	template <class... Us>
+	static constexpr bool convertible_to = (std::convertible_to<Ts, Us> && ...);
 
 	template <class U>
 	static constexpr bool is_subset_of = (U::template contains<Ts> && ...);

@@ -77,21 +77,18 @@ static void build_three_parts(G &g) {
 	auto ifs0 = std::initializer_list<InterfaceSpec>{
 	    mk_stud(10, 2, 2), mk_stud(12, 2, 2), mk_hole(20, 2, 2),
 	    mk_hole(22, 2, 2)};
-	auto p0 = g.add_part<CustomPart>(
-	    std::tuple<>{}, 0.1, BrickColor{255, 0, 0}, ifs0);
+	auto p0 = g.add_part<CustomPart>(0.1, BrickColor{255, 0, 0}, ifs0);
 	assert(p0 && *p0 == PartId{0});
 
 	auto ifs1 = std::initializer_list<InterfaceSpec>{
 	    mk_stud(11, 2, 2), mk_stud(13, 2, 2), mk_hole(21, 2, 2),
 	    mk_hole(23, 2, 2)};
-	auto p1 = g.add_part<CustomPart>(
-	    std::tuple<>{}, 0.2, BrickColor{0, 255, 0}, ifs1);
+	auto p1 = g.add_part<CustomPart>(0.2, BrickColor{0, 255, 0}, ifs1);
 	assert(p1 && *p1 == PartId{1});
 
 	auto ifs2 = std::initializer_list<InterfaceSpec>{mk_stud(30, 1, 1),
 	                                                 mk_hole(31, 1, 1)};
-	auto p2 = g.add_part<CustomPart>(
-	    std::tuple<>{}, 0.3, BrickColor{0, 0, 255}, ifs2);
+	auto p2 = g.add_part<CustomPart>(0.3, BrickColor{0, 0, 255}, ifs2);
 	assert(p2 && *p2 == PartId{2});
 }
 
@@ -100,11 +97,9 @@ static InterfaceRef IR(PartId pid, InterfaceId iid) {
 }
 
 template <class Strategy>
-using Scheduler =
-    ConstraintScheduler<G, Strategy,
-                        std::function<std::size_t(PartId, PartId,
-                                                  const Transformd &)>,
-                        std::function<void(std::size_t)>, std::size_t>;
+using Scheduler = ConstraintScheduler<
+    G, Strategy, std::function<std::size_t(PartId, PartId, const Transformd &)>,
+    std::function<void(std::size_t)>, std::size_t>;
 
 // ----------------- Constructor / destructor -----------------
 
@@ -125,9 +120,8 @@ static void test_scheduler_dtor_no_constraints() {
 		auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 		Strat strat{};
-		Scheduler<Strat> sched{
-		    &g, strat, create_edge, destroy_edge,
-		    std::pmr::get_default_resource()};
+		Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+		                       std::pmr::get_default_resource()};
 
 		// No events fired → no constraints allocated.
 		assert(events.created.empty());
@@ -143,8 +137,8 @@ static void test_scheduler_dtor_with_constraints() {
 
 	// Build 0-1-2 chain in the graph.
 	ConnectionSegment cs{};
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
-	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
+	assert(g.connect(IR(1, 11), IR(2, 31), cs));
 
 	ConstraintEvents events;
 	using Strat = TreeOnlySchedulingPolicy<G>;
@@ -156,9 +150,8 @@ static void test_scheduler_dtor_with_constraints() {
 		auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 		Strat strat{};
-		Scheduler<Strat> sched{
-		    &g, strat, create_edge, destroy_edge,
-		    std::pmr::get_default_resource()};
+		Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+		                       std::pmr::get_default_resource()};
 
 		// Mark connection once; scheduler should create two tree edges {0,1},{1,2}
 		sched.on_connected(0, 1);
@@ -180,22 +173,20 @@ static void test_single_change_block_batches_flush() {
 	build_three_parts(g);
 
 	ConnectionSegment cs{};
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
-	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
+	assert(g.connect(IR(1, 11), IR(2, 31), cs));
 
 	ConstraintEvents events;
 	using Strat = FullGraphSchedulingPolicy<G>;
 
-	auto create_edge = [&events](PartId a, PartId b,
-	                             const Transformd &T_a_b) {
+	auto create_edge = [&events](PartId a, PartId b, const Transformd &T_a_b) {
 		return events.create(a, b, T_a_b);
 	};
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{
-	    &g, strat, create_edge, destroy_edge,
-	    std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+	                       std::pmr::get_default_resource()};
 
 	{
 		auto block = sched.change_block();
@@ -217,22 +208,20 @@ static void test_nested_change_blocks_flush_once() {
 	build_three_parts(g);
 
 	ConnectionSegment cs{};
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
-	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
+	assert(g.connect(IR(1, 11), IR(2, 31), cs));
 
 	ConstraintEvents events;
 	using Strat = TreeOnlySchedulingPolicy<G>;
 
-	auto create_edge = [&events](PartId a, PartId b,
-	                             const Transformd &T_a_b) {
+	auto create_edge = [&events](PartId a, PartId b, const Transformd &T_a_b) {
 		return events.create(a, b, T_a_b);
 	};
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{
-	    &g, strat, create_edge, destroy_edge,
-	    std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+	                       std::pmr::get_default_resource()};
 
 	{
 		auto outer = sched.change_block();
@@ -256,21 +245,19 @@ static void test_change_block_moved_once() {
 	build_three_parts(g);
 
 	ConnectionSegment cs{};
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
 
 	ConstraintEvents events;
 	using Strat = TreeOnlySchedulingPolicy<G>;
 
-	auto create_edge = [&events](PartId a, PartId b,
-	                             const Transformd &T_a_b) {
+	auto create_edge = [&events](PartId a, PartId b, const Transformd &T_a_b) {
 		return events.create(a, b, T_a_b);
 	};
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{
-	    &g, strat, create_edge, destroy_edge,
-	    std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+	                       std::pmr::get_default_resource()};
 
 	{
 		auto block1 = sched.change_block();
@@ -293,22 +280,19 @@ static void test_on_part_added_outside_block() {
 	ConstraintEvents events;
 	using Strat = TreeOnlySchedulingPolicy<G>;
 
-	auto create_edge = [&events](PartId a, PartId b,
-	                             const Transformd &T_a_b) {
+	auto create_edge = [&events](PartId a, PartId b, const Transformd &T_a_b) {
 		return events.create(a, b, T_a_b);
 	};
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{
-	    &g, strat, create_edge, destroy_edge,
-	    std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+	                       std::pmr::get_default_resource()};
 
 	// Add an extra isolated part (pid 3)
 	auto ifs3 = std::initializer_list<InterfaceSpec>{mk_stud(40, 1, 1),
 	                                                 mk_hole(41, 1, 1)};
-	auto p3 = g.add_part<CustomPart>(
-	    std::tuple<>{}, 0.4, BrickColor{10, 20, 30}, ifs3);
+	auto p3 = g.add_part<CustomPart>(0.4, BrickColor{10, 20, 30}, ifs3);
 	assert(p3 && *p3 == PartId{3});
 
 	sched.on_part_added(*p3);
@@ -324,21 +308,18 @@ static void test_on_part_added_inside_block() {
 	ConstraintEvents events;
 	using Strat = TreeOnlySchedulingPolicy<G>;
 
-	auto create_edge = [&events](PartId a, PartId b,
-	                             const Transformd &T_a_b) {
+	auto create_edge = [&events](PartId a, PartId b, const Transformd &T_a_b) {
 		return events.create(a, b, T_a_b);
 	};
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{
-	    &g, strat, create_edge, destroy_edge,
-	    std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+	                       std::pmr::get_default_resource()};
 
 	auto ifs3 = std::initializer_list<InterfaceSpec>{mk_stud(40, 1, 1),
 	                                                 mk_hole(41, 1, 1)};
-	auto p3 = g.add_part<CustomPart>(
-	    std::tuple<>{}, 0.4, BrickColor{10, 20, 30}, ifs3);
+	auto p3 = g.add_part<CustomPart>(0.4, BrickColor{10, 20, 30}, ifs3);
 	assert(p3 && *p3 == PartId{3});
 
 	{
@@ -358,7 +339,7 @@ static void test_connect_two_single_parts() {
 	build_three_parts(g);
 
 	ConnectionSegment cs{};
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
 
 	ConstraintEvents events;
 	using Strat = TreeOnlySchedulingPolicy<G>;
@@ -374,9 +355,8 @@ static void test_connect_two_single_parts() {
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{
-	    &g, strat, create_edge, destroy_edge,
-	    std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+	                       std::pmr::get_default_resource()};
 
 	sched.on_connected(0, 1);
 	assert(events.created.size() == 1);
@@ -390,22 +370,20 @@ static void test_connect_within_same_cc_tree_only_no_churn() {
 
 	ConnectionSegment cs{};
 	// Build chain 0-1-2
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
-	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
+	assert(g.connect(IR(1, 11), IR(2, 31), cs));
 
 	ConstraintEvents events;
 	using Strat = TreeOnlySchedulingPolicy<G>;
 
-	auto create_edge = [&events](PartId a, PartId b,
-	                             const Transformd &T_a_b) {
+	auto create_edge = [&events](PartId a, PartId b, const Transformd &T_a_b) {
 		return events.create(a, b, T_a_b);
 	};
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{
-	    &g, strat, create_edge, destroy_edge,
-	    std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+	                       std::pmr::get_default_resource()};
 
 	// Initial scheduling from a single connect
 	sched.on_connected(0, 1);
@@ -415,7 +393,7 @@ static void test_connect_within_same_cc_tree_only_no_churn() {
 	assert(events.destroyed.empty());
 
 	// Now add an extra edge inside the same CC (0-2)
-	assert(g.connect(IR(0, 12), IR(2, 31), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 12), IR(2, 31), cs));
 	sched.on_connected(0, 2);
 
 	// Tree-only policy should still keep only the spanning tree edges; no new
@@ -432,22 +410,20 @@ static void test_connect_within_same_cc_fullgraph_adds_edge() {
 
 	ConnectionSegment cs{};
 	// Build chain 0-1-2
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
-	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
+	assert(g.connect(IR(1, 11), IR(2, 31), cs));
 
 	ConstraintEvents events;
 	using Strat = FullGraphSchedulingPolicy<G>;
 
-	auto create_edge = [&events](PartId a, PartId b,
-	                             const Transformd &T_a_b) {
+	auto create_edge = [&events](PartId a, PartId b, const Transformd &T_a_b) {
 		return events.create(a, b, T_a_b);
 	};
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{
-	    &g, strat, create_edge, destroy_edge,
-	    std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+	                       std::pmr::get_default_resource()};
 
 	// Initial scheduling from a single connect
 	sched.on_connected(0, 1);
@@ -456,7 +432,7 @@ static void test_connect_within_same_cc_fullgraph_adds_edge() {
 	assert(events.has_edge(1, 2));
 
 	// Add extra edge inside same CC (0-2) and reschedule.
-	assert(g.connect(IR(0, 12), IR(2, 31), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 12), IR(2, 31), cs));
 	sched.on_connected(0, 2);
 
 	// Full graph policy should add the new constraint edge {0,2}.
@@ -471,23 +447,21 @@ static void test_disconnect_non_bridge_edge_fullgraph() {
 
 	ConnectionSegment cs{};
 	// Build triangle 0-1-2
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs)); // 0-1
-	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs)); // 1-2
-	assert(g.connect(IR(0, 12), IR(2, 31), std::tuple<>{}, cs)); // 0-2
+	assert(g.connect(IR(0, 10), IR(1, 21), cs)); // 0-1
+	assert(g.connect(IR(1, 11), IR(2, 31), cs)); // 1-2
+	assert(g.connect(IR(0, 12), IR(2, 31), cs)); // 0-2
 
 	ConstraintEvents events;
 	using Strat = FullGraphSchedulingPolicy<G>;
 
-	auto create_edge = [&events](PartId a, PartId b,
-	                             const Transformd &T_a_b) {
+	auto create_edge = [&events](PartId a, PartId b, const Transformd &T_a_b) {
 		return events.create(a, b, T_a_b);
 	};
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{
-	    &g, strat, create_edge, destroy_edge,
-	    std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+	                       std::pmr::get_default_resource()};
 
 	// Seed scheduling once
 	sched.on_connected(0, 1);
@@ -516,22 +490,20 @@ static void test_disconnect_bridge_edge_splits_cc() {
 
 	ConnectionSegment cs{};
 	// Build chain 0-1-2
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
-	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
+	assert(g.connect(IR(1, 11), IR(2, 31), cs));
 
 	ConstraintEvents events;
 	using Strat = TreeOnlySchedulingPolicy<G>;
 
-	auto create_edge = [&events](PartId a, PartId b,
-	                             const Transformd &T_a_b) {
+	auto create_edge = [&events](PartId a, PartId b, const Transformd &T_a_b) {
 		return events.create(a, b, T_a_b);
 	};
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{
-	    &g, strat, create_edge, destroy_edge,
-	    std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+	                       std::pmr::get_default_resource()};
 
 	// Seed scheduling
 	sched.on_connected(0, 1);
@@ -559,16 +531,14 @@ static void test_on_part_removed_no_constraints() {
 	ConstraintEvents events;
 	using Strat = TreeOnlySchedulingPolicy<G>;
 
-	auto create_edge = [&events](PartId a, PartId b,
-	                             const Transformd &T_a_b) {
+	auto create_edge = [&events](PartId a, PartId b, const Transformd &T_a_b) {
 		return events.create(a, b, T_a_b);
 	};
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{
-	    &g, strat, create_edge, destroy_edge,
-	    std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+	                       std::pmr::get_default_resource()};
 
 	// Remove an isolated part (no constraint edges in scheduler).
 	assert(g.remove_part(PartId{2}));
@@ -583,22 +553,20 @@ static void test_on_part_removed_with_multiple_constraints() {
 
 	ConnectionSegment cs{};
 	// 0-1-2 chain
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
-	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
+	assert(g.connect(IR(1, 11), IR(2, 31), cs));
 
 	ConstraintEvents events;
 	using Strat = TreeOnlySchedulingPolicy<G>;
 
-	auto create_edge = [&events](PartId a, PartId b,
-	                             const Transformd &T_a_b) {
+	auto create_edge = [&events](PartId a, PartId b, const Transformd &T_a_b) {
 		return events.create(a, b, T_a_b);
 	};
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{
-	    &g, strat, create_edge, destroy_edge,
-	    std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+	                       std::pmr::get_default_resource()};
 
 	// Initial schedule: edges {0-1,1-2}
 	sched.on_connected(0, 1);
@@ -641,23 +609,20 @@ static void test_multiple_dirty_vertices_same_cc_only_one_compute() {
 
 	ConnectionSegment cs{};
 	// Build chain 0-1-2
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
-	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
+	assert(g.connect(IR(1, 11), IR(2, 31), cs));
 
 	ConstraintEvents events;
-	auto seen =
-	    std::make_shared<std::vector<std::vector<PartId>>>();
+	auto seen = std::make_shared<std::vector<std::vector<PartId>>>();
 	LoggingStrategy strat{seen};
 
-	auto create_edge = [&events](PartId a, PartId b,
-	                             const Transformd &T_a_b) {
+	auto create_edge = [&events](PartId a, PartId b, const Transformd &T_a_b) {
 		return events.create(a, b, T_a_b);
 	};
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
-	Scheduler<LoggingStrategy> sched{
-	    &g, strat, create_edge, destroy_edge,
-	    std::pmr::get_default_resource()};
+	Scheduler<LoggingStrategy> sched{&g, strat, create_edge, destroy_edge,
+	                                 std::pmr::get_default_resource()};
 
 	{
 		auto block = sched.change_block();
@@ -678,21 +643,19 @@ static void test_flush_with_no_dirty_vertices_is_noop() {
 	build_three_parts(g);
 
 	ConnectionSegment cs{};
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
 
 	ConstraintEvents events;
 	using Strat = TreeOnlySchedulingPolicy<G>;
 
-	auto create_edge = [&events](PartId a, PartId b,
-	                             const Transformd &T_a_b) {
+	auto create_edge = [&events](PartId a, PartId b, const Transformd &T_a_b) {
 		return events.create(a, b, T_a_b);
 	};
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{
-	    &g, strat, create_edge, destroy_edge,
-	    std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+	                       std::pmr::get_default_resource()};
 
 	// First schedule once so that edges exist.
 	sched.on_connected(0, 1);
@@ -712,21 +675,19 @@ static void test_no_change_in_desired_edges_no_churn() {
 	build_three_parts(g);
 
 	ConnectionSegment cs{};
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
 
 	ConstraintEvents events;
 	using Strat = TreeOnlySchedulingPolicy<G>;
 
-	auto create_edge = [&events](PartId a, PartId b,
-	                             const Transformd &T_a_b) {
+	auto create_edge = [&events](PartId a, PartId b, const Transformd &T_a_b) {
 		return events.create(a, b, T_a_b);
 	};
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{
-	    &g, strat, create_edge, destroy_edge,
-	    std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+	                       std::pmr::get_default_resource()};
 
 	// First scheduling
 	sched.on_connected(0, 1);
@@ -746,21 +707,19 @@ static void test_add_new_desired_edges_only_create_new() {
 
 	ConnectionSegment cs{};
 	// Initially only connect 0-1
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
 
 	ConstraintEvents events;
 	using Strat = TreeOnlySchedulingPolicy<G>;
 
-	auto create_edge = [&events](PartId a, PartId b,
-	                             const Transformd &T_a_b) {
+	auto create_edge = [&events](PartId a, PartId b, const Transformd &T_a_b) {
 		return events.create(a, b, T_a_b);
 	};
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{
-	    &g, strat, create_edge, destroy_edge,
-	    std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+	                       std::pmr::get_default_resource()};
 
 	// First schedule: edge {0,1}
 	sched.on_connected(0, 1);
@@ -768,7 +727,7 @@ static void test_add_new_desired_edges_only_create_new() {
 	assert(events.has_edge(0, 1));
 
 	// Extend topology with 1-2; tree-only policy now wants {0,1} and {1,2}.
-	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs));
+	assert(g.connect(IR(1, 11), IR(2, 31), cs));
 	sched.on_connected(1, 2);
 
 	// Existing edge kept; new one created; none destroyed.
@@ -803,22 +762,20 @@ static void test_cross_cc_edges_removed_after_split() {
 
 	ConnectionSegment cs{};
 	// Connect 0-1-2 chain
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
-	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
+	assert(g.connect(IR(1, 11), IR(2, 31), cs));
 
 	ConstraintEvents events;
 	using Strat = Only02Strategy;
 
-	auto create_edge = [&events](PartId a, PartId b,
-	                             const Transformd &T_a_b) {
+	auto create_edge = [&events](PartId a, PartId b, const Transformd &T_a_b) {
 		return events.create(a, b, T_a_b);
 	};
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{
-	    &g, strat, create_edge, destroy_edge,
-	    std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
+	                       std::pmr::get_default_resource()};
 
 	// Initial constraints: strategy requests edge {0,2} over CC {0,1,2}.
 	sched.on_connected(0, 1);
@@ -840,8 +797,8 @@ static void test_tree_only_policy_on_path() {
 	build_three_parts(g);
 
 	ConnectionSegment cs{};
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
-	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
+	assert(g.connect(IR(1, 11), IR(2, 31), cs));
 
 	auto cc = g.component_view(PartId{1});
 	TreeOnlySchedulingPolicy<G> policy{};
@@ -850,19 +807,16 @@ static void test_tree_only_policy_on_path() {
 	for (auto e : policy.compute(cc)) {
 		edges.push_back(e);
 	}
-	std::sort(edges.begin(), edges.end(),
-	          [](const auto &x, const auto &y) {
-		          return std::tie(x.first, x.second) <
-		                 std::tie(y.first, y.second);
-	          });
+	std::sort(edges.begin(), edges.end(), [](const auto &x, const auto &y) {
+		return std::tie(x.first, x.second) < std::tie(y.first, y.second);
+	});
 
-	std::vector<UnorderedPair<PartId>> expected{
-	    UnorderedPair<PartId>{0, 1}, UnorderedPair<PartId>{1, 2}};
-	std::sort(expected.begin(), expected.end(),
-	          [](const auto &x, const auto &y) {
-		          return std::tie(x.first, x.second) <
-		                 std::tie(y.first, y.second);
-	          });
+	std::vector<UnorderedPair<PartId>> expected{UnorderedPair<PartId>{0, 1},
+	                                            UnorderedPair<PartId>{1, 2}};
+	std::sort(
+	    expected.begin(), expected.end(), [](const auto &x, const auto &y) {
+		    return std::tie(x.first, x.second) < std::tie(y.first, y.second);
+	    });
 	assert(edges == expected);
 }
 
@@ -872,9 +826,9 @@ static void test_fullgraph_policy_on_triangle() {
 
 	ConnectionSegment cs{};
 	// Triangle 0-1-2
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
-	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs));
-	assert(g.connect(IR(0, 12), IR(2, 31), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
+	assert(g.connect(IR(1, 11), IR(2, 31), cs));
+	assert(g.connect(IR(0, 12), IR(2, 31), cs));
 
 	auto cc = g.component_view(PartId{0});
 	FullGraphSchedulingPolicy<G> policy{};
@@ -883,20 +837,17 @@ static void test_fullgraph_policy_on_triangle() {
 	for (auto e : policy.compute(cc)) {
 		edges.push_back(e);
 	}
-	std::sort(edges.begin(), edges.end(),
-	          [](const auto &x, const auto &y) {
-		          return std::tie(x.first, x.second) <
-		                 std::tie(y.first, y.second);
-	          });
+	std::sort(edges.begin(), edges.end(), [](const auto &x, const auto &y) {
+		return std::tie(x.first, x.second) < std::tie(y.first, y.second);
+	});
 
-	std::vector<UnorderedPair<PartId>> expected{
-	    UnorderedPair<PartId>{0, 1}, UnorderedPair<PartId>{0, 2},
-	    UnorderedPair<PartId>{1, 2}};
-	std::sort(expected.begin(), expected.end(),
-	          [](const auto &x, const auto &y) {
-		          return std::tie(x.first, x.second) <
-		                 std::tie(y.first, y.second);
-	          });
+	std::vector<UnorderedPair<PartId>> expected{UnorderedPair<PartId>{0, 1},
+	                                            UnorderedPair<PartId>{0, 2},
+	                                            UnorderedPair<PartId>{1, 2}};
+	std::sort(
+	    expected.begin(), expected.end(), [](const auto &x, const auto &y) {
+		    return std::tie(x.first, x.second) < std::tie(y.first, y.second);
+	    });
 	assert(edges == expected);
 }
 
@@ -906,8 +857,7 @@ static void test_exponential_skip_policy_n1() {
 	// Single part (pid 0)
 	auto ifs = std::initializer_list<InterfaceSpec>{mk_stud(50, 1, 1),
 	                                                mk_hole(51, 1, 1)};
-	auto p0 = g.add_part<CustomPart>(
-	    std::tuple<>{}, 0.1, BrickColor{1, 2, 3}, ifs);
+	auto p0 = g.add_part<CustomPart>(0.1, BrickColor{1, 2, 3}, ifs);
 	assert(p0 && *p0 == PartId{0});
 
 	auto cc = g.component_view(PartId{0});
@@ -928,14 +878,12 @@ static void test_exponential_skip_policy_n2_k1() {
 	                                                 mk_hole(61, 1, 1)};
 	auto ifs1 = std::initializer_list<InterfaceSpec>{mk_stud(62, 1, 1),
 	                                                 mk_hole(63, 1, 1)};
-	auto p0 = g.add_part<CustomPart>(
-	    std::tuple<>{}, 0.1, BrickColor{1, 2, 3}, ifs0);
-	auto p1 = g.add_part<CustomPart>(
-	    std::tuple<>{}, 0.2, BrickColor{4, 5, 6}, ifs1);
+	auto p0 = g.add_part<CustomPart>(0.1, BrickColor{1, 2, 3}, ifs0);
+	auto p1 = g.add_part<CustomPart>(0.2, BrickColor{4, 5, 6}, ifs1);
 	assert(p0 && p1);
 
 	ConnectionSegment cs{};
-	assert(g.connect(IR(*p0, 60), IR(*p1, 63), std::tuple<>{}, cs));
+	assert(g.connect(IR(*p0, 60), IR(*p1, 63), cs));
 
 	auto cc = g.component_view(*p0);
 	ExponentialSkipSchedulingPolicy<G> policy{1};
@@ -957,18 +905,17 @@ static void test_exponential_skip_policy_n4_k2() {
 		auto ifs = std::initializer_list<InterfaceSpec>{
 		    mk_stud(100 + 2 * i, 1, 1), mk_hole(101 + 2 * i, 1, 1)};
 		auto p = g.add_part<CustomPart>(
-		    std::tuple<>{}, 0.1 + 0.1 * i,
-		    BrickColor{std::uint8_t(10 * i), 0, 0}, ifs);
+		    0.1 + 0.1 * i, BrickColor{std::uint8_t(10 * i), 0, 0}, ifs);
 		assert(p && *p == static_cast<PartId>(i));
 	}
 
 	ConnectionSegment cs{};
 	for (int i = 0; i < 3; ++i) {
-		assert(g.connect(IR(static_cast<PartId>(i),
-		                    static_cast<InterfaceId>(100 + 2 * i)),
-		                 IR(static_cast<PartId>(i + 1),
-		                    static_cast<InterfaceId>(101 + 2 * (i + 1))),
-		                 std::tuple<>{}, cs));
+		assert(g.connect(
+		    IR(static_cast<PartId>(i), static_cast<InterfaceId>(100 + 2 * i)),
+		    IR(static_cast<PartId>(i + 1),
+		       static_cast<InterfaceId>(101 + 2 * (i + 1))),
+		    cs));
 	}
 
 	auto cc = g.component_view(PartId{0});
@@ -984,21 +931,19 @@ static void test_exponential_skip_policy_n4_k2() {
 	// i=1: (1,2), (1,3)
 	// i=2: (2,3)
 	// i=3: none
-	std::vector<UnorderedPair<PartId>> expected{
-	    {PartId{0}, PartId{1}}, {PartId{0}, PartId{2}},
-	    {PartId{1}, PartId{2}}, {PartId{1}, PartId{3}},
-	    {PartId{2}, PartId{3}}};
+	std::vector<UnorderedPair<PartId>> expected{{PartId{0}, PartId{1}},
+	                                            {PartId{0}, PartId{2}},
+	                                            {PartId{1}, PartId{2}},
+	                                            {PartId{1}, PartId{3}},
+	                                            {PartId{2}, PartId{3}}};
 
-	std::sort(edges.begin(), edges.end(),
-	          [](const auto &x, const auto &y) {
-		          return std::tie(x.first, x.second) <
-		                 std::tie(y.first, y.second);
-	          });
-	std::sort(expected.begin(), expected.end(),
-	          [](const auto &x, const auto &y) {
-		          return std::tie(x.first, x.second) <
-		                 std::tie(y.first, y.second);
-	          });
+	std::sort(edges.begin(), edges.end(), [](const auto &x, const auto &y) {
+		return std::tie(x.first, x.second) < std::tie(y.first, y.second);
+	});
+	std::sort(
+	    expected.begin(), expected.end(), [](const auto &x, const auto &y) {
+		    return std::tie(x.first, x.second) < std::tie(y.first, y.second);
+	    });
 
 	assert(edges == expected);
 }

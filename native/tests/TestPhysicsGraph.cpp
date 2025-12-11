@@ -192,11 +192,11 @@ struct PhysicsGraphFixture {
 		};
 
 		auto pidA_opt = graph.topology().add_part<BrickPart>(
-		    std::tuple{static_cast<physx::PxRigidActor *>(actorA)}, ifsA,
-		    BrickUnit{2}, BrickUnit{4}, PlateUnit{BrickHeightPerPlate}, red);
+		    actorA, ifsA, BrickUnit{2}, BrickUnit{4},
+		    PlateUnit{BrickHeightPerPlate}, red);
 		auto pidB_opt = graph.topology().add_part<BrickPart>(
-		    std::tuple{static_cast<physx::PxRigidActor *>(actorB)}, ifsB,
-		    BrickUnit{2}, BrickUnit{4}, PlateUnit{BrickHeightPerPlate}, green);
+		    actorB, ifsB, BrickUnit{2}, BrickUnit{4},
+		    PlateUnit{BrickHeightPerPlate}, green);
 		assert(pidA_opt.has_value());
 		assert(pidB_opt.has_value());
 		pidA = *pidA_opt;
@@ -207,7 +207,7 @@ struct PhysicsGraphFixture {
 			ConnectionSegment cs{};
 			auto csid_opt = graph.topology().connect(
 			    InterfaceRef{pidA, BrickPart::StudId},
-			    InterfaceRef{pidB, BrickPart::HoleId}, std::tuple{}, cs);
+			    InterfaceRef{pidB, BrickPart::HoleId}, cs);
 			assert(csid_opt.has_value());
 			csid = *csid_opt;
 
@@ -261,8 +261,8 @@ static void test_topology_and_constraints() {
 	// Adjacency in wrappers: stud has outgoing, hole has incoming, both are
 	// neighbors of each other.
 	using PW = PhysicsPartWrapper<BrickPart>;
-	const PW *pA = fx.graph.topology().parts().get<PW>(fx.pidA);
-	const PW *pB = fx.graph.topology().parts().get<PW>(fx.pidB);
+	const PW *pA = fx.graph.topology().parts().find_value<PW>(fx.pidA);
+	const PW *pB = fx.graph.topology().parts().find_value<PW>(fx.pidB);
 	assert(pA && pB);
 	assert(pA->outgoings().contains(fx.csid));
 	assert(pB->incomings().contains(fx.csid));
@@ -521,7 +521,7 @@ static void test_event_callback_onContact() {
 		const auto &conn_segs = fx.graph.topology().connection_segments();
 		assert(conn_segs.size() == 1);
 		const ConnSegRef *stored_csref =
-		    conn_segs.template project<ConnSegId, ConnSegRef>(evt.csid);
+		    conn_segs.template find_key<ConnSegRef>(evt.csid);
 		assert(stored_csref != nullptr);
 		assert(*stored_csref == evt.csref);
 

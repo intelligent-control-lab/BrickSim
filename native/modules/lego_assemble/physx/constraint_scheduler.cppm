@@ -226,7 +226,7 @@ class ConstraintScheduler {
 		while (!remaining_vertices.empty()) {
 			PartId seed = *remaining_vertices.begin();
 			remaining_vertices.erase(seed);
-			if (!graph_->parts().alive(seed)) {
+			if (!graph_->parts().contains(seed)) {
 				continue;
 			}
 			auto cc_view = graph_->component_view(seed);

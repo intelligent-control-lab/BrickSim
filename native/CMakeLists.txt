@@ -162,7 +162,6 @@ endfunction()
 
 add_lego_test(TestConversions tests/TestConversions.cpp)
 add_lego_test(TestPolyStore tests/TestPolyStore.cpp)
-add_lego_test(TestPolyStore2 tests/TestPolyStore2.cpp)
 add_lego_test(TestBrickSpecs tests/TestBrickSpecs.cpp)
 add_lego_test(TestMultiKeySet tests/TestMultiKeySet.cpp)
 add_lego_test(TestMultiKeyMap tests/TestMultiKeyMap.cpp)

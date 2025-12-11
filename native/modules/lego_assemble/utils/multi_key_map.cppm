@@ -6,24 +6,76 @@ import lego_assemble.utils.type_list;
 
 namespace lego_assemble {
 
-// Primary template
+export template <class KeysList, class Mapped> class MultiKeyMapEntry;
+
+export template <class... Ks, class M>
+class MultiKeyMapEntry<type_list<Ks...>, M> {
+  public:
+	using keys_type = std::tuple<Ks...>;
+	using value_type = M;
+
+	MultiKeyMapEntry() = default;
+	MultiKeyMapEntry(MultiKeyMapEntry &&) = default;
+	MultiKeyMapEntry(const MultiKeyMapEntry &) = default;
+	MultiKeyMapEntry &operator=(const MultiKeyMapEntry &) = delete;
+
+	template <class KeyTuple, class ValueTuple>
+	MultiKeyMapEntry(std::piecewise_construct_t, KeyTuple &&key_args,
+	                 ValueTuple &&value_args)
+	    : keys_(std::make_from_tuple<keys_type>(
+	          std::forward<KeyTuple>(key_args))),
+	      value_(std::make_from_tuple<value_type>(
+	          std::forward<ValueTuple>(value_args))) {}
+
+	const keys_type &keys() const noexcept {
+		return keys_;
+	}
+	template <in_pack<Ks...> K> const K &key() const noexcept {
+		return std::get<index_in_pack<K, Ks...>>(keys_);
+	}
+	value_type &value() noexcept {
+		return value_;
+	}
+	const value_type &value() const noexcept {
+		return value_;
+	}
+
+	template <std::size_t I> decltype(auto) get() noexcept {
+		if constexpr (I == 0) {
+			return std::as_const(keys_);
+		} else if constexpr (I == 1) {
+			return (value_);
+		}
+	}
+
+	template <std::size_t I> decltype(auto) get() const noexcept {
+		if constexpr (I == 0)
+			return (keys_);
+		else if constexpr (I == 1)
+			return (value_);
+	}
+
+  private:
+	template <class, class, class, class> friend class MultiKeyMap;
+
+	keys_type keys_;
+	value_type value_;
+	MultiKeyMapEntry &operator=(MultiKeyMapEntry &&) = default;
+};
+
 export template <class KeysList, class Mapped,
                  class HashList = typename KeysList::template map<std::hash>,
                  class EqList = typename KeysList::template map<std::equal_to>>
 class MultiKeyMap;
 
-// Partial specialization for type_list<Ks...>
+// No thread safety guarantee
+// No strong exception guarantee
 export template <class... Ks, class M, class... Hs, class... Es>
 class MultiKeyMap<type_list<Ks...>, M, type_list<Hs...>, type_list<Es...>> {
   public:
 	using KeysList = type_list<Ks...>;
 	using HashList = type_list<Hs...>;
 	using EqList = type_list<Es...>;
-	using mapped_type = M;
-	using size_type = std::uint32_t;
-	using tuple_type = std::tuple<Ks...>;
-	// Match std::map naming: pair of (keys tuple, mapped value)
-	using value_type = std::pair<tuple_type, mapped_type>;
 
 	static_assert(KeysList::size > 0,
 	              "MultiKeyMap requires at least one key type");
@@ -38,175 +90,188 @@ class MultiKeyMap<type_list<Ks...>, M, type_list<Hs...>, type_list<Es...>> {
 	    (std::equivalence_relation<Es, const Ks &, const Ks &> && ...),
 	    "MultiKeyMap EqList must satisfy equivalence_relation concept");
 
+	using keys_type = std::tuple<Ks...>;
+	using value_type = M;
+	using entry_type = MultiKeyMapEntry<type_list<Ks...>, M>;
+
 	explicit MultiKeyMap(
 	    std::pmr::memory_resource *r = std::pmr::get_default_resource())
-	    : res_{r}, store_{r}, maps_{make_map<Ks, Hs, Es>(r)...} {}
+	    : records_{r}, maps_{make_map<Ks, Hs, Es>(r)...} {}
 
-	// --- Insertion ---
-
-	// Insert tuple + value. Returns false if any key collides.
-	template <class V>
-	    requires std::constructible_from<mapped_type, V &&>
-	[[nodiscard]] bool insert(const tuple_type &keys, V &&v) {
-		return insert_impl_(keys, std::forward<V>(v));
-	}
-	template <class V>
-	    requires std::constructible_from<mapped_type, V &&>
-	[[nodiscard]] bool insert(tuple_type &&keys, V &&v) {
-		return insert_impl_(std::move(keys), std::forward<V>(v));
-	}
-
-	// Emplace value from args while providing the keys tuple.
-	// Example: map.emplace(keys_tuple, v_ctor_arg1, v_ctor_arg2, ...)
-	template <class... VArgs>
-	    requires std::constructible_from<mapped_type, VArgs...>
-	[[nodiscard]] bool emplace(const tuple_type &keys, VArgs &&...vargs) {
-		return insert_impl_(keys, mapped_type{std::forward<VArgs>(vargs)...});
-	}
-	template <class... VArgs>
-	    requires std::constructible_from<mapped_type, VArgs...>
-	[[nodiscard]] bool emplace(tuple_type &&keys, VArgs &&...vargs) {
-		return insert_impl_(std::move(keys),
-		                    mapped_type{std::forward<VArgs>(vargs)...});
+	template <tuple_of_size<sizeof...(Ks)> KeysTuple, class... VArgs>
+	    requires((std::convertible_to<
+	                  std::tuple_element_t<index_in_pack<Ks, Ks...>,
+	                                       std::remove_cvref_t<KeysTuple>>,
+	                  Ks> &&
+	              ...) &&
+	             (std::constructible_from<value_type, VArgs...>))
+	bool emplace(KeysTuple &&kargs, VArgs &&...vargs) {
+		if ((map_for_<Ks>().contains(
+		         std::get<index_in_pack<Ks, Ks...>>(kargs)) ||
+		     ...)) {
+			return false;
+		}
+		const index_type idx = static_cast<index_type>(records_.size());
+		records_.emplace_back(
+		    std::piecewise_construct, std::forward<KeysTuple>(kargs),
+		    std::forward_as_tuple(std::forward<VArgs>(vargs)...));
+		std::apply(
+		    [this, idx](const Ks &...keys) {
+			    (map_for_<Ks>().emplace(keys, idx), ...);
+		    },
+		    records_.back().keys());
+		return true;
 	}
 
-	// Piecewise construction of (keys..., value...) like std::pair.
-	// Example:
-	//   map.emplace_piecewise(std::piecewise_construct,
-	//                         std::forward_as_tuple(k1,k2,...),
-	//                         std::forward_as_tuple(v_args...));
-	template <class... KArgs, class... VArgs>
-	    requires(std::constructible_from<tuple_type, KArgs...> &&
-	             std::constructible_from<mapped_type, VArgs...>)
-	[[nodiscard]] bool emplace_piecewise(std::piecewise_construct_t,
-	                                     std::tuple<KArgs...> keys_args,
-	                                     std::tuple<VArgs...> val_args) {
-		tuple_type keys =
-		    std::make_from_tuple<tuple_type>(std::move(keys_args));
-		mapped_type val =
-		    std::make_from_tuple<mapped_type>(std::move(val_args));
-		return insert_impl_(std::move(keys), std::move(val));
+	template <class... Args>
+	    requires(sizeof...(Args) >= sizeof...(Ks) &&
+	             (type_list<Args...>::template take_front<
+	                 sizeof...(Ks)>::template convertible_to<Ks...>) &&
+	             (type_list<Args...>::template drop_front<
+	                 sizeof...(Ks)>::template can_construct<value_type>))
+	bool emplace(Args &&...args) {
+		using ArgsList = type_list<Args...>;
+		return select_invoke<
+		    typename ArgsList::template drop_front_seq<sizeof...(Ks)>>(
+		    [&]<class... VArgs>(VArgs &&...vargs) {
+			    return emplace(
+			        select_forward_as_tuple<
+			            typename ArgsList::template front_seq<sizeof...(Ks)>>(
+			            std::forward<Args>(args)...),
+			        std::forward<VArgs>(vargs)...);
+		    },
+		    std::forward<Args>(args)...);
 	}
 
-	// --- Lookup ---
+	bool insert(const keys_type &keys, const value_type &value) {
+		return emplace(keys, value);
+	}
 
-	// Find value by any key; nullptr if absent
-	template <class K>
-	    requires in_pack<K, Ks...>
-	[[nodiscard]] mapped_type *find(const K &k) noexcept {
-		auto &m = map_for_<K>();
-		if (auto it = m.find(k); it != m.end())
-			return &store_[it->second].second;
+	bool insert(const keys_type &keys, value_type &&value) {
+		return emplace(keys, std::move(value));
+	}
+
+	bool insert(keys_type &&keys, value_type &&value) {
+		return emplace(std::move(keys), std::move(value));
+	}
+
+	entry_type *find(const in_pack<Ks...> auto &k) {
+		const auto &map = map_for_<decltype(k)>();
+		auto it = map.find(k);
+		if (it == map.end())
+			return nullptr;
+		return &records_[it->second];
+	}
+	const entry_type *find(const in_pack<Ks...> auto &k) const {
+		const auto &map = map_for_<decltype(k)>();
+		auto it = map.find(k);
+		if (it == map.end())
+			return nullptr;
+		return &records_[it->second];
+	}
+	template <in_pack<Ks...> To>
+	const To *find_key(const in_pack<Ks...> auto &k) const {
+		if (const auto *record = find(k)) {
+			return &record->template key<To>();
+		}
 		return nullptr;
 	}
-	template <class K>
-	    requires in_pack<K, Ks...>
-	[[nodiscard]] const mapped_type *find(const K &k) const noexcept {
-		const auto &m = map_for_<K>();
-		if (auto it = m.find(k); it != m.end())
-			return &store_[it->second].second;
+	const keys_type *find_keys(const in_pack<Ks...> auto &k) const {
+		if (const auto *record = find(k)) {
+			return &record->keys();
+		}
 		return nullptr;
 	}
-
-	// Retrieve the full keys tuple by any key; nullptr if absent
-	template <class K>
-	    requires in_pack<K, Ks...>
-	[[nodiscard]] const tuple_type *find_keys(const K &k) const noexcept {
-		const auto &m = map_for_<K>();
-		if (auto it = m.find(k); it != m.end())
-			return &store_[it->second].first;
+	value_type *find_value(const in_pack<Ks...> auto &k) {
+		if (auto *record = find(k)) {
+			return &record->value();
+		}
 		return nullptr;
 	}
-
-	// Project a key value to another key within the same tuple
-	template <class From, class To>
-	    requires(in_pack<From, Ks...> && in_pack<To, Ks...>)
-	[[nodiscard]] const To *project(const From &from) const noexcept {
-		if (auto p = find_keys<From>(from)) {
-			return &std::get<index_in_pack<To, Ks...>>(*p);
+	const value_type *find_value(const in_pack<Ks...> auto &k) const {
+		if (const auto *record = find(k)) {
+			return &record->value();
 		}
 		return nullptr;
 	}
 
-	// Contains by any single key
-	template <class K>
-	    requires in_pack<K, Ks...>
-	[[nodiscard]] bool contains(const K &k) const noexcept {
-		return map_for_<K>().contains(k);
+	entry_type &entry_of(const in_pack<Ks...> auto &k) {
+		if (auto *ptr = find(k)) {
+			return *ptr;
+		}
+		throw std::out_of_range("MultiKeyMap::entry_of: key not found");
+	}
+	const entry_type &entry_of(const in_pack<Ks...> auto &k) const {
+		if (const auto *ptr = find(k)) {
+			return *ptr;
+		}
+		throw std::out_of_range("MultiKeyMap::entry_of: key not found");
+	}
+	template <in_pack<Ks...> To>
+	const To &key_of(const in_pack<Ks...> auto &k) const {
+		if (const auto *ptr = find_key<To>(k)) {
+			return *ptr;
+		}
+		throw std::out_of_range("MultiKeyMap::key_of: key not found");
+	}
+	const keys_type &keys_of(const in_pack<Ks...> auto &k) const {
+		if (const auto *ptr = find_keys(k)) {
+			return *ptr;
+		}
+		throw std::out_of_range("MultiKeyMap::keys_of: key not found");
+	}
+	value_type &value_of(const in_pack<Ks...> auto &k) {
+		if (auto *ptr = find_value(k)) {
+			return *ptr;
+		}
+		throw std::out_of_range("MultiKeyMap::value_of: key not found");
+	}
+	const value_type &value_of(const in_pack<Ks...> auto &k) const {
+		if (const auto *ptr = find_value(k)) {
+			return *ptr;
+		}
+		throw std::out_of_range("MultiKeyMap::value_of: key not found");
 	}
 
-	// --- Value updates ---
+	bool contains(const in_pack<Ks...> auto &k) const {
+		return map_for_<decltype(k)>().contains(k);
+	}
 
-	// Replace the mapped value addressed by any key. Returns false if missing.
-	template <class K, class V>
-	    requires in_pack<K, Ks...> && std::constructible_from<mapped_type, V &&>
-	bool replace_value(const K &k, V &&v) {
-		auto &m = map_for_<K>();
+	bool erase(const in_pack<Ks...> auto &k) {
+		auto &m = map_for_<decltype(k)>();
 		auto it = m.find(k);
 		if (it == m.end())
 			return false;
-		store_[it->second].second = mapped_type{std::forward<V>(v)};
+		erase_at_index_(it->second);
 		return true;
 	}
 
-	// Get a mutable pointer to the mapped value by any key; nullptr if missing.
-	template <class K>
-	    requires in_pack<K, Ks...>
-	[[nodiscard]] mapped_type *value_ptr(const K &k) noexcept {
-		auto &m = map_for_<K>();
-		if (auto it = m.find(k); it != m.end())
-			return &store_[it->second].second;
-		return nullptr;
+	std::size_t size() const noexcept {
+		return records_.size();
+	}
+	bool empty() const noexcept {
+		return records_.empty();
 	}
 
-	// --- Erase ---
-
-	// Erase by any single key
-	template <class K>
-	    requires in_pack<K, Ks...>
-	bool erase_by_key(const K &k) {
-		auto &m = map_for_<K>();
-		auto it = m.find(k);
-		if (it == m.end())
-			return false;
-		return erase_at_index_(it->second);
+	std::span<entry_type> view() noexcept {
+		return {records_.data(), records_.size()};
 	}
-
-	// Erase by keys tuple (uses first key)
-	bool erase(const tuple_type &keys) {
-		return erase_by_key(std::get<0>(keys));
+	std::span<const entry_type> view() const noexcept {
+		return {records_.data(), records_.size()};
 	}
-
-	// --- Introspection / iteration ---
-
-	[[nodiscard]] std::size_t size() const noexcept {
-		return store_.size();
-	}
-	[[nodiscard]] bool empty() const noexcept {
-		return store_.empty();
-	}
-
-	// View all entries as (tuple_of_keys, mapped_value)
-	[[nodiscard]] std::span<const value_type> view() const noexcept {
-		return {store_.data(), store_.size()};
-	}
-
-	// --- Memory knobs ---
 
 	void reserve(std::size_t n) {
-		store_.reserve(n);
-		reserve_maps_(n);
+		records_.reserve(n);
+		(map_for_<Ks>().reserve(n), ...);
 	}
+
 	void clear() {
-		store_.clear();
-		clear_maps_();
-	}
-	std::pmr::memory_resource *resource() const noexcept {
-		return res_;
+		records_.clear();
+		(map_for_<Ks>().clear(), ...);
 	}
 
   private:
-	using index_type = size_type;
+	using index_type = std::uint32_t;
 
 	template <class K>
 	using MapAlloc =
@@ -215,125 +280,74 @@ class MultiKeyMap<type_list<Ks...>, M, type_list<Hs...>, type_list<Es...>> {
 	template <class K, class H, class E>
 	using KeyMap = std::unordered_map<K, index_type, H, E, MapAlloc<K>>;
 
+	using Maps = std::tuple<KeyMap<Ks, Hs, Es>...>;
+
 	template <class K, class H, class E>
 	static KeyMap<K, H, E> make_map(std::pmr::memory_resource *r) {
 		return KeyMap<K, H, E>(0, H{}, E{}, MapAlloc<K>{r});
 	}
 
-	using Maps = std::tuple<KeyMap<Ks, Hs, Es>...>;
-
-	template <class K> auto &map_for_() noexcept {
-		constexpr std::size_t I = index_in_pack<K, Ks...>;
-		return std::get<I>(maps_);
+	template <class K>
+	    requires in_pack<std::remove_cvref_t<K>, Ks...>
+	auto &map_for_() noexcept {
+		return std::get<index_in_pack<std::remove_cvref_t<K>, Ks...>>(maps_);
 	}
-	template <class K> const auto &map_for_() const noexcept {
-		constexpr std::size_t I = index_in_pack<K, Ks...>;
-		return std::get<I>(maps_);
-	}
-
-	template <class TupleLike, class VLike>
-	[[nodiscard]] bool insert_impl_(TupleLike &&keys_like, VLike &&v_like) {
-		// 0) Check uniqueness using the tuple-like directly.
-		if (!check_all_unique_(keys_like))
-			return false;
-
-		const index_type idx = static_cast<index_type>(store_.size());
-
-		// 1) Construct in-place once.
-		store_.emplace_back(std::forward<TupleLike>(keys_like),
-		                    std::forward<VLike>(v_like));
-
-		// 2) Index using the keys now living in store_.back()
-		insert_all_maps_(store_.back().first, idx);
-		return true;
+	template <class K>
+	    requires in_pack<std::remove_cvref_t<K>, Ks...>
+	const auto &map_for_() const noexcept {
+		return std::get<index_in_pack<std::remove_cvref_t<K>, Ks...>>(maps_);
 	}
 
-	[[nodiscard]] bool erase_at_index_(index_type victim) {
-		const index_type last = static_cast<index_type>(store_.size() - 1);
-		if (victim == last) {
-			// Just erase the last element's keys and pop.
-			erase_all_maps_(store_.back().first);
-			store_.pop_back();
-			return true;
-		} else {
-			// 1) Repoint the "last" element's keys *before* moving it.
-			update_all_maps_to_(store_.back().first, victim);
-			// 2) Erase the victim's keys while they're still in place.
-			erase_all_maps_(store_[victim].first);
-			// 3) Move the last pair into the hole and pop.
-			store_[victim] = std::move(store_.back());
-			store_.pop_back();
-			return true;
+	void erase_at_index_(index_type victim) {
+		const index_type last = static_cast<index_type>(records_.size() - 1);
+
+		std::apply(
+		    [this](const Ks &...keys) { (map_for_<Ks>().erase(keys), ...); },
+		    records_[victim].keys());
+
+		if (victim != last) {
+			records_[victim] = std::move(records_[last]);
+			std::apply(
+			    [this, victim](const Ks &...keys) {
+				    ((map_for_<Ks>().find(keys)->second = victim), ...);
+			    },
+			    records_[victim].keys());
 		}
-	}
 
-	template <class TupleLike>
-	[[nodiscard]] bool check_all_unique_(const TupleLike &t) const {
-		return check_all_unique_impl_(
-		    t, std::make_index_sequence<KeysList::size>{});
-	}
-	template <class TupleLike, std::size_t... Is>
-	[[nodiscard]] bool
-	check_all_unique_impl_(const TupleLike &t,
-	                       std::index_sequence<Is...>) const {
-		return (!std::get<Is>(maps_).contains(std::get<Is>(t)) && ...);
-	}
-
-	void insert_all_maps_(const tuple_type &keys, index_type index) {
-		insert_all_maps_impl_(keys, index,
-		                      std::make_index_sequence<KeysList::size>{});
-	}
-	template <std::size_t... Is>
-	void insert_all_maps_impl_(const tuple_type &keys, index_type index,
-	                           std::index_sequence<Is...>) {
-		(std::get<Is>(maps_).emplace(std::get<Is>(keys), index), ...);
-	}
-
-	void erase_all_maps_(const tuple_type &keys) {
-		erase_all_maps_impl_(keys, std::make_index_sequence<KeysList::size>{});
-	}
-	template <std::size_t... Is>
-	void erase_all_maps_impl_(const tuple_type &keys,
-	                          std::index_sequence<Is...>) {
-		(std::get<Is>(maps_).erase(std::get<Is>(keys)), ...);
-	}
-
-	void update_all_maps_to_(const tuple_type &keys, index_type new_index) {
-		update_all_maps_to_impl_(keys, new_index,
-		                         std::make_index_sequence<KeysList::size>{});
-	}
-	template <std::size_t... Is>
-	void update_all_maps_to_impl_(const tuple_type &keys, index_type new_index,
-	                              std::index_sequence<Is...>) {
-		(([](auto &map, const auto &key, index_type i) {
-			 auto it = map.find(key); // should exist
-			 // assert(it != map.end());
-			 it->second = i;
-		 }(std::get<Is>(maps_), std::get<Is>(keys), new_index)),
-		 ...);
-	}
-
-	void clear_maps_() {
-		clear_maps_impl_(std::make_index_sequence<KeysList::size>{});
-	}
-	template <std::size_t... Is>
-	void clear_maps_impl_(std::index_sequence<Is...>) {
-		(std::get<Is>(maps_).clear(), ...);
-	}
-
-	void reserve_maps_(std::size_t n) {
-		reserve_maps_impl_(n, std::make_index_sequence<KeysList::size>{});
-	}
-	template <std::size_t... Is>
-	void reserve_maps_impl_(std::size_t n, std::index_sequence<Is...>) {
-		(std::get<Is>(maps_).reserve(n), ...);
+		records_.pop_back();
 	}
 
   private:
-	std::pmr::memory_resource *res_;
-	std::pmr::vector<value_type>
-	    store_; // stores pairs of (N unique keys tuple, mapped value)
-	Maps maps_; // one unique index per key
+	std::pmr::vector<entry_type> records_;
+	Maps maps_;
 };
 
 } // namespace lego_assemble
+
+// Structured Binding Support
+namespace std {
+
+export template <class KeysList, class Mapped>
+struct tuple_size<lego_assemble::MultiKeyMapEntry<KeysList, Mapped>>
+    : std::integral_constant<std::size_t, 2> {};
+
+export template <class KeysList, class Mapped>
+struct tuple_size<const lego_assemble::MultiKeyMapEntry<KeysList, Mapped>>
+    : std::integral_constant<std::size_t, 2> {};
+
+export template <std::size_t I, class KeysList, class Mapped>
+struct tuple_element<I, lego_assemble::MultiKeyMapEntry<KeysList, Mapped>> {
+	using EntryType = lego_assemble::MultiKeyMapEntry<KeysList, Mapped>;
+	using type =
+	    std::conditional_t<I == 0, const typename EntryType::keys_type, Mapped>;
+};
+
+export template <std::size_t I, class KeysList, class Mapped>
+struct tuple_element<I,
+                     const lego_assemble::MultiKeyMapEntry<KeysList, Mapped>> {
+	using EntryType = lego_assemble::MultiKeyMapEntry<KeysList, Mapped>;
+	using type = std::conditional_t<I == 0, const typename EntryType::keys_type,
+	                                const Mapped>;
+};
+
+} // namespace std

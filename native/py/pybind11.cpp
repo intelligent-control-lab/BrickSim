@@ -1,11 +1,11 @@
-import lego_assemble.py;
+import lego_assemble.api;
 
 #include <unistd.h>
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-using namespace lego_assemble::py;
+using namespace lego_assemble::api;
 
 // Remember to update _native.pyi when changing the API below.
 PYBIND11_MODULE(_native, m) {
@@ -148,24 +148,23 @@ PYBIND11_MODULE(_native, m) {
 	m.def("get_assembly_thresholds", &get_assembly_thresholds,
 	      "Get the current assembly detection thresholds.");
 
-	pybind11::class_<PyAssemblyDebugInfo>(m, "AssemblyDebugInfo",
-	                                      "Debug information for assembly "
-	                                      "detection of a connection segment.")
-	    .def_readonly("accepted", &PyAssemblyDebugInfo::accepted)
+	pybind11::class_<AssemblyDebugInfo>(m, "AssemblyDebugInfo",
+	                                    "Debug information for assembly "
+	                                    "detection of a connection segment.")
+	    .def_readonly("accepted", &AssemblyDebugInfo::accepted)
 	    .def_readonly("relative_distance",
-	                  &PyAssemblyDebugInfo::relative_distance)
-	    .def_readonly("tilt", &PyAssemblyDebugInfo::tilt)
-	    .def_readonly("projected_force", &PyAssemblyDebugInfo::projected_force)
-	    .def_readonly("yaw_error", &PyAssemblyDebugInfo::yaw_error)
-	    .def_readonly("position_error", &PyAssemblyDebugInfo::position_error)
-	    .def_readonly("grid_pos", &PyAssemblyDebugInfo::grid_pos)
-	    .def_readonly("grid_pos_snapped",
-	                  &PyAssemblyDebugInfo::grid_pos_snapped)
-	    .def_readonly("stud_path", &PyAssemblyDebugInfo::stud_path)
-	    .def_readonly("stud_interface", &PyAssemblyDebugInfo::stud_interface)
-	    .def_readonly("hole_path", &PyAssemblyDebugInfo::hole_path)
-	    .def_readonly("hole_interface", &PyAssemblyDebugInfo::hole_interface)
-	    .def("__repr__", &PyAssemblyDebugInfo::repr);
+	                  &AssemblyDebugInfo::relative_distance)
+	    .def_readonly("tilt", &AssemblyDebugInfo::tilt)
+	    .def_readonly("projected_force", &AssemblyDebugInfo::projected_force)
+	    .def_readonly("yaw_error", &AssemblyDebugInfo::yaw_error)
+	    .def_readonly("position_error", &AssemblyDebugInfo::position_error)
+	    .def_readonly("grid_pos", &AssemblyDebugInfo::grid_pos)
+	    .def_readonly("grid_pos_snapped", &AssemblyDebugInfo::grid_pos_snapped)
+	    .def_readonly("stud_path", &AssemblyDebugInfo::stud_path)
+	    .def_readonly("stud_interface", &AssemblyDebugInfo::stud_interface)
+	    .def_readonly("hole_path", &AssemblyDebugInfo::hole_path)
+	    .def_readonly("hole_interface", &AssemblyDebugInfo::hole_interface)
+	    .def("__repr__", &AssemblyDebugInfo::repr);
 
 	m.def("get_assembly_debug_infos", &get_assembly_debug_infos,
 	      "Get the assembly detection debug information for all detected "

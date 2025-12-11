@@ -105,14 +105,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		template <class P>
 		void on_part_added(PartId pid, PhysicsPartWrapper<P> &pw) {
 			// Update shape <-> interface mapping
-			physx::PxRigidActor *const *px_actor_ptr =
+			physx::PxRigidActor *px_actor =
 			    owner_->topology_.parts()
-			        .template project_key<PartId, physx::PxRigidActor *>(pid);
-			if (!px_actor_ptr) {
-				throw std::runtime_error(std::format(
-				    "Part id {} has no associated PxRigidActor", pid));
-			}
-			physx::PxRigidActor *px_actor = *px_actor_ptr;
+			        .template key_of<physx::PxRigidActor *>(pid);
 
 			// Update constraint scheduler
 			owner_->constraint_scheduler_.on_part_added(pid);
@@ -140,7 +135,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 					    "Interface {} not found in part id {}", if_id, pid));
 				}
 				if (!owner_->shape_mapping_.emplace(
-				        {{pid, if_id}, {px_actor, shape}}, *iface)) {
+				        InterfaceRef{pid, if_id},
+				        ActorShapePair{px_actor, shape}, std::move(*iface))) {
 					throw std::runtime_error(std::format(
 					    "Failed to map shape to interface {} of part id {}",
 					    if_id, pid));
@@ -152,14 +148,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		void on_part_removing(PartId pid, PhysicsPartWrapper<P> &pw) {
 			// Update shape <-> interface mapping
 
-			physx::PxRigidActor *const *px_actor_ptr =
+			physx::PxRigidActor *px_actor =
 			    owner_->topology_.parts()
-			        .template project_key<PartId, physx::PxRigidActor *>(pid);
-			if (!px_actor_ptr) {
-				throw std::runtime_error(std::format(
-				    "Part id {} has no associated PxRigidActor", pid));
-			}
-			physx::PxRigidActor *px_actor = *px_actor_ptr;
+			        .template key_of<physx::PxRigidActor *>(pid);
 
 			// Thread safety: modifying shape_mapping_ and part_actors_
 			std::unique_lock<std::shared_mutex> lock(owner_->sim_mutex_);
@@ -171,8 +162,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			}
 
 			for (const auto &[if_id, shape] : pw.interface_shapes()) {
-				if (!owner_->shape_mapping_.template erase_by_key<InterfaceRef>(
-				        {pid, if_id})) {
+				if (!owner_->shape_mapping_.erase(InterfaceRef{pid, if_id})) {
 					throw std::runtime_error(std::format(
 					    "Failed to unmap shape from interface {} of part id {}",
 					    if_id, pid));
@@ -204,14 +194,12 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				// Set up PhysX shapes for connection segment
 				if (auto stud_shape_mapping =
 				        owner_->shape_mapping_
-				            .template project<InterfaceRef, ActorShapePair>(
-				                stud_if_ref)) {
+				            .template find_key<ActorShapePair>(stud_if_ref)) {
 					csw.px_stud_shape = *stud_shape_mapping;
 				}
 				if (auto hole_shape_mapping =
 				        owner_->shape_mapping_
-				            .template project<InterfaceRef, ActorShapePair>(
-				                hole_if_ref)) {
+				            .template find_key<ActorShapePair>(hole_if_ref)) {
 					csw.px_hole_shape = *hole_shape_mapping;
 				}
 
@@ -276,21 +264,12 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			{
 				// Thread safety: modifying contact_exclusions_
 				std::unique_lock<std::shared_mutex> lock(owner_->sim_mutex_);
-				physx::PxRigidActor *const *actor_a_ptr =
+				physx::PxRigidActor *actor_a =
 				    owner_->topology_.parts()
-				        .template project_key<PartId, physx::PxRigidActor *>(
-				            a_id);
-				physx::PxRigidActor *const *actor_b_ptr =
+				        .template key_of<physx::PxRigidActor *>(a_id);
+				physx::PxRigidActor *actor_b =
 				    owner_->topology_.parts()
-				        .template project_key<PartId, physx::PxRigidActor *>(
-				            b_id);
-				if (!actor_a_ptr || !actor_b_ptr) {
-					throw std::runtime_error(std::format(
-					    "Part ids {} and {} have no associated PxRigidActors",
-					    a_id, b_id));
-				}
-				physx::PxRigidActor *actor_a = *actor_a_ptr;
-				physx::PxRigidActor *actor_b = *actor_b_ptr;
+				        .template key_of<physx::PxRigidActor *>(b_id);
 				auto [_, inserted] =
 				    owner_->contact_exclusions_.emplace(ContactExclusionPair{
 				        {actor_a, nullptr}, {actor_b, nullptr}});
@@ -314,22 +293,12 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			{
 				// Thread safety: modifying contact_exclusions_
 				std::unique_lock<std::shared_mutex> lock(owner_->sim_mutex_);
-				physx::PxRigidActor *const *actor_a_ptr =
+				physx::PxRigidActor *actor_a =
 				    owner_->topology_.parts()
-				        .template project_key<PartId, physx::PxRigidActor *>(
-				            a_id);
-				physx::PxRigidActor *const *actor_b_ptr =
+				        .template key_of<physx::PxRigidActor *>(a_id);
+				physx::PxRigidActor *actor_b =
 				    owner_->topology_.parts()
-				        .template project_key<PartId, physx::PxRigidActor *>(
-				            b_id);
-				if (!actor_a_ptr || !actor_b_ptr) {
-					throw std::runtime_error(
-					    std::format("Part ids {} and {} have no associated "
-					                "PxRigidActors",
-					                a_id, b_id));
-				}
-				physx::PxRigidActor *actor_a = *actor_a_ptr;
-				physx::PxRigidActor *actor_b = *actor_b_ptr;
+				        .template key_of<physx::PxRigidActor *>(b_id);
 				if (owner_->contact_exclusions_.erase(ContactExclusionPair{
 				        {actor_a, nullptr}, {actor_b, nullptr}}) == 0) {
 					throw std::runtime_error(
@@ -468,12 +437,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				}
 				const auto &[shape0, shape1] = pair.shapes;
 
-				const InterfaceSpec *if0 =
-				    owner_->shape_mapping_.template find<ActorShapePair>(
-				        {rb0, shape0});
-				const InterfaceSpec *if1 =
-				    owner_->shape_mapping_.template find<ActorShapePair>(
-				        {rb1, shape1});
+				const InterfaceSpec *if0 = owner_->shape_mapping_.find_value(
+				    ActorShapePair{rb0, shape0});
+				const InterfaceSpec *if1 = owner_->shape_mapping_.find_value(
+				    ActorShapePair{rb1, shape1});
 				if (!if0 || !if1) {
 					continue;
 				}
@@ -552,13 +519,11 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 			if (owner_->collect_assembly_debug_info_) {
 				const InterfaceRef *ifref0 =
-				    owner_->shape_mapping_
-				        .template project<ActorShapePair, InterfaceRef>(
-				            {rb0, s0});
+				    owner_->shape_mapping_.template find_key<InterfaceRef>(
+				        ActorShapePair{rb0, s0});
 				const InterfaceRef *ifref1 =
-				    owner_->shape_mapping_
-				        .template project<ActorShapePair, InterfaceRef>(
-				            {rb1, s1});
+				    owner_->shape_mapping_.template find_key<InterfaceRef>(
+				        ActorShapePair{rb1, s1});
 				if (ifref0 && ifref1) {
 					debug_info.csref = {*ifref0, *ifref1};
 					owner_->enqueue_assembly_debug_info(debug_info);
@@ -571,29 +536,24 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 			// Thread safety: read lock already acquired in caller
 
-			const InterfaceRef *ifref0 =
-			    owner_->shape_mapping_
-			        .template project<ActorShapePair, InterfaceRef>({rb0, s0});
-			const InterfaceRef *ifref1 =
-			    owner_->shape_mapping_
-			        .template project<ActorShapePair, InterfaceRef>({rb1, s1});
-			if (!ifref0 || !ifref1) {
-				std::unreachable();
-			}
+			const InterfaceRef &ifref0 =
+			    owner_->shape_mapping_.template key_of<InterfaceRef>(
+			        ActorShapePair{rb0, s0});
+			const InterfaceRef &ifref1 =
+			    owner_->shape_mapping_.template key_of<InterfaceRef>(
+			        ActorShapePair{rb1, s1});
 
-			owner_->enqueue_pending_assembly(ConnSegRef{*ifref0, *ifref1},
+			owner_->enqueue_pending_assembly(ConnSegRef{ifref0, ifref1},
 			                                 *result);
 		}
 	};
 
   public:
-	using TopologyGraph =
-	    LegoGraph<type_list<Ps...>, PhysicsPartWrapper, pmr_vector_storage,
-	              type_list<physx::PxRigidActor *>,
-	              type_list<std::hash<physx::PxRigidActor *>>,
-	              type_list<std::equal_to<>>, PhysicsConnectionSegmentWrapper,
-	              type_list<>, type_list<>, type_list<>,
-	              PhysicsConnectionBundleWrapper, TopologyHooks>;
+	using TopologyGraph = LegoGraph<
+	    type_list<Ps...>, PhysicsPartWrapper, type_list<physx::PxRigidActor *>,
+	    type_list<std::hash<physx::PxRigidActor *>>, type_list<std::equal_to<>>,
+	    PhysicsConnectionSegmentWrapper, type_list<>, type_list<>, type_list<>,
+	    PhysicsConnectionBundleWrapper, TopologyHooks>;
 	using ConstraintSchedulingPolicy =
 	    CombinedSchedulingPolicy<TopologyGraph, TreeOnlySchedulingPolicy,
 	                             RamanujanLikeSchedulingPolicy>;
@@ -715,7 +675,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		for (const auto &[csref, conn_seg] : pending_assemblies) {
 			const auto &[stud_if, hole_if] = csref;
 			std::optional<ConnSegId> csid =
-			    topology_.connect(stud_if, hole_if, std::tuple{}, conn_seg);
+			    topology_.connect(stud_if, hole_if, conn_seg);
 			if (csid.has_value()) {
 				if constexpr (HasOnAssembledHook) {
 					if (hooks_) {
@@ -809,8 +769,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		pending_constraints_.clear();
 		for (PartId pid : pending_reset_filtering_parts_) {
 			physx::PxRigidActor *const *actor_ptr =
-			    topology_.parts()
-			        .template project_key<PartId, physx::PxRigidActor *>(pid);
+			    topology_.parts().template find_key<physx::PxRigidActor *>(pid);
 			if (!actor_ptr) {
 				log_warn(
 				    "Cannot find actor for part id {}, skipping filter reset",
@@ -862,18 +821,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		//
 		// parentLocal (A_com -> B_com) = (A_com -> A_orig) * (A_orig -> B_orig) * (B_orig -> B_com)
 		// childLocal is identity so cB2w = bB2w (B_com).
-		const auto *actor_a_ptr =
-		    topology_.parts()
-		        .template project_key<PartId, physx::PxRigidActor *>(a_id);
-		const auto *actor_b_ptr =
-		    topology_.parts()
-		        .template project_key<PartId, physx::PxRigidActor *>(b_id);
-		if (!actor_a_ptr || !actor_b_ptr) {
-			throw std::runtime_error(std::format(
-			    "Cannot find actors for part ids {} and {}", a_id, b_id));
-		}
-		physx::PxRigidActor *actor_a = *actor_a_ptr;
-		physx::PxRigidActor *actor_b = *actor_b_ptr;
+		physx::PxRigidActor *actor_a =
+		    topology_.parts().template key_of<physx::PxRigidActor *>(a_id);
+		physx::PxRigidActor *actor_b =
+		    topology_.parts().template key_of<physx::PxRigidActor *>(b_id);
 
 		auto get_com = [this](physx::PxRigidActor *actor) {
 			if (auto *rb = actor->is<physx::PxRigidBody>()) {
@@ -903,8 +854,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			pending_reset_filtering_parts_.insert(pid);
 		} else {
 			physx::PxRigidActor *const *actor_ptr =
-			    topology_.parts()
-			        .template project_key<PartId, physx::PxRigidActor *>(pid);
+			    topology_.parts().template find_key<physx::PxRigidActor *>(pid);
 			if (!actor_ptr) {
 				log_warn(
 				    "Cannot find actor for part id {}, skipping filter reset",

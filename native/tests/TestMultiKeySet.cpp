@@ -83,7 +83,7 @@ int main() {
 	assert(s.size() == 3);
 	assert(!s.empty());
 
-	// contains / find / project branches
+	// contains / find branches
 	{
 		const K1 k1a{1}, k1b{2}, k1c{3};
 		const K2 k2b{20};
@@ -96,15 +96,15 @@ int main() {
 		assert(s.find(k3c) != nullptr);
 
 		// project From->To
-		auto to12 = s.project<K1, K2>(k1b); // 2 -> 20
+		auto to12 = s.find_key<K2>(k1b); // 2 -> 20
 		assert(to12 && to12->v == 20);
-		auto to13 = s.project<K1, K3>(k1c); // 3 -> 300
+		auto to13 = s.find_key<K3>(k1c); // 3 -> 300
 		assert(to13 && to13->v == 300);
 
 		// miss branches
 		assert(s.find(K2{999}) == nullptr);
 		assert(!s.contains(K3{42}));
-		assert((s.project<K2, K1>(K2{999}) == nullptr));
+		assert((s.find_key<K1>(K2{999}) == nullptr));
 	}
 
 	// Duplicate insertion must fail if ANY key collides (check_all_unique_)
@@ -113,11 +113,11 @@ int main() {
 	assert(!s.emplace(K1{999}, K2{998}, K3{300})); // collide third key
 	assert(s.size() == 3);
 
-	// ----- erase_by_key: victim == last branch -----
+	// ----- erase: victim == last branch -----
 	{
 		const K2 k2_last{30}; // last entry is (3,30,300)
 		const int copies_before = copies_sum();
-		assert(s.erase_by_key(k2_last)); // should remove last directly
+		assert(s.erase(k2_last)); // should remove last directly
 		assert(s.size() == 2);
 		assert(copies_sum() == copies_before); // NO extra copies on erase
 		// removed keys gone
@@ -126,12 +126,12 @@ int main() {
 		assert(!s.contains(K3{300}));
 	}
 
-	// ----- erase_by_key: victim != last (hole fill) branch -----
+	// ----- erase: victim != last (hole fill) branch -----
 	{
 		// Currently two tuples remain: (1,10,100) at idx 0 and (2,20,200) at idx 1(last)
 		// Erase the first by a key -> triggers swap-with-last path
 		const int copies_before = copies_sum();
-		assert(s.erase_by_key(K1{1})); // remove victim=0, move last into 0
+		assert(s.erase(K1{1})); // remove victim=0, move last into 0
 		assert(copies_sum() == copies_before); // still NO extra copies on erase
 		assert(s.size() == 1);
 
@@ -149,18 +149,12 @@ int main() {
 		assert(!s.contains(K3{100}));
 	}
 
-	// ----- erase(tuple) uses first key -----
+	// ----- span
 	{
 		// Rebuild two elements
 		assert(s.emplace(K1{7}, K2{70}, K3{700}));
 		assert(s.size() == 2);
-		const auto view = s.view(); // span branch
-		assert(view.size() == 2);
-
-		// Erase by tuple (should use first key of the tuple)
-		auto t = *s.find(K1{7});
-		assert(s.erase(t));
-		assert(!s.contains(K1{7}));
+		assert(s.view().size() == 2);
 	}
 
 	// clear branch

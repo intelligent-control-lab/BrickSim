@@ -57,8 +57,8 @@ struct UnorderedPair {
 };
 
 export template <class A, class B>
-UnorderedPair(A, B)
-    -> UnorderedPair<std::common_type_t<std::decay_t<A>, std::decay_t<B>>>;
+UnorderedPair(A, B) -> UnorderedPair<
+    std::common_type_t<std::remove_cvref_t<A>, std::remove_cvref_t<B>>>;
 
 } // namespace lego_assemble
 

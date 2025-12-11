@@ -66,12 +66,11 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 	              "UsdLegoGraph: all PPs... must have unique PartType");
 
 	using TopologyGraph =
-	    LegoGraph<type_list<Ps...>, UsdPartWrapper, pmr_vector_storage,
-	              type_list<pxr::SdfPath>, type_list<pxr::SdfPath::Hash>,
-	              type_list<std::equal_to<>>, SimpleWrapper<ConnectionSegment>,
-	              type_list<pxr::SdfPath>, type_list<pxr::SdfPath::Hash>,
-	              type_list<std::equal_to<>>, SimpleWrapper<ConnectionBundle>,
-	              Hooks>;
+	    LegoGraph<type_list<Ps...>, UsdPartWrapper, type_list<pxr::SdfPath>,
+	              type_list<pxr::SdfPath::Hash>, type_list<std::equal_to<>>,
+	              SimpleWrapper<ConnectionSegment>, type_list<pxr::SdfPath>,
+	              type_list<pxr::SdfPath::Hash>, type_list<std::equal_to<>>,
+	              SimpleWrapper<ConnectionBundle>, Hooks>;
 	using Self = UsdLegoGraph<type_list<Ps...>, type_list<PAs...>,
 	                          type_list<PPs...>, Hooks>;
 
@@ -172,7 +171,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		auto [path, colliders] =
 		    allocator_.allocate_part_managed<Author>(env_id, part);
 		std::optional<PartId> part_id = topology_.template add_part<P>(
-		    std::forward_as_tuple(path), std::move(colliders), std::move(part));
+		    path, std::move(colliders), std::move(part));
 		if (!part_id) [[unlikely]] {
 			// rollback
 			allocator_.deallocate_managed_part(path);
@@ -225,35 +224,20 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 					    } else [[unlikely]] {
 						    // If it's an unmanaged one, keep it in bookkeeping table
 						    // And mark it as unrealized
-						    auto conn_info_it =
-						        conn_path_table_.find(conn_path);
-						    if (conn_info_it == conn_path_table_.end())
-						        [[unlikely]] {
-							    log_error("UsdLegoGraph: failed to find "
-							              "connection path {} in connection "
-							              "path table during part removal of "
-							              "path {}",
-							              conn_path.GetText(), path.GetText());
-							    return;
-						    }
-						    UsdConnInfo &conn_info = conn_info_it->second;
+						    UsdConnInfo &conn_info =
+						        conn_path_table_.at(conn_path);
 						    conn_info.csid = std::nullopt;
 						    // Add to unrealized_conns to both involving parts
 						    // Because the part was realized before, these entries must exist
 						    // in part_path_table_ already, no insert happens here.
-						    part_path_table_[conn_info.hole]
+						    part_path_table_.at(conn_info.hole)
 						        .unrealized_conns.add(conn_path);
-						    part_path_table_[conn_info.stud]
+						    part_path_table_.at(conn_info.stud)
 						        .unrealized_conns.add(conn_path);
 					    }
 				    };
-				std::optional<std::vector<pxr::SdfPath>>
-				    affected_realized_conns = collect_connections(pid);
-				if (!affected_realized_conns) [[unlikely]] {
-					log_error("UsdLegoGraph: failed collect connections for {} "
-					          "during part removal of path {}",
-					          pid, path.GetText());
-				}
+				std::vector<pxr::SdfPath> affected_realized_conns =
+				    collect_connections(pid);
 				// Now remove the part from topology
 				bool removed = topology_.remove_part(pid).has_value();
 				if (!removed) [[unlikely]] {
@@ -264,11 +248,8 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 					return false;
 				}
 				// Now remove relevant realized connections from USD
-				if (affected_realized_conns) [[likely]] {
-					for (const pxr::SdfPath &conn_path :
-					     *affected_realized_conns) {
-						remove_and_deallocate_realized_conn(conn_path);
-					}
+				for (const pxr::SdfPath &conn_path : affected_realized_conns) {
+					remove_and_deallocate_realized_conn(conn_path);
 				}
 				// Unset pid
 				part_info.pid = std::nullopt;
@@ -342,11 +323,9 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		auto [stud_pid, stud_ifid] = stud_if;
 		auto [hole_pid, hole_ifid] = hole_if;
 		const pxr::SdfPath *stud_path_ptr =
-		    topology_.parts().template project_key<PartId, pxr::SdfPath>(
-		        stud_pid);
+		    topology_.parts().template find_key<pxr::SdfPath>(stud_pid);
 		const pxr::SdfPath *hole_path_ptr =
-		    topology_.parts().template project_key<PartId, pxr::SdfPath>(
-		        hole_pid);
+		    topology_.parts().template find_key<pxr::SdfPath>(hole_pid);
 		if (!stud_path_ptr || !hole_path_ptr) {
 			return std::nullopt;
 		}
@@ -356,8 +335,8 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 
 		bool connected_before = topology_.is_connected(stud_pid, hole_pid);
 		if (!connected_before && align_policy != AlignPolicy::None) {
-			auto stud_spec = topology_.get_interface_spec(stud_if);
-			auto hole_spec = topology_.get_interface_spec(hole_if);
+			auto stud_spec = topology_.find_interface_spec(stud_if);
+			auto hole_spec = topology_.find_interface_spec(hole_if);
 			if (!stud_spec || !hole_spec) {
 				log_warn("UsdLegoGraph: failed to get interface specs when "
 				         "connecting stud {} to hole {}",
@@ -394,8 +373,8 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		}
 		pxr::SdfPath conn_path = allocator_.allocate_conn_managed(
 		    stud_path, stud_ifid, hole_path, hole_ifid, conn_seg);
-		std::optional<ConnSegId> csid = topology_.connect(
-		    stud_if, hole_if, std::make_tuple(conn_path), std::move(conn_seg));
+		std::optional<ConnSegId> csid =
+		    topology_.connect(stud_if, hole_if, conn_path, std::move(conn_seg));
 		if (!csid) [[unlikely]] {
 			// rollback
 			allocator_.deallocate_managed_conn(conn_path);
@@ -481,7 +460,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 
 	std::optional<std::int64_t> part_env_id(PartId pid) const {
 		const pxr::SdfPath *prim_path_ptr =
-		    topology_.parts().template project_key<PartId, pxr::SdfPath>(pid);
+		    topology_.parts().template find_key<pxr::SdfPath>(pid);
 		if (!prim_path_ptr) {
 			return std::nullopt;
 		}
@@ -490,8 +469,8 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 
 	std::optional<std::int64_t> conn_env_id(ConnSegId csid) const {
 		const pxr::SdfPath *conn_path_ptr =
-		    topology_.connection_segments()
-		        .template project<ConnSegId, pxr::SdfPath>(csid);
+		    topology_.connection_segments().template find_key<pxr::SdfPath>(
+		        csid);
 		if (!conn_path_ptr) {
 			return std::nullopt;
 		}
@@ -503,7 +482,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 	std::optional<Transformd> part_pose_relative_to_env(PartId pid) const {
 		// 1. Map part id -> prim path
 		const pxr::SdfPath *prim_path_ptr =
-		    topology_.parts().template project_key<PartId, pxr::SdfPath>(pid);
+		    topology_.parts().template find_key<pxr::SdfPath>(pid);
 		if (!prim_path_ptr) {
 			// No USD prim for this part
 			return std::nullopt;
@@ -541,7 +520,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 	std::size_t set_component_transform(PartId u0, const Transformd &T_u0) {
 		// Look up the anchor part's prim path.
 		const pxr::SdfPath *u0_path_ptr =
-		    topology_.parts().template project_key<PartId, pxr::SdfPath>(u0);
+		    topology_.parts().template find_key<pxr::SdfPath>(u0);
 		if (!u0_path_ptr) {
 			log_warn("UsdLegoGraph::set_component_transform: anchor part {} "
 			         "has no associated SdfPath",
@@ -586,15 +565,8 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 			Transformd T_env_v_stage = metrics.from_m(T_env_v);
 
 			// Map PartId -> SdfPath.
-			const pxr::SdfPath *v_path_ptr =
-			    topology_.parts().template project_key<PartId, pxr::SdfPath>(v);
-			if (!v_path_ptr) {
-				log_error("UsdLegoGraph::set_component_transform: part {} has "
-				          "no SdfPath mapping",
-				          v);
-				continue;
-			}
-			const pxr::SdfPath &v_path = *v_path_ptr;
+			const pxr::SdfPath &v_path =
+			    this->topology_.parts().template key_of<pxr::SdfPath>(v);
 
 			// All parts in a connected component are expected to live in the
 			// same env. If not, skip and warn.
@@ -765,8 +737,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 				pxr::SdfPath path = prim.GetPath();
 				auto &[part, colliders] = result;
 				std::optional<PartId> part_id = topology_.template add_part<P>(
-				    std::forward_as_tuple(path), std::move(colliders),
-				    std::move(part));
+				    path, std::move(colliders), std::move(part));
 				if (part_id) [[likely]] {
 					part_path_table_[path].pid = *part_id;
 				} else [[unlikely]] {
@@ -793,9 +764,9 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 					                         conn->stud_interface};
 					InterfaceRef hole_if_ref{*hole_info.pid,
 					                         conn->hole_interface};
-					std::optional<ConnSegId> csid = topology_.connect(
-					    stud_if_ref, hole_if_ref, std::forward_as_tuple(path),
-					    std::move(conn->conn_seg));
+					std::optional<ConnSegId> csid =
+					    topology_.connect(stud_if_ref, hole_if_ref, path,
+					                      std::move(conn->conn_seg));
 					if (csid) [[likely]] {
 						conn_info.csid = *csid;
 						realized = true;
@@ -832,24 +803,16 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 			}
 
 			for (const pxr::SdfPath &conn_path : affected_conn_paths) {
-				auto conn_info_it = conn_path_table_.find(conn_path);
-				if (conn_info_it == conn_path_table_.end()) [[unlikely]] {
-					log_error(
-					    "UsdLegoGraph: failed to find connection path {} in "
-					    "connection path table during resync",
-					    conn_path.GetText());
-					continue;
-				}
-				UsdConnInfo &conn_info = conn_info_it->second;
+				UsdConnInfo &conn_info = conn_path_table_.at(conn_path);
 				// Unset invalid csid
 				conn_info.csid = std::nullopt;
 				// Add to involving parts' unrealized_conns
 				// Because the part was realized before, these entries must exist
 				// in part_path_table_ already, no insert happens here.
-				part_path_table_[conn_info.stud].unrealized_conns.add(
-				    conn_path);
-				part_path_table_[conn_info.hole].unrealized_conns.add(
-				    conn_path);
+				part_path_table_.at(conn_info.stud)
+				    .unrealized_conns.add(conn_path);
+				part_path_table_.at(conn_info.hole)
+				    .unrealized_conns.add(conn_path);
 			}
 			dirty_conns.insert_range(std::move(affected_conn_paths));
 			return true;
@@ -871,8 +834,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 			}
 			// Add the new part
 			std::optional<PartId> new_pid = topology_.template add_part<New>(
-			    std::forward_as_tuple(path), std::move(colliders),
-			    std::move(new_part));
+			    path, std::move(colliders), std::move(new_part));
 			if (new_pid) [[likely]] {
 				part_info.pid = *new_pid;
 			} else [[unlikely]] {
@@ -892,8 +854,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		                                   InterfaceCollidersVector &&colliders)
 		    -> bool /* erase_part_info */ {
 			std::optional<PartId> new_pid = topology_.template add_part<P>(
-			    std::forward_as_tuple(path), std::move(colliders),
-			    std::move(new_part));
+			    path, std::move(colliders), std::move(new_part));
 			if (new_pid) [[likely]] {
 				part_info.pid = *new_pid;
 				dirty_conns.insert_range(part_info.unrealized_conns);
@@ -911,8 +872,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		        const pxr::SdfPath &path,
 		        UsdPartInfo &part_info) -> bool /* erase_part_info */ {
 			PartId old_pid = *part_info.pid;
-			bool erase_part_info = false;
-			bool visited = topology_.parts().visit(
+			return topology_.parts().visit(
 			    old_pid, [&]<PartLike P>(const UsdPartWrapper<P> &old_pw) {
 				    // Delete the old
 				    bool deleted =
@@ -921,73 +881,68 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 					    log_warn("UsdLegoGraph: failed to remove deleted part "
 					             "id {} for path {}",
 					             old_pid, path.GetText());
-					    return;
+					    return false;
 				    }
 				    part_info.pid = std::nullopt;
 				    if (part_info.unrealized_conns.empty()) {
-					    erase_part_info = true;
+					    return true;
+				    } else {
+					    return false;
 				    }
 			    });
-			if (!visited) [[unlikely]] {
-				log_error("UsdLegoGraph: failed to find part id {} during "
-				          "resync",
-				          old_pid);
-			}
-			return erase_part_info;
 		};
 		// This process all paths that exist in USD now
 		auto process_part_prim = [&](const pxr::UsdPrim &prim) {
 			pxr::SdfPath path = prim.GetPath();
-			bool recognized = try_parse_part(prim, [&]<PartLike P>(
-			                                           PartPrimParseResult<P>
-			                                               result) {
-				auto &[part, colliders] = result;
-				UsdPartInfo &part_info = part_path_table_[path];
-				bool erase_part_info = false;
-				if (part_info.pid.has_value()) {
-					// Part already exists.
-					// It is unmodified iif.
-					// 1. it is of the same type; and
-					// 2. its data is unchanged.
-					PartId pid = *part_info.pid;
-					bool pid_exists = topology_.parts().alive(pid);
-					if (!pid_exists) [[unlikely]] {
-						log_error(
-						    "UsdLegoGraph: part id {} for path {} not found in "
-						    "parts storage",
-						    pid, path.GetText());
-						return;
-					}
-					const UsdPartWrapper<P> *existing_part =
-					    topology_.parts().template get<UsdPartWrapper<P>>(pid);
-					if (existing_part) {
-						if (existing_part->wrapped() == part) {
-							// Unmodified
-							// No action needed.
-						} else {
-							// Modified, same type
-							erase_part_info = do_part_modified(
-							    path, part_info, pid, std::move(part),
-							    std::move(colliders), *existing_part);
-						}
-					} else {
-						// Modified, different type
-						topology_.parts().visit(pid, [&](const auto &old_pw) {
-							erase_part_info = do_part_modified(
-							    path, part_info, pid, std::move(part),
-							    std::move(colliders), old_pw);
-						});
-					}
-				} else {
-					// Before: part NOT recognized.
-					// Now: part recognized.
-					erase_part_info = do_part_added(
-					    path, part_info, std::move(part), std::move(colliders));
-				}
-				if (erase_part_info) [[unlikely]] {
-					part_path_table_.erase(path);
-				}
-			});
+			bool recognized = try_parse_part(
+			    prim, [&]<PartLike P>(PartPrimParseResult<P> result) {
+				    auto &[part, colliders] = result;
+				    UsdPartInfo &part_info = part_path_table_[path];
+				    bool erase_part_info = false;
+				    if (part_info.pid.has_value()) {
+					    // Part already exists.
+					    // It is unmodified iif.
+					    // 1. it is of the same type; and
+					    // 2. its data is unchanged.
+					    PartId pid = *part_info.pid;
+					    auto entry = topology_.parts().find(pid);
+					    if (!entry) [[unlikely]] {
+						    log_error("UsdLegoGraph: part id {} for path {} "
+						              "not found in parts storage",
+						              pid, path.GetText());
+						    return;
+					    }
+					    if (entry->template is<UsdPartWrapper<P>>()) {
+						    auto &existing_part =
+						        entry->template value<UsdPartWrapper<P>>();
+						    if (existing_part.wrapped() == part) {
+							    // Unmodified
+							    // No action needed.
+						    } else {
+							    // Modified, same type
+							    erase_part_info = do_part_modified(
+							        path, part_info, pid, std::move(part),
+							        std::move(colliders), existing_part);
+						    }
+					    } else {
+						    // Modified, different type
+						    entry->visit([&](const auto &old_pw) {
+							    erase_part_info = do_part_modified(
+							        path, part_info, pid, std::move(part),
+							        std::move(colliders), old_pw);
+						    });
+					    }
+				    } else {
+					    // Before: part NOT recognized.
+					    // Now: part recognized.
+					    erase_part_info =
+					        do_part_added(path, part_info, std::move(part),
+					                      std::move(colliders));
+				    }
+				    if (erase_part_info) [[unlikely]] {
+					    part_path_table_.erase(path);
+				    }
+			    });
 			if (!recognized) {
 				auto part_info_it = part_path_table_.find(path);
 				if (part_info_it != part_path_table_.end()) {
@@ -1093,31 +1048,19 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 			if (conn_info.csid.has_value()) {
 				// Update realized connection
 				ConnSegId csid = *conn_info.csid;
-				const ConnSegRef *csref =
-				    topology_.connection_segments()
-				        .template project<ConnSegId, ConnSegRef>(csid);
-				if (!csref) [[unlikely]] {
-					log_error("UsdLegoGraph: failed to find conn seg ref "
-					          "for conn seg id {} during resync",
-					          csid);
-					return;
-				}
-				const SimpleWrapper<ConnectionSegment> *csw =
-				    topology_.connection_segments().find(csid);
-				if (!csw) [[unlikely]] {
-					log_error("UsdLegoGraph: failed to find conn seg "
-					          "wrapper for conn seg id {} during resync",
-					          csid);
-					return;
-				}
-				const auto &[stud_ifref, hole_ifref] = *csref;
+				const ConnSegRef &csref =
+				    topology_.connection_segments().template key_of<ConnSegRef>(
+				        csid);
+				const SimpleWrapper<ConnectionSegment> &csw =
+				    topology_.connection_segments().value_of(csid);
+				const auto &[stud_ifref, hole_ifref] = csref;
 				const auto &[stud_pid, stud_ifid] = stud_ifref;
 				const auto &[hole_pid, hole_ifid] = hole_ifref;
 				bool unmodified = (conn.stud_path == conn_info.stud) &&
 				                  (conn.hole_path == conn_info.hole) &&
 				                  (conn.stud_interface == stud_ifid) &&
 				                  (conn.hole_interface == hole_ifid) &&
-				                  (conn.conn_seg == csw->wrapped());
+				                  (conn.conn_seg == csw.wrapped());
 				if (unmodified) {
 					// Unmodified
 					// No action needed.
@@ -1233,11 +1176,9 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		// Finally, try to realize pending connections
 		for (auto &[path, conn] : conn_to_realize) {
 			const PartId *stud_id_ptr =
-			    topology_.parts().template project_key<pxr::SdfPath, PartId>(
-			        conn.stud_path);
+			    topology_.parts().template find_key<PartId>(conn.stud_path);
 			const PartId *hole_id_ptr =
-			    topology_.parts().template project_key<pxr::SdfPath, PartId>(
-			        conn.hole_path);
+			    topology_.parts().template find_key<PartId>(conn.hole_path);
 			if (!stud_id_ptr || !hole_id_ptr) {
 				continue;
 			}
@@ -1246,8 +1187,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 			InterfaceRef stud_if_ref{stud_pid, conn.stud_interface};
 			InterfaceRef hole_if_ref{hole_pid, conn.hole_interface};
 			std::optional<ConnSegId> csid = topology_.connect(
-			    stud_if_ref, hole_if_ref, std::forward_as_tuple(path),
-			    std::move(conn.conn_seg));
+			    stud_if_ref, hole_if_ref, path, std::move(conn.conn_seg));
 			if (!csid) [[unlikely]] {
 				conns_to_retry_.insert(path);
 				log_warn("UsdLegoGraph: failed to realize connection for "
@@ -1283,11 +1223,9 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 				continue;
 			}
 			const PartId *stud_id_ptr =
-			    topology_.parts().template project_key<pxr::SdfPath, PartId>(
-			        conn->stud_path);
+			    topology_.parts().template find_key<PartId>(conn->stud_path);
 			const PartId *hole_id_ptr =
-			    topology_.parts().template project_key<pxr::SdfPath, PartId>(
-			        conn->hole_path);
+			    topology_.parts().template find_key<PartId>(conn->hole_path);
 			if (!stud_id_ptr || !hole_id_ptr) {
 				// still not realizable, keep it unrealized
 				continue;
@@ -1296,8 +1234,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 			PartId hole_pid = *hole_id_ptr;
 			InterfaceRef stud_if{stud_pid, conn->stud_interface};
 			InterfaceRef hole_if{hole_pid, conn->hole_interface};
-			auto csid = topology_.connect(stud_if, hole_if,
-			                              std::forward_as_tuple(conn_path),
+			auto csid = topology_.connect(stud_if, hole_if, conn_path,
 			                              std::move(conn->conn_seg));
 			if (!csid) [[unlikely]] {
 				conns_to_retry_.insert(conn_path);
@@ -1339,17 +1276,10 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		std::vector<pxr::SdfPath> conn_paths;
 		auto add_conn_path = [&](const OrderedVecSet<ConnSegId> &csids) {
 			for (ConnSegId csid : csids) {
-				const pxr::SdfPath *path_ptr =
+				const pxr::SdfPath &path =
 				    topology_.connection_segments()
-				        .template project<ConnSegId, pxr::SdfPath>(csid);
-				if (!path_ptr) {
-					log_error(
-					    "UsdLegoGraph: failed to find connection path for "
-					    "conn seg id {}",
-					    csid);
-					continue;
-				}
-				conn_paths.push_back(*path_ptr);
+				        .template key_of<pxr::SdfPath>(csid);
+				conn_paths.push_back(path);
 			}
 		};
 		add_conn_path(pw.incomings());
@@ -1357,13 +1287,11 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		return conn_paths;
 	}
 
-	std::optional<std::vector<pxr::SdfPath>> collect_connections(PartId pid) {
-		std::optional<std::vector<pxr::SdfPath>> conn_paths;
-		topology_.parts().visit(pid,
-		                        [&]<PartLike P>(const UsdPartWrapper<P> &pw) {
-			                        conn_paths = collect_connections(pw);
-		                        });
-		return conn_paths;
+	std::vector<pxr::SdfPath> collect_connections(PartId pid) {
+		return topology_.parts().visit(
+		    pid, [&]<PartLike P>(const UsdPartWrapper<P> &pw) {
+			    return collect_connections(pw);
+		    });
 	}
 };
 

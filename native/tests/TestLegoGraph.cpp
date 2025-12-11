@@ -61,23 +61,23 @@ static void build_three_parts(G &g) {
 	auto ifs0 = std::initializer_list<InterfaceSpec>{
 	    mk_stud(10, 2, 2), mk_stud(12, 2, 2), mk_hole(20, 2, 2),
 	    mk_hole(22, 2, 2)};
-	[[maybe_unused]] auto ok0 = g.add_part<CustomPart>(
-	    std::tuple<>{}, 0.1, BrickColor{255, 0, 0}, ifs0);
+	[[maybe_unused]] auto ok0 =
+	    g.add_part<CustomPart>(0.1, BrickColor{255, 0, 0}, ifs0);
 	assert(ok0);
 
 	// Part 1: also one Stud(11) and one Hole(21)
 	auto ifs1 = std::initializer_list<InterfaceSpec>{
 	    mk_stud(11, 2, 2), mk_stud(13, 2, 2), mk_hole(21, 2, 2),
 	    mk_hole(23, 2, 2)};
-	[[maybe_unused]] auto ok1 = g.add_part<CustomPart>(
-	    std::tuple<>{}, 0.2, BrickColor{0, 255, 0}, ifs1);
+	[[maybe_unused]] auto ok1 =
+	    g.add_part<CustomPart>(0.2, BrickColor{0, 255, 0}, ifs1);
 	assert(ok1);
 
 	// Part 2: isolated; only a stud(12)
 	auto ifs2 = std::initializer_list<InterfaceSpec>{mk_stud(30, 1, 1),
 	                                                 mk_hole(31, 1, 1)};
-	[[maybe_unused]] auto ok2 = g.add_part<CustomPart>(
-	    std::tuple<>{}, 0.3, BrickColor{0, 0, 255}, ifs2);
+	[[maybe_unused]] auto ok2 =
+	    g.add_part<CustomPart>(0.3, BrickColor{0, 0, 255}, ifs2);
 	assert(ok2);
 }
 
@@ -119,14 +119,14 @@ static void test_resource_wiring_and_initial_state() {
 	assert(arena.allocs.load() > 0);
 }
 
-static void test_get_interface_spec_and_lookup_visit() {
+static void test_find_interface_spec_and_lookup_visit() {
 	G g; // default resource is fine here
 	build_three_parts(g);
 
-	// get_interface_spec: existing and missing
-	auto s0 = g.get_interface_spec(IR(0, 10));
-	auto h0 = g.get_interface_spec(IR(0, 20));
-	auto missing = g.get_interface_spec(IR(0, 999));
+	// find_interface_spec: existing and missing
+	auto s0 = g.find_interface_spec(IR(0, 10));
+	auto h0 = g.find_interface_spec(IR(0, 20));
+	auto missing = g.find_interface_spec(IR(0, 999));
 	assert(s0 && s0->type == InterfaceType::Stud);
 	assert(h0 && h0->type == InterfaceType::Hole);
 	assert(!missing);
@@ -140,13 +140,19 @@ static void test_get_interface_spec_and_lookup_visit() {
 	}
 	assert(steps_same == 0);
 
-	// part_path: missing part id yields an empty sequence
+	// part_path: missing part id throws
+	bool ex_caught = false;
 	int steps_missing = 0;
-	for (auto [a, b] : g.part_path<PartId>(PartId{123456u}, PartId{0})) {
-		(void)a;
-		(void)b;
-		++steps_missing;
+	try {
+		for (auto [a, b] : g.part_path<PartId>(PartId{123456u}, PartId{0})) {
+			(void)a;
+			(void)b;
+			++steps_missing;
+		}
+	} catch (const std::out_of_range &) {
+		ex_caught = true;
 	}
+	assert(ex_caught);
 	assert(steps_missing == 0);
 
 	// lookup_transform: identity for u==v; nullopt for unconnected pair
@@ -192,13 +198,19 @@ static void test_part_bfs_invalid_and_isolated() {
 		assert(SE3d{}.almost_equal(it->second, SE3d{}.identity()));
 	}
 
-	// Starting from a non-existent / dead part id: traversal is empty
+	// Starting from a non-existent / dead part id: throws
+	bool ex_caught = false;
 	std::size_t count_invalid = 0;
-	for (auto [pid, T] : g.component_view(PartId{9999}).transforms()) {
-		(void)pid;
-		(void)T;
-		++count_invalid;
+	try {
+		for (auto [pid, T] : g.component_view(PartId{9999}).transforms()) {
+			(void)pid;
+			(void)T;
+			++count_invalid;
+		}
+	} catch (const std::out_of_range &) {
+		ex_caught = true;
 	}
+	assert(ex_caught);
 	assert(count_invalid == 0);
 }
 
@@ -212,8 +224,8 @@ static void test_part_bfs_matches_lookup_transform() {
 	ConnectionSegment cs12{};
 	cs12.offset = Eigen::Vector2i{0, 2}; // translate along +y
 
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs01));
-	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs12));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs01));
+	assert(g.connect(IR(1, 11), IR(2, 31), cs12));
 
 	auto check_from = [&](PartId start) {
 		std::vector<PartId> order;
@@ -277,7 +289,7 @@ static void test_components_with_connections() {
 	build_three_parts(g); // 0,1,2
 
 	ConnectionSegment cs{}; // identity transform
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
 
 	auto comps = collect_components(g);
 
@@ -297,8 +309,8 @@ static void test_components_after_removals() {
 	build_three_parts(g); // 0,1,2
 
 	ConnectionSegment cs{}; // identity transform on each edge
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs)); // 0-1
-	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs)); // 1-2
+	assert(g.connect(IR(0, 10), IR(1, 21), cs)); // 0-1
+	assert(g.connect(IR(1, 11), IR(2, 31), cs)); // 1-2
 
 	// All three parts should be in one component
 	{
@@ -329,27 +341,27 @@ static void test_connect_branches_and_bundle() {
 
 	// Wrong types: stud/hole reversed → false
 	ConnectionSegment cs0; // default offset(0,0), yaw=0
-	auto r_wrong = g.connect(IR(0, 20), IR(1, 11), std::tuple<>{}, cs0);
+	auto r_wrong = g.connect(IR(0, 20), IR(1, 11), cs0);
 	assert(!r_wrong);
 
 	// Missing iface on either side → false
-	auto r_miss1 = g.connect(IR(0, 999), IR(1, 21), std::tuple<>{}, cs0);
-	auto r_miss2 = g.connect(IR(0, 10), IR(1, 999), std::tuple<>{}, cs0);
+	auto r_miss1 = g.connect(IR(0, 999), IR(1, 21), cs0);
+	auto r_miss2 = g.connect(IR(0, 10), IR(1, 999), cs0);
 	assert(!r_miss1 && !r_miss2);
 
 	// First valid connect (stud 0:10 -> hole 1:21). Bundle does not exist yet.
-	auto r1 = g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs0);
+	auto r1 = g.connect(IR(0, 10), IR(1, 21), cs0);
 	assert(r1);
 
 	// Duplicate same segment (same (stud,hole)) → guarded by conn_segs_.contains → false
-	auto r_dup_seg = g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs0);
+	auto r_dup_seg = g.connect(IR(0, 10), IR(1, 21), cs0);
 	assert(!r_dup_seg);
 
 	// Bundle exists now for endpoint {0,1}; attempt another segment between
 	// the same endpoint but different interface pair and different transform.
 	ConnectionSegment cs_diff;
 	cs_diff.offset = Eigen::Vector2i{1, 0}; // different from default (0,0)
-	auto r_diff_T = g.connect(IR(0, 12), IR(1, 23), std::tuple<>{}, cs_diff);
+	auto r_diff_T = g.connect(IR(0, 12), IR(1, 23), cs_diff);
 	assert(!r_diff_T); // rejected by bundle-exists with mismatched transform
 
 	// Validate connection_segments count and bundle contents
@@ -373,8 +385,8 @@ static void test_connect_branches_and_bundle() {
 
 	// Part adjacency updated
 	using PW = SimplePartWrapper<CustomPart>;
-	const PW *p0 = g.parts().get<PW>(PartId{0});
-	const PW *p1 = g.parts().get<PW>(PartId{1});
+	const PW *p0 = g.parts().find_value<PW>(PartId{0});
+	const PW *p1 = g.parts().find_value<PW>(PartId{1});
 	assert(p0 && p1);
 	assert(p0->outgoings().contains(ConnSegId{0}));
 	assert(p1->incomings().contains(ConnSegId{0}));
@@ -389,8 +401,8 @@ static void test_connect_inputs_and_status() {
 	build_three_parts(g); // ids 0,1,2
 
 	auto dg_conn = [&](PartId a, PartId b) {
-		const auto *a_dg = g.parts().project_key<PartId, DgVertexId>(a);
-		const auto *b_dg = g.parts().project_key<PartId, DgVertexId>(b);
+		const auto *a_dg = g.parts().find_key<DgVertexId>(a);
+		const auto *b_dg = g.parts().find_key<DgVertexId>(b);
 		assert(a_dg && b_dg);
 		return g.dynamic_graph().connected(a_dg->value(), b_dg->value());
 	};
@@ -404,12 +416,12 @@ static void test_connect_inputs_and_status() {
 	ConnectionSegment cs{}; // default offset(0,0), yaw=0
 
 	// Inexistent part id on stud side
-	assert(!g.connect(IR(9999, 10), IR(1, 21), std::tuple<>{}, cs));
+	assert(!g.connect(IR(9999, 10), IR(1, 21), cs));
 	// Inexistent part id on hole side
-	assert(!g.connect(IR(0, 10), IR(9999, 21), std::tuple<>{}, cs));
+	assert(!g.connect(IR(0, 10), IR(9999, 21), cs));
 	// Existing parts but non-existent interface ids
-	assert(!g.connect(IR(0, 999), IR(1, 21), std::tuple<>{}, cs));
-	assert(!g.connect(IR(0, 10), IR(1, 999), std::tuple<>{}, cs));
+	assert(!g.connect(IR(0, 999), IR(1, 21), cs));
+	assert(!g.connect(IR(0, 10), IR(1, 999), cs));
 
 	// Status unchanged
 	assert(g.connection_segments().size() == 0);
@@ -417,13 +429,13 @@ static void test_connect_inputs_and_status() {
 	assert(!dg_conn(0, 1));
 
 	// Valid connection updates stores; dynamic_graph should reflect connectivity
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
 	assert(g.connection_segments().size() == 1);
 	assert(g.connection_bundles().size() == 1);
 	assert(dg_conn(0, 1));
 
 	// Duplicate (existing) connection must fail
-	assert(!g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
+	assert(!g.connect(IR(0, 10), IR(1, 21), cs));
 
 	// Disconnect non-existent connections (by id and by ref)
 	assert(!g.disconnect(ConnSegId{999999}));
@@ -444,22 +456,22 @@ static void test_multi_connections_match_and_mismatch() {
 	cs_mismatch.offset = Eigen::Vector2i{1, 0};
 
 	// First connect succeeds and establishes the bundle transform A->B
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs0));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs0));
 	// Duplicate identical connection should fail
-	assert(!g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs0));
+	assert(!g.connect(IR(0, 10), IR(1, 21), cs0));
 	assert(g.connection_segments().size() == 1);
 	assert(g.connection_bundles().size() == 1);
 	// DG shows connectivity
 	auto dg_conn = [&](PartId a, PartId b) {
-		const auto *a_dg = g.parts().project_key<PartId, DgVertexId>(a);
-		const auto *b_dg = g.parts().project_key<PartId, DgVertexId>(b);
+		const auto *a_dg = g.parts().find_key<DgVertexId>(a);
+		const auto *b_dg = g.parts().find_key<DgVertexId>(b);
 		assert(a_dg && b_dg);
 		return g.dynamic_graph().connected(a_dg->value(), b_dg->value());
 	};
 	(void)dg_conn(0, 1);
 
 	// Mismatched transform on a different s/h pair for the same endpoint must be rejected
-	assert(!g.connect(IR(0, 12), IR(1, 23), std::tuple<>{}, cs_mismatch));
+	assert(!g.connect(IR(0, 12), IR(1, 23), cs_mismatch));
 
 	// Disconnect the existing segment; now bundle removed and DG edge cleared
 	ConnSegRef csref1{IR(0, 10), IR(1, 21)};
@@ -480,7 +492,7 @@ static void test_remove_part_nonexistent_and_existent() {
 
 	// Connect then remove an existent part and verify cleanup
 	ConnectionSegment cs{};
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs));
 	assert(g.connection_segments().size() == 1);
 	assert(g.connection_bundles().size() == 1);
 	assert(g.remove_part(PartId{0}));
@@ -496,15 +508,15 @@ static void test_chain_connect_then_remove_middle_vertex() {
 	build_three_parts(g); // 0:A, 1:B, 2:C
 
 	auto dg_conn = [&](PartId a, PartId b) {
-		const auto *a_dg = g.parts().project_key<PartId, DgVertexId>(a);
-		const auto *b_dg = g.parts().project_key<PartId, DgVertexId>(b);
+		const auto *a_dg = g.parts().find_key<DgVertexId>(a);
+		const auto *b_dg = g.parts().find_key<DgVertexId>(b);
 		assert(a_dg && b_dg);
 		return g.dynamic_graph().connected(a_dg->value(), b_dg->value());
 	};
 
-	ConnectionSegment cs{}; // identity transform
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs)); // A->B
-	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs)); // B->C
+	ConnectionSegment cs{};                      // identity transform
+	assert(g.connect(IR(0, 10), IR(1, 21), cs)); // A->B
+	assert(g.connect(IR(1, 11), IR(2, 31), cs)); // B->C
 
 	// Now A and C must be connected in DG through B
 	assert(dg_conn(0, 2));
@@ -525,23 +537,23 @@ static void test_triangle_consistency_inconsistent() {
 	cs_bad.offset = Eigen::Vector2i{1, 0};
 
 	auto dg_conn = [&](PartId a, PartId b) {
-		const auto *a_dg = g.parts().project_key<PartId, DgVertexId>(a);
-		const auto *b_dg = g.parts().project_key<PartId, DgVertexId>(b);
+		const auto *a_dg = g.parts().find_key<DgVertexId>(a);
+		const auto *b_dg = g.parts().find_key<DgVertexId>(b);
 		assert(a_dg && b_dg);
 		return g.dynamic_graph().connected(a_dg->value(), b_dg->value());
 	};
 
 	// A–B and B–C establish a DG path A↔C
-	assert(g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs0));
-	assert(g.connect(IR(1, 11), IR(2, 31), std::tuple<>{}, cs0));
+	assert(g.connect(IR(0, 10), IR(1, 21), cs0));
+	assert(g.connect(IR(1, 11), IR(2, 31), cs0));
 	assert(dg_conn(0, 2));
 
 	// A–C consistent with path (identity) should succeed
-	assert(g.connect(IR(0, 12), IR(2, 31), std::tuple<>{}, cs0));
+	assert(g.connect(IR(0, 12), IR(2, 31), cs0));
 	assert(g.connection_bundles().size() >= 3); // A-B, B-C, A-C
 
 	// A–C inconsistent transform should be rejected; if not, disconnect immediately
-	assert(!g.connect(IR(0, 12), IR(2, 31), std::tuple<>{}, cs_bad));
+	assert(!g.connect(IR(0, 12), IR(2, 31), cs_bad));
 
 	// Cleanup: disconnect A–C and verify DG A–C remains via A–B–C
 	ConnSegRef ac_ref{IR(0, 12), IR(2, 31)};
@@ -558,8 +570,7 @@ static void test_remove_part_variants() {
 
 	// Connect 0 -> 1 then remove 0; ensures all adjacency and bundles cleaned
 	ConnectionSegment cs0; // identity transform
-	[[maybe_unused]] auto ok =
-	    g.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs0);
+	[[maybe_unused]] auto ok = g.connect(IR(0, 10), IR(1, 21), cs0);
 	assert(ok);
 	assert(g.connection_segments().size() == 1);
 	assert(g.connection_bundles().size() == 1);
@@ -576,7 +587,7 @@ static void test_remove_part_variants() {
 
 	// Remaining part (pid 1) must have empty adjacency sets
 	using PW = SimplePartWrapper<CustomPart>;
-	const PW *p1 = g.parts().get<PW>(PartId{1});
+	const PW *p1 = g.parts().find_value<PW>(PartId{1});
 	assert(p1);
 	assert(p1->incomings().size() == 0);
 	assert(p1->outgoings().size() == 0);
@@ -585,12 +596,12 @@ static void test_remove_part_variants() {
 	// Rebuild on a fresh instance and connect again; now remove the HOLE side (pid 1)
 	G g2;
 	build_three_parts(g2);
-	ok = g2.connect(IR(0, 10), IR(1, 21), std::tuple<>{}, cs0);
+	ok = g2.connect(IR(0, 10), IR(1, 21), cs0);
 	assert(ok);
 	assert(g2.remove_part(PartId{1}));
 	// After removing the hole side, the stud side's outgoings cleaned
 	using PW2 = SimplePartWrapper<CustomPart>;
-	const PW2 *p0 = g2.parts().get<PW2>(PartId{0});
+	const PW2 *p0 = g2.parts().find_value<PW2>(PartId{0});
 	assert(p0);
 	assert(p0->outgoings().size() == 0);
 }
@@ -599,7 +610,7 @@ static void test_remove_part_variants() {
 
 int main() {
 	test_resource_wiring_and_initial_state();
-	test_get_interface_spec_and_lookup_visit();
+	test_find_interface_spec_and_lookup_visit();
 	test_part_bfs_invalid_and_isolated();
 	test_part_bfs_matches_lookup_transform();
 	test_components_empty_and_singletons();

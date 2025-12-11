@@ -2,324 +2,448 @@ export module lego_assemble.utils.poly_store;
 
 import std;
 import lego_assemble.utils.type_list;
-import lego_assemble.utils.multi_key_map; // new multi-key index
+import lego_assemble.utils.multi_key_map;
 
 namespace lego_assemble {
 
-// ========================== default storage policy ==========================
-// Storage<T, Key> must expose:
-//   using value_type = T;
-//   std::pmr::vector<T>   data;
-//   std::pmr::vector<Key> ids;   // stores Id in single-key mode; anchor key in multi-key mode
-//   explicit Storage(std::pmr::memory_resource*);
-export template <class T, class Key> struct pmr_vector_storage {
-	using value_type = T;
-	using id_type = Key;
-	std::pmr::vector<T> data;
-	std::pmr::vector<Key> ids;
-	explicit pmr_vector_storage(std::pmr::memory_resource *r)
-	    : data{r}, ids{r} {}
-};
-
-// Light validation for a Storage<T, Key>
-export template <class S, class T, class Key>
-concept StorageLike = requires(S s, std::pmr::memory_resource *r) {
-	typename S::value_type;
-	requires std::same_as<typename S::value_type, T>;
-	{ s.data.size() } -> std::convertible_to<std::size_t>;
-	{ s.ids.size() } -> std::convertible_to<std::size_t>;
-	S{r};
-};
-
 export template <class Ks, class Ts,
-                 template <class, class> class Storage = pmr_vector_storage,
                  class Hs = typename Ks::template map<std::hash>,
                  class Es = typename Ks::template map<std::equal_to>>
 class PolyStore;
 
-export template <class... Ks, class... Ts,
-                 template <class, class> class Storage, class... Hs,
-                 class... Es>
-class PolyStore<type_list<Ks...>, type_list<Ts...>, Storage, type_list<Hs...>,
+export template <class... Ks, class... Ts, class... Hs, class... Es>
+class PolyStore<type_list<Ks...>, type_list<Ts...>, type_list<Hs...>,
                 type_list<Es...>> {
 	static_assert(sizeof...(Ks) >= 1,
 	              "PolyStore: at least one key type required");
+	static_assert(sizeof...(Ts) >= 1,
+	              "PolyStore: at least one value type required");
 	static_assert(unique_types<Ks...>, "PolyStore: key types must be unique");
 	static_assert(unique_types<Ts...>,
 	              "PolyStore: TypesList must contain unique types");
-	// Directory value encodes {type_index, slot_index} within per-type blocks
-	struct Loc1 {
-		std::uint32_t index;
-	};
-	struct LocN {
-		std::uint32_t type;
-		std::uint32_t index;
-	};
-	static constexpr bool single_type = sizeof...(Ts) == 1;
-	using Loc = std::conditional_t<single_type, Loc1, LocN>;
 
+  public:
 	using KeysList = type_list<Ks...>;
 	using HashList = type_list<Hs...>;
 	using EqList = type_list<Es...>;
-	// TODO: Workaround for Clang bug. The commented lines will trigger segfault.
-	// using Anchor = Ks...[0]; // first key type as anchor
-	// using Anchor = KeysList::template at<0>;
+
+	using keys_type = std::tuple<Ks...>;
+	using type_index_t = std::uint32_t;
+
+  private:
+	using value_index_t = std::uint32_t;
+
+	struct Location {
+		type_index_t type;
+		value_index_t index;
+	};
+
+	template <type_index_t I>
+	using type_index_constant = std::integral_constant<type_index_t, I>;
+
+	template <std::size_t I>
+	using type_at = std::tuple_element_t<I, std::tuple<Ts...>>;
+
+	template <in_pack<Ts...> T>
+	static constexpr type_index_t index_of_type =
+	    static_cast<type_index_t>(index_in_pack<T, Ts...>);
+
 	using Anchor = std::tuple_element_t<0, std::tuple<Ks...>>;
 
-	static_assert((StorageLike<Storage<Ts, Anchor>, Ts, Anchor> && ...),
-	              "PolyStore: Storage<T,Anchor> must satisfy StorageLike");
+	template <class T> struct Storage {
+		std::pmr::vector<T> data;
+		std::pmr::vector<Anchor> ids;
+		explicit Storage(std::pmr::memory_resource *r) : data{r}, ids{r} {}
+	};
 
-	// per-type storage (ids[] stores the anchor key)
-	using Blocks = std::tuple<Storage<Ts, Anchor>...>;
+	using Storages = std::tuple<Storage<Ts>...>;
+	using Directory = MultiKeyMap<type_list<Ks...>, Location, type_list<Hs...>,
+	                              type_list<Es...>>;
 
-	// multi-key directory
-	using Dir =
-	    MultiKeyMap<type_list<Ks...>, Loc, type_list<Hs...>, type_list<Es...>>;
+	template <type_index_t Begin, type_index_t End, class Fn>
+	static decltype(auto) dispatch_recursive_(type_index_t t, Fn &&fn) {
+		if constexpr (End - Begin == 1) {
+			return fn(type_index_constant<Begin>{});
+		} else {
+			constexpr type_index_t Mid = Begin + (End - Begin) / 2;
+			if (t < Mid) {
+				return dispatch_recursive_<Begin, Mid>(t, std::forward<Fn>(fn));
+			} else {
+				return dispatch_recursive_<Mid, End>(t, std::forward<Fn>(fn));
+			}
+		}
+	}
+	template <class Fn>
+	static decltype(auto) dispatch_by_type_(type_index_t type_idx, Fn &&fn) {
+		if (type_idx >= static_cast<type_index_t>(sizeof...(Ts))) {
+			std::unreachable();
+		}
+		return dispatch_recursive_<static_cast<type_index_t>(0),
+		                           static_cast<type_index_t>(sizeof...(Ts))>(
+		    type_idx, std::forward<Fn>(fn));
+	}
 
   public:
-	using keys_tuple = std::tuple<Ks...>;
+	template <bool Const> class EntryRef {
+		friend class PolyStore;
+		friend class EntryRef<!Const>;
+
+	  public:
+		using DirEntryPtr = const typename Directory::entry_type *;
+		using ValuePtr = std::conditional_t<Const, const void *, void *>;
+		template <in_pack<Ts...> T>
+		using RefT = std::conditional_t<Const, const T &, T &>;
+		template <in_pack<Ts...> T>
+		using PtrT = std::conditional_t<Const, const T *, T *>;
+
+	  private:
+		DirEntryPtr dir_entry_;
+		ValuePtr val_;
+
+		EntryRef(DirEntryPtr dir_entry, ValuePtr val)
+		    : dir_entry_{dir_entry}, val_{val} {}
+
+	  public:
+		template <bool OtherConst>
+		    requires(Const && !OtherConst)
+		EntryRef(const EntryRef<OtherConst> &other)
+		    : dir_entry_(other.dir_entry_), val_(other.val_) {}
+
+		const keys_type &keys() const noexcept {
+			return dir_entry_->keys();
+		}
+		template <in_pack<Ks...> K> const K &key() const noexcept {
+			return dir_entry_->template key<K>();
+		}
+		type_index_t type_index() const noexcept {
+			return dir_entry_->value().type;
+		}
+		template <in_pack<Ts...> T> bool is() const noexcept {
+			return type_index() == index_of_type<T>;
+		}
+		template <in_pack<Ts...> T> RefT<T> value() const {
+			if (!is<T>()) {
+				throw std::bad_cast();
+			}
+			return *static_cast<PtrT<T>>(val_);
+		}
+		template <in_pack<Ts...> T> PtrT<T> value_if() const noexcept {
+			return is<T>() ? static_cast<PtrT<T>>(val_) : nullptr;
+		}
+		template <class Fn> decltype(auto) visit(Fn &&fn) const {
+			return dispatch_by_type_(
+			    type_index(), [&]<class I>(I) -> decltype(auto) {
+				    using T = type_at<I::value>;
+				    return std::invoke(std::forward<Fn>(fn),
+				                       *static_cast<PtrT<T>>(val_));
+			    });
+		}
+	};
+
+	using entry_reference = EntryRef<false>;
+	using const_entry_reference = EntryRef<true>;
 
 	explicit PolyStore(
 	    std::pmr::memory_resource *r = std::pmr::get_default_resource())
-	    : res_{r}, blocks_{Storage<Ts, Anchor>(r)...}, dir_{r} {}
+	    : storages_{Storage<Ts>(r)...}, directory_{r} {}
 
-	// -------- creation --------
-
-	template <class T, class... KArgs, class... Args>
-	    requires(in_pack<T, Ts...> && sizeof...(KArgs) == KeysList::size &&
-	             (std::same_as<std::remove_cvref_t<KArgs>, Ks> && ...) &&
+	template <in_pack<Ts...> T, tuple_of_size<sizeof...(Ks)> KeysTuple,
+	          class... Args>
+	    requires((std::convertible_to<
+	                  std::tuple_element_t<index_in_pack<Ks, Ks...>,
+	                                       std::remove_cvref_t<KeysTuple>>,
+	                  Ks> &&
+	              ...) &&
 	             std::constructible_from<T, Args...>)
-	[[nodiscard]] bool emplace(std::tuple<KArgs...> &&keys, Args &&...args) {
-		constexpr std::size_t Kidx = index_in_pack<T, Ts...>;
-		auto &blk = std::get<Kidx>(blocks_);
-		const std::uint32_t idx = static_cast<std::uint32_t>(blk.data.size());
-		Loc loc;
-		if constexpr (single_type) {
-			loc = Loc{idx};
-		} else {
-			loc = Loc{static_cast<std::uint32_t>(Kidx), idx};
-		}
+	bool emplace(KeysTuple &&kargs, Args &&...args) {
+		auto &storage = std::get<index_of_type<T>>(storages_);
+		const value_index_t idx =
+		    static_cast<value_index_t>(storage.data.size());
+		Location loc{index_of_type<T>, idx};
 
-		// copy first key as anchor
-		Anchor anchor = std::get<0>(keys);
+		// Use std::as_const to force a COPY of the first key.
+		// Even if kargs is an rvalue, we read it as const& here so the
+		// data stays valid for the directory move later.
+		Anchor anchor = std::get<0>(std::as_const(kargs));
 
 		// Try to insert into directory first to validate uniqueness.
-		if (!dir_.insert(std::move(keys), loc))
+		if (!directory_.emplace(std::forward<KeysTuple>(kargs), loc)) {
 			return false;
+		}
 
-		blk.data.emplace_back(std::forward<Args>(args)...);
-		// anchor = first key in tuple
-		blk.ids.emplace_back(std::move(anchor));
+		storage.data.emplace_back(std::forward<Args>(args)...);
+		storage.ids.emplace_back(std::move(anchor));
 		return true;
 	}
 
-	template <class T, class... AllArgs>
-	    requires(in_pack<T, Ts...> && sizeof...(AllArgs) >= KeysList::size &&
-	             (type_list<AllArgs...>::template take_front<
-	                 KeysList::size>::template same_as_remove_cvref<Ks...>) &&
-	             (type_list<AllArgs...>::template drop_front<
-	                 KeysList::size>::template can_construct<T>))
-	[[nodiscard]] bool emplace(AllArgs &&...all_args) {
-		using TL = type_list<AllArgs...>;
+	template <in_pack<Ts...> T, class... Args>
+	    requires(sizeof...(Args) >= sizeof...(Ks) &&
+	             (type_list<Args...>::template take_front<
+	                 sizeof...(Ks)>::template convertible_to<Ks...>) &&
+	             (type_list<Args...>::template drop_front<
+	                 sizeof...(Ks)>::template can_construct<T>))
+	bool emplace(Args &&...args) {
+		using ArgsList = type_list<Args...>;
 		return select_invoke<
-		    typename TL::template drop_front_seq<KeysList::size>>(
-		    [&]<class... Args>(Args &&...args) {
+		    typename ArgsList::template drop_front_seq<sizeof...(Ks)>>(
+		    [&]<class... VArgs>(VArgs &&...vargs) {
 			    return emplace<T>(
 			        select_forward_as_tuple<
-			            typename TL::template front_seq<KeysList::size>>(
-			            std::forward<AllArgs>(all_args)...),
-			        std::forward<Args>(args)...);
+			            typename ArgsList::template front_seq<sizeof...(Ks)>>(
+			            std::forward<Args>(args)...),
+			        std::forward<VArgs>(vargs)...);
 		    },
-		    std::forward<AllArgs>(all_args)...);
+		    std::forward<Args>(args)...);
 	}
 
-	// -------- lookup (typed) --------
-	template <class T, class K>
-	    requires(in_pack<T, Ts...> && in_pack<std::remove_cvref_t<K>, Ks...>)
-	[[nodiscard]] T *get(const K &key) noexcept {
-		const Loc *p = dir_.find(std::as_const(key));
-		if (!p)
+	auto find(this auto &&self, const in_pack<Ks...> auto &k)
+	    -> std::optional<std::conditional_t<
+	        std::is_const_v<std::remove_reference_t<decltype(self)>>,
+	        const_entry_reference, entry_reference>> {
+		using ValuePtr = std::conditional_t<
+		    std::is_const_v<std::remove_reference_t<decltype(self)>>,
+		    const void *, void *>;
+		const auto *dir_entry = self.directory_.find(k);
+		if (!dir_entry) {
+			return std::nullopt;
+		}
+		const Location &loc = dir_entry->value();
+		ValuePtr ptr = dispatch_by_type_(loc.type, [&]<class I>(I) -> ValuePtr {
+			return &std::get<I::value>(self.storages_).data[loc.index];
+		});
+		return {{dir_entry, ptr}};
+	}
+
+	template <in_pack<Ks...> To>
+	const To *find_key(const in_pack<Ks...> auto &k) const {
+		return directory_.template find_key<To>(k);
+	}
+	const keys_type *find_keys(const in_pack<Ks...> auto &k) const {
+		return directory_.find_keys(k);
+	}
+	template <in_pack<Ts...> T>
+	auto find_value(this auto &&self, const in_pack<Ks...> auto &k)
+	    -> std::conditional_t<
+	        std::is_const_v<std::remove_reference_t<decltype(self)>>, const T *,
+	        T *> {
+		const auto *dir_entry = self.directory_.find(k);
+		if (!dir_entry) {
 			return nullptr;
-		const Loc loc = *p;
-		if constexpr (single_type) {
-			auto &blk = std::get<0>(blocks_);
-			return &blk.data[loc.index];
-		} else {
-			constexpr std::size_t Kidx = index_in_pack<T, Ts...>;
-			if (loc.type != Kidx)
-				return nullptr;
-			auto &blk = std::get<Kidx>(blocks_);
-			return &blk.data[loc.index];
 		}
-	}
-	template <class T, class K>
-	    requires(in_pack<T, Ts...> && in_pack<std::remove_cvref_t<K>, Ks...>)
-	[[nodiscard]] const T *get(const K &key) const noexcept {
-		return const_cast<PolyStore *>(this)->template get<T>(key);
-	}
-
-	// Project keys (handy utility wired to the directory)
-	template <class From, class To>
-	    requires(in_pack<From, Ks...> && in_pack<To, Ks...>)
-	[[nodiscard]] const To *project_key(const From &from) const noexcept {
-		return dir_.template project<From, To>(from);
-	}
-
-	// -------- type-erased visit --------
-	template <class K, class F>
-	    requires(in_pack<std::remove_cvref_t<K>, Ks...>)
-	bool visit(this auto &&self, const K &key, F &&f) {
-		const Loc *p = self.dir_.find(std::as_const(key));
-		if (!p)
-			return false;
-		const Loc loc = *p;
-		if constexpr (single_type) {
-			auto &blk = std::get<0>(self.blocks_);
-			std::invoke(std::forward<F>(f), blk.data[loc.index]);
-			return true;
-		} else {
-			return dispatch_by_type_(loc.type, [&](auto I_const) {
-				constexpr std::size_t I = decltype(I_const)::value;
-				auto &blk = std::get<I>(self.blocks_);
-				std::invoke(std::forward<F>(f), blk.data[loc.index]);
-			});
+		const Location &loc = dir_entry->value();
+		if (loc.type != index_of_type<T>) {
+			return nullptr;
 		}
+		auto &storage = std::get<index_of_type<T>>(self.storages_);
+		return &storage.data[loc.index];
 	}
 
-	// -------- delete (swap-remove) by any key --------
-	template <class K>
-	    requires(in_pack<std::remove_cvref_t<K>, Ks...>)
-	bool erase_by_key(const K &key) {
-		const Loc *p = dir_.find(std::as_const(key));
-		if (!p)
-			return false;
-		const Loc loc = *p;
+	auto entry_of(this auto &&self, const in_pack<Ks...> auto &k)
+	    -> std::conditional_t<
+	        std::is_const_v<std::remove_reference_t<decltype(self)>>,
+	        const_entry_reference, entry_reference> {
+		if (auto opt = self.find(k)) {
+			return *opt;
+		}
+		throw std::out_of_range("PolyStore::entry_of: key not found");
+	}
+	template <in_pack<Ks...> To>
+	const To &key_of(const in_pack<Ks...> auto &k) const {
+		if (const auto *ptr = find_key<To>(k)) {
+			return *ptr;
+		}
+		throw std::out_of_range("PolyStore::key_of: key not found");
+	}
+	const keys_type &keys_of(const in_pack<Ks...> auto &k) const {
+		if (const auto *ptr = find_keys(k)) {
+			return *ptr;
+		}
+		throw std::out_of_range("PolyStore::keys_of: key not found");
+	}
+	template <in_pack<Ts...> T>
+	auto value_of(this auto &&self, const in_pack<Ks...> auto &k)
+	    -> std::conditional_t<
+	        std::is_const_v<std::remove_reference_t<decltype(self)>>, const T &,
+	        T &> {
+		if (auto *ptr = self.template find_value<T>(k)) {
+			return *ptr;
+		}
+		throw std::out_of_range(
+		    "PolyStore::value_of: key not found or type mismatch");
+	}
 
-		if constexpr (single_type) {
-			auto &blk = std::get<0>(blocks_);
-			const std::size_t last = blk.data.size() - 1;
-			const std::size_t victim = loc.index;
-			const Anchor moved_anchor = blk.ids[last];
+	template <class Fn>
+	decltype(auto) visit(this auto &&self, const in_pack<Ks...> auto &k,
+	                     Fn &&fn) {
+		const auto *dir_entry = self.directory_.find(k);
+		if (!dir_entry) {
+			throw std::out_of_range("PolyStore::visit: key not found");
+		}
+		const Location &loc = dir_entry->value();
+		return dispatch_by_type_(loc.type, [&]<class I>(I) -> decltype(auto) {
+			auto &storage = std::get<I::value>(self.storages_);
+			return std::invoke(std::forward<Fn>(fn), storage.data[loc.index]);
+		});
+	}
 
-			if (victim != last) {
-				blk.data[victim] = std::move(blk.data[last]);
-				blk.ids[victim] = moved_anchor;
-				dir_.template replace_value<Anchor>(
-				    moved_anchor, Loc{static_cast<std::uint32_t>(victim)});
+	template <class Fn>
+	decltype(auto) try_visit(this auto &&self, const in_pack<Ks...> auto &k,
+	                         Fn &&fn) {
+		constexpr bool Const =
+		    std::is_const_v<std::remove_reference_t<decltype(self)>>;
+		using ExampleArg =
+		    std::conditional_t<Const, const type_at<0> &, type_at<0> &>;
+		using InvokeResult = std::invoke_result_t<Fn, ExampleArg>;
+
+		if constexpr (std::is_void_v<InvokeResult>) {
+			// void -> bool
+			const auto *dir_entry = self.directory_.find(k);
+			if (!dir_entry) {
+				return false;
 			}
-			blk.data.pop_back();
-			blk.ids.pop_back();
-			(void)dir_.erase_by_key(std::as_const(key));
+			const Location &loc = dir_entry->value();
+			self.dispatch_by_type_(loc.type, [&]<class I>(I) {
+				auto &storage = std::get<I::value>(self.storages_);
+				std::invoke(std::forward<Fn>(fn), storage.data[loc.index]);
+			});
 			return true;
 
-		} else {
-			return dispatch_by_type_(loc.type, [&](auto I_const) {
-				constexpr std::size_t I = decltype(I_const)::value;
-				auto &blk = std::get<I>(blocks_);
-				const std::size_t last = blk.data.size() - 1;
-				const std::size_t victim = loc.index;
-				const Anchor moved_anchor = blk.ids[last];
-
-				if (victim != last) {
-					// move last into victim
-					blk.data[victim] = std::move(blk.data[last]);
-					blk.ids[victim] = moved_anchor;
-					// update directory for the moved record (via its anchor key)
-					dir_.template replace_value<Anchor>(
-					    moved_anchor, Loc{static_cast<std::uint32_t>(I),
-					                      static_cast<std::uint32_t>(victim)});
-				}
-
-				// remove victim from block
-				blk.data.pop_back();
-				blk.ids.pop_back();
-
-				// finally remove victim from directory by the provided key
-				(void)dir_.erase_by_key(std::as_const(key));
+		} else if constexpr (!std::is_reference_v<InvokeResult>) {
+			// value -> std::optional<value>
+			const auto *dir_entry = self.directory_.find(k);
+			if (!dir_entry) {
+				return std::optional<InvokeResult>{};
+			}
+			const Location &loc = dir_entry->value();
+			return self.dispatch_by_type_(loc.type, [&]<class I>(I) {
+				auto &storage = std::get<I::value>(self.storages_);
+				return std::optional<InvokeResult>{
+				    std::invoke(std::forward<Fn>(fn), storage.data[loc.index])};
 			});
+
+		} else {
+			// reference -> not supported
+			static_assert(
+			    false,
+			    "PolyStore::try_visit: returning references is not supported");
 		}
 	}
 
-	// Erase by full keys tuple
-	bool erase(const keys_tuple &keys) {
-		// erase_by_key via anchor (first key) is enough, but any key works:
-		return erase_by_key(std::get<0>(keys));
+	bool contains(const in_pack<Ks...> auto &k) const {
+		return directory_.contains(k);
 	}
 
-	// -------- queries & views --------
-	template <class K>
-	    requires(in_pack<std::remove_cvref_t<K>, Ks...>)
-	[[nodiscard]] bool alive(const K &key) const noexcept {
-		return dir_.contains(std::as_const(key));
+	bool erase(const in_pack<Ks...> auto &k) {
+		auto *dir_entry = directory_.find(k);
+		if (!dir_entry) {
+			return false;
+		}
+		Location loc = dir_entry->value();
+		directory_.erase(k);
+		dispatch_by_type_(loc.type, [&]<class I>(I) {
+			auto &storage = std::get<I::value>(storages_);
+			const std::size_t last = storage.data.size() - 1;
+			const std::size_t victim = loc.index;
+			if (victim != last) {
+				storage.data[victim] = std::move(storage.data[last]);
+				storage.ids[victim] = std::move(storage.ids[last]);
+				Location &moved_loc = directory_.value_of(storage.ids[victim]);
+				moved_loc.index = static_cast<value_index_t>(victim);
+			}
+			storage.data.pop_back();
+			storage.ids.pop_back();
+		});
+		return true;
 	}
 
-	template <class T>
-	    requires(in_pack<T, Ts...>)
-	[[nodiscard]] std::span<T> view() noexcept {
-		return std::span<T>(std::get<index_in_pack<T, Ts...>>(blocks_).data);
-	}
-	template <class T>
-	    requires(in_pack<T, Ts...>)
-	[[nodiscard]] std::span<const T> view() const noexcept {
-		const auto &blk = std::get<index_in_pack<T, Ts...>>(blocks_);
-		return std::span<const T>(blk.data);
+	std::size_t size() const noexcept {
+		return directory_.size();
 	}
 
-	template <class T>
-	    requires(in_pack<T, Ts...>)
-	void reserve(std::size_t n) {
-		auto &blk = std::get<index_in_pack<T, Ts...>>(blocks_);
-		blk.data.reserve(n);
-		blk.ids.reserve(n);
+	template <in_pack<Ts...> T> std::size_t size_of_type() const noexcept {
+		const auto &storage = std::get<index_of_type<T>>(storages_);
+		return storage.data.size();
 	}
 
-	[[nodiscard]] std::size_t size() const {
-		return (std::get<Storage<Ts, Anchor>>(blocks_).data.size() + ... + 0u);
+	bool empty() const noexcept {
+		return directory_.empty();
 	}
 
-	// Memory control knobs
+	template <in_pack<Ts...> T>
+	auto value_view(this auto &&self) noexcept -> std::span<std::conditional_t<
+	    std::is_const_v<std::remove_reference_t<decltype(self)>>, const T, T>> {
+		auto &storage = std::get<index_of_type<T>>(self.storages_);
+		return {storage.data.data(), storage.data.size()};
+	}
+
+	std::span<const keys_type> keys_view() const noexcept {
+		return directory_.keys_view();
+	}
+
+	template <in_pack<Ts...> T>
+	auto entries_of_type(this auto &&self) -> std::generator<
+	    std::tuple<const keys_type &,
+	               std::conditional_t<
+	                   std::is_const_v<std::remove_reference_t<decltype(self)>>,
+	                   const T &, T &>>> {
+		auto &storage = std::get<index_of_type<T>>(self.storages_);
+		for (std::size_t i = 0; i < storage.data.size(); ++i) {
+			const Anchor &anchor = storage.ids[i];
+			const keys_type &keys = self.directory_.keys_of(anchor);
+			auto &value = storage.data[i];
+			co_yield {keys, value};
+		}
+	}
+
+	template <class Fn> void for_each(this auto &&self, Fn &&fn) {
+		(
+		    [&](auto &storage) {
+			    for (std::size_t i = 0; i < storage.data.size(); ++i) {
+				    const Anchor &anchor = storage.ids[i];
+				    const keys_type &keys = self.directory_.keys_of(anchor);
+				    auto &value = storage.data[i];
+				    std::invoke(fn, keys, value);
+			    }
+		    }(std::get<index_of_type<Ts>>(self.storages_)),
+		    ...);
+	}
+
+	template <in_pack<Ts...> T> void reserve_for_type(std::size_t n) {
+		auto &storage = std::get<index_of_type<T>>(storages_);
+		storage.data.reserve(n);
+		storage.ids.reserve(n);
+		directory_.reserve(n);
+	}
+
+	void reserve(std::convertible_to<std::size_t> auto... ns) {
+		static_assert(sizeof...(ns) == sizeof...(Ts),
+		              "PolyStore::reserve: number of arguments must equal to "
+		              "number of types");
+		std::size_t sum = 0;
+		((std::get<index_of_type<Ts>>(storages_).data.reserve(ns),
+		  std::get<index_of_type<Ts>>(storages_).ids.reserve(ns), sum += ns),
+		 ...);
+		directory_.reserve(sum);
+	}
+
+	template <in_pack<Ts...> T> void clear_type() {
+		auto &storage = std::get<index_of_type<T>>(storages_);
+		for (const Anchor &anchor : storage.ids) {
+			directory_.erase(anchor);
+		}
+		storage.data.clear();
+		storage.ids.clear();
+	}
+
 	void clear() {
-		(std::get<Storage<Ts, Anchor>>(blocks_).data.clear(), ...);
-		(std::get<Storage<Ts, Anchor>>(blocks_).ids.clear(), ...);
-		dir_.clear();
-	}
-
-	std::pmr::memory_resource *resource() const noexcept {
-		return res_;
-	}
-
-	template <class T>
-	    requires(in_pack<T, Ts...>)
-	auto &storage_for() noexcept {
-		return std::get<index_in_pack<T, Ts...>>(blocks_);
-	}
-	template <class T>
-	    requires(in_pack<T, Ts...>)
-	const auto &storage_for() const noexcept {
-		return std::get<index_in_pack<T, Ts...>>(blocks_);
+		(std::get<index_of_type<Ts>>(storages_).data.clear(), ...);
+		(std::get<index_of_type<Ts>>(storages_).ids.clear(), ...);
+		directory_.clear();
 	}
 
   private:
-	// runtime -> compile-time dispatch over type index
-	template <class F, std::size_t... Is>
-	static bool dispatch_by_type_impl_(std::uint32_t t, F &&f,
-	                                   std::index_sequence<Is...>) noexcept {
-		auto &&g = f; // avoid accidentally moving f multiple times
-		return ((t == Is ? (std::invoke(
-		                        g, std::integral_constant<std::size_t, Is>{}),
-		                    true)
-		                 : false) ||
-		        ...);
-	}
-	template <class F> static bool dispatch_by_type_(std::uint32_t t, F &&fn) {
-		return dispatch_by_type_impl_(
-		    t, std::forward<F>(fn), std::make_index_sequence<sizeof...(Ts)>{});
-	}
-
-  private:
-	std::pmr::memory_resource *res_;
-	Blocks blocks_;
-	Dir dir_;
+	Storages storages_;
+	Directory directory_;
 };
 
 } // namespace lego_assemble

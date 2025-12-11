@@ -211,11 +211,9 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		PhysicsPartId t_physics_stud_pid{physics_stud_pid};
 		PhysicsPartId t_physics_hole_pid{physics_hole_pid};
 		const UsdPartId *t_usd_stud_pid_ptr =
-		    pid_mapping_.template project<PhysicsPartId, UsdPartId>(
-		        t_physics_stud_pid);
+		    pid_mapping_.template find_key<UsdPartId>(t_physics_stud_pid);
 		const UsdPartId *t_usd_hole_pid_ptr =
-		    pid_mapping_.template project<PhysicsPartId, UsdPartId>(
-		        t_physics_hole_pid);
+		    pid_mapping_.template find_key<UsdPartId>(t_physics_hole_pid);
 		if (!t_usd_stud_pid_ptr || !t_usd_hole_pid_ptr) [[unlikely]] {
 			log_error("UsdPhysicsBridge: failed to find USD part ids for "
 			          "physics part ids {} and {} during connection "
@@ -255,8 +253,7 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		// Delete a removed connection in PhysicsGraph from UsdGraph.
 		PhysicsConnSegId t_physics_csid{physics_csid};
 		const UsdConnSegId *t_usd_csid_ptr =
-		    csid_mapping_.template project<PhysicsConnSegId, UsdConnSegId>(
-		        t_physics_csid);
+		    csid_mapping_.template find_key<UsdConnSegId>(t_physics_csid);
 		if (!t_usd_csid_ptr) {
 			// This happens on graph divergence
 			if (warn_divergence_) {
@@ -268,18 +265,10 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 			return false;
 		}
 		ConnSegId usd_csid = t_usd_csid_ptr->value();
-		const pxr::SdfPath *usd_conn_path_ptr =
+		pxr::SdfPath usd_conn_path =
 		    usd_graph_->topology()
 		        .connection_segments()
-		        .template project<ConnSegId, pxr::SdfPath>(usd_csid);
-		if (!usd_conn_path_ptr) {
-			log_error("UsdPhysicsBridge: failed to find USD conn path for "
-			          "USD conn seg id {} during connection removal "
-			          "writeback",
-			          usd_csid);
-			return false;
-		}
-		pxr::SdfPath usd_conn_path = *usd_conn_path_ptr;
+		        .template key_of<pxr::SdfPath>(usd_csid);
 		SuppressUsdCallbacks _suppress_cbk{this};
 		bool disconnected = usd_graph_->disconnect(usd_conn_path);
 		if (!disconnected) {
@@ -287,7 +276,7 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 			// Fallthrough
 		}
 		// Remove from mapping
-		bool erased = csid_mapping_.erase_by_key(t_physics_csid);
+		bool erased = csid_mapping_.erase(t_physics_csid);
 		if (!erased) {
 			log_error("UsdPhysicsBridge: failed to erase mapping for "
 			          "physics conn seg id {} during connection removal "
@@ -335,7 +324,7 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		auto colliders = resolve_collider_shapes(usd_pw.colliders());
 		std::optional<PartId> physics_pid_opt =
 		    physics_graph_->topology().template add_part<P>(
-		        std::forward_as_tuple(px_actor), std::move(colliders), part);
+		        px_actor, std::move(colliders), part);
 		if (!physics_pid_opt) [[unlikely]] {
 			log_error("UsdPhysicsBridge: failed to add part id {} to physics "
 			          "graph",
@@ -368,8 +357,7 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		// remove_part(...) will do that.
 		auto remove_conn_entry = [&](ConnSegId physics_csid) {
 			PhysicsConnSegId t_physics_csid{physics_csid};
-			[[maybe_unused]] bool erased =
-			    csid_mapping_.erase_by_key(t_physics_csid);
+			bool erased = csid_mapping_.erase(t_physics_csid);
 			// Return value can be false if the entry doesn't exist,
 			// this happens on graph divergence.
 			if (!erased) {
@@ -380,7 +368,7 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 				}
 			}
 		};
-		bool visited = physics_graph_->topology().parts().visit(
+		physics_graph_->topology().parts().visit(
 		    physics_pid, [&]<PartLike P>(const PhysicsPartWrapper<P> &pw) {
 			    for (ConnSegId csid : pw.outgoings()) {
 				    remove_conn_entry(csid);
@@ -389,12 +377,6 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 				    remove_conn_entry(csid);
 			    }
 		    });
-		if (!visited) [[unlikely]] {
-			log_error("UsdPhysicsBridge: failed to find physics part id {} "
-			          "during unbind",
-			          physics_pid);
-			return false;
-		}
 		// Then, remove the part itself
 		bool removed =
 		    physics_graph_->topology().remove_part(physics_pid).has_value();
@@ -406,7 +388,7 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		}
 		// Finally, remove from mapping
 		PhysicsPartId t_physics_pid{physics_pid};
-		bool erased = pid_mapping_.erase_by_key(t_physics_pid);
+		bool erased = pid_mapping_.erase(t_physics_pid);
 		if (!erased) [[unlikely]] {
 			log_error("UsdPhysicsBridge: failed to erase mapping for physics "
 			          "part id {} during unbind",
@@ -417,26 +399,12 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	}
 
 	bool bind_connection(ConnSegId usd_csid) {
-		const ConnSegRef *usd_csref_ptr =
+		const ConnSegRef &usd_csref =
 		    usd_graph_->topology()
 		        .connection_segments()
-		        .template project<ConnSegId, ConnSegRef>(usd_csid);
-		if (usd_csref_ptr == nullptr) [[unlikely]] {
-			log_error("UsdPhysicsBridge: failed to find ConnSegRef for USD "
-			          "conn seg id {}",
-			          usd_csid);
-			return false;
-		}
-		const ConnSegRef &usd_csref = *usd_csref_ptr;
-		const SimpleWrapper<ConnectionSegment> *usd_csw_ptr =
-		    usd_graph_->topology().connection_segments().find(usd_csid);
-		if (usd_csw_ptr == nullptr) [[unlikely]] {
-			log_error("UsdPhysicsBridge: failed to find ConnectionSegment "
-			          "wrapper for USD conn seg id {}",
-			          usd_csid);
-			return false;
-		}
-		const SimpleWrapper<ConnectionSegment> &usd_csw = *usd_csw_ptr;
+		        .template key_of<ConnSegRef>(usd_csid);
+		const SimpleWrapper<ConnectionSegment> &usd_csw =
+		    usd_graph_->topology().connection_segments().value_of(usd_csid);
 		return bind_connection(usd_csid, usd_csref, usd_csw);
 	}
 
@@ -456,11 +424,9 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		UsdPartId t_usd_stud_pid{usd_stud_pid};
 		UsdPartId t_usd_hole_pid{usd_hole_pid};
 		const PhysicsPartId *t_physics_stud_pid =
-		    pid_mapping_.template project<UsdPartId, PhysicsPartId>(
-		        t_usd_stud_pid);
+		    pid_mapping_.template find_key<PhysicsPartId>(t_usd_stud_pid);
 		const PhysicsPartId *t_physics_hole_pid =
-		    pid_mapping_.template project<UsdPartId, PhysicsPartId>(
-		        t_usd_hole_pid);
+		    pid_mapping_.template find_key<PhysicsPartId>(t_usd_hole_pid);
 		if (t_physics_stud_pid == nullptr || t_physics_hole_pid == nullptr) {
 			// Endpoint parts not bound yet
 			return false;
@@ -468,8 +434,7 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		std::optional<ConnSegId> physics_csid_opt =
 		    physics_graph_->topology().connect(
 		        {t_physics_stud_pid->value(), stud_ifid},
-		        {t_physics_hole_pid->value(), hole_ifid}, {},
-		        usd_csw.wrapped());
+		        {t_physics_hole_pid->value(), hole_ifid}, usd_csw.wrapped());
 		if (!physics_csid_opt) {
 			// Failed to connect. This could happen when two graphs diverge.
 			if (warn_divergence_) {
@@ -494,8 +459,7 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		// Unbind a USD connection from PhysicsGraph.
 		UsdConnSegId t_usd_csid{usd_csid};
 		const PhysicsConnSegId *t_physics_csid_ptr =
-		    csid_mapping_.template project<UsdConnSegId, PhysicsConnSegId>(
-		        t_usd_csid);
+		    csid_mapping_.template find_key<PhysicsConnSegId>(t_usd_csid);
 		if (t_physics_csid_ptr == nullptr) {
 			// The connection is not bound at all.
 			// This could happen on graph divergence.
@@ -515,7 +479,7 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 			          physics_csid, usd_csid);
 			// Fallthrough
 		}
-		bool erased = csid_mapping_.erase_by_key(t_usd_csid);
+		bool erased = csid_mapping_.erase(t_usd_csid);
 		if (!erased) [[unlikely]] {
 			log_error("UsdPhysicsBridge: failed to erase mapping for USD "
 			          "conn seg id {} during unbind",
@@ -526,37 +490,20 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	}
 
 	void initial_sync() {
-		(
-		    [&]<PartLike P>(
-		        const pmr_vector_storage<UsdPartWrapper<P>, PartId> &storage) {
-			    // TODO: a bug in clang (?) causes us to be unable to use zip
-			    // for (const auto &[pid, pw] : std::views::zip(storage.ids, storage.data)) {
-			    for (std::size_t i = 0; i < storage.ids.size(); ++i) {
-				    PartId pid = storage.ids[i];
-				    const UsdPartWrapper<P> &pw = storage.data[i];
-				    const pxr::SdfPath *part_path_ptr =
-				        usd_graph_->topology()
-				            .parts()
-				            .template project_key<PartId, pxr::SdfPath>(pid);
-				    if (!part_path_ptr) [[unlikely]] {
-					    log_error("UsdPhysicsBridge: failed to find part path "
-					              "for USD part id {} during initial sync",
-					              pid);
-					    continue;
-				    }
-				    pxr::SdfPath part_path = *part_path_ptr;
-				    physx::PxRigidActor *px_actor =
-				        resolve_rigid_actor(part_path);
-				    if (px_actor == nullptr) {
-					    // Omni PhysX hasn't created the actor yet
-					    continue;
-				    }
-				    bind_part<P>(pid, pw, px_actor);
-			    }
-		    }(usd_graph_->topology()
-		          .parts()
-		          .template storage_for<UsdPartWrapper<Ps>>()),
-		    ...);
+		usd_graph_->topology().parts().for_each([&](auto &&keys, auto &&pw) {
+			PartId pid = std::get<
+			    UsdGraph::TopologyGraph::PartKeys::template index_of<PartId>>(
+			    keys);
+			const pxr::SdfPath &part_path =
+			    std::get<UsdGraph::TopologyGraph::PartKeys::template index_of<
+			        pxr::SdfPath>>(keys);
+			physx::PxRigidActor *px_actor = resolve_rigid_actor(part_path);
+			if (px_actor == nullptr) {
+				// Omni PhysX hasn't created the actor yet
+				return;
+			}
+			bind_part(pid, pw, px_actor);
+		});
 	}
 
 	void on_object_creation_notify(const pxr::SdfPath &sdf_path,
@@ -567,25 +514,16 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		if (type != omni::physx::ePTActor) {
 			return;
 		}
-		const PartId *usd_pid_ptr =
-		    usd_graph_->topology()
-		        .parts()
-		        .template project_key<pxr::SdfPath, PartId>(sdf_path);
-		if (usd_pid_ptr == nullptr) {
+		auto usd_part = usd_graph_->topology().parts().find(sdf_path);
+		if (!usd_part) {
 			return;
 		}
 		physx::PxRigidActor *px_actor = static_cast<physx::PxRigidActor *>(
 		    omni_px_->getPhysXPtrFast(object_id));
-		PartId usd_pid = *usd_pid_ptr;
-		bool visited = usd_graph_->topology().parts().visit(
-		    usd_pid, [&]<PartLike P>(const UsdPartWrapper<P> &pw) {
-			    bind_part(usd_pid, pw, px_actor);
-		    });
-		if (!visited) [[unlikely]] {
-			log_error("UsdPhysicsBridge: failed to find USD part id {} "
-			          "during object creation notify",
-			          usd_pid);
-		}
+		PartId usd_pid = usd_part->template key<PartId>();
+		usd_part->visit([&]<PartLike P>(const UsdPartWrapper<P> &pw) {
+			bind_part(usd_pid, pw, px_actor);
+		});
 	}
 
 	void
@@ -600,9 +538,8 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		physx::PxRigidActor *px_actor = static_cast<physx::PxRigidActor *>(
 		    omni_px_->getPhysXPtrFast(object_id));
 		const PartId *physics_pid_ptr =
-		    physics_graph_->topology()
-		        .parts()
-		        .template project_key<physx::PxRigidActor *, PartId>(px_actor);
+		    physics_graph_->topology().parts().template find_key<PartId>(
+		        px_actor);
 		if (physics_pid_ptr == nullptr) {
 			return;
 		}
