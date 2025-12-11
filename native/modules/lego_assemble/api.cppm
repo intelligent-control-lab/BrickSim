@@ -20,7 +20,7 @@ namespace lego_assemble::api {
 using World = LegoRuntime::World;
 
 using QuatArray = std::array<double, 4>; // w, x, y, z
-using PosArray = std::array<double, 3>; // x, y, z
+using PosArray = std::array<double, 3>;  // x, y, z
 using PathStr = std::string;
 using BBox2dArray = std::array<double, 4>; // min_x, min_y, max_x, max_y
 
@@ -210,9 +210,6 @@ compute_connected_component(const PathStr &part_path) {
 		part_paths.emplace_back(entry.key<pxr::SdfPath>().GetAsString());
 		entry.visit([&](const auto &pw) {
 			for (ConnSegId csid : pw.incomings()) {
-				conn_paths.emplace_back(usd_conn_path(csid));
-			}
-			for (ConnSegId csid : pw.outgoings()) {
 				conn_paths.emplace_back(usd_conn_path(csid));
 			}
 		});
