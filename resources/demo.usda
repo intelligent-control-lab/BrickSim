@@ -130,6 +130,9 @@ def Xform "World"
         rel lego:workspace_obstacles = [
             <../Cube>
         ]
+        double lego:workspace_clearance = 0.016
+        double lego:workspace_grid_resolution = 0.008
+        bool lego:workspace_allow_rotation = 1
     }
 
     def Scope "Looks"

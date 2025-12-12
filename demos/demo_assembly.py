@@ -1,20 +1,28 @@
 import math
+import json
 import os
 import numpy as np
 import omni.kit.app # pyright: ignore
 from typing import Optional
+from copy import deepcopy
+from pxr import Gf
 from isaacsim.core.api.world import World
 from isaacsim.core.api.materials import PhysicsMaterial
-from isaacsim.core.prims import SingleArticulation, SingleXFormPrim, SingleGeometryPrim, SingleRigidPrim
+from isaacsim.core.prims import SingleArticulation, SingleXFormPrim, SingleGeometryPrim
 from isaacsim.core.utils.stage import open_stage_async, add_reference_to_stage, get_current_stage
 from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.core.utils.nucleus import get_assets_root_path
 from isaacsim.core.utils.numpy.rotations import quats_to_rot_matrices, rot_matrices_to_quats
 from isaacsim.robot_motion.motion_generation import RmpFlow, ArticulationMotionPolicy
 from isaacsim.robot_motion.motion_generation.interface_config_loader import load_supported_motion_policy_config
-from lego_assemble import allocate_brick_part, parse_color, arrange_parts_on_table, get_brick_dimensions, compute_connection_transform, set_assembly_thresholds, AssemblyThresholds, wait_for_physics_step
+from lego_assemble import arrange_parts_in_workspace, import_lego, get_brick_dimensions, compute_connection_transform, set_assembly_thresholds, AssemblyThresholds, wait_for_physics_step
+from lego_assemble.utils.topology import bfs_sort_connections
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+STRUCTURE_JSON_PATH = os.path.join(SCRIPT_DIR, "../resources/demo_structure.json")
+PRE_PLACED_PARTS = [0,] # Indices of parts in the structure JSON that are pre-placed in the scene
+PLACE_POSE = ([0.3, 0.0, 0.0], (1.0, 0.0, 0.0, 0.0)) # Position (x,y,z), Orientation (w,x,y,z)
 
 def quat_angle_error(q_current, q_target) -> float:
     """Small helper: angle between two quaternions."""
@@ -565,44 +573,81 @@ async def main():
     rmpflow = RmpFlow(**rmp_cfg)
     motion_policy = ArticulationMotionPolicy(robot, rmpflow)
 
-    # Place base plate
-    base_plate = allocate_brick_part(
-        dimensions=(20, 20, 1),
-        color=parse_color("Light Gray"),
-        env_id=-1,
-        rot=(1.0, 0.0, 0.0, 0.0),
-        pos=(0.3, 0.0, 0.0),
-    )
-    # Uncomment to fix the base plate in place
-    # base_plate_prim = get_current_stage().GetPrimAtPath(base_plate)
-    # base_plate_prim.GetAttribute("physics:kinematicEnabled").Set(True)
+    # Setup workspace
+    workspace_prim = get_current_stage().GetPrimAtPath("/World/LegoWorkspace")
+    workspace_prim.GetAttribute("xformOp:scale").Set(Gf.Vec3d(0.6, 0.6, 0.2))
+    workspace_prim.GetAttribute("xformOp:translate").Set(Gf.Vec3d(0.4, 0.0, 0.1))
+    workspace_prim.GetAttribute("xformOp:orient").Set(Gf.Quatd(1.0, 0.0, 0.0, 0.0))
+    workspace_prim.GetRelationship("lego:workspace_obstacles").AddTarget("/World/Robot/panda_link0")
 
-    # Place bricks
-    bricks_to_place = [
-        ((2, 4, 3), "Red"),
-        ((2, 4, 3), "Blue"),
-        ((2, 6, 3), "Pink"),
-        ((2, 2, 3), "Green"),
+    # Load structure to assemble (including base plate)
+    with open(STRUCTURE_JSON_PATH, 'r') as f:
+        topology = json.load(f)
+
+    # Place pre-placed parts
+    pre_placed_topology = deepcopy(topology)
+    pre_placed_topology['parts'] = [
+        part
+        for part in topology['parts']
+        if part['id'] in PRE_PLACED_PARTS
     ]
-    brick_paths = [
-        allocate_brick_part(
-            dimensions=dims,
-            color=parse_color(color),
-            env_id=-1,
-        ) for dims, color in bricks_to_place
-    ]
-    _, not_placed = arrange_parts_on_table(
-        parts_to_arrange=brick_paths,
-        obstacles=None,
-        table_xy=(0.2, -0.2, 0.5, 0.2),
-        table_z=0.0,
-        allow_rotation=True,
-        clearance_xy=0.016,
-        grid_resolution=0.008,
-        avoid_all_other_parts=True,
+    pre_placed, not_pre_placed = import_lego(
+        json=pre_placed_topology,
+        env_id=-1,
+        ref_pos=PLACE_POSE[0],
+        ref_rot=PLACE_POSE[1],
     )
-    if len(not_placed) > 0:
-        raise RuntimeError(f"Failed to place all bricks on table; not placed: {not_placed}")
+    if len(not_pre_placed) > 0:
+        raise RuntimeError(f"Failed to place pre-placed parts; not placed: {not_pre_placed}")
+
+    # Spawn unplaced parts on table for assembly
+    to_place_topology = deepcopy(topology)
+    to_place_topology['parts'] = [
+        part
+        for part in topology['parts']
+        if part['id'] not in PRE_PLACED_PARTS
+    ]
+    to_place_topology['connections'] = []
+    to_place_topology['pose_hints'] = []
+    to_place_placed, to_place_not_placed = import_lego(
+        json=to_place_topology,
+        env_id=-1
+    )
+    if len(to_place_not_placed) > 0:
+        raise RuntimeError(f"Failed to place to-place parts; not placed: {to_place_not_placed}")
+    arranged, not_arranged = arrange_parts_in_workspace(
+        workspace_path="/World/LegoWorkspace",
+        parts_to_arrange=[path for id, path in to_place_placed.items()],
+    )
+    if len(not_arranged) > 0:
+        raise RuntimeError(f"Failed to arrange all parts in workspace; not arranged: {not_arranged}")
+
+    # Generate a naive assembly plan
+    sorted_topology = bfs_sort_connections(topology)
+    def part_id_to_path(id):
+        if id in pre_placed:
+            return pre_placed[id]
+        else:
+            return to_place_placed[id]
+    print("Assembly Order:")
+    def format_part(id):
+        if id in pre_placed:
+            return f"{pre_placed[id]} (pre-placed)"
+        else:
+            return f"{to_place_placed[id]}"
+    plan = []
+    for conn in sorted_topology['connections']:
+        skip = conn['stud_id'] in PRE_PLACED_PARTS and conn['hole_id'] in PRE_PLACED_PARTS
+        if not skip:
+            plan.append({
+                'stud_path': part_id_to_path(conn['stud_id']),
+                'stud_iface': conn['stud_iface'],
+                'hole_path': part_id_to_path(conn['hole_id']),
+                'hole_iface': conn['hole_iface'],
+                'offset': conn['offset'],
+                'yaw': conn['yaw'],
+            })
+        print(f" {'SKIP' if skip else '    '} #{conn['id']}: stud = {format_part(conn['stud_id'])} % {conn['stud_iface']}; hole = {format_part(conn['hole_id'])} % {conn['hole_iface']}; offset = {conn['offset']}, yaw = {conn['yaw']}")
 
     # Start simulation loop
     await world.reset_async()
@@ -616,7 +661,12 @@ async def main():
         if not success:
             raise RuntimeError("Assembly failed during motion execution.")
 
-    await assemble(base_plate, brick_paths[0], offset=(9, 8), yaw=1)
-    await assemble(brick_paths[0], brick_paths[1], offset=(0, 2), yaw=0)
-    await assemble(brick_paths[1], brick_paths[2], offset=(0, 0), yaw=0)
-    await assemble(brick_paths[2], brick_paths[3], offset=(1, 0), yaw=0)
+    for step, conn in enumerate(plan):
+        print(f"=== Assembly Step {step + 1} / {len(plan)} ===")
+        print(f"  stud: {conn['stud_path']} % {conn['stud_iface']}; hole: {conn['hole_path']} % {conn['hole_iface']}; offset: {conn['offset']}, yaw: {conn['yaw']}")
+        await assemble(
+            stud_path=conn['stud_path'],
+            hole_path=conn['hole_path'],
+            offset=tuple(conn['offset']),
+            yaw=conn['yaw'],
+        )
