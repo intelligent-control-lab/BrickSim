@@ -86,6 +86,7 @@ static void test_json_part_roundtrip() {
 
 static void test_json_connection_roundtrip() {
 	JsonConnection c{
+	    .id = 100,
 	    .stud_id = 1,
 	    .stud_iface = 10,
 	    .hole_id = 2,
@@ -97,6 +98,7 @@ static void test_json_connection_roundtrip() {
 	ordered_json j;
 	to_json(j, c);
 
+	assert(j.at("id").get<std::int64_t>() == c.id);
 	assert(j.at("stud_id").get<std::int64_t>() == c.stud_id);
 	assert(j.at("stud_iface").get<std::int64_t>() == c.stud_iface);
 	assert(j.at("hole_id").get<std::int64_t>() == c.hole_id);
@@ -108,6 +110,7 @@ static void test_json_connection_roundtrip() {
 	JsonConnection d{};
 	from_json(j, d);
 
+	assert(d.id == c.id);
 	assert(d.stud_id == c.stud_id);
 	assert(d.stud_iface == c.stud_iface);
 	assert(d.hole_id == c.hole_id);
@@ -147,6 +150,7 @@ static void test_json_topology_roundtrip_and_optional_fields() {
 	    .payload = ordered_json{{"L", 2}, {"W", 4}, {"H", 3}},
 	};
 	JsonConnection conn{
+	    .id = 0,
 	    .stud_id = 1,
 	    .stud_iface = 10,
 	    .hole_id = 2,
@@ -169,7 +173,7 @@ static void test_json_topology_roundtrip_and_optional_fields() {
 	to_json(j, topo);
 
 	assert(j.at("schema").get<std::string>() ==
-	       "lego_assemble/lego_topology@1");
+	       "lego_assemble/lego_topology@2");
 	assert(j.at("parts").size() == 1);
 	assert(j.at("connections").size() == 1);
 	assert(j.at("pose_hints").size() == 1);
@@ -183,13 +187,14 @@ static void test_json_topology_roundtrip_and_optional_fields() {
 	assert(topo2.parts[0].id == part.id);
 	assert(topo2.parts[0].type == part.type);
 	assert(topo2.parts[0].payload == part.payload);
+	assert(topo2.connections[0].id == conn.id);
 	assert(topo2.connections[0].stud_id == conn.stud_id);
 	assert(topo2.connections[0].hole_id == conn.hole_id);
 	assert(topo2.pose_hints[0].part == hint.part);
 
 	// Missing fields must be treated as empty vectors.
 	ordered_json j_partial = ordered_json::object();
-	j_partial["schema"] = "lego_assemble/lego_topology@1";
+	j_partial["schema"] = "lego_assemble/lego_topology@2";
 	j_partial["parts"] = ordered_json::array(
 	    {ordered_json{{"id", 2}, {"type", "other"}, {"payload", {}}}});
 
@@ -201,7 +206,7 @@ static void test_json_topology_roundtrip_and_optional_fields() {
 
 	// Object with only schema: all optional vectors remain empty.
 	ordered_json j_empty = ordered_json::object();
-	j_empty["schema"] = "lego_assemble/lego_topology@1";
+	j_empty["schema"] = "lego_assemble/lego_topology@2";
 	JsonTopology topo4{};
 	from_json(j_empty, topo4);
 	assert(topo4.parts.empty());
@@ -474,6 +479,7 @@ test_topology_serializer_import_unknown_part_type_skips_parts_and_connections() 
 	// Since the unknown endpoint cannot be imported, the connection must be
 	// skipped entirely.
 	JsonConnection conn{
+	    .id = 0,
 	    .stud_id = 1,
 	    .stud_iface = static_cast<std::int64_t>(BrickPart::StudId),
 	    .hole_id = 2,

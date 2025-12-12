@@ -26,7 +26,7 @@ def bfs_sort_connections(topology: Dict[str, Any]) -> Dict[str, Any]:
     unchanged.
 
     Args:
-        topology: A dict matching the lego_assemble/lego_topology@1 schema.
+        topology: A dict matching the lego_assemble/lego_topology@2 schema.
 
     Returns:
         A shallow copy of ``topology`` whose ``\"connections\"`` list has been
@@ -143,4 +143,3 @@ def bfs_sort_connections(topology: Dict[str, Any]) -> Dict[str, Any]:
     new_topology = dict(topology)
     new_topology["connections"] = new_connections
     return new_topology
-

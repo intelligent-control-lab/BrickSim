@@ -180,7 +180,7 @@ class LegoUI():
         topology = export_lego(env_id)
         fullpath = os.path.join(dirname, filename)
         with open(fullpath, "w", encoding="utf-8") as f:
-            f.write(topology)
+            json.dump(topology, f, indent=2)
         carb.log_info(f"Exported topology to {fullpath}")
 
     async def _import_async(self):
@@ -194,23 +194,23 @@ class LegoUI():
 
         fullpath = os.path.join(dirname, filename)
         with open(fullpath, "r", encoding="utf-8") as f:
-            topology = f.read()
+            text = f.read()
 
-        if is_bricks_text(topology):
+        if is_bricks_text(text):
             # StableText2Brick format
             carb.log_info("Detected StableText2Brick format, converting to topology JSON")
-            topology = json.dumps(bricks_text_to_topology_json(topology, color=self.get_selected_color()))
-        elif is_legolization_json(topology):
+            topology = bricks_text_to_topology_json(text, color=self.get_selected_color())
+        elif is_legolization_json(text):
             carb.log_info("Detected legolization format, converting to topology JSON")
-            topology = json.dumps(
-                legolization_json_to_topology_json(
-                    json.loads(topology),
-                    color=self.get_selected_color()
-                )
-            )
+            topology = legolization_json_to_topology_json(json.loads(text), color=self.get_selected_color())
+        else:
+            # Assume direct topology JSON
+            carb.log_info("Assuming direct topology JSON format")
+            topology = json.loads(text)
 
         env_id = self.get_env_id()
-        imported_parts, _ = import_lego(topology, env_id)
+        part_paths, _ = import_lego(topology, env_id)
+        imported_parts = [part_paths[k] for k in sorted(part_paths)]
         carb.log_info(f"Imported topology from {fullpath}")
 
         workspace_path = get_env_path(env_id) + "/LegoWorkspace"

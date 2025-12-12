@@ -135,6 +135,7 @@ using Eigen::VectorXi;
 
 // ==== nlohmann_json ====
 export namespace nlohmann {
+using nlohmann::adl_serializer;
 using nlohmann::json;
 using nlohmann::ordered_json;
 } // namespace nlohmann

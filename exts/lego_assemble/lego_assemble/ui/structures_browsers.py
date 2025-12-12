@@ -271,7 +271,6 @@ class LegoStructuresBrowser:
 
         try:
             topology = legolization_json_to_topology_json(lego_structure, color=color)
-            topology_str = json.dumps(topology)
         except Exception as e:
             carb.log_error(f"[LegoStructures] legolization_json_to_topology_json failed: {e}")
             self._set_status("Conversion to topology failed.")
@@ -282,7 +281,8 @@ class LegoStructuresBrowser:
             env_id = int(self._main_ui.get_env_id())
 
         try:
-            imported_parts, _ = import_lego(topology_str, env_id)
+            part_paths, _ = import_lego(topology, env_id)
+            imported_parts = [part_paths[k] for k in sorted(part_paths)]
         except Exception as e:
             carb.log_error(f"[LegoStructures] import_lego failed: {e}")
             self._set_status(f"Import failed: {e}")

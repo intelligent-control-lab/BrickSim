@@ -5,6 +5,8 @@ import lego_assemble.api;
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "pybind11_json.hpp"
+
 using namespace lego_assemble::api;
 
 // Remember to update _native.pyi when changing the API below.
@@ -60,15 +62,16 @@ PYBIND11_MODULE(_native, m) {
 
 	m.def("export_lego", &export_lego, pybind11::arg("env_id"),
 	      "Export the lego topology of the specified environment as a JSON "
-	      "string (schema 'lego_assemble/lego_topology@1').");
+	      "object (schema 'lego_assemble/lego_topology@2').");
 
-	m.def("import_lego", &import_lego, pybind11::arg("json_str"),
+	m.def("import_lego", &import_lego, pybind11::arg("json"),
 	      pybind11::arg("env_id"), pybind11::arg("ref_rot") = std::nullopt,
 	      pybind11::arg("ref_pos") = std::nullopt,
-	      "Import the lego topology from the given JSON string into the "
+	      "Import the lego topology from the given JSON object into the "
 	      "specified environment, applying the given reference-to-environment "
 	      "transform (pose in meters, wxyz quaternion). Returns "
-	      "(part_paths, connection_paths) for the imported objects.");
+	      "(part_paths, connection_paths) as dicts mapping JSON ids to USD "
+	      "prim paths for the imported objects.");
 
 	m.def("compute_connected_component", &compute_connected_component,
 	      pybind11::arg("part_path"),

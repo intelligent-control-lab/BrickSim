@@ -20,7 +20,7 @@ Example structure:
 
 Output format (Python dict):
     {
-      "schema": "lego_assemble/lego_topology@1",
+      "schema": "lego_assemble/lego_topology@2",
       "parts": [ ... JsonPart ... ],
       "connections": [ ... JsonConnection ... ],
       "pose_hints": [ ... JsonPoseHint ... ],

@@ -114,9 +114,10 @@ class BrickGPTPromptWindow:
         threading.Thread(target=_worker, daemon=True).start()
 
     def do_import(self, bricks_text: str):
-        topology = json.dumps(bricks_text_to_topology_json(bricks_text, color=self._main_ui.get_selected_color()))
+        topology = bricks_text_to_topology_json(bricks_text, color=self._main_ui.get_selected_color())
         env_id = self._main_ui.get_env_id()
-        imported_parts, _ = import_lego(topology, env_id)
+        part_paths, _ = import_lego(topology, env_id)
+        imported_parts = [part_paths[k] for k in sorted(part_paths)]
 
         workspace_path = get_env_path(env_id) + "/LegoWorkspace"
         try:

@@ -11,7 +11,7 @@ The core idea:
   - Each brick is represented as (L, W, x, y, z) in stud / layer units.
   - This module turns that list into:
         {
-          "schema": "lego_assemble/lego_topology@1",
+          "schema": "lego_assemble/lego_topology@2",
           "parts": [ ... ],
           "connections": [ ... ],
           "pose_hints": [ ... ],
@@ -26,7 +26,7 @@ BRICK_UNIT_LENGTH = 0.008      # meters per stud
 PLATE_HEIGHT = 0.0032          # meters per plate
 BRICK_HEIGHT = 3 * PLATE_HEIGHT  # 1 brick = 3 plates = 0.0096 m
 
-SCHEMA_STRING = "lego_assemble/lego_topology@1"
+SCHEMA_STRING = "lego_assemble/lego_topology@2"
 
 # From BrickPart in C++:
 # static constexpr InterfaceId HoleId = 0;
@@ -369,6 +369,10 @@ def bricks_grid_to_topology_json(
                     "yaw": yaw,
                 }
             )
+
+    # Assign stable connection ids required by schema v2.
+    for cid, conn in enumerate(connections):
+        conn["id"] = int(cid)
 
     # Build pose hints: exactly one per connected component.
     pose_hints: list[dict[str, Any]] = []

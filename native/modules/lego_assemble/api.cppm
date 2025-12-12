@@ -177,21 +177,28 @@ export bool deallocate_all_managed(std::int64_t env_id) {
 	return usd_graph().allocator().deallocate_managed_all(env_id);
 }
 
-export std::string export_lego(std::int64_t env_id) {
-	nlohmann::ordered_json json =
-	    LegoRuntime::Serializer{}.export_usd_graph(usd_graph(), env_id);
-	return json.dump();
+export nlohmann::ordered_json export_lego(std::int64_t env_id) {
+	return LegoRuntime::Serializer{}.export_usd_graph(usd_graph(), env_id);
 }
 
-export std::tuple<std::vector<PathStr>, std::vector<PathStr>>
-import_lego(const std::string &json_str, std::int64_t env_id,
+export std::tuple<std::unordered_map<std::int64_t, PathStr>,
+                  std::unordered_map<std::int64_t, PathStr>>
+import_lego(const nlohmann::ordered_json &json, std::int64_t env_id,
             const std::optional<QuatArray> &ref_rot,
             const std::optional<PosArray> &ref_pos) {
-	nlohmann::ordered_json json = nlohmann::ordered_json::parse(json_str);
 	Transformd T_env_ref = transform_from_arrays(ref_rot, ref_pos);
-	auto [part_ids, conn_ids] =
+	auto imported =
 	    LegoRuntime::Serializer{}.import(json, usd_graph(), env_id, T_env_ref);
-	return {usd_part_paths(part_ids), usd_conn_paths(conn_ids)};
+	// Convert id to path
+	std::unordered_map<std::int64_t, PathStr> part_paths;
+	for (const auto &[json_id, pid] : imported.parts) {
+		part_paths.emplace(json_id, usd_part_path(pid));
+	}
+	std::unordered_map<std::int64_t, PathStr> conn_paths;
+	for (const auto &[json_id, csid] : imported.conns) {
+		conn_paths.emplace(json_id, usd_conn_path(csid));
+	}
+	return {std::move(part_paths), std::move(conn_paths)};
 }
 
 export std::tuple<std::vector<PathStr>, std::vector<PathStr>>

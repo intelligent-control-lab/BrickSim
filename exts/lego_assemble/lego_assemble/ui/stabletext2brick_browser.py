@@ -235,7 +235,6 @@ class StableText2BrickBrowser:
 
         # Convert text -> topology
         topology = bricks_text_to_topology_json(bricks_text, color=color)
-        topology_str = json.dumps(topology)
 
         # Resolve env id
         env_id = -1
@@ -244,7 +243,8 @@ class StableText2BrickBrowser:
 
         # Import into world
         try:
-            imported_parts, _ = import_lego(topology_str, env_id)
+            part_paths, _ = import_lego(topology, env_id)
+            imported_parts = [part_paths[k] for k in sorted(part_paths)]
         except Exception as e:
             carb.log_error(f"[StableText2Brick] import_lego failed: {e}")
             self._set_status(f"Import failed: {e}")

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 def allocate_brick_part(
     dimensions: tuple[int, int, int],
@@ -37,14 +37,14 @@ def deallocate_connection(connection_path: str) -> bool: ...
 
 def deallocate_all_managed(env_id: int) -> bool: ...
 
-def export_lego(env_id: int) -> str: ...
+def export_lego(env_id: int) -> Any: ...
 
 def import_lego(
-    json_str: str,
+    json: Any,
     env_id: int,
     ref_rot: Optional[tuple[float, float, float, float]] = None,
     ref_pos: Optional[tuple[float, float, float]] = None,
-) -> tuple[list[str], list[str]]: ...
+) -> tuple[dict[int, str], dict[int, str]]: ...
 
 def compute_connected_component(part_path: str) -> tuple[list[str], list[str]]: ...
 

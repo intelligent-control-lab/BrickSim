@@ -64,7 +64,7 @@ export struct BrickSerializer {
 
 static_assert(PartSerializer<BrickSerializer>);
 
-static constexpr auto SchemaString = "lego_assemble/lego_topology@1";
+static constexpr auto SchemaString = "lego_assemble/lego_topology@2";
 
 export struct JsonPart {
 	std::int64_t id;
@@ -87,6 +87,7 @@ export void from_json(const nlohmann::ordered_json &j, JsonPart &part) {
 }
 
 export struct JsonConnection {
+	std::int64_t id;
 	std::int64_t stud_id;
 	std::int64_t stud_iface;
 	std::int64_t hole_id;
@@ -97,13 +98,18 @@ export struct JsonConnection {
 
 export void to_json(nlohmann::ordered_json &j, const JsonConnection &conn) {
 	j = nlohmann::ordered_json{
-	    {"stud_id", conn.stud_id}, {"stud_iface", conn.stud_iface},
-	    {"hole_id", conn.hole_id}, {"hole_iface", conn.hole_iface},
-	    {"offset", conn.offset},   {"yaw", conn.yaw},
+	    {"id", conn.id},
+	    {"stud_id", conn.stud_id},
+	    {"stud_iface", conn.stud_iface},
+	    {"hole_id", conn.hole_id},
+	    {"hole_iface", conn.hole_iface},
+	    {"offset", conn.offset},
+	    {"yaw", conn.yaw},
 	};
 }
 
 export void from_json(const nlohmann::ordered_json &j, JsonConnection &conn) {
+	j.at("id").get_to(conn.id);
 	j.at("stud_id").get_to(conn.stud_id);
 	j.at("stud_iface").get_to(conn.stud_iface);
 	j.at("hole_id").get_to(conn.hole_id);
@@ -172,6 +178,11 @@ export void from_json(const nlohmann::ordered_json &j, JsonTopology &topology) {
 
 template <class T> using GetPartType = T::PartType;
 
+export struct ImportedMapping {
+	std::unordered_map<std::int64_t, PartId> parts;
+	std::unordered_map<std::int64_t, ConnSegId> conns;
+};
+
 export template <PartSerializer... Serializers> class TopologySerializer {
   public:
 	using SerializerList = type_list<Serializers...>;
@@ -229,6 +240,7 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 			const auto &[hole_pid, hole_ifid] = hole_ref;
 			const ConnectionSegment &cs = entry.value().wrapped();
 			result.connections.push_back({
+			    .id = static_cast<std::int64_t>(csid),
 			    .stud_id = static_cast<std::int64_t>(stud_pid),
 			    .stud_iface = static_cast<std::int64_t>(stud_ifid),
 			    .hole_id = static_cast<std::int64_t>(hole_pid),
@@ -295,13 +307,12 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 	}
 
 	template <class UsdGraph>
-	std::tuple<std::vector<PartId>, std::vector<ConnSegId>>
+	ImportedMapping
 	import(const JsonTopology &topology, UsdGraph &g,
 	       std::int64_t env_id = kNoEnv,
 	       const Transformd &T_env_ref = SE3d{}.identity()) const {
+		ImportedMapping imported;
 		// 1) Import parts
-		std::vector<PartId> imported_parts;
-		std::unordered_map<std::int64_t, PartId> id_map;
 		for (const JsonPart &jp : topology.parts) {
 			bool matched =
 			    visit_by_type_string(jp.type, [&](auto &&serializer) {
@@ -317,8 +328,7 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 					    return;
 				    }
 				    const auto &[pid, path] = *added;
-				    id_map[jp.id] = pid;
-				    imported_parts.push_back(pid);
+				    imported.parts.emplace(jp.id, pid);
 			    });
 			if (!matched) {
 				log_warn(
@@ -329,11 +339,11 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 		}
 
 		// 2) Import connections
-		std::vector<ConnSegId> imported_conns;
 		for (const JsonConnection &jc : topology.connections) {
-			auto it_stud = id_map.find(jc.stud_id);
-			auto it_hole = id_map.find(jc.hole_id);
-			if (it_stud == id_map.end() || it_hole == id_map.end()) {
+			auto it_stud = imported.parts.find(jc.stud_id);
+			auto it_hole = imported.parts.find(jc.hole_id);
+			if (it_stud == imported.parts.end() ||
+			    it_hole == imported.parts.end()) {
 				// One of the endpoints failed to import; skip
 				continue;
 			}
@@ -357,13 +367,13 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 				continue;
 			}
 			const auto &[csid, conn_path] = *connected;
-			imported_conns.push_back(csid);
+			imported.conns.emplace(jc.id, csid);
 		}
 
 		// 3) Apply pose hints
 		for (const JsonPoseHint &jph : topology.pose_hints) {
-			auto it = id_map.find(jph.part);
-			if (it == id_map.end()) {
+			auto it = imported.parts.find(jph.part);
+			if (it == imported.parts.end()) {
 				// part failed to import; skip
 				continue;
 			}
@@ -373,7 +383,7 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 			Transformd T_env_part = T_env_ref * T_ref_part;
 			g.set_component_transform(pid, T_env_part);
 		}
-		return {std::move(imported_parts), std::move(imported_conns)};
+		return imported;
 	}
 
   private:
