@@ -15,7 +15,7 @@ from isaacsim.core.utils.nucleus import get_assets_root_path
 from isaacsim.core.utils.numpy.rotations import quats_to_rot_matrices, rot_matrices_to_quats
 from isaacsim.robot_motion.motion_generation import RmpFlow, ArticulationMotionPolicy
 from isaacsim.robot_motion.motion_generation.interface_config_loader import load_supported_motion_policy_config
-from lego_assemble import arrange_parts_in_workspace, import_lego, get_brick_dimensions, compute_connection_transform, set_assembly_thresholds, AssemblyThresholds, wait_for_physics_step, parse_color, Colors
+from lego_assemble import arrange_parts_in_workspace, import_lego, get_brick_dimensions, compute_connection_transform, set_assembly_thresholds, AssemblyThresholds, wait_for_physics_step, parse_color, Colors, are_parts_connected
 from lego_assemble.utils.topology import bfs_sort_connections
 from lego_assemble.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
 from lego_assemble.importers.legolization import legolization_json_to_topology_json, is_legolization_json
@@ -737,6 +737,9 @@ async def main():
     for step, conn in enumerate(plan):
         print(f"=== Assembly Step {step + 1} / {len(plan)} ===")
         print(f"  stud: {conn['stud_path']} % {conn['stud_iface']}; hole: {conn['hole_path']} % {conn['hole_iface']}; offset: {conn['offset']}, yaw: {conn['yaw']}")
+        if are_parts_connected(conn['stud_path'], conn['hole_path']):
+            print("  -> Parts are already connected; skipping this assembly step.")
+            continue
         await assemble(
             stud_path=conn['stud_path'],
             hole_path=conn['hole_path'],

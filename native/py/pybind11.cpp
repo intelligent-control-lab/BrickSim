@@ -89,6 +89,17 @@ PYBIND11_MODULE(_native, m) {
 	      "of the specified part path. Returns two empty lists if the part is "
 	      "unknown.");
 
+	m.def("are_parts_connected", &are_parts_connected,
+	      pybind11::arg("part_a_path"), pybind11::arg("part_b_path"),
+	      "Return true if the specified parts are connected in the current "
+	      "USD topology. Throws if either part is unknown.");
+
+	m.def("does_connection_exist", &does_connection_exist,
+	      pybind11::arg("stud_path"), pybind11::arg("stud_if"),
+	      pybind11::arg("hole_path"), pybind11::arg("hole_if"),
+	      "Return true if a connection segment exists between the specified "
+	      "stud and hole interfaces. Throws if either part is unknown.");
+
 	m.def("compute_obstacle_regions", &compute_obstacle_regions,
 	      pybind11::arg("obstacle_paths"), pybind11::arg("table_xy"),
 	      pybind11::arg("table_z"), pybind11::arg("clearance_height"),

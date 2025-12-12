@@ -53,6 +53,18 @@ def compute_structure_transforms(
 
 def compute_connected_component(part_path: str) -> tuple[list[str], list[str]]: ...
 
+def are_parts_connected(
+    part_a_path: str,
+    part_b_path: str,
+) -> bool: ...
+
+def does_connection_exist(
+    stud_path: str,
+    stud_if: int,
+    hole_path: str,
+    hole_if: int,
+) -> bool: ...
+
 def arrange_parts_on_table(
     parts_to_arrange: list[str],
     parts_to_avoid: Optional[list[str]],

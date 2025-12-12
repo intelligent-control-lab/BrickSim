@@ -247,6 +247,20 @@ compute_connected_component(const PathStr &part_path) {
 	return {std::move(part_paths), std::move(conn_paths)};
 }
 
+export bool are_parts_connected(const PathStr &part_a_path,
+                                const PathStr &part_b_path) {
+	return usd_topology().is_connected(usd_part_id(part_a_path),
+	                                   usd_part_id(part_b_path));
+}
+
+export bool does_connection_exist(const PathStr &stud_path, InterfaceId stud_if,
+                                  const PathStr &hole_path,
+                                  InterfaceId hole_if) {
+	ConnSegRef conn_ref{{usd_part_id(stud_path), stud_if},
+	                    {usd_part_id(hole_path), hole_if}};
+	return usd_topology().connection_segments().contains(conn_ref);
+}
+
 TableRect parse_table_rect(const BBox2dArray &table_xy, double table_z) {
 	return {
 	    .x_min = table_xy[0],
