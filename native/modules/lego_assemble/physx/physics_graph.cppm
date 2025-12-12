@@ -16,6 +16,7 @@ import lego_assemble.utils.multi_key_map;
 import lego_assemble.utils.pair;
 import lego_assemble.utils.unordered_pair;
 import lego_assemble.utils.metric_system;
+import lego_assemble.utils.dynamic_graph;
 import lego_assemble.vendor;
 
 namespace lego_assemble {
@@ -67,6 +68,7 @@ export using PhysicsConnectionBundleWrapper = SimpleWrapper<ConnectionBundle>;
 export enum class ContactExclusionLevel {
 	Shape,
 	Actor,
+	ConnectedComponent,
 };
 
 using ContactExclusionPair = UnorderedPair<ActorShapePair>;
@@ -117,10 +119,11 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			// Update constraint scheduler
 			owner_->constraint_scheduler_.on_part_added(pid);
 
-			// Thread safety: modifying shape_mapping_ and part_actors_
-			std::unique_lock<std::shared_mutex> lock(owner_->sim_mutex_);
+			// Thread safety: modifying sim data structures
+			std::lock_guard<std::mutex> lock(owner_->sim_mutex_);
 
-			auto [_, inserted] = owner_->part_actors_.emplace(px_actor);
+			vertex_id dgid = owner_->part_dg_.add_vertex();
+			auto [_, inserted] = owner_->part_actors_.emplace(px_actor, dgid);
 			if (!inserted) {
 				throw std::runtime_error(std::format(
 				    "PxRigidActor {:p} for part id {} already registered",
@@ -157,14 +160,17 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			    owner_->topology_.parts()
 			        .template key_of<physx::PxRigidActor *>(pid);
 
-			// Thread safety: modifying shape_mapping_ and part_actors_
-			std::unique_lock<std::shared_mutex> lock(owner_->sim_mutex_);
+			// Thread safety: modifying sim data structures
+			std::lock_guard<std::mutex> lock(owner_->sim_mutex_);
 
-			if (!owner_->part_actors_.erase(px_actor)) {
+			auto part_it = owner_->part_actors_.find(px_actor);
+			if (part_it == owner_->part_actors_.end()) {
 				throw std::runtime_error(std::format(
 				    "PxRigidActor {:p} for part id {} not registered",
 				    static_cast<const void *>(px_actor), pid));
 			}
+			owner_->part_dg_.erase_vertex(part_it->second);
+			owner_->part_actors_.erase(part_it);
 
 			for (const auto &[if_id, shape] : pw.interface_shapes()) {
 				if (!owner_->shape_mapping_.erase(InterfaceRef{pid, if_id})) {
@@ -194,8 +200,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			const auto &[stud_if_ref, hole_if_ref] = csref;
 
 			{
-				// Thread safety: modifying contact_exclusions_ and reading shape_mapping_
-				std::unique_lock<std::shared_mutex> lock(owner_->sim_mutex_);
+				// Thread sim data structures: modifying sim data structures
+				std::lock_guard<std::mutex> lock(owner_->sim_mutex_);
 
 				// Set up PhysX shapes for connection segment
 				if (auto stud_shape_mapping =
@@ -239,8 +245,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			// Remove contact exclusion
 			if (csw.px_stud_shape != NullActorShapePair &&
 			    csw.px_hole_shape != NullActorShapePair) {
-				// Thread safety: modifying contact_exclusions_
-				std::unique_lock<std::shared_mutex> lock(owner_->sim_mutex_);
+				// Thread safety: modifying sim data structures
+				std::lock_guard<std::mutex> lock(owner_->sim_mutex_);
 				if (owner_->contact_exclusions_.erase(
 				        {csw.px_stud_shape, csw.px_hole_shape}) == 0) {
 					throw std::runtime_error(
@@ -265,59 +271,88 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			// Update constraint scheduler
 			owner_->constraint_scheduler_.on_connected(a_id, b_id);
 
-			if (owner_->contact_exclusion_level_ !=
-			    ContactExclusionLevel::Actor) {
-				return;
-			}
+			auto *actor_a = owner_->topology_.parts()
+			                    .template key_of<physx::PxRigidActor *>(a_id);
+			auto *actor_b = owner_->topology_.parts()
+			                    .template key_of<physx::PxRigidActor *>(b_id);
+
+			// Thread safety: modifying sim data structures
 			{
-				// Thread safety: modifying contact_exclusions_
-				std::unique_lock<std::shared_mutex> lock(owner_->sim_mutex_);
-				physx::PxRigidActor *actor_a =
-				    owner_->topology_.parts()
-				        .template key_of<physx::PxRigidActor *>(a_id);
-				physx::PxRigidActor *actor_b =
-				    owner_->topology_.parts()
-				        .template key_of<physx::PxRigidActor *>(b_id);
-				auto [_, inserted] =
-				    owner_->contact_exclusions_.emplace(ContactExclusionPair{
-				        {actor_a, nullptr}, {actor_b, nullptr}});
-				if (!inserted) {
-					throw std::runtime_error(std::format(
-					    "Failed to add contact exclusion for bundle between "
-					    "parts {} and {}",
-					    a_id, b_id));
+				std::lock_guard<std::mutex> lock(owner_->sim_mutex_);
+				// Add edge to dynamic graph
+				owner_->part_dg_.add_edge(owner_->part_actors_.at(actor_a),
+				                          owner_->part_actors_.at(actor_b));
+				// Add contact exclusion if level is Actor
+				if (owner_->contact_exclusion_level_ ==
+				    ContactExclusionLevel::Actor) {
+					auto [_, inserted] = owner_->contact_exclusions_.emplace(
+					    ContactExclusionPair{{actor_a, nullptr},
+					                         {actor_b, nullptr}});
+					if (!inserted) {
+						throw std::runtime_error(
+						    std::format("Failed to add contact exclusion for "
+						                "bundle between "
+						                "parts {} and {}",
+						                a_id, b_id));
+					}
 				}
 			}
-			owner_->reset_filtering_safely(a_id);
+
+			if (owner_->contact_exclusion_level_ ==
+			    ContactExclusionLevel::Actor) {
+				// Reset filtering for this pair of parts
+				owner_->reset_filtering_safely(a_id);
+			} else if (owner_->contact_exclusion_level_ ==
+			           ContactExclusionLevel::ConnectedComponent) {
+				// Reset filtering for all parts in the connected components
+				for (PartId pid :
+				     owner_->topology_.component_view(a_id).vertices()) {
+					owner_->reset_filtering_safely(pid);
+				}
+			}
 		}
 
 		void on_bundle_removing(
 		    const ConnectionEndpoint &ep,
 		    [[maybe_unused]] PhysicsConnectionBundleWrapper &cbw) {
 			auto [a_id, b_id] = ep;
-			if (owner_->contact_exclusion_level_ !=
-			    ContactExclusionLevel::Actor) {
-				return;
-			}
+			auto *actor_a = owner_->topology_.parts()
+			                    .template key_of<physx::PxRigidActor *>(a_id);
+			auto *actor_b = owner_->topology_.parts()
+			                    .template key_of<physx::PxRigidActor *>(b_id);
+
 			{
 				// Thread safety: modifying contact_exclusions_
-				std::unique_lock<std::shared_mutex> lock(owner_->sim_mutex_);
-				physx::PxRigidActor *actor_a =
-				    owner_->topology_.parts()
-				        .template key_of<physx::PxRigidActor *>(a_id);
-				physx::PxRigidActor *actor_b =
-				    owner_->topology_.parts()
-				        .template key_of<physx::PxRigidActor *>(b_id);
-				if (owner_->contact_exclusions_.erase(ContactExclusionPair{
-				        {actor_a, nullptr}, {actor_b, nullptr}}) == 0) {
-					throw std::runtime_error(
-					    std::format("Failed to remove contact exclusion "
-					                "for bundle between "
-					                "parts {} and {}",
-					                a_id, b_id));
+				std::lock_guard<std::mutex> lock(owner_->sim_mutex_);
+				// Remove edge from dynamic graph
+				owner_->part_dg_.erase_edge(owner_->part_actors_.at(actor_a),
+				                            owner_->part_actors_.at(actor_b));
+				// Remove contact exclusion if level is Actor
+				if (owner_->contact_exclusion_level_ ==
+				    ContactExclusionLevel::Actor) {
+					if (owner_->contact_exclusions_.erase(ContactExclusionPair{
+					        {actor_a, nullptr}, {actor_b, nullptr}}) == 0) {
+						throw std::runtime_error(
+						    std::format("Failed to remove contact exclusion "
+						                "for bundle between "
+						                "parts {} and {}",
+						                a_id, b_id));
+					}
 				}
 			}
-			owner_->reset_filtering_safely(a_id);
+
+			if (owner_->contact_exclusion_level_ ==
+			    ContactExclusionLevel::Actor) {
+				// Reset filtering for this pair of parts
+				owner_->reset_filtering_safely(a_id);
+			} else if (owner_->contact_exclusion_level_ ==
+			           ContactExclusionLevel::ConnectedComponent) {
+				// Reset filtering for all parts in the connected components
+				for (PartId pid :
+				     owner_->topology_.component_view(a_id).vertices()) {
+					owner_->reset_filtering_safely(pid);
+				}
+			}
 		}
 
 		void on_bundle_removed(const ConnectionEndpoint &ep) {
@@ -372,8 +407,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			auto *s0 = const_cast<physx::PxShape *>(cs0);
 			auto *s1 = const_cast<physx::PxShape *>(cs1);
 
-			// Thread safety: reading contact_exclusions_ and part_actors_
-			std::shared_lock<std::shared_mutex> lock(owner_->sim_mutex_);
+			// Thread safety: reading sim data structures
+			std::lock_guard<std::mutex> lock(owner_->sim_mutex_);
 
 			if (owner_->contact_exclusion_level_ ==
 			    ContactExclusionLevel::Shape) {
@@ -388,13 +423,28 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 					return physx::PxFilterFlag::eKILL;
 				}
 			}
+			// For ConnectedComponent level, we will check later
 
-			// Enable contact pose report collision between parts
-			bool is_part0 = owner_->part_actors_.contains(rb0);
-			bool is_part1 = owner_->part_actors_.contains(rb1);
-			if (is_part0 && is_part1) {
-				pairFlags |= physx::PxPairFlag::eCONTACT_EVENT_POSE;
+			auto it0 = owner_->part_actors_.find(rb0);
+			auto it1 = owner_->part_actors_.find(rb1);
+			if (it0 == owner_->part_actors_.end() ||
+			    it1 == owner_->part_actors_.end()) {
+				// Not part-part contact
+				return result;
 			}
+
+			if (owner_->contact_exclusion_level_ ==
+			    ContactExclusionLevel::ConnectedComponent) {
+				vertex_id v0 = it0->second;
+				vertex_id v1 = it1->second;
+				if (owner_->part_dg_.connected(v0, v1)) {
+					return physx::PxFilterFlag::eKILL;
+				}
+			}
+
+			// Enable contact pose report
+			pairFlags |= physx::PxPairFlag::eCONTACT_EVENT_POSE;
+
 			return result;
 		}
 
@@ -419,8 +469,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				return;
 			}
 
-			// Thread safety: reading shape_mapping_
-			std::shared_lock<std::shared_mutex> lock(owner_->sim_mutex_);
+			// Thread safety: reading sim data structures
+			std::lock_guard<std::mutex> lock(owner_->sim_mutex_);
 
 			physx::PxReal dt = getPxSceneElapsedTime(px_scene_);
 
@@ -602,7 +652,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	    const MetricSystem &metrics, physx::PxPhysics *px,
 	    Hooks *hooks = nullptr, AssemblyThresholds thresholds = {},
 	    ContactExclusionLevel contact_exclusion_level =
-	        ContactExclusionLevel::Actor,
+	        ContactExclusionLevel::ConnectedComponent,
 	    bool collect_assembly_debug_info = true,
 	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
 	    : res_{mr}, metrics_{metrics}, px_{px}, hooks_{hooks},
@@ -740,10 +790,14 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	std::pmr::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_cur_;
 	std::pmr::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_prev_;
 
-	std::shared_mutex sim_mutex_;
+	std::mutex sim_mutex_;
+	// Data structures protected by sim_mutex_:
 	ShapeMapping shape_mapping_;
 	ContactExclusionSet contact_exclusions_;
-	std::unordered_set<physx::PxRigidActor *> part_actors_;
+	std::unordered_map<physx::PxRigidActor *, vertex_id> part_actors_;
+	// LCT is not thread-safe even for read-only operations
+	// TODO: use a concurrent dynamic connectivity data structure, or keep a copy for every physics thread
+	HolmDeLichtenbergThorup part_dg_;
 
 	bool sim_running_ = false;
 	std::unordered_map<ConstraintHandle, physx::PxConstraint *>

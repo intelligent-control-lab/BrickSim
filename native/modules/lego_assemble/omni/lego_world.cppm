@@ -19,7 +19,8 @@ export struct LegoConfig {
 	bool sync_conns_to_usd{true};
 	bool sync_conns_to_physics{true};
 	bool warn_divergence{false};
-	ContactExclusionLevel contact_exclusion_level{ContactExclusionLevel::Actor};
+	ContactExclusionLevel contact_exclusion_level{
+	    ContactExclusionLevel::ConnectedComponent};
 	AlignPolicy align_policy{AlignPolicy::MoveHoleCC};
 	AssemblyThresholds assembly_thresholds{};
 };
