@@ -163,7 +163,8 @@ struct PhysicsGraphFixture {
 
 	PhysicsGraphFixture(bool create_initial_connection = true)
 	    : env{}, metrics{1.0, 1.0, 1.0}, hooks{},
-	      graph(metrics, env.physics, &hooks) {
+	      graph(metrics, env.physics, &hooks, {},
+	            ContactExclusionLevel::Shape) {
 		// Bind PhysX scene so callbacks are installed.
 		assert(graph.bind_physx_scene(env.scene));
 
@@ -238,7 +239,8 @@ struct PhysicsGraphFixture {
 static void test_bind_unbind_scene() {
 	PhysxEnv env;
 	MetricSystem metrics{1.0, 1.0, 1.0};
-	TestGraph g(metrics, env.physics);
+	TestGraph g(metrics, env.physics, nullptr, {},
+	            ContactExclusionLevel::Shape);
 
 	assert(g.bind_physx_scene(env.scene));
 	// Second bind must fail (already bound).
