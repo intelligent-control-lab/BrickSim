@@ -64,6 +64,11 @@ export struct PhysicsConnectionSegmentWrapper
 
 export using PhysicsConnectionBundleWrapper = SimpleWrapper<ConnectionBundle>;
 
+export enum class ContactExclusionLevel {
+	Shape,
+	Actor,
+};
+
 using ContactExclusionPair = UnorderedPair<ActorShapePair>;
 using ContactExclusionPairHash =
     typename ContactExclusionPair::Hasher<ActorShapePairHash>;
@@ -181,7 +186,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		             [[maybe_unused]] const InterfaceSpec &hole_spec,
 		             PhysicsConnectionSegmentWrapper &csw,
 		             [[maybe_unused]] PhysicsConnectionBundleWrapper &cbw) {
-			if (!owner_->shape_level_collision_filtering_) {
+			if (owner_->contact_exclusion_level_ !=
+			    ContactExclusionLevel::Shape) {
 				return;
 			}
 
@@ -225,7 +231,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		on_disconnecting(ConnSegId csid, const ConnSegRef &csref,
 		                 PhysicsConnectionSegmentWrapper &csw,
 		                 [[maybe_unused]] PhysicsConnectionBundleWrapper &cbw) {
-			if (!owner_->shape_level_collision_filtering_) {
+			if (owner_->contact_exclusion_level_ !=
+			    ContactExclusionLevel::Shape) {
 				return;
 			}
 
@@ -258,7 +265,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			// Update constraint scheduler
 			owner_->constraint_scheduler_.on_connected(a_id, b_id);
 
-			if (owner_->shape_level_collision_filtering_) {
+			if (owner_->contact_exclusion_level_ !=
+			    ContactExclusionLevel::Actor) {
 				return;
 			}
 			{
@@ -287,7 +295,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		    const ConnectionEndpoint &ep,
 		    [[maybe_unused]] PhysicsConnectionBundleWrapper &cbw) {
 			auto [a_id, b_id] = ep;
-			if (owner_->shape_level_collision_filtering_) {
+			if (owner_->contact_exclusion_level_ !=
+			    ContactExclusionLevel::Actor) {
 				return;
 			}
 			{
@@ -366,15 +375,16 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			// Thread safety: reading contact_exclusions_ and part_actors_
 			std::shared_lock<std::shared_mutex> lock(owner_->sim_mutex_);
 
-			// Check contact exclusion
-			std::initializer_list<ContactExclusionPair> exclusion_pairs{
-			    {{rb0, s0}, {rb1, s1}},
-			    {{rb0, nullptr}, {rb1, s1}},
-			    {{rb0, s0}, {rb1, nullptr}},
-			    {{rb0, nullptr}, {rb1, nullptr}},
-			};
-			for (const auto &exclusion_pair : exclusion_pairs) {
-				if (owner_->contact_exclusions_.contains(exclusion_pair)) {
+			if (owner_->contact_exclusion_level_ ==
+			    ContactExclusionLevel::Shape) {
+				if (owner_->contact_exclusions_.contains(
+				        ContactExclusionPair{{rb0, s0}, {rb1, s1}})) {
+					return physx::PxFilterFlag::eKILL;
+				}
+			} else if (owner_->contact_exclusion_level_ ==
+			           ContactExclusionLevel::Actor) {
+				if (owner_->contact_exclusions_.contains(
+				        ContactExclusionPair{{rb0, nullptr}, {rb1, nullptr}})) {
 					return physx::PxFilterFlag::eKILL;
 				}
 			}
@@ -591,7 +601,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	explicit PhysicsLegoGraph(
 	    const MetricSystem &metrics, physx::PxPhysics *px,
 	    Hooks *hooks = nullptr, AssemblyThresholds thresholds = {},
-	    bool shape_level_collision_filtering = true,
+	    ContactExclusionLevel contact_exclusion_level =
+	        ContactExclusionLevel::Actor,
 	    bool collect_assembly_debug_info = true,
 	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
 	    : res_{mr}, metrics_{metrics}, px_{px}, hooks_{hooks},
@@ -604,7 +615,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	                          this),
 	          mr},
 	      assembly_checker_{thresholds},
-	      shape_level_collision_filtering_{shape_level_collision_filtering},
+	      contact_exclusion_level_{contact_exclusion_level},
 	      collect_assembly_debug_info_{collect_assembly_debug_info},
 	      pending_assemblies_{mr}, pending_disassemblies_{mr},
 	      assembly_debug_infos_cur_{mr}, assembly_debug_infos_prev_{mr},
@@ -720,7 +731,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	PhysicsConstraintScheduler constraint_scheduler_;
 	std::unique_ptr<PhysxBinding> physx_binding_;
 	AssemblyChecker assembly_checker_;
-	bool shape_level_collision_filtering_;
+	ContactExclusionLevel contact_exclusion_level_;
 	bool collect_assembly_debug_info_;
 
 	mutable std::mutex pending_mutex_;
