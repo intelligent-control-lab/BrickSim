@@ -191,12 +191,14 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	                       ConnBundleWrapper, Hooks, DynamicGraph>;
 	using PartTypeList = PartList<Ps...>;
 	using WrappedPartList = type_list<PartWrapper<Ps>...>;
+	using PartExtraKeys = type_list<PEKs...>;
 	using PartKeys = type_list<PartId, DgVertexId, PEKs...>;
 	using PartKeysHash =
 	    type_list<std::hash<PartId>, std::hash<DgVertexId>, PEKHs...>;
 	using PartKeysEq = type_list<std::equal_to<>, std::equal_to<>, PEKEqs...>;
 	using PartStore =
 	    PolyStore<PartKeys, WrappedPartList, PartKeysHash, PartKeysEq>;
+	using ConnSegExtraKeys = type_list<CSEKs...>;
 	using ConnSegKeys = type_list<ConnSegId, ConnSegRef, CSEKs...>;
 	using ConnSegKeysHash =
 	    type_list<std::hash<ConnSegId>, ConnSegRefHash, CSEKHs...>;

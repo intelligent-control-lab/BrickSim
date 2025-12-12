@@ -9,6 +9,7 @@ import lego_assemble.usd.author;
 import lego_assemble.usd.parse;
 import lego_assemble.utils.type_list;
 import lego_assemble.utils.transforms;
+import lego_assemble.utils.c4_rotation;
 import lego_assemble.utils.usd_envs;
 import lego_assemble.utils.conversions;
 import lego_assemble.vendor;
@@ -298,6 +299,336 @@ static void test_topology_serializer_export_graph_with_filters() {
 	assert(topo.parts[0].id == 0);
 }
 
+// -------------------- TopologySerializer import_graph() --------------------
+
+// Unknown part types should be skipped, and any connections involving them
+// must not be imported.
+static void
+test_topology_serializer_import_graph_unknown_part_type_skips_parts_and_connections() {
+	GraphG g;
+	TopologySerializer<BrickSerializer> ser;
+
+	BrickColor color{10, 20, 30};
+	BrickPart brick = make_brick(2, 4, BrickHeightPerPlate, color);
+	BrickSerializer brick_ser;
+
+	JsonTopology topo;
+
+	// Known brick part
+	JsonPart p_known{
+	    .id = 1,
+	    .type = std::string(BrickSerializer::TypeString),
+	    .payload = brick_ser.to_json(brick),
+	};
+	topo.parts.push_back(p_known);
+
+	// Unknown part type; should be ignored by import_graph()
+	JsonPart p_unknown{
+	    .id = 2,
+	    .type = "unknown_type",
+	    .payload = ordered_json{{"foo", 42}},
+	};
+	topo.parts.push_back(p_unknown);
+
+	// Connection referencing both known and unknown part ids.
+	JsonConnection conn{
+	    .id = 0,
+	    .stud_id = 1,
+	    .stud_iface = static_cast<std::int64_t>(BrickPart::StudId),
+	    .hole_id = 2,
+	    .hole_iface = static_cast<std::int64_t>(BrickPart::HoleId),
+	    .offset = {0, 0},
+	    .yaw = 0,
+	};
+	topo.connections.push_back(conn);
+
+	ser.import_graph(topo, g);
+
+	assert(g.parts().size() == 1);
+	assert(g.connection_segments().size() == 0);
+	assert(g.connection_bundles().size() == 0);
+}
+
+// Round-trip invariant: export_graph -> import_graph -> export_graph again
+// should preserve parts and connections (up to reindexing of PartIds).
+static void test_topology_serializer_export_import_graph_roundtrip() {
+	GraphG g_src;
+	BrickColor red{255, 0, 0};
+	BrickColor green{0, 255, 0};
+
+	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickB = make_brick(1, 2, BrickHeightPerPlate, green);
+
+	auto pidA_src = g_src.add_part<BrickPart>(brickA);
+	auto pidB_src = g_src.add_part<BrickPart>(brickB);
+	assert(pidA_src.has_value() && pidB_src.has_value());
+
+	InterfaceRef stud_if{*pidA_src, BrickPart::StudId};
+	InterfaceRef hole_if{*pidB_src, BrickPart::HoleId};
+	ConnectionSegment cs{
+	    .offset = Eigen::Vector2i{1, -2},
+	    .yaw = YawC4::DEG_90,
+	};
+	assert(g_src.connect(stud_if, hole_if, cs).has_value());
+
+	TopologySerializer<BrickSerializer> ser;
+	JsonTopology topo = ser.export_graph(g_src);
+
+	assert(topo.parts.size() == 2);
+	assert(topo.connections.size() == 1);
+
+	GraphG g_dst;
+	ser.import_graph(topo, g_dst);
+	JsonTopology topo_rt = ser.export_graph(g_dst);
+
+	assert(topo_rt.parts.size() == topo.parts.size());
+	assert(topo_rt.connections.size() == topo.connections.size());
+
+	std::unordered_map<std::int64_t, std::int64_t> src_to_dst;
+	std::unordered_set<std::int64_t> used_dst;
+
+	for (const JsonPart &p_src : topo.parts) {
+		bool found = false;
+		for (const JsonPart &p_dst : topo_rt.parts) {
+			if (p_dst.type == p_src.type && p_dst.payload == p_src.payload &&
+			    !used_dst.contains(p_dst.id)) {
+				src_to_dst[p_src.id] = p_dst.id;
+				used_dst.insert(p_dst.id);
+				found = true;
+				break;
+			}
+		}
+		assert(found);
+	}
+	assert(src_to_dst.size() == topo.parts.size());
+
+	struct ConnKey {
+		std::int64_t stud_id;
+		std::int64_t stud_iface;
+		std::int64_t hole_id;
+		std::int64_t hole_iface;
+		std::array<std::int64_t, 2> offset;
+		std::int64_t yaw;
+	};
+
+	std::vector<ConnKey> conns_rt;
+	conns_rt.reserve(topo_rt.connections.size());
+	for (const JsonConnection &jc : topo_rt.connections) {
+		conns_rt.push_back(ConnKey{
+		    .stud_id = jc.stud_id,
+		    .stud_iface = jc.stud_iface,
+		    .hole_id = jc.hole_id,
+		    .hole_iface = jc.hole_iface,
+		    .offset = jc.offset,
+		    .yaw = jc.yaw,
+		});
+	}
+
+	for (const JsonConnection &jc_src : topo.connections) {
+		auto it_stud = src_to_dst.find(jc_src.stud_id);
+		auto it_hole = src_to_dst.find(jc_src.hole_id);
+		assert(it_stud != src_to_dst.end());
+		assert(it_hole != src_to_dst.end());
+
+		std::int64_t stud_mapped = it_stud->second;
+		std::int64_t hole_mapped = it_hole->second;
+
+		bool found = false;
+		for (const ConnKey &ck : conns_rt) {
+			if (ck.stud_id == stud_mapped && ck.hole_id == hole_mapped &&
+			    ck.stud_iface == jc_src.stud_iface &&
+			    ck.hole_iface == jc_src.hole_iface &&
+			    ck.offset == jc_src.offset && ck.yaw == jc_src.yaw) {
+				found = true;
+				break;
+			}
+		}
+		assert(found);
+	}
+}
+
+// -------------------- structure_transforms() --------------------
+
+static void test_structure_transforms_multiple_components_with_pose_hints() {
+	TopologySerializer<BrickSerializer> ser;
+	GraphG g;
+
+	BrickColor red{255, 0, 0};
+	BrickColor green{0, 255, 0};
+
+	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickB = make_brick(2, 4, BrickHeightPerPlate, green);
+	BrickPart brickC = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickD = make_brick(2, 4, BrickHeightPerPlate, green);
+
+	JsonTopology topo;
+	topo.parts.push_back(JsonPart{
+	    .id = 10,
+	    .type = std::string(BrickSerializer::TypeString),
+	    .payload = BrickSerializer{}.to_json(brickA),
+	});
+	topo.parts.push_back(JsonPart{
+	    .id = 11,
+	    .type = std::string(BrickSerializer::TypeString),
+	    .payload = BrickSerializer{}.to_json(brickB),
+	});
+	topo.parts.push_back(JsonPart{
+	    .id = 20,
+	    .type = std::string(BrickSerializer::TypeString),
+	    .payload = BrickSerializer{}.to_json(brickC),
+	});
+	topo.parts.push_back(JsonPart{
+	    .id = 21,
+	    .type = std::string(BrickSerializer::TypeString),
+	    .payload = BrickSerializer{}.to_json(brickD),
+	});
+
+	// Two disconnected components: {10,11} and {20,21}
+	topo.connections.push_back(JsonConnection{
+	    .id = 100,
+	    .stud_id = 10,
+	    .stud_iface = static_cast<std::int64_t>(BrickPart::StudId),
+	    .hole_id = 11,
+	    .hole_iface = static_cast<std::int64_t>(BrickPart::HoleId),
+	    .offset = {0, 0},
+	    .yaw = 0,
+	});
+	topo.connections.push_back(JsonConnection{
+	    .id = 101,
+	    .stud_id = 20,
+	    .stud_iface = static_cast<std::int64_t>(BrickPart::StudId),
+	    .hole_id = 21,
+	    .hole_iface = static_cast<std::int64_t>(BrickPart::HoleId),
+	    .offset = {0, 0},
+	    .yaw = 0,
+	});
+
+	// Pose hints in the reference frame (wxyz, meters)
+	JsonPoseHint hint_root{
+	    .part = 10,
+	    .pos = {1.0, 2.0, 3.0},
+	    .rot = {1.0, 0.0, 0.0, 0.0},
+	};
+	JsonPoseHint hint_other{
+	    .part = 20,
+	    .pos = {4.0, 6.0, 3.0},
+	    .rot = {1.0, 0.0, 0.0, 0.0},
+	};
+	topo.pose_hints.push_back(hint_root);
+	topo.pose_hints.push_back(hint_other);
+
+	auto imported = ser.import_graph(topo, g);
+
+	PartId pid10 = imported.parts.at(10);
+	PartId pid11 = imported.parts.at(11);
+	PartId pid20 = imported.parts.at(20);
+	PartId pid21 = imported.parts.at(21);
+
+	std::unordered_map<PartId, Transformd> got;
+	for (auto [pid, T] :
+	     structure_transforms(g, 10, topo.pose_hints, imported.parts)) {
+		got.emplace(pid, T);
+	}
+	assert(got.size() == 4);
+
+	Transformd I = SE3d{}.identity();
+	assert(SE3d{}.almost_equal(got.at(pid10), I));
+
+	auto T_10_11_opt = g.lookup_transform(pid10, pid11);
+	assert(T_10_11_opt.has_value());
+	assert(SE3d{}.almost_equal(got.at(pid11), *T_10_11_opt));
+
+	Transformd T_ref_10{Eigen::Quaterniond::Identity(),
+	                    Eigen::Vector3d{1.0, 2.0, 3.0}};
+	Transformd T_ref_20{Eigen::Quaterniond::Identity(),
+	                    Eigen::Vector3d{4.0, 6.0, 3.0}};
+	Transformd T_root_ref = inverse(T_ref_10);
+	Transformd T_10_20_expected = T_root_ref * T_ref_20;
+	assert(SE3d{}.almost_equal(got.at(pid20), T_10_20_expected));
+
+	auto T_20_21_opt = g.lookup_transform(pid20, pid21);
+	assert(T_20_21_opt.has_value());
+	Transformd T_10_21_expected = T_10_20_expected * (*T_20_21_opt);
+	assert(SE3d{}.almost_equal(got.at(pid21), T_10_21_expected));
+}
+
+static void test_structure_transforms_without_root_hint_skips_other_components() {
+	TopologySerializer<BrickSerializer> ser;
+	GraphG g;
+
+	BrickColor red{255, 0, 0};
+	BrickColor green{0, 255, 0};
+
+	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickB = make_brick(2, 4, BrickHeightPerPlate, green);
+	BrickPart brickC = make_brick(2, 4, BrickHeightPerPlate, red);
+	BrickPart brickD = make_brick(2, 4, BrickHeightPerPlate, green);
+
+	JsonTopology topo;
+	topo.parts.push_back(JsonPart{
+	    .id = 10,
+	    .type = std::string(BrickSerializer::TypeString),
+	    .payload = BrickSerializer{}.to_json(brickA),
+	});
+	topo.parts.push_back(JsonPart{
+	    .id = 11,
+	    .type = std::string(BrickSerializer::TypeString),
+	    .payload = BrickSerializer{}.to_json(brickB),
+	});
+	topo.parts.push_back(JsonPart{
+	    .id = 20,
+	    .type = std::string(BrickSerializer::TypeString),
+	    .payload = BrickSerializer{}.to_json(brickC),
+	});
+	topo.parts.push_back(JsonPart{
+	    .id = 21,
+	    .type = std::string(BrickSerializer::TypeString),
+	    .payload = BrickSerializer{}.to_json(brickD),
+	});
+	topo.connections.push_back(JsonConnection{
+	    .id = 100,
+	    .stud_id = 10,
+	    .stud_iface = static_cast<std::int64_t>(BrickPart::StudId),
+	    .hole_id = 11,
+	    .hole_iface = static_cast<std::int64_t>(BrickPart::HoleId),
+	    .offset = {0, 0},
+	    .yaw = 0,
+	});
+	topo.connections.push_back(JsonConnection{
+	    .id = 101,
+	    .stud_id = 20,
+	    .stud_iface = static_cast<std::int64_t>(BrickPart::StudId),
+	    .hole_id = 21,
+	    .hole_iface = static_cast<std::int64_t>(BrickPart::HoleId),
+	    .offset = {0, 0},
+	    .yaw = 0,
+	});
+
+	// Only a hint for the other component.
+	topo.pose_hints.push_back(JsonPoseHint{
+	    .part = 20,
+	    .pos = {4.0, 6.0, 3.0},
+	    .rot = {1.0, 0.0, 0.0, 0.0},
+	});
+
+	auto imported = ser.import_graph(topo, g);
+	PartId pid10 = imported.parts.at(10);
+	PartId pid11 = imported.parts.at(11);
+	PartId pid20 = imported.parts.at(20);
+	PartId pid21 = imported.parts.at(21);
+
+	std::unordered_set<PartId> got;
+	for (auto [pid, _] :
+	     structure_transforms(g, 10, topo.pose_hints, imported.parts)) {
+		got.insert(pid);
+	}
+	assert(got.size() == 2);
+	assert(got.contains(pid10));
+	assert(got.contains(pid11));
+	assert(!got.contains(pid20));
+	assert(!got.contains(pid21));
+}
+
 // -------------------- TopologySerializer with UsdLegoGraph --------------------
 
 using PartsUsd = PartList<BrickPart>;
@@ -440,7 +771,7 @@ static void test_topology_serializer_export_usd_graph_env_filtering() {
 	assert(topo_none.pose_hints.empty());
 }
 
-// -------------------- TopologySerializer import() --------------------
+// -------------------- TopologySerializer import_usd_graph() --------------------
 
 // Unknown part types should be skipped, and any connections involving them
 // must not be imported.
@@ -467,7 +798,7 @@ test_topology_serializer_import_unknown_part_type_skips_parts_and_connections() 
 	};
 	topo.parts.push_back(p_known);
 
-	// Unknown part type; should be ignored by import()
+	// Unknown part type; should be ignored by import_usd_graph()
 	JsonPart p_unknown{
 	    .id = 2,
 	    .type = "unknown_type",
@@ -489,7 +820,7 @@ test_topology_serializer_import_unknown_part_type_skips_parts_and_connections() 
 	};
 	topo.connections.push_back(conn);
 
-	ser.import(topo, g, env_id);
+	ser.import_usd_graph(topo, g, env_id);
 
 	// Only the known brick part should be present.
 	assert(g.topology().parts().size() == 1);
@@ -503,7 +834,7 @@ test_topology_serializer_import_unknown_part_type_skips_parts_and_connections() 
 
 // Round-trip invariant: export_usd_graph -> import -> export_usd_graph again
 // should preserve parts, connections, and pose hints (up to reindexing of
-// PartIds). When a non-identity env transform is supplied to import(), the
+// PartIds). When a non-identity env transform is supplied to import_usd_graph(), the
 // pose hints in the re-exported topology should be transformed accordingly.
 static void
 test_topology_serializer_export_import_usd_graph_roundtrip_with_env_transform() {
@@ -553,7 +884,7 @@ test_topology_serializer_export_import_usd_graph_roundtrip_with_env_transform() 
 	Eigen::Vector3d t_env_ref(0.5, -1.0, 2.0);
 	Transformd T_env_ref{q_env_ref, t_env_ref};
 
-	ser.import(topo, g_dst, env_dst, T_env_ref);
+	ser.import_usd_graph(topo, g_dst, env_dst, T_env_ref);
 
 	JsonTopology topo_rt = ser.export_usd_graph(g_dst, env_dst);
 
@@ -673,6 +1004,10 @@ int main() {
 	test_json_topology_roundtrip_and_optional_fields();
 	test_topology_serializer_export_graph_default_filters();
 	test_topology_serializer_export_graph_with_filters();
+	test_topology_serializer_import_graph_unknown_part_type_skips_parts_and_connections();
+	test_topology_serializer_export_import_graph_roundtrip();
+	test_structure_transforms_multiple_components_with_pose_hints();
+	test_structure_transforms_without_root_hint_skips_other_components();
 	test_topology_serializer_export_usd_graph_env_and_pose_hints();
 	test_topology_serializer_export_usd_graph_env_filtering();
 	test_topology_serializer_import_unknown_part_type_skips_parts_and_connections();

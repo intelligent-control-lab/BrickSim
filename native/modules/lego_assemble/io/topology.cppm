@@ -306,11 +306,74 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 		return result;
 	}
 
+	template <class Graph>
+	ImportedMapping import_graph(const JsonTopology &topology, Graph &g) const
+	    requires(Graph::PartExtraKeys::size == 0 &&
+	             Graph::ConnSegExtraKeys::size == 0)
+	{
+		ImportedMapping imported;
+		// 1) Import parts
+		for (const JsonPart &jp : topology.parts) {
+			bool matched =
+			    visit_by_type_string(jp.type, [&](auto &&serializer) {
+				    using PS = std::remove_cvref_t<decltype(serializer)>;
+				    using P = PS::PartType;
+				    P part = serializer.from_json(jp.payload);
+				    auto added = g.template add_part<P>(std::move(part));
+				    if (!added) {
+					    log_warn("TopologySerializer: failed to import part id "
+					             "{} of type {}",
+					             jp.id, jp.type);
+					    return;
+				    }
+				    imported.parts.emplace(jp.id, *added);
+			    });
+			if (!matched) {
+				log_warn(
+				    "TopologySerializer: unknown part type string {} for part "
+				    "id {}",
+				    jp.type, jp.id);
+			}
+		}
+
+		// 2) Import connections
+		for (const JsonConnection &jc : topology.connections) {
+			auto it_stud = imported.parts.find(jc.stud_id);
+			auto it_hole = imported.parts.find(jc.hole_id);
+			if (it_stud == imported.parts.end() ||
+			    it_hole == imported.parts.end()) {
+				// One of the endpoints failed to import; skip
+				continue;
+			}
+			PartId stud_pid = it_stud->second;
+			PartId hole_pid = it_hole->second;
+
+			InterfaceRef stud_if{stud_pid,
+			                     static_cast<InterfaceId>(jc.stud_iface)};
+			InterfaceRef hole_if{hole_pid,
+			                     static_cast<InterfaceId>(jc.hole_iface)};
+			ConnectionSegment conn_seg{
+			    .offset = as<Eigen::Vector2i>(jc.offset),
+			    .yaw = to_c4(static_cast<int>(jc.yaw)),
+			};
+			auto connected = g.connect(stud_if, hole_if, std::move(conn_seg));
+			if (!connected) {
+				log_warn("TopologySerializer: failed to import connection "
+				         "between {}:{} and {}:{}",
+				         jc.stud_id, jc.stud_iface, jc.hole_id, jc.hole_iface);
+				continue;
+			}
+			imported.conns.emplace(jc.id, *connected);
+		}
+
+		return imported;
+	}
+
 	template <class UsdGraph>
 	ImportedMapping
-	import(const JsonTopology &topology, UsdGraph &g,
-	       std::int64_t env_id = kNoEnv,
-	       const Transformd &T_env_ref = SE3d{}.identity()) const {
+	import_usd_graph(const JsonTopology &topology, UsdGraph &g,
+	                 std::int64_t env_id = kNoEnv,
+	                 const Transformd &T_env_ref = SE3d{}.identity()) const {
 		ImportedMapping imported;
 		// 1) Import parts
 		for (const JsonPart &jp : topology.parts) {
@@ -403,5 +466,64 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 		        ...);
 	}
 };
+
+// Watch out: root_id is JSON part id, not PartId
+// Return values are PartId, not JSON part id
+export template <class Graph>
+std::generator<std::pair<PartId, Transformd>> structure_transforms(
+    const Graph &g, std::int64_t root_id,
+    std::span<const JsonPoseHint> pose_hints,
+    const std::unordered_map<std::int64_t, PartId> &pid_mapping) {
+	auto it_root = pid_mapping.find(root_id);
+	if (it_root == pid_mapping.end()) {
+		co_return;
+	}
+	PartId root = it_root->second;
+	// 1. Visit the root CC, T_root_ref is not needed here
+	std::unordered_set<PartId> visited;
+	for (auto [u, T_root_u] : g.component_view(root).transforms()) {
+		visited.emplace(u);
+		co_yield {u, T_root_u};
+	}
+	// 2. Find the 1st pose hint that connects to the root
+	std::optional<Transformd> T_root_ref;
+	for (const JsonPoseHint &jph : pose_hints) {
+		auto it_u = pid_mapping.find(jph.part);
+		if (it_u == pid_mapping.end()) {
+			continue;
+		}
+		PartId u = it_u->second;
+		if (auto T_root_u = g.lookup_transform(root, u)) {
+			Transformd T_ref_u{as<Eigen::Quaterniond>(jph.rot),
+			                   as<Eigen::Vector3d>(jph.pos)};
+			T_root_ref = (*T_root_u) * inverse(T_ref_u);
+			break;
+		}
+	}
+	// If T_root_ref does not exist, we can determine the relative transforms of other CCs
+	if (!T_root_ref) {
+		co_return;
+	}
+	// 3. Visit other CCs
+	for (const JsonPoseHint &jph : pose_hints) {
+		auto it_u = pid_mapping.find(jph.part);
+		if (it_u == pid_mapping.end()) {
+			continue;
+		}
+		PartId u = it_u->second;
+		if (visited.contains(u)) {
+			// CC already visited, skip
+			continue;
+		}
+		Transformd T_ref_u{as<Eigen::Quaterniond>(jph.rot),
+		                   as<Eigen::Vector3d>(jph.pos)};
+		Transformd T_root_u = *T_root_ref * T_ref_u;
+		for (auto [v, T_u_v] : g.component_view(u).transforms()) {
+			visited.emplace(v);
+			Transformd T_root_v = T_root_u * T_u_v;
+			co_yield {v, T_root_v};
+		}
+	}
+}
 
 } // namespace lego_assemble

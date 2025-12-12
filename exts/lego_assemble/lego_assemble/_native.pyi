@@ -46,6 +46,11 @@ def import_lego(
     ref_pos: Optional[tuple[float, float, float]] = None,
 ) -> tuple[dict[int, str], dict[int, str]]: ...
 
+def compute_structure_transforms(
+    json: Any,
+    root: int,
+) -> dict[int, tuple[tuple[float, float, float, float], tuple[float, float, float]]]: ...
+
 def compute_connected_component(part_path: str) -> tuple[list[str], list[str]]: ...
 
 def arrange_parts_on_table(

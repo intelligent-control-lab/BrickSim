@@ -73,6 +73,16 @@ PYBIND11_MODULE(_native, m) {
 	      "(part_paths, connection_paths) as dicts mapping JSON ids to USD "
 	      "prim paths for the imported objects.");
 
+	m.def("compute_structure_transforms", &compute_structure_transforms,
+	      pybind11::arg("json"), pybind11::arg("root"),
+	      "Compute transforms {}^{root}T_part for all parts in the structure "
+	      "described by the given topology JSON. root is a JSON part id. "
+	      "For the root connected component, transforms are derived purely "
+	      "from graph connectivity. For other disconnected components, pose "
+	      "hints are used to align them to the reference frame. Returns a "
+	      "dict mapping JSON part ids to (rot, pos) tuples in meters with wxyz "
+	      "quaternions.");
+
 	m.def("compute_connected_component", &compute_connected_component,
 	      pybind11::arg("part_path"),
 	      "Return (part_paths, connection_paths) for the connected component "

@@ -187,8 +187,8 @@ import_lego(const nlohmann::ordered_json &json, std::int64_t env_id,
             const std::optional<QuatArray> &ref_rot,
             const std::optional<PosArray> &ref_pos) {
 	Transformd T_env_ref = transform_from_arrays(ref_rot, ref_pos);
-	auto imported =
-	    LegoRuntime::Serializer{}.import(json, usd_graph(), env_id, T_env_ref);
+	auto imported = LegoRuntime::Serializer{}.import_usd_graph(
+	    json, usd_graph(), env_id, T_env_ref);
 	// Convert id to path
 	std::unordered_map<std::int64_t, PathStr> part_paths;
 	for (const auto &[json_id, pid] : imported.parts) {
@@ -199,6 +199,29 @@ import_lego(const nlohmann::ordered_json &json, std::int64_t env_id,
 		conn_paths.emplace(json_id, usd_conn_path(csid));
 	}
 	return {std::move(part_paths), std::move(conn_paths)};
+}
+
+export std::unordered_map<std::int64_t, std::tuple<QuatArray, PosArray>>
+compute_structure_transforms(const nlohmann::ordered_json &json,
+                             std::int64_t root) {
+	using Graph = LegoGraph<World::PartTypeList>;
+	Graph g;
+	JsonTopology topology = json;
+	auto imported = LegoRuntime::Serializer{}.import_graph(topology, g);
+	auto &jid2pid = imported.parts;
+	// Build inverse mapping for later lookup
+	std::unordered_map<PartId, std::int64_t> pid2jid;
+	for (const auto &[jid, pid] : jid2pid) {
+		pid2jid.emplace(pid, jid);
+	}
+	// Compute transforms
+	std::unordered_map<std::int64_t, std::tuple<QuatArray, PosArray>> result;
+	for (auto [pid_u, T_root_u] :
+	     structure_transforms(g, root, topology.pose_hints, imported.parts)) {
+		std::int64_t jid_u = pid2jid.at(pid_u);
+		result.emplace(jid_u, transform_to_arrays(T_root_u));
+	}
+	return result;
 }
 
 export std::tuple<std::vector<PathStr>, std::vector<PathStr>>
