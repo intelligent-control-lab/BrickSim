@@ -15,14 +15,30 @@ from isaacsim.core.utils.nucleus import get_assets_root_path
 from isaacsim.core.utils.numpy.rotations import quats_to_rot_matrices, rot_matrices_to_quats
 from isaacsim.robot_motion.motion_generation import RmpFlow, ArticulationMotionPolicy
 from isaacsim.robot_motion.motion_generation.interface_config_loader import load_supported_motion_policy_config
-from lego_assemble import arrange_parts_in_workspace, import_lego, get_brick_dimensions, compute_connection_transform, set_assembly_thresholds, AssemblyThresholds, wait_for_physics_step
+from lego_assemble import arrange_parts_in_workspace, import_lego, get_brick_dimensions, compute_connection_transform, set_assembly_thresholds, AssemblyThresholds, wait_for_physics_step, parse_color, Colors
 from lego_assemble.utils.topology import bfs_sort_connections
+from lego_assemble.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
+from lego_assemble.importers.legolization import legolization_json_to_topology_json, is_legolization_json
+
+try:
+    from isaacsim.util.debug_draw import _debug_draw # pyright: ignore
+    DEBUG_DRAW = _debug_draw.acquire_debug_draw_interface()
+except Exception:
+    print("Warning: Unable to import debug draw interface.")
+    DEBUG_DRAW = None
+# DEBUG_DRAW = None
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-STRUCTURE_JSON_PATH = os.path.join(SCRIPT_DIR, "../resources/demo_structure.json")
+# STRUCTURE_PATH = os.path.join(SCRIPT_DIR, "../resources/demo_structure.json")
+STRUCTURE_PATH = os.path.join(SCRIPT_DIR, "../resources/demo_structure2.txt")
 PRE_PLACED_PARTS = [0,] # Indices of parts in the structure JSON that are pre-placed in the scene
 PLACE_POSE = ([0.3, 0.0, 0.0], (1.0, 0.0, 0.0, 0.0)) # Position (x,y,z), Orientation (w,x,y,z)
+BASEPLATE_KWARGS = {
+    "include_base_plate": True,
+    "base_plate_size": (20, 20),
+    "base_plate_color": parse_color("Light Gray")
+}
 
 def quat_angle_error(q_current, q_target) -> float:
     """Small helper: angle between two quaternions."""
@@ -110,6 +126,23 @@ async def move_ee_to(
         # Check if conditions are met
         is_within_tolerance = (pos_err < pos_tol) and (ang_err < rot_tol) and (vel_tol is None or max_vel < vel_tol)
 
+        # --- Debug draw: visualize target vs current EE ---
+        if DEBUG_DRAW is not None:
+            # Clear previous points so we only see the latest target/current
+            DEBUG_DRAW.clear_points()
+            # Target = red point
+            DEBUG_DRAW.draw_points(
+                [tuple(target_pos.tolist())],
+                [(1.0, 0.0, 0.0, 1.0)],  # RGBA
+                [10.0],                  # size in pixels
+            )
+            # Current EE = green point
+            DEBUG_DRAW.draw_points(
+                [tuple(ee_pos.tolist())],
+                [(0.0, 1.0, 0.0, 1.0)],
+                [10.0],
+            )
+
         if is_within_tolerance:
             if time_reached is None:
                 print(f"Reached target tolerance.")
@@ -127,7 +160,7 @@ async def move_ee_to(
             print(f"Timeout reached: pos_err={pos_err:.4f}, ang_err={ang_err:.4f}, max_vel={max_vel:.4f}")
             return False
 
-async def set_gripper(world: World, robot: SingleArticulation, target_width: Optional[float] = None, *, delta_width: Optional[float] = None, timeout: float = 5.0) -> bool:
+async def set_gripper(world: World, robot: SingleArticulation, target_width: Optional[float] = None, *, delta_width: Optional[float] = None, timeout: float = 3.0) -> bool:
     """
     Controls the Franka gripper to reach a target width.
     Includes robust grasp detection (detects velocity stall when closing).
@@ -151,9 +184,9 @@ async def set_gripper(world: World, robot: SingleArticulation, target_width: Opt
 
     # Target position per finger
     target_pos = target_width / 2.0
-    pos_tolerance = 0.003 # 1 mm tolerance
-    vel_tolerance = 0.005 # 0.5 cm/s velocity threshold for grasp detection
-    min_grasp_time = 0.4  # Minimum time to wait before checking grasp detection
+    pos_tolerance = 0.003 # 3 mm tolerance
+    vel_tolerance = 0.0001 # 0.1 mm/s velocity threshold for grasp detection
+    min_grasp_time = 1.0  # Minimum time to wait before checking grasp detection
 
     # Define the action to set the target positions for the gripper drives
     action = ArticulationAction(
@@ -162,6 +195,7 @@ async def set_gripper(world: World, robot: SingleArticulation, target_width: Opt
     )
 
     elapsed = 0.0
+    stall_time = 0.0
 
     # Apply the action once (sets the target for the PD controller)
     robot.apply_action(action)
@@ -180,14 +214,18 @@ async def set_gripper(world: World, robot: SingleArticulation, target_width: Opt
 
         # Check if reached the exact target width (important when opening)
         if abs(current_width - target_width) < pos_tolerance:
+            print(f"Gripper reached target width: {current_width:.4f}")
             return True
 
         # Check if grasping (closing and movement stopped before reaching target)
-        if is_closing and max_vel < vel_tolerance and elapsed > min_grasp_time:
-             # Ensure we haven't reached the target (otherwise it's not a velocity stall grasp)
-             if abs(current_width - target_width) >= pos_tolerance:
-                print(f"Grasp detected (velocity stall). Width: {current_width:.4f}")
-                return True
+        if is_closing and max_vel < vel_tolerance:
+            stall_time += dt
+            # Ensure haven't reached the target (otherwise it's not a velocity stall grasp)
+            if abs(current_width - target_width) >= pos_tolerance and stall_time > min_grasp_time:
+               print(f"Grasp detected (velocity stall). Width: {current_width:.4f}")
+               return True
+        else:
+            stall_time = 0.0
 
         if elapsed > timeout:
             print(f"Gripper timeout. Current width: {current_width:.4f}, Target: {target_width:.4f}")
@@ -219,6 +257,8 @@ async def grasp_lego_part(
         return False
     
     L, W, H = dimensions
+    if L == 1 or W == 1:
+        GRASP_DEPTH = 0.002 # 2.0 mm for very small bricks
 
     # Use SingleXFormPrim to track the brick's pose
     view_name = f"grasp_target_view_{os.path.basename(brick_prim_path)}"
@@ -361,7 +401,7 @@ async def assemble_lego_part(
     specified connection parameters. It relies on physical interaction (pressing)
     to trigger the automatic assembly connection detection.
     """
-    press_depth = 0.001
+    press_depth = 0.000
     press_duration = 1.0
 
     print(f"--- Attempting to assemble {hole_brick_path} onto {stud_brick_path} ---")
@@ -473,10 +513,10 @@ async def assemble_lego_part(
     # The settle_time ensures the command is maintained, allowing force to build up and the physics snap to occur.
     success = await move_ee_to(
         world, robot, rmpflow, motion_policy, press_assembly_pos, T_W_G_target_quat,
-        pos_tol=0.002,
+        pos_tol=0.003,
         rot_tol=0.050,
-        vel_tol=0.20,
-        timeout=10.0,
+        vel_tol=0.30,
+        timeout=3.0,
         settle_time=press_duration,
     )
     
@@ -538,12 +578,25 @@ async def main():
     SingleGeometryPrim(prim_path="/World/Robot/panda_leftfinger/geometry/panda_leftfinger").apply_physics_material(pad_material)
     SingleGeometryPrim(prim_path="/World/Robot/panda_rightfinger/geometry/panda_rightfinger").apply_physics_material(pad_material)
 
+    # Adjust finger max force & stiffness & damping
+    FINGER_MAX_FORCE = 15.0 # Default: 7.2
+    FINGER_DAMPING = 80.0 # Default: 80.0
+    FINGER_STIFFNESS = 400.0 # Default: 400.0
+    joint_prim = get_current_stage().GetPrimAtPath("/World/Robot/panda_hand/panda_finger_joint1")
+    joint_prim.GetAttribute("drive:linear:physics:maxForce").Set(FINGER_MAX_FORCE)
+    joint_prim.GetAttribute("drive:linear:physics:damping").Set(FINGER_DAMPING)
+    joint_prim.GetAttribute("drive:linear:physics:stiffness").Set(FINGER_STIFFNESS)
+
+    # Increase position solver iterations for better assembly stability (32 -> 64)
+    get_current_stage().GetPrimAtPath("/World/Robot").GetAttribute("physxArticulation:solverPositionIterationCount").Set(64)
+    # get_current_stage().GetPrimAtPath("/World/Robot").GetAttribute("physxArticulation:solverVelocityIterationCount").Set(1)
+
     # Set physics material for tabletop
     table_material = PhysicsMaterial(
         prim_path="/World/PhysicsMaterials/Tabletop",
-        static_friction=5.0,
-        dynamic_friction=4.0,
-        restitution=0.5,
+        static_friction=1.0,
+        dynamic_friction=0.8,
+        restitution=0.2,
     )
     SingleGeometryPrim(prim_path="/World/scene/roomScene/colliders/table/tableTopActor").apply_physics_material(table_material)
 
@@ -575,14 +628,34 @@ async def main():
 
     # Setup workspace
     workspace_prim = get_current_stage().GetPrimAtPath("/World/LegoWorkspace")
-    workspace_prim.GetAttribute("xformOp:scale").Set(Gf.Vec3d(0.6, 0.6, 0.2))
-    workspace_prim.GetAttribute("xformOp:translate").Set(Gf.Vec3d(0.4, 0.0, 0.1))
+    workspace_prim.GetAttribute("xformOp:scale").Set(Gf.Vec3d(0.4, 0.3, 0.2))
+    workspace_prim.GetAttribute("xformOp:translate").Set(Gf.Vec3d(0.35, 0.0, 0.1))
     workspace_prim.GetAttribute("xformOp:orient").Set(Gf.Quatd(1.0, 0.0, 0.0, 0.0))
     workspace_prim.GetRelationship("lego:workspace_obstacles").AddTarget("/World/Robot/panda_link0")
 
     # Load structure to assemble (including base plate)
-    with open(STRUCTURE_JSON_PATH, 'r') as f:
-        topology = json.load(f)
+    with open(STRUCTURE_PATH, 'r') as f:
+        text = f.read()
+    if is_bricks_text(text):
+        # StableText2Brick format
+        topology = bricks_text_to_topology_json(text, color=parse_color("Pink"), **BASEPLATE_KWARGS)
+        randomize_colors = True
+    elif is_legolization_json(text):
+        topology = legolization_json_to_topology_json(json.loads(text), color=parse_color("Pink"), **BASEPLATE_KWARGS)
+        randomize_colors = True
+    else:
+        # Assume direct topology JSON
+        topology = json.loads(text)
+        randomize_colors = False
+    if randomize_colors:
+        # Randomize colors of non-baseplate parts for better visual distinction
+        rng = np.random.default_rng(seed=42)
+        color_names = list(Colors.keys())
+        for part in topology['parts']:
+            if part['id'] == 0:
+                # Baseplate
+                continue
+            part['payload']['color'] = parse_color(rng.choice(color_names))
 
     # Place pre-placed parts
     pre_placed_topology = deepcopy(topology)
