@@ -162,9 +162,9 @@ export struct SimpleBrickAuthor {
 		SetAttr<float>(bodyCollider, pxr::UsdPhysicsTokens->physicsMass,
 		               metrics.from_kg(part.mass()));
 		SetAttr<float>(bodyCollider,
-		               pxr::UsdPhysicsTokens->physicsStaticFriction, 1.0f);
+		               pxr::UsdPhysicsTokens->physicsStaticFriction, 0.5f);
 		SetAttr<float>(bodyCollider,
-		               pxr::UsdPhysicsTokens->physicsDynamicFriction, 0.8f);
+		               pxr::UsdPhysicsTokens->physicsDynamicFriction, 0.4f);
 		SetAttr<float>(bodyCollider, pxr::UsdPhysicsTokens->physicsRestitution,
 		               0.1f);
 
@@ -200,9 +200,9 @@ export struct SimpleBrickAuthor {
 		              pxr::UsdPhysicsTokens->physicsCollisionEnabled, true);
 		SetAttr<float>(topCollider, pxr::UsdPhysicsTokens->physicsMass, 0.0f);
 		SetAttr<float>(topCollider,
-		               pxr::UsdPhysicsTokens->physicsStaticFriction, 2.0f);
+		               pxr::UsdPhysicsTokens->physicsStaticFriction, 1.0f);
 		SetAttr<float>(topCollider,
-		               pxr::UsdPhysicsTokens->physicsDynamicFriction, 1.8f);
+		               pxr::UsdPhysicsTokens->physicsDynamicFriction, 0.8f);
 		SetAttr<float>(topCollider, pxr::UsdPhysicsTokens->physicsRestitution,
 		               0.2f);
 
