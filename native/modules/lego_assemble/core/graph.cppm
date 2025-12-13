@@ -518,7 +518,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 		const auto &[part_id, interface_id] = iref;
 		std::optional<std::optional<InterfaceSpec>> res =
 		    parts_.try_visit(part_id, [&](const auto &pw) {
-			    return get_interface_at(pw.wrapped(), interface_id);
+			    return pw.wrapped().get_interface(interface_id);
 		    });
 		if (res) {
 			return std::move(*res);
@@ -531,7 +531,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	InterfaceSpec interface_spec_at(const InterfaceRef &iref) const {
 		const auto &[part_id, interface_id] = iref;
 		return parts_.visit(part_id, [&](const auto &pw) {
-			auto iface = get_interface_at(pw.wrapped(), interface_id);
+			auto iface = pw.wrapped().get_interface(interface_id);
 			if (!iface) {
 				throw std::out_of_range(
 				    "LegoGraph::interface_spec_at: interface id not found");

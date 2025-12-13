@@ -8,7 +8,7 @@ using namespace lego_assemble;
 void test_brick() {
 	BrickPart brick{2, 4, 3, {255, 0, 0}};
 	std::size_t iface_count = 0;
-	for_each_interface(brick, [&](const auto &iface) {
+	for (auto &&iface : brick.interfaces()) {
 		++iface_count;
 		if (iface.id == 0) {
 			assert(iface.type == InterfaceType::Hole);
@@ -17,7 +17,7 @@ void test_brick() {
 		} else {
 			assert(false && "Unexpected interface id");
 		}
-	});
+	};
 	assert(iface_count == 2);
 }
 
@@ -39,7 +39,7 @@ void test_custom_part() {
 	    },
 	};
 	std::size_t iface_count = 0;
-	for_each_interface(part, [&](const auto &iface) {
+	for (auto &&iface : part.interfaces()) {
 		++iface_count;
 		if (iface.id == 10) {
 			assert(iface.type == InterfaceType::Stud);
@@ -48,7 +48,7 @@ void test_custom_part() {
 		} else {
 			assert(false && "Unexpected interface id");
 		}
-	});
+	};
 	assert(iface_count == 2);
 }
 

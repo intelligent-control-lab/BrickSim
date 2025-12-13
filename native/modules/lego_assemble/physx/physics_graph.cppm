@@ -137,7 +137,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 					    pid));
 				}
 				std::optional<InterfaceSpec> iface =
-				    get_interface_at(pw.wrapped(), if_id);
+				    pw.wrapped().get_interface(if_id);
 				if (!iface) {
 					throw std::runtime_error(std::format(
 					    "Interface {} not found in part id {}", if_id, pid));

@@ -3,6 +3,7 @@ export module lego_assemble.core.specs;
 import std;
 import lego_assemble.utils.type_list;
 import lego_assemble.utils.transforms;
+import lego_assemble.utils.ranges;
 import lego_assemble.vendor;
 
 namespace lego_assemble {
@@ -58,97 +59,19 @@ export struct BBox3d {
 };
 
 export template <class P>
-concept PartLike = requires(const P &p) {
+concept PartLike = requires(const P &p, InterfaceId ifid) {
 	{ p.mass() } -> std::convertible_to<double>;
 	{ p.color() } -> std::convertible_to<BrickColor>;
 	{ p.bbox() } -> std::convertible_to<BBox3d>;
+	{
+		p.get_interface(ifid)
+	} -> std::convertible_to<std::optional<InterfaceSpec>>;
+	{ p.interfaces() } -> range_of<InterfaceSpec>;
 } && std::equality_comparable<P>;
 
 export template <class... Ps>
     requires((PartLike<Ps> && ...) && unique_types<Ps...> && sizeof...(Ps) > 0)
 using PartList = type_list<Ps...>;
-
-// ==== Part with Fixed Interfaces ====
-
-export template <InterfaceId... Ids>
-using InterfaceIdList = std::integer_sequence<InterfaceId, Ids...>;
-
-export template <class U> constexpr bool IsInterfaceIdList = false;
-
-export template <InterfaceId... Ids>
-constexpr bool IsInterfaceIdList<InterfaceIdList<Ids...>> = true;
-
-export template <class P, class Ids> constexpr bool HasInterfaceAt = false;
-
-export template <class P, InterfaceId... Ids>
-constexpr bool HasInterfaceAt<P, InterfaceIdList<Ids...>> =
-    (requires(const P &p) {
-	    {
-		    p.template interface_at<Ids>()
-	    } -> std::convertible_to<const InterfaceSpec &>;
-    } && ...);
-
-export template <class P>
-concept PartWithFixedInterfaces =
-    PartLike<P> && IsInterfaceIdList<typename P::InterfaceIds> &&
-    HasInterfaceAt<P, typename P::InterfaceIds>;
-
-// ==== Part with Dynamic Interfaces ====
-
-export template <class R>
-concept InterfaceRange =
-    std::ranges::input_range<R> &&
-    std::same_as<std::ranges::range_value_t<R>, InterfaceSpec>;
-
-export template <class P>
-concept PartWithDynamicInterfaces = PartLike<P> && requires(const P &p) {
-	{ p.interfaces() } -> InterfaceRange;
-	{
-		p.interface_at(InterfaceId{})
-	} -> std::convertible_to<const InterfaceSpec *>;
-};
-
-// ==== Utility Functions ====
-
-export template <PartWithFixedInterfaces P,
-                 std::invocable<const InterfaceSpec &> Func>
-void for_each_interface(const P &part, Func &&func) {
-	[&]<InterfaceId... Ids>(InterfaceIdList<Ids...>) {
-		(std::invoke(func, part.template interface_at<Ids>()), ...);
-	}(typename P::InterfaceIds{});
-}
-
-export template <PartWithDynamicInterfaces P,
-                 std::invocable<const InterfaceSpec &> Func>
-    requires(!PartWithFixedInterfaces<P>)
-void for_each_interface(const P &part, Func &&func) {
-	for (const auto &iface : part.interfaces()) {
-		std::invoke(func, iface);
-	}
-}
-
-export template <class P>
-std::optional<InterfaceSpec> get_interface_at(const P &part, InterfaceId id)
-    requires(PartWithFixedInterfaces<P> || PartWithDynamicInterfaces<P>)
-{
-	if constexpr (PartWithFixedInterfaces<P>) {
-		// Expand the fixed ID list, pick the matching one at runtime.
-		return [&]<InterfaceId... Is>(InterfaceIdList<Is...>) {
-			std::optional<InterfaceSpec> out;
-			[[maybe_unused]] bool matched =
-			    ((id == Is ? (out = part.template interface_at<Is>(), true)
-			               : false) ||
-			     ...);
-			return out;
-		}(typename P::InterfaceIds{});
-	} else {
-		// Dynamic case
-		if (const InterfaceSpec *s = part.interface_at(id)) {
-			return *s; // copies into the optional
-		}
-		return std::nullopt;
-	}
-}
 
 // ==== Definition of Brick ====
 
@@ -165,7 +88,6 @@ export class BrickPart {
   public:
 	static constexpr InterfaceId HoleId = 0;
 	static constexpr InterfaceId StudId = 1;
-	using InterfaceIds = InterfaceIdList<HoleId, StudId>;
 
 	BrickPart(BrickUnit L, BrickUnit W, PlateUnit H, BrickColor color)
 	    : L_(L), W_(W), H_(H), color_(color) {}
@@ -185,33 +107,45 @@ export class BrickPart {
 	BrickColor color() const {
 		return color_;
 	}
-	template <InterfaceId Id> InterfaceSpec interface_at() const {
-		if constexpr (Id == HoleId) {
-			return {.id = HoleId,
-			        .type = InterfaceType::Hole,
-			        .L = L_,
-			        .W = W_,
-			        .pose = {{1.0, 0.0, 0.0, 0.0},
-			                 {
-			                     -((L_ * BrickUnitLength) / 2.0),
-			                     -((W_ * BrickUnitLength) / 2.0),
-			                     0.0,
-			                 }}};
-		} else if constexpr (Id == StudId) {
-			return {.id = StudId,
-			        .type = InterfaceType::Stud,
-			        .L = L_,
-			        .W = W_,
-			        .pose = {{1.0, 0.0, 0.0, 0.0},
-			                 {
-			                     -((L_ * BrickUnitLength) / 2.0),
-			                     -((W_ * BrickUnitLength) / 2.0),
-			                     H_ * PlateUnitHeight,
-			                 }}};
+	InterfaceSpec hole_interface() const {
+		return {
+		    .id = HoleId,
+		    .type = InterfaceType::Hole,
+		    .L = L_,
+		    .W = W_,
+		    .pose = {{1.0, 0.0, 0.0, 0.0},
+		             {
+		                 -((L_ * BrickUnitLength) / 2.0),
+		                 -((W_ * BrickUnitLength) / 2.0),
+		                 0.0,
+		             }},
+		};
+	}
+	InterfaceSpec stud_interface() const {
+		return {
+		    .id = StudId,
+		    .type = InterfaceType::Stud,
+		    .L = L_,
+		    .W = W_,
+		    .pose = {{1.0, 0.0, 0.0, 0.0},
+		             {
+		                 -((L_ * BrickUnitLength) / 2.0),
+		                 -((W_ * BrickUnitLength) / 2.0),
+		                 H_ * PlateUnitHeight,
+		             }},
+		};
+	}
+	std::optional<InterfaceSpec> get_interface(InterfaceId ifid) const {
+		if (ifid == HoleId) {
+			return hole_interface();
+		} else if (ifid == StudId) {
+			return stud_interface();
 		} else {
-			static_assert(Id < 2, "Invalid interface id");
-			std::unreachable();
+			return std::nullopt;
 		}
+	}
+	std::array<InterfaceSpec, 2> interfaces() const {
+		return {hole_interface(), stud_interface()};
 	}
 	BBox3d bbox() const {
 		return BBox3d{.min =
@@ -235,7 +169,7 @@ export class BrickPart {
 	PlateUnit H_;
 	BrickColor color_;
 };
-static_assert(PartWithFixedInterfaces<BrickPart>);
+static_assert(PartLike<BrickPart>);
 
 // ==== Definition of Custom Part ====
 
@@ -265,14 +199,14 @@ export struct CustomPart {
 	std::span<const InterfaceSpec> interfaces() const {
 		return interfaces_;
 	}
-	const InterfaceSpec *interface_at(InterfaceId id) const {
+	std::optional<InterfaceSpec> get_interface(InterfaceId id) const {
 		// Linear search because number of interfaces is usually small
 		for (const auto &iface : interfaces_) {
 			if (iface.id == id) {
-				return &iface;
+				return iface;
 			}
 		}
-		return nullptr;
+		return std::nullopt;
 	}
 	BBox3d bbox() const {
 		return bbox_;
@@ -286,6 +220,6 @@ export struct CustomPart {
 	std::pmr::vector<InterfaceSpec> interfaces_;
 	BBox3d bbox_;
 };
-static_assert(PartWithDynamicInterfaces<CustomPart>);
+static_assert(PartLike<CustomPart>);
 
 } // namespace lego_assemble
