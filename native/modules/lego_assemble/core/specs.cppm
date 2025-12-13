@@ -4,6 +4,7 @@ import std;
 import lego_assemble.utils.type_list;
 import lego_assemble.utils.transforms;
 import lego_assemble.utils.ranges;
+import lego_assemble.utils.bbox;
 import lego_assemble.vendor;
 
 namespace lego_assemble {
@@ -45,18 +46,6 @@ export struct InterfaceSpec {
 // ==== Definition of Part ====
 
 export using BrickColor = std::array<std::uint8_t, 3>; // RGB
-
-export struct BBox2d {
-	Eigen::Vector2d min;
-	Eigen::Vector2d max;
-	bool operator==(const BBox2d &other) const = default;
-};
-
-export struct BBox3d {
-	Eigen::Vector3d min;
-	Eigen::Vector3d max;
-	bool operator==(const BBox3d &other) const = default;
-};
 
 export template <class P>
 concept PartLike = requires(const P &p, InterfaceId ifid) {

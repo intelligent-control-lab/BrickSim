@@ -9,6 +9,7 @@ import lego_assemble.utils.pack2d_maxrect;
 import lego_assemble.utils.metric_system;
 import lego_assemble.utils.usd_envs;
 import lego_assemble.utils.conversions;
+import lego_assemble.utils.bbox;
 import lego_assemble.vendor;
 
 namespace lego_assemble {
@@ -50,39 +51,6 @@ export struct ArrangeResult {
 		return not_placed.empty();
 	}
 };
-
-BBox3d transform_bbox_3d(const BBox3d &box, const Transformd &T) {
-	const auto &[q, t] = T;
-	constexpr double inf = std::numeric_limits<double>::infinity();
-	Eigen::Vector3d min{inf, inf, inf};
-	Eigen::Vector3d max{-inf, -inf, -inf};
-	for (int ix = 0; ix < 2; ++ix) {
-		double cx = (ix == 0) ? box.min.x() : box.max.x();
-		for (int iy = 0; iy < 2; ++iy) {
-			double cy = (iy == 0) ? box.min.y() : box.max.y();
-			for (int iz = 0; iz < 2; ++iz) {
-				double cz = (iz == 0) ? box.min.z() : box.max.z();
-				Eigen::Vector3d p_local{cx, cy, cz};
-				Eigen::Vector3d p = q * p_local + t;
-				min = min.cwiseMin(p);
-				max = max.cwiseMax(p);
-			}
-		}
-	}
-	return {.min = min, .max = max};
-}
-
-void expand_to_include(BBox3d &box, const BBox3d &other) {
-	box.min = box.min.cwiseMin(other.min);
-	box.max = box.max.cwiseMax(other.max);
-}
-
-BBox2d to_bbox_2d(const BBox3d &box) {
-	return {
-	    .min = box.min.head<2>(),
-	    .max = box.max.head<2>(),
-	};
-}
 
 pack2d::Rect discretize_bbox_2d(const BBox2d &box, const TableRect &region,
                                 double grid) {
@@ -251,15 +219,15 @@ arrange_parts_on_table(UsdGraph &g, const ArrangeConfig &config,
 			arranged_parts.emplace(v, cc_idx);
 			Transformd T_s_v = T_s_u * T_u_v;
 			BBox3d bbox_local = get_part_bbox(g, v);
-			BBox3d bbox_in_s = transform_bbox_3d(bbox_local, T_s_v);
-			expand_to_include(structure->bbox, bbox_in_s);
+			BBox3d bbox_in_s = bbox_local.transform(T_s_v);
+			structure->bbox.expand_to_include(bbox_in_s);
 		}
 	}
 
 	// Prepare structure rectangles for packing
 	std::vector<pack2d::RectInput> structure_rects;
 	for (auto &[structure_id, structure] : structures) {
-		BBox2d bbox_2d = to_bbox_2d(structure.bbox);
+		BBox2d bbox_2d = structure.bbox.to_2d();
 		double w = bbox_2d.max.x() - bbox_2d.min.x();
 		double h = bbox_2d.max.y() - bbox_2d.min.y();
 		structure.valid = w > 0.0 && h > 0.0;
@@ -298,8 +266,8 @@ arrange_parts_on_table(UsdGraph &g, const ArrangeConfig &config,
 			throw std::runtime_error(std::format(
 			    "arrange_parts_on_table: part id {} has no pose", pid));
 		}
-		BBox3d bbox_env = transform_bbox_3d(bbox_local, *T_env_part);
-		BBox2d bbox_env_2d = to_bbox_2d(bbox_env);
+		BBox3d bbox_env = bbox_local.transform(*T_env_part);
+		BBox2d bbox_env_2d = bbox_env.to_2d();
 		add_obstacle_bbox(bbox_env_2d);
 	};
 	for (const auto &zone : regions_to_avoid) {

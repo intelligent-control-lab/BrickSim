@@ -12,6 +12,7 @@ import lego_assemble.omni.lego_runtime;
 import lego_assemble.utils.conversions;
 import lego_assemble.utils.transforms;
 import lego_assemble.utils.c4_rotation;
+import lego_assemble.utils.bbox;
 import lego_assemble.io.topology;
 import lego_assemble.vendor;
 
