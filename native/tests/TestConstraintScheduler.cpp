@@ -98,8 +98,9 @@ static InterfaceRef IR(PartId pid, InterfaceId iid) {
 
 template <class Strategy>
 using Scheduler = ConstraintScheduler<
-    G, Strategy, std::function<std::size_t(PartId, PartId, const Transformd &)>,
-    std::function<void(std::size_t)>, std::size_t>;
+    G, Strategy, std::size_t,
+    std::function<std::size_t(PartId, PartId, const Transformd &)>,
+    std::function<void(std::size_t)>>;
 
 // ----------------- Constructor / destructor -----------------
 

@@ -29,8 +29,6 @@ struct PendingDisassembly {
 	ConnSegId csid;
 };
 
-using ConstraintHandle = std::size_t;
-
 export using InterfaceShapePair = std::pair<InterfaceId, physx::PxShape *>;
 export using ActorShapePair =
     std::pair<physx::PxRigidActor *, physx::PxShape *>;
@@ -115,10 +113,12 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	// using ConstraintSchedulingPolicy = FullGraphSchedulingPolicy<TopologyGraph>;
 	// using ConstraintSchedulingPolicy = ExponentialSkipSchedulingPolicy<TopologyGraph>;
 	// using ConstraintSchedulingPolicy = TreeOnlySchedulingPolicy<TopologyGraph>;
-	using PhysicsConstraintScheduler = ConstraintScheduler<
-	    TopologyGraph, ConstraintSchedulingPolicy,
-	    std::function<ConstraintHandle(PartId, PartId, const Transformd &)>,
-	    std::function<void(ConstraintHandle)>, ConstraintHandle>;
+	using PhysicsConstraintScheduler =
+	    ConstraintScheduler<TopologyGraph, ConstraintSchedulingPolicy,
+	                        physx::PxConstraint *,
+	                        std::function<physx::PxConstraint *(
+	                            PartId, PartId, const Transformd &)>,
+	                        std::function<void(physx::PxConstraint *)>>;
 	using ShapeMapping =
 	    MultiKeyMap<type_list<InterfaceRef, ActorShapePair>, InterfaceSpec,
 	                type_list<InterfaceRefHash, ActorShapePairHash>>;
@@ -229,6 +229,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		void on_part_removed(PartId pid) {
 			// Update constraint scheduler
 			owner_->constraint_scheduler_.notify_part_removed(pid);
+			// Remove it from pending filtering resets
+			owner_->pending_reset_filtering_parts_.erase(pid);
 		}
 
 		void on_connected(G::ConnSegEntry cs_entry,
@@ -276,7 +278,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			}
 
 			const auto &[stud_pid, stud_ifid] = stud_if_ref;
-			owner_->enqueue_filtering_reset(stud_pid);
+			owner_->pending_reset_filtering_parts_.insert(stud_pid);
 		}
 
 		void on_disconnecting(G::ConnSegEntry cs_entry,
@@ -308,7 +310,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			csw.px_stud_shape = NullActorShapePair;
 			csw.px_hole_shape = NullActorShapePair;
 
-			owner_->enqueue_filtering_reset(stud_pid);
+			owner_->pending_reset_filtering_parts_.insert(stud_pid);
 		}
 
 		void on_bundle_created(G::ConnBundleEntry cb_entry) {
@@ -350,7 +352,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			        ContactExclusionLevel::ConnectedComponent) {
 				// Actor Level: Reset filtering for this pair of parts
 				// ConnectedComponent Level: Reset filtering for all parts in the merged connected component
-				owner_->enqueue_filtering_reset(a_id);
+				owner_->pending_reset_filtering_parts_.insert(a_id);
 			}
 		}
 
@@ -387,7 +389,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			        ContactExclusionLevel::ConnectedComponent) {
 				// Actor Level: Reset filtering for this pair of parts
 				// ConnectedComponent Level: Reset filtering for all parts in one of the connected components
-				owner_->enqueue_filtering_reset(a_id);
+				owner_->pending_reset_filtering_parts_.insert(a_id);
 			}
 		}
 
@@ -652,11 +654,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	      topology_hooks_{this}, topology_{&topology_hooks_, mr},
 	      constraint_scheduler_{
 	          &topology_, ConstraintSchedulingPolicy{},
-	          std::bind_front(&PhysicsLegoGraph::enqueue_create_constraint,
-	                          this),
-	          std::bind_front(&PhysicsLegoGraph::enqueue_destroy_constraint,
-	                          this),
-	          mr},
+	          std::bind_front(&PhysicsLegoGraph::create_constraint, this),
+	          std::bind_front(&PhysicsLegoGraph::release_constraint, this), mr},
 	      assembly_checker_{thresholds},
 	      contact_exclusion_level_{contact_exclusion_level},
 	      collect_assembly_debug_info_{collect_assembly_debug_info},
@@ -667,13 +666,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		unbind_physx_scene();
 
 		// Release constraints
-		// This will enqueue destroy for all realized constraints
-		// But we need to destroy them immediately
 		constraint_scheduler_.clear();
-		for (auto &[handle, px_constraint] : realized_constraints_) {
-			do_release_constraint(px_constraint);
-		}
-		realized_constraints_.clear();
 	}
 	PhysicsLegoGraph(const PhysicsLegoGraph &) = delete;
 	PhysicsLegoGraph &operator=(const PhysicsLegoGraph &) = delete;
@@ -798,41 +791,11 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	// TODO: use a concurrent dynamic connectivity data structure, or keep a copy for every physics thread
 	HolmDeLichtenbergThorup part_dg_;
 
-	std::unordered_map<ConstraintHandle, physx::PxConstraint *>
-	    realized_constraints_;
-	std::unordered_set<ConstraintHandle> constraints_to_remove_;
-	std::unordered_map<ConstraintHandle, std::tuple<PartId, PartId, Transformd>>
-	    constraints_to_create_;
-	ConstraintHandle next_constraint_handle_ = 1;
 	std::unordered_set<PartId> pending_reset_filtering_parts_;
 
 	void flush_physx_ops() {
 		// Flush constraint scheduler ops
 		constraint_scheduler_.commit();
-
-		// Flush constraint removal
-		for (ConstraintHandle handle : constraints_to_remove_) {
-			auto it = realized_constraints_.find(handle);
-			if (it != realized_constraints_.end()) {
-				do_release_constraint(it->second);
-				realized_constraints_.erase(it);
-			}
-		}
-		constraints_to_remove_.clear();
-
-		// Flush constraint creation
-		for (auto &[handle, tuple] : constraints_to_create_) {
-			auto &[pid_a, pid_b, tf] = tuple;
-			physx::PxConstraint *constraint =
-			    do_create_constraint(pid_a, pid_b, tf);
-			auto [it, inserted] =
-			    realized_constraints_.emplace(handle, constraint);
-			if (!inserted) {
-				throw std::runtime_error(std::format(
-				    "Constraint handle {} already realized", handle));
-			}
-		}
-		constraints_to_create_.clear();
 
 		// Flush filtering reset
 		if (contact_exclusion_level_ ==
@@ -877,27 +840,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		}
 	}
 
-	ConstraintHandle enqueue_create_constraint(PartId pid_a, PartId pid_b,
-	                                           const Transformd &T_a_b) {
-		// Always queue, because the rigid actor might haven't been set up yet
-		ConstraintHandle handle = next_constraint_handle_++;
-		constraints_to_create_.insert_or_assign(
-		    handle, std::make_tuple(pid_a, pid_b, T_a_b));
-		return handle;
-	}
-	void enqueue_destroy_constraint(ConstraintHandle handle) {
-		auto it_realized = realized_constraints_.find(handle);
-		if (it_realized != realized_constraints_.end()) {
-			constraints_to_remove_.insert(handle);
-		} else {
-			auto it_pending = constraints_to_create_.find(handle);
-			if (it_pending != constraints_to_create_.end()) {
-				constraints_to_create_.erase(it_pending);
-			}
-		}
-	}
-	physx::PxConstraint *do_create_constraint(PartId a_id, PartId b_id,
-	                                          const Transformd &T_a_b) {
+	physx::PxConstraint *create_constraint(PartId a_id, PartId b_id,
+	                                       const Transformd &T_a_b) {
 		// PxConstraint shader uses body frames (COM frames) bA2w/bB2w.
 		// Our T_a_b (from Python) is defined between actor-local origins (bottom centers).
 		// Convert to COM-local frames so the weld aligns the intended anchor points.
@@ -929,11 +873,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		        .childLocal = physx::PxTransform{physx::PxIdentity},
 		    });
 	}
-	void do_release_constraint(physx::PxConstraint *constraint) {
+	void release_constraint(physx::PxConstraint *constraint) {
 		constraint->release();
-	}
-	void enqueue_filtering_reset(PartId pid) {
-		pending_reset_filtering_parts_.insert(pid);
 	}
 
 	void enqueue_pending_assembly(auto &&...args) {

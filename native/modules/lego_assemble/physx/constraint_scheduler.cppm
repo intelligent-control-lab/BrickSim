@@ -27,8 +27,8 @@ concept ConstraintSchedulingStrategy =
 	    } -> std::same_as<std::generator<UnorderedPair<PartId>>>;
     };
 
-export template <class Graph, class Strategy, class CreateEdge,
-                 class DestroyEdge, class Handle>
+export template <class Graph, class Strategy, class Handle, class CreateEdge,
+                 class DestroyEdge>
     requires ConstraintSchedulingStrategy<Strategy, Graph> &&
              EdgeCreateWithTransformFn<CreateEdge, PartId, Handle,
                                        Transformd> &&
