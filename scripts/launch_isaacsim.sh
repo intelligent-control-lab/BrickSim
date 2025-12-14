@@ -44,4 +44,5 @@ if [ "$#" -ge 1 ]; then
   ISAAC_ARGS+=( --exec "$EXEC_COMMAND" )
 fi
 
+# exec $ISAACSIM_PATH/isaac-sim.sh "${ISAAC_ARGS[@]}"
 exec isaacsim "${ISAAC_ARGS[@]}"
