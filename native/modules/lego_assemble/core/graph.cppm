@@ -141,10 +141,6 @@ export using DgVertexId = TypedId<struct DgVertexTag, std::uint32_t>;
 
 export struct NoHooks {};
 
-export struct NullChangeBlock {
-	~NullChangeBlock() {}
-};
-
 export template <
     class Ps, template <class> class PartWrapper = SimplePartWrapper,
     class PartExtraKeys = type_list<>, class PartExtraKeysHash = type_list<>,
@@ -314,13 +310,6 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 			    hooks.on_bundle_removed(ep)
 		    } -> std::same_as<void>;
 	    };
-
-	static constexpr bool HasChangeBlockHook = requires(Hooks &hooks) {
-		{
-			// Returns an RAII block to group multiple changes
-			hooks.change_block()
-		};
-	};
 
   public:
 	class ComponentView {
@@ -539,8 +528,6 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	                 PEKs)>::template append<std::pmr::memory_resource *>::
 	                 template can_construct<PartWrapper<P>>)
 	std::optional<PartId> add_part(Args &&...args) {
-		auto _changes = acquire_change_block();
-
 		PartId id = next_part_id_;
 		DgVertexId dgid{dynamic_graph_.add_vertex()};
 		if (!parts_.template emplace<PartWrapper<P>>(id, dgid, args..., res_)) {
@@ -563,8 +550,6 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	template <class PK>
 	    requires(PartKeys::template contains<PK>)
 	std::optional<PartId> remove_part(const PK &key) {
-		auto _changes = acquire_change_block();
-
 		auto entry_opt = parts_.find(key);
 		if (!entry_opt) {
 			return std::nullopt;
@@ -712,8 +697,6 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	std::optional<ConnSegId> connect(const InterfaceRef &stud_if,
 	                                 const InterfaceRef &hole_if,
 	                                 Args &&...args) {
-		auto _changes = acquire_change_block();
-
 		ConnSegRef csref{stud_if, hole_if};
 		if (conn_segs_.contains(csref)) {
 			// already connected
@@ -825,8 +808,6 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	template <class ConnId>
 	    requires(ConnSegKeys::template contains<ConnId>)
 	std::optional<ConnSegId> disconnect(const ConnId &conn_id) {
-		auto _changes = acquire_change_block();
-
 		auto *cs_entry_ptr = conn_segs_.find(conn_id);
 		if (!cs_entry_ptr) {
 			return std::nullopt;
@@ -905,20 +886,6 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 
 	void set_hooks(Hooks *hooks) noexcept {
 		hooks_ = hooks;
-	}
-
-	auto acquire_change_block() {
-		if constexpr (HasChangeBlockHook) {
-			using ChangeBlockType = decltype(hooks_->change_block());
-			using RetType = std::optional<ChangeBlockType>;
-			if (hooks_) {
-				return RetType{hooks_->change_block()};
-			} else {
-				return RetType{};
-			}
-		} else {
-			return NullChangeBlock{};
-		}
 	}
 
   private:

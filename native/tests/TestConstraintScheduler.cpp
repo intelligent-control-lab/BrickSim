@@ -154,7 +154,8 @@ static void test_scheduler_dtor_with_constraints() {
 		                       std::pmr::get_default_resource()};
 
 		// Mark connection once; scheduler should create two tree edges {0,1},{1,2}
-		sched.on_connected(0, 1);
+		sched.notify_connected(0, 1);
+		sched.commit();
 		assert(events.created.size() == 2);
 		assert(events.destroyed.empty());
 		assert(events.has_edge(0, 1));
@@ -166,9 +167,9 @@ static void test_scheduler_dtor_with_constraints() {
 	assert(events.live_by_edge.empty());
 }
 
-// ----------------- ChangeBlock / batching -----------------
+// ----------------- Manual commit / batching -----------------
 
-static void test_single_change_block_batches_flush() {
+static void test_manual_commit_batches_flush() {
 	G g;
 	build_three_parts(g);
 
@@ -188,14 +189,13 @@ static void test_single_change_block_batches_flush() {
 	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
 	                       std::pmr::get_default_resource()};
 
-	{
-		auto block = sched.change_block();
-		// Connect events inside the block should not flush immediately.
-		sched.on_connected(0, 1);
-		sched.on_connected(1, 2);
-		assert(events.created.empty());
-	}
-	// After outer block destruction, a single flush should have created all
+	// Notifications do not flush immediately; only commit() triggers scheduling.
+	sched.notify_connected(0, 1);
+	sched.notify_connected(1, 2);
+	assert(events.created.empty());
+
+	sched.commit();
+	// After commit(), a single flush should have created all
 	// constraints for the final topology (a 0-1-2 chain).
 	assert(events.created.size() == 2);
 	assert(events.has_edge(0, 1));
@@ -203,13 +203,12 @@ static void test_single_change_block_batches_flush() {
 	assert(events.destroyed.empty());
 }
 
-static void test_nested_change_blocks_flush_once() {
+static void test_commit_is_idempotent_with_no_dirty_vertices() {
 	G g;
 	build_three_parts(g);
 
 	ConnectionSegment cs{};
 	assert(g.connect(IR(0, 10), IR(1, 21), cs));
-	assert(g.connect(IR(1, 11), IR(2, 31), cs));
 
 	ConstraintEvents events;
 	using Strat = TreeOnlySchedulingPolicy<G>;
@@ -223,24 +222,17 @@ static void test_nested_change_blocks_flush_once() {
 	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
 	                       std::pmr::get_default_resource()};
 
-	{
-		auto outer = sched.change_block();
-		sched.on_connected(0, 1);
-		assert(events.created.empty());
-		{
-			auto inner = sched.change_block();
-			sched.on_connected(1, 2);
-			assert(events.created.empty());
-		}
-		// inner destroyed, but depth>0 so still no flush
-		assert(events.created.empty());
-	}
-	// Only the outermost destruction should have triggered flush.
-	assert(events.created.size() == 2); // tree edges {0-1,1-2}
+	sched.notify_connected(0, 1);
+	sched.commit();
+	assert(events.created.size() == 1); // edge {0-1}
+
+	// Second commit with no new notifications should be a no-op.
+	sched.commit();
+	assert(events.created.size() == 1);
 	assert(events.destroyed.empty());
 }
 
-static void test_change_block_moved_once() {
+static void test_notify_requires_commit_for_incremental_updates() {
 	G g;
 	build_three_parts(g);
 
@@ -259,16 +251,19 @@ static void test_change_block_moved_once() {
 	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
 	                       std::pmr::get_default_resource()};
 
-	{
-		auto block1 = sched.change_block();
-		// Move into block2; block1's destructor must be a no-op.
-		auto block2 = std::move(block1);
-		sched.on_connected(0, 1);
-		assert(events.created.empty());
-		// block2 goes out of scope here; flush should run exactly once.
-	}
+	sched.notify_connected(0, 1);
+	assert(events.created.empty());
+	sched.commit();
 	assert(events.created.size() == 1);
 	assert(events.has_edge(0, 1));
+
+	// Extend topology with 1-2; should not create new constraints until commit.
+	assert(g.connect(IR(1, 11), IR(2, 31), cs));
+	sched.notify_connected(1, 2);
+	assert(events.created.size() == 1);
+	sched.commit();
+	assert(events.created.size() == 2);
+	assert(events.has_edge(1, 2));
 }
 
 // ----------------- on_part_added -----------------
@@ -295,8 +290,13 @@ static void test_on_part_added_outside_block() {
 	auto p3 = g.add_part<CustomPart>(0.4, BrickColor{10, 20, 30}, ifs3);
 	assert(p3 && *p3 == PartId{3});
 
-	sched.on_part_added(*p3);
-	// Single-vertex CC → strategy emits no edges.
+	sched.notify_part_added(*p3);
+	// Notifications do not flush immediately.
+	assert(events.created.empty());
+	assert(events.destroyed.empty());
+
+	// Single-vertex CC → strategy emits no edges after commit.
+	sched.commit();
 	assert(events.created.empty());
 	assert(events.destroyed.empty());
 }
@@ -322,12 +322,11 @@ static void test_on_part_added_inside_block() {
 	auto p3 = g.add_part<CustomPart>(0.4, BrickColor{10, 20, 30}, ifs3);
 	assert(p3 && *p3 == PartId{3});
 
-	{
-		auto block = sched.change_block();
-		sched.on_part_added(*p3);
-		assert(events.created.empty());
-	}
-	// After block flush, still no constraints because CC has size 1.
+	sched.notify_part_added(*p3);
+	assert(events.created.empty());
+
+	// After commit, still no constraints because CC has size 1.
+	sched.commit();
 	assert(events.created.empty());
 	assert(events.destroyed.empty());
 }
@@ -358,7 +357,8 @@ static void test_connect_two_single_parts() {
 	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
 	                       std::pmr::get_default_resource()};
 
-	sched.on_connected(0, 1);
+	sched.notify_connected(0, 1);
+	sched.commit();
 	assert(events.created.size() == 1);
 	assert(events.has_edge(0, 1));
 	assert(events.destroyed.empty());
@@ -386,7 +386,8 @@ static void test_connect_within_same_cc_tree_only_no_churn() {
 	                       std::pmr::get_default_resource()};
 
 	// Initial scheduling from a single connect
-	sched.on_connected(0, 1);
+	sched.notify_connected(0, 1);
+	sched.commit();
 	assert(events.created.size() == 2);
 	assert(events.has_edge(0, 1));
 	assert(events.has_edge(1, 2));
@@ -394,7 +395,8 @@ static void test_connect_within_same_cc_tree_only_no_churn() {
 
 	// Now add an extra edge inside the same CC (0-2)
 	assert(g.connect(IR(0, 12), IR(2, 31), cs));
-	sched.on_connected(0, 2);
+	sched.notify_connected(0, 2);
+	sched.commit();
 
 	// Tree-only policy should still keep only the spanning tree edges; no new
 	// creates or destroys.
@@ -426,14 +428,16 @@ static void test_connect_within_same_cc_fullgraph_adds_edge() {
 	                       std::pmr::get_default_resource()};
 
 	// Initial scheduling from a single connect
-	sched.on_connected(0, 1);
+	sched.notify_connected(0, 1);
+	sched.commit();
 	assert(events.created.size() == 2); // edges {0-1,1-2}
 	assert(events.has_edge(0, 1));
 	assert(events.has_edge(1, 2));
 
 	// Add extra edge inside same CC (0-2) and reschedule.
 	assert(g.connect(IR(0, 12), IR(2, 31), cs));
-	sched.on_connected(0, 2);
+	sched.notify_connected(0, 2);
+	sched.commit();
 
 	// Full graph policy should add the new constraint edge {0,2}.
 	assert(events.created.size() == 3);
@@ -464,7 +468,8 @@ static void test_disconnect_non_bridge_edge_fullgraph() {
 	                       std::pmr::get_default_resource()};
 
 	// Seed scheduling once
-	sched.on_connected(0, 1);
+	sched.notify_connected(0, 1);
+	sched.commit();
 	assert(events.created.size() == 3);
 	assert(events.has_edge(0, 1));
 	assert(events.has_edge(1, 2));
@@ -474,7 +479,8 @@ static void test_disconnect_non_bridge_edge_fullgraph() {
 	// Remove non-bridge edge 0-2; CC remains {0,1,2}.
 	ConnSegRef ref02{IR(0, 12), IR(2, 31)};
 	assert(g.disconnect(ref02));
-	sched.on_disconnected(0, 2);
+	sched.notify_disconnected(0, 2);
+	sched.commit();
 
 	// Only edge {0,2} should be removed.
 	assert(events.created.size() == 3);
@@ -506,7 +512,8 @@ static void test_disconnect_bridge_edge_splits_cc() {
 	                       std::pmr::get_default_resource()};
 
 	// Seed scheduling
-	sched.on_connected(0, 1);
+	sched.notify_connected(0, 1);
+	sched.commit();
 	assert(events.created.size() == 2);
 	assert(events.has_edge(0, 1));
 	assert(events.has_edge(1, 2));
@@ -514,7 +521,8 @@ static void test_disconnect_bridge_edge_splits_cc() {
 	// Disconnect bridge edge 1-2: CC splits into {0,1} and {2}.
 	ConnSegRef ref12{IR(1, 11), IR(2, 31)};
 	assert(g.disconnect(ref12));
-	sched.on_disconnected(1, 2);
+	sched.notify_disconnected(1, 2);
+	sched.commit();
 
 	// Only edge {1,2} should be removed; {0,1} preserved.
 	assert(events.destroyed.size() == 1);
@@ -542,7 +550,8 @@ static void test_on_part_removed_no_constraints() {
 
 	// Remove an isolated part (no constraint edges in scheduler).
 	assert(g.remove_part(PartId{2}));
-	sched.on_part_removed(PartId{2});
+	sched.notify_part_removed(PartId{2});
+	sched.commit();
 	assert(events.created.empty());
 	assert(events.destroyed.empty());
 }
@@ -569,21 +578,23 @@ static void test_on_part_removed_with_multiple_constraints() {
 	                       std::pmr::get_default_resource()};
 
 	// Initial schedule: edges {0-1,1-2}
-	sched.on_connected(0, 1);
+	sched.notify_connected(0, 1);
+	sched.commit();
 	assert(events.created.size() == 2);
 	assert(events.has_edge(0, 1));
 	assert(events.has_edge(1, 2));
 
 	// Remove middle part from graph, then inform scheduler.
 	assert(g.remove_part(PartId{1}));
-	sched.on_part_removed(PartId{1});
+	sched.notify_part_removed(PartId{1});
+	sched.commit();
 
 	// Both incident constraint edges should be destroyed.
 	assert(events.destroyed.size() == 2);
 	assert(events.live_by_edge.empty());
 }
 
-// ----------------- flush_dirty_ccs_ behaviour -----------------
+// ----------------- consume_dirty_ccs_ behaviour -----------------
 
 struct LoggingStrategy {
 	std::shared_ptr<std::vector<std::vector<PartId>>> seen_components;
@@ -624,11 +635,9 @@ static void test_multiple_dirty_vertices_same_cc_only_one_compute() {
 	Scheduler<LoggingStrategy> sched{&g, strat, create_edge, destroy_edge,
 	                                 std::pmr::get_default_resource()};
 
-	{
-		auto block = sched.change_block();
-		// Mark endpoints of the same CC as dirty.
-		sched.on_connected(0, 2);
-	}
+	// Mark endpoints of the same CC as dirty.
+	sched.notify_connected(0, 2);
+	sched.commit();
 
 	// compute() should have been called exactly once for the CC {0,1,2}.
 	assert(seen->size() == 1);
@@ -658,17 +667,19 @@ static void test_flush_with_no_dirty_vertices_is_noop() {
 	                       std::pmr::get_default_resource()};
 
 	// First schedule once so that edges exist.
-	sched.on_connected(0, 1);
+	sched.notify_connected(0, 1);
+	sched.commit();
 	assert(events.created.size() == 1);
 
 	// Now call on_part_removed for a part that never had constraints;
-	// this will cause a flush with an empty dirty set (no-op).
-	sched.on_part_removed(PartId{2});
+	// this should not change anything after commit().
+	sched.notify_part_removed(PartId{2});
+	sched.commit();
 	assert(events.created.size() == 1);
 	assert(events.destroyed.empty());
 }
 
-// ----------------- flush_ diff logic -----------------
+// ----------------- commit() diff logic -----------------
 
 static void test_no_change_in_desired_edges_no_churn() {
 	G g;
@@ -690,12 +701,14 @@ static void test_no_change_in_desired_edges_no_churn() {
 	                       std::pmr::get_default_resource()};
 
 	// First scheduling
-	sched.on_connected(0, 1);
+	sched.notify_connected(0, 1);
+	sched.commit();
 	assert(events.created.size() == 1);
 	assert(events.destroyed.empty());
 
 	// Mark the same CC dirty again without changing topology.
-	sched.on_connected(0, 1);
+	sched.notify_connected(0, 1);
+	sched.commit();
 	// Strategy still desires the same single edge; no churn expected.
 	assert(events.created.size() == 1);
 	assert(events.destroyed.empty());
@@ -722,13 +735,15 @@ static void test_add_new_desired_edges_only_create_new() {
 	                       std::pmr::get_default_resource()};
 
 	// First schedule: edge {0,1}
-	sched.on_connected(0, 1);
+	sched.notify_connected(0, 1);
+	sched.commit();
 	assert(events.created.size() == 1);
 	assert(events.has_edge(0, 1));
 
 	// Extend topology with 1-2; tree-only policy now wants {0,1} and {1,2}.
 	assert(g.connect(IR(1, 11), IR(2, 31), cs));
-	sched.on_connected(1, 2);
+	sched.notify_connected(1, 2);
+	sched.commit();
 
 	// Existing edge kept; new one created; none destroyed.
 	assert(events.created.size() == 2);
@@ -778,14 +793,16 @@ static void test_cross_cc_edges_removed_after_split() {
 	                       std::pmr::get_default_resource()};
 
 	// Initial constraints: strategy requests edge {0,2} over CC {0,1,2}.
-	sched.on_connected(0, 1);
+	sched.notify_connected(0, 1);
+	sched.commit();
 	assert(events.has_edge(0, 2));
 
 	// Now disconnect 1-2 so that topology splits, leaving 0 and 2 in
 	// different CCs; cross-CC constraint {0,2} must be removed.
 	ConnSegRef ref12{IR(1, 11), IR(2, 31)};
 	assert(g.disconnect(ref12));
-	sched.on_disconnected(1, 2);
+	sched.notify_disconnected(1, 2);
+	sched.commit();
 
 	assert(!events.has_edge(0, 2));
 }
@@ -953,9 +970,9 @@ static void test_exponential_skip_policy_n4_k2() {
 int main() {
 	test_scheduler_dtor_no_constraints();
 	test_scheduler_dtor_with_constraints();
-	test_single_change_block_batches_flush();
-	test_nested_change_blocks_flush_once();
-	test_change_block_moved_once();
+	test_manual_commit_batches_flush();
+	test_commit_is_idempotent_with_no_dirty_vertices();
+	test_notify_requires_commit_for_incremental_updates();
 
 	test_on_part_added_outside_block();
 	test_on_part_added_inside_block();

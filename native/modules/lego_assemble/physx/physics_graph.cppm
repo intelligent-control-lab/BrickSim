@@ -158,7 +158,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			auto px_actor = entry.template key<physx::PxRigidActor *>();
 
 			// Update constraint scheduler
-			owner_->constraint_scheduler_.on_part_added(pid);
+			owner_->constraint_scheduler_.notify_part_added(pid);
 
 			// Thread safety: modifying sim data structures
 			std::lock_guard<std::mutex> lock(owner_->sim_mutex_);
@@ -228,7 +228,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 		void on_part_removed(PartId pid) {
 			// Update constraint scheduler
-			owner_->constraint_scheduler_.on_part_removed(pid);
+			owner_->constraint_scheduler_.notify_part_removed(pid);
 		}
 
 		void on_connected(G::ConnSegEntry cs_entry,
@@ -315,7 +315,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			auto [a_id, b_id] = cb_entry.first;
 
 			// Update constraint scheduler
-			owner_->constraint_scheduler_.on_connected(a_id, b_id);
+			owner_->constraint_scheduler_.notify_connected(a_id, b_id);
 
 			auto *actor_a = owner_->topology_.parts()
 			                    .template key_of<physx::PxRigidActor *>(a_id);
@@ -394,11 +394,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		void on_bundle_removed(const ConnectionEndpoint &ep) {
 			auto [a_id, b_id] = ep;
 			// Update constraint scheduler
-			owner_->constraint_scheduler_.on_disconnected(a_id, b_id);
-		}
-
-		auto change_block() {
-			return owner_->constraint_scheduler_.change_block();
+			owner_->constraint_scheduler_.notify_disconnected(a_id, b_id);
 		}
 	};
 
@@ -811,6 +807,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	std::unordered_set<PartId> pending_reset_filtering_parts_;
 
 	void flush_physx_ops() {
+		// Flush constraint scheduler ops
+		constraint_scheduler_.commit();
+
 		// Flush constraint removal
 		for (ConstraintHandle handle : constraints_to_remove_) {
 			auto it = realized_constraints_.find(handle);
@@ -964,7 +963,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	static_assert(TopologyGraph::HasOnBundleCreatedHook);
 	static_assert(TopologyGraph::HasOnBundleRemovingHook);
 	static_assert(TopologyGraph::HasOnBundleRemovedHook);
-	static_assert(TopologyGraph::HasChangeBlockHook);
 };
 
 } // namespace lego_assemble

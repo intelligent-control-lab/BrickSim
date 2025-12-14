@@ -93,16 +93,6 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 				owner_->unbind_connection(cs_entry.template key<ConnSegId>());
 			}
 		}
-
-		auto change_block() {
-			auto *pg = owner_->physics_graph_;
-			using RetType = decltype(pg->topology().acquire_change_block());
-			if (pg != nullptr) {
-				return pg->topology().acquire_change_block();
-			} else {
-				return RetType{};
-			}
-		}
 	};
 
 	using PhysicsPartId = TypedId<struct PhysicsPartTag, PartId>;
@@ -352,7 +342,6 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	bool bind_part(PartId usd_pid, const UsdPartWrapper<P> &usd_pw,
 	               physx::PxRigidActor *px_actor) {
 		SyncStatBlock _stat_block{this};
-		auto _change_block = physics_graph_->topology().acquire_change_block();
 		// Bind a USD part to PhysicsGraph. The corresponding actor must already exist.
 		UsdPartId t_usd_pid{usd_pid};
 		if (pid_mapping_.contains(t_usd_pid)) [[unlikely]] {
@@ -392,7 +381,6 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 
 	bool unbind_part(PartId physics_pid) {
 		SyncStatBlock _stat_block{this};
-		auto _change_block = physics_graph_->topology().acquire_change_block();
 		// Unbind a part in PhysicsGraph.
 		// First, remove all connections in bookkeeping table.
 		// No need to remove connections from PhysicsGraph here,
@@ -453,7 +441,6 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	bool bind_connection(ConnSegId usd_csid, const ConnSegRef &usd_csref,
 	                     const SimpleWrapper<ConnectionSegment> &usd_csw) {
 		SyncStatBlock _stat_block{this};
-		auto _change_block = physics_graph_->topology().acquire_change_block();
 		// Bind a USD connection segment to PhysicsGraph.
 		// Requires both endpoint parts to be already bound.
 		UsdConnSegId t_usd_csid{usd_csid};
@@ -501,7 +488,6 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 
 	bool unbind_connection(ConnSegId usd_csid) {
 		SyncStatBlock _stat_block{this};
-		auto _change_block = physics_graph_->topology().acquire_change_block();
 		// Unbind a USD connection from PhysicsGraph.
 		UsdConnSegId t_usd_csid{usd_csid};
 		const PhysicsConnSegId *t_physics_csid_ptr =
@@ -536,7 +522,6 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	}
 
 	void initial_sync() {
-		auto _change_block = physics_graph_->topology().acquire_change_block();
 		usd_graph_->topology().parts().for_each([&](auto &&keys, auto &&pw) {
 			PartId pid = std::get<
 			    UsdGraph::TopologyGraph::PartKeys::template index_of<PartId>>(
@@ -617,7 +602,6 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	static_assert(PhysicsGraph::HasOnDisassembledHook);
 	static_assert(UsdGraph::HasOnConnectedHook);
 	static_assert(UsdGraph::HasOnDisconnectingHook);
-	static_assert(UsdGraph::HasChangeBlockHook);
 };
 
 } // namespace lego_assemble

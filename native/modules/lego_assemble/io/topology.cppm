@@ -311,7 +311,6 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 	    requires(Graph::PartExtraKeys::size == 0 &&
 	             Graph::ConnSegExtraKeys::size == 0)
 	{
-		auto _changes = g.acquire_change_block();
 		ImportedMapping imported;
 		// 1) Import parts
 		for (const JsonPart &jp : topology.parts) {
@@ -375,7 +374,6 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 	import_usd_graph(const JsonTopology &topology, UsdGraph &g,
 	                 std::int64_t env_id = kNoEnv,
 	                 const Transformd &T_env_ref = SE3d{}.identity()) const {
-		auto _changes = g.acquire_change_block();
 		ImportedMapping imported;
 		{
 			pxr::SdfChangeBlock _usd_changes;

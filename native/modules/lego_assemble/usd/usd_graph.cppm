@@ -93,9 +93,6 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 	static constexpr bool HasOnDisconnectingHook =
 	    TopologyGraph::HasOnDisconnectingHook;
 
-	static constexpr bool HasChangeBlockHook =
-	    TopologyGraph::HasChangeBlockHook;
-
 	template <PartLike P>
 	    requires PartAuthorPartTypes::template
 	contains<P> using PartAuthorFor =
@@ -137,10 +134,6 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		topology_.set_hooks(hooks);
 	}
 
-	auto acquire_change_block() {
-		return topology_.acquire_change_block();
-	}
-
 	std::vector<pxr::SdfPath> unrealized_parts() const {
 		std::vector<pxr::SdfPath> result;
 		for (const auto &[path, part_info] : part_path_table_) {
@@ -166,7 +159,6 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 	contains<P> std::optional<std::tuple<PartId, pxr::SdfPath>>
 	add_part(std::int64_t env_id, P part) {
 		using Author = PartAuthorFor<P>;
-		auto _topology_changes = acquire_change_block();
 		pxr::SdfChangeBlock _changes;
 		auto [path, colliders] =
 		    allocator_.allocate_part_managed<Author>(env_id, part);
@@ -187,7 +179,6 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 	}
 
 	bool remove_part(const pxr::SdfPath &path) {
-		auto _topology_changes = acquire_change_block();
 		pxr::SdfChangeBlock _changes;
 		// Remove the part from USD
 		bool part_removed_from_usd = allocator_.deallocate_managed_part(path);
@@ -332,7 +323,6 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		}
 		const pxr::SdfPath &stud_path = *stud_path_ptr;
 		const pxr::SdfPath &hole_path = *hole_path_ptr;
-		auto _topology_changes = acquire_change_block();
 		pxr::SdfChangeBlock _changes;
 
 		bool connected_before = topology_.is_connected(stud_pid, hole_pid);
@@ -393,7 +383,6 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 	}
 
 	bool disconnect(const pxr::SdfPath &conn_path) {
-		auto _topology_changes = acquire_change_block();
 		pxr::SdfChangeBlock _changes;
 		// Remove the connection from USD
 		bool conn_removed_from_usd =

@@ -27,26 +27,6 @@ concept ConstraintSchedulingStrategy =
 	    } -> std::same_as<std::generator<UnorderedPair<PartId>>>;
     };
 
-export class FnChangeBlock {
-  public:
-	explicit FnChangeBlock(std::move_only_function<void()> fn)
-	    : fn_(std::move(fn)) {}
-	~FnChangeBlock() {
-		if (fn_) {
-			fn_();
-		}
-	}
-	FnChangeBlock(const FnChangeBlock &) = delete;
-	FnChangeBlock &operator=(const FnChangeBlock &) = delete;
-	FnChangeBlock(FnChangeBlock &&other) noexcept : fn_(std::move(other.fn_)) {
-		other.fn_ = nullptr;
-	}
-	FnChangeBlock &operator=(FnChangeBlock &&other) = delete;
-
-  private:
-	std::move_only_function<void()> fn_;
-};
-
 export template <class Graph, class Strategy, class CreateEdge,
                  class DestroyEdge, class Handle>
     requires ConstraintSchedulingStrategy<Strategy, Graph> &&
@@ -84,24 +64,11 @@ class ConstraintScheduler {
 		dirty_vertices_.clear();
 	}
 
-	[[nodiscard]] FnChangeBlock change_block() {
-		if (in_change_block_) {
-			return FnChangeBlock{nullptr};
-		} else {
-			in_change_block_ = true;
-			return FnChangeBlock{
-			    std::bind_front(&ConstraintScheduler::commit_changes_, this)};
-		}
-	}
-
-	void on_part_added(PartId id) {
+	void notify_part_added(PartId id) {
 		dirty_vertices_.insert(id);
-		if (!in_change_block_) {
-			flush_();
-		}
 	}
 
-	void on_part_removed(PartId id) {
+	void notify_part_removed(PartId id) {
 		auto it_adj = skeleton_adj_.find(id);
 		if (it_adj != skeleton_adj_.end()) {
 			auto &[_, adj] = *it_adj;
@@ -136,25 +103,51 @@ class ConstraintScheduler {
 
 		// Erase dirty vertex record
 		dirty_vertices_.erase(id);
-
-		if (!in_change_block_) {
-			flush_();
-		}
 	}
 
-	void on_connected(PartId a, PartId b) {
+	void notify_connected(PartId a, PartId b) {
 		dirty_vertices_.insert(a);
 		dirty_vertices_.insert(b);
-		if (!in_change_block_) {
-			flush_();
-		}
 	}
 
-	void on_disconnected(PartId a, PartId b) {
+	void notify_disconnected(PartId a, PartId b) {
 		dirty_vertices_.insert(a);
 		dirty_vertices_.insert(b);
-		if (!in_change_block_) {
-			flush_();
+	}
+
+	void commit() {
+		for (auto cc : consume_dirty_ccs_()) {
+			// 1. Collect all existing constraint edges, and transforms
+			std::pmr::unordered_map<PartId, Transformd> transforms{mr_};
+			std::pmr::unordered_set<EdgeKey> existing_edges{mr_};
+			for (auto [u, T_root_u] : cc.transforms()) {
+				transforms.emplace(u, T_root_u);
+				auto it_adj = skeleton_adj_.find(u);
+				if (it_adj != skeleton_adj_.end()) {
+					auto &[_, adj] = *it_adj;
+					for (PartId v : adj) {
+						if (u < v) {
+							existing_edges.emplace(u, v);
+						}
+					}
+				}
+			}
+			// 2. Compute desired constraint edges
+			for (auto desired_ek : strategy_.compute(cc)) {
+				if (existing_edges.erase(desired_ek) == 0) {
+					// New edge, create it
+					const auto &[a, b] = desired_ek;
+					const Transformd &T_root_a = transforms.at(a);
+					const Transformd &T_root_b = transforms.at(b);
+					Transformd T_a_b = inverse(T_root_a) * T_root_b;
+					Handle h = create_(a, b, T_a_b);
+					add_constraint_edge_(desired_ek, std::move(h));
+				}
+			}
+			// 3. Remove obsolete constraint edges
+			for (const EdgeKey &obsolete_ek : existing_edges) {
+				remove_constraint_edge_(obsolete_ek);
+			}
 		}
 	}
 
@@ -168,12 +161,6 @@ class ConstraintScheduler {
 	std::pmr::unordered_map<PartId, std::pmr::unordered_set<PartId>>
 	    skeleton_adj_;
 	std::pmr::unordered_set<PartId> dirty_vertices_;
-	bool in_change_block_ = false;
-
-	void commit_changes_() {
-		in_change_block_ = false;
-		flush_();
-	}
 
 	void add_constraint_edge_(const EdgeKey &ek, Handle &&h) {
 		const auto &[a, b] = ek;
@@ -217,7 +204,7 @@ class ConstraintScheduler {
 		}
 	}
 
-	std::generator<typename Graph::ComponentView> flush_dirty_ccs_() {
+	std::generator<typename Graph::ComponentView> consume_dirty_ccs_() {
 		if (graph_ == nullptr || dirty_vertices_.empty()) {
 			co_return;
 		}
@@ -234,42 +221,6 @@ class ConstraintScheduler {
 				remaining_vertices.erase(pid);
 			}
 			co_yield {cc_view};
-		}
-	}
-
-	void flush_() {
-		for (auto cc : flush_dirty_ccs_()) {
-			// 1. Collect all existing constraint edges, and transforms
-			std::pmr::unordered_map<PartId, Transformd> transforms{mr_};
-			std::pmr::unordered_set<EdgeKey> existing_edges{mr_};
-			for (auto [u, T_root_u] : cc.transforms()) {
-				transforms.emplace(u, T_root_u);
-				auto it_adj = skeleton_adj_.find(u);
-				if (it_adj != skeleton_adj_.end()) {
-					auto &[_, adj] = *it_adj;
-					for (PartId v : adj) {
-						if (u < v) {
-							existing_edges.emplace(u, v);
-						}
-					}
-				}
-			}
-			// 2. Compute desired constraint edges
-			for (auto desired_ek : strategy_.compute(cc)) {
-				if (existing_edges.erase(desired_ek) == 0) {
-					// New edge, create it
-					const auto &[a, b] = desired_ek;
-					const Transformd &T_root_a = transforms.at(a);
-					const Transformd &T_root_b = transforms.at(b);
-					Transformd T_a_b = inverse(T_root_a) * T_root_b;
-					Handle h = create_(a, b, T_a_b);
-					add_constraint_edge_(desired_ek, std::move(h));
-				}
-			}
-			// 3. Remove obsolete constraint edges
-			for (const EdgeKey &obsolete_ek : existing_edges) {
-				remove_constraint_edge_(obsolete_ek);
-			}
 		}
 	}
 };
