@@ -66,32 +66,31 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		}
 
 		// ==== Listens UsdGraph ====
+		using G = UsdGraph::TopologyGraph;
 
 		// Thead safety: called on USD/Kit thread
 
-		void
-		on_connected(ConnSegId csid, const ConnSegRef &csref,
-		             [[maybe_unused]] const InterfaceSpec &stud_spec,
-		             [[maybe_unused]] const InterfaceSpec &hole_spec,
-		             SimpleWrapper<ConnectionSegment> &csw,
-		             [[maybe_unused]] SimpleWrapper<ConnectionBundle> &cbw) {
+		void on_connected(G::ConnSegEntry cs_entry,
+		                  [[maybe_unused]] G::ConnBundleEntry cb_entry,
+		                  [[maybe_unused]] const InterfaceSpec &stud_spec,
+		                  [[maybe_unused]] const InterfaceSpec &hole_spec) {
 			if (owner_->suppress_usd_callbacks_) {
 				return;
 			}
 			if (owner_->sync_conns_to_physics_) {
-				owner_->bind_connection(csid, csref, csw);
+				owner_->bind_connection(cs_entry.template key<ConnSegId>(),
+				                        cs_entry.template key<ConnSegRef>(),
+				                        cs_entry.value());
 			}
 		}
 
-		void on_disconnecting(
-		    ConnSegId csid, [[maybe_unused]] const ConnSegRef &csref,
-		    [[maybe_unused]] SimpleWrapper<ConnectionSegment> &csw,
-		    [[maybe_unused]] SimpleWrapper<ConnectionBundle> &cbw) {
+		void on_disconnecting(G::ConnSegEntry cs_entry,
+		                      [[maybe_unused]] G::ConnBundleEntry cb_entry) {
 			if (owner_->suppress_usd_callbacks_) {
 				return;
 			}
 			if (owner_->sync_conns_to_physics_) {
-				owner_->unbind_connection(csid);
+				owner_->unbind_connection(cs_entry.template key<ConnSegId>());
 			}
 		}
 

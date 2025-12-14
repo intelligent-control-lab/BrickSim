@@ -58,7 +58,6 @@ struct Hooks {
 	std::size_t removing_bundle_size = 0;
 
 	PartId last_added_pid = PartId{0};
-	bool added_pw_matches_store = false;
 
 	bool removing_alive_in_store = false;
 	bool removing_outgoing_contains = false;
@@ -69,50 +68,51 @@ struct Hooks {
 	bool connect_bundle_has_csid = false;
 	bool disconnect_bundle_has_csid = false;
 
-	template <class P>
-	void on_part_added(PartId pid, SimplePartWrapper<P> &pw) {
+	void on_part_added(G::PartEntry entry) {
 		++added_calls;
-		last_added_pid = pid;
-		added_pw_matches_store =
-		    (&pw == g->parts().template find_value<SimplePartWrapper<P>>(pid));
+		last_added_pid = entry.key<PartId>();
 	}
 
-	template <class P>
-	void on_part_removing(PartId pid, SimplePartWrapper<P> &pw) {
+	void on_part_removing(G::PartEntry entry) {
 		++removing_calls;
-		removing_alive_in_store = g->parts().contains(pid);
-		removing_outgoing_contains = (pw.outgoings().size() > 0);
-		removing_neighbors_contains = (pw.neighbor_parts().size() > 0);
+		removing_alive_in_store = g->parts().contains(entry.key<PartId>());
+		entry.visit([&](auto &pw) {
+			removing_outgoing_contains = (pw.outgoings().size() > 0);
+			removing_neighbors_contains = (pw.neighbor_parts().size() > 0);
+		});
 	}
 
-	void on_connected(ConnSegId csid, const ConnSegRef &csref,
-	                  const InterfaceSpec &, const InterfaceSpec &, CSW &,
-	                  CBW &cbw) {
+	void on_connected(G::ConnSegEntry cs_entry, G::ConnBundleEntry cb_entry,
+	                  const InterfaceSpec &, const InterfaceSpec &) {
 		++connected_calls;
-		last_csid = csid;
-		last_csref = csref;
-		connect_bundle_has_csid = cbw.wrapped().conn_seg_ids.contains(csid);
+		last_csid = cs_entry.key<ConnSegId>();
+		last_csref = cs_entry.key<ConnSegRef>();
+		connect_bundle_has_csid =
+		    cb_entry.second.wrapped().conn_seg_ids.contains(last_csid);
 	}
 
-	void on_disconnecting(ConnSegId csid, const ConnSegRef &, CSW &, CBW &cbw) {
+	void on_disconnecting(G::ConnSegEntry cs_entry,
+	                      G::ConnBundleEntry cb_entry) {
 		++disconnecting_calls;
-		disconnect_bundle_has_csid = cbw.wrapped().conn_seg_ids.contains(csid);
+		disconnect_bundle_has_csid =
+		    cb_entry.second.wrapped().conn_seg_ids.contains(
+		        cs_entry.key<ConnSegId>());
 	}
 
-	void on_bundle_created(const ConnectionEndpoint &ep, CBW &cbw) {
+	void on_bundle_created(G::ConnBundleEntry cb_entry) {
 		++bundle_created_calls;
-		last_created_ep = ep;
-		created_bundle_size = cbw.wrapped().conn_seg_ids.size();
+		last_created_ep = cb_entry.first;
+		created_bundle_size = cb_entry.second.wrapped().conn_seg_ids.size();
 	}
 
-	void on_bundle_removing(const ConnectionEndpoint &ep, CBW &cbw) {
+	void on_bundle_removing(G::ConnBundleEntry cb_entry) {
 		++bundle_removing_calls;
-		last_removed_ep = ep;
-		removing_bundle_size = cbw.wrapped().conn_seg_ids.size();
+		last_removed_ep = cb_entry.first;
+		removing_bundle_size = cb_entry.second.wrapped().conn_seg_ids.size();
 	}
 };
-static_assert(G::HasAllOnPartAddedHooks);
-static_assert(G::HasAllOnPartRemovingHooks);
+static_assert(G::HasOnPartAddedHook);
+static_assert(G::HasOnPartRemovingHook);
 static_assert(G::HasOnConnectedHook);
 static_assert(G::HasOnDisconnectingHook);
 static_assert(G::HasOnBundleCreatedHook);
@@ -173,7 +173,6 @@ static void test_added_hook() {
 	assert(g.add_part<CustomPart>(0.3, BrickColor{0, 0, 255}, ifs2));
 	assert(hooks.added_calls == 3);
 	assert(hooks.last_added_pid == 2);
-	assert(hooks.added_pw_matches_store);
 }
 
 static void test_connected_hook() {

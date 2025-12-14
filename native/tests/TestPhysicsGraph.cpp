@@ -47,8 +47,8 @@ using TestGraph = PhysicsLegoGraph<type_list<BrickPart>, TestHooks>;
 using TopologyGraph = TestGraph::TopologyGraph;
 using ShapeMappingT = TestGraph::ShapeMapping;
 
-static_assert(TopologyGraph::HasAllOnPartAddedHooks);
-static_assert(TopologyGraph::HasAllOnPartRemovingHooks);
+static_assert(TopologyGraph::HasOnPartAddedHook);
+static_assert(TopologyGraph::HasOnPartRemovingHook);
 static_assert(TopologyGraph::HasOnConnectedHook);
 static_assert(TopologyGraph::HasOnDisconnectingHook);
 static_assert(TopologyGraph::HasOnBundleCreatedHook);

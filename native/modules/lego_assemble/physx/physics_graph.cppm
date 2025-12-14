@@ -95,11 +95,55 @@ export template <class Ps, class Hooks> class PhysicsLegoGraph;
 
 export template <PartLike... Ps, class Hooks>
 class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
+  private:
+	struct TopologyHooks;
+
   public:
 	using Self = PhysicsLegoGraph<type_list<Ps...>, Hooks>;
 
+	using TopologyGraph = LegoGraph<
+	    type_list<Ps...>, PhysicsPartWrapper, type_list<physx::PxRigidActor *>,
+	    type_list<std::hash<physx::PxRigidActor *>>, type_list<std::equal_to<>>,
+	    PhysicsConnectionSegmentWrapper, type_list<>, type_list<>, type_list<>,
+	    PhysicsConnectionBundleWrapper, TopologyHooks>;
+	using ConstraintSchedulingPolicy =
+	    CombinedSchedulingPolicy<TopologyGraph, TreeOnlySchedulingPolicy,
+	                             RamanujanLikeSchedulingPolicy>;
+	// using ConstraintSchedulingPolicy = CombinedSchedulingPolicy<TopologyGraph, FullGraphSchedulingPolicy, RamanujanLikeSchedulingPolicy>;
+	// using ConstraintSchedulingPolicy = RamanujanLikeSchedulingPolicy<TopologyGraph>;
+	// using ConstraintSchedulingPolicy = CombinedSchedulingPolicy<TopologyGraph, FullGraphSchedulingPolicy, ExponentialSkipSchedulingPolicy>;
+	// using ConstraintSchedulingPolicy = FullGraphSchedulingPolicy<TopologyGraph>;
+	// using ConstraintSchedulingPolicy = ExponentialSkipSchedulingPolicy<TopologyGraph>;
+	// using ConstraintSchedulingPolicy = TreeOnlySchedulingPolicy<TopologyGraph>;
+	using PhysicsConstraintScheduler = ConstraintScheduler<
+	    TopologyGraph, ConstraintSchedulingPolicy,
+	    std::function<ConstraintHandle(PartId, PartId, const Transformd &)>,
+	    std::function<void(ConstraintHandle)>, ConstraintHandle>;
+	using ShapeMapping =
+	    MultiKeyMap<type_list<InterfaceRef, ActorShapePair>, InterfaceSpec,
+	                type_list<InterfaceRefHash, ActorShapePairHash>>;
+
+	static constexpr bool HasOnAssembledHook =
+	    requires(Hooks &hooks, ConnSegId csid, const ConnSegRef &csref,
+	             const ConnectionSegment &conn_seg) {
+		    {
+			    // Called after a new connection segment is assembled
+			    hooks.on_assembled(csid, csref, conn_seg)
+		    } -> std::same_as<void>;
+	    };
+
+	static constexpr bool HasOnDisassembledHook =
+	    requires(Hooks &hooks, ConnSegId csid) {
+		    {
+			    // Called after a connection segment is disassembled
+			    hooks.on_disassembled(csid)
+		    } -> std::same_as<void>;
+	    };
+
   private:
 	struct TopologyHooks {
+		using G = TopologyGraph;
+
 		Self *owner_;
 
 		TopologyHooks(Self *owner) : owner_{owner} {}
@@ -109,12 +153,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		TopologyHooks(TopologyHooks &&) = delete;
 		TopologyHooks &operator=(TopologyHooks &&) = delete;
 
-		template <class P>
-		void on_part_added(PartId pid, PhysicsPartWrapper<P> &pw) {
-			// Update shape <-> interface mapping
-			physx::PxRigidActor *px_actor =
-			    owner_->topology_.parts()
-			        .template key_of<physx::PxRigidActor *>(pid);
+		void on_part_added(G::PartEntry entry) {
+			PartId pid = entry.template key<PartId>();
+			auto px_actor = entry.template key<physx::PxRigidActor *>();
 
 			// Update constraint scheduler
 			owner_->constraint_scheduler_.on_part_added(pid);
@@ -130,35 +171,35 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				    static_cast<const void *>(px_actor), pid));
 			}
 
-			for (const auto &[if_id, shape] : pw.interface_shapes()) {
-				if (shape == nullptr) {
-					throw std::runtime_error(std::format(
-					    "Interface {} of part id {} has null PxShape", if_id,
-					    pid));
+			entry.visit([&](auto &pw) {
+				for (const auto &[if_id, shape] : pw.interface_shapes()) {
+					if (shape == nullptr) {
+						throw std::runtime_error(std::format(
+						    "Interface {} of part id {} has null PxShape",
+						    if_id, pid));
+					}
+					std::optional<InterfaceSpec> iface =
+					    pw.wrapped().get_interface(if_id);
+					if (!iface) {
+						throw std::runtime_error(
+						    std::format("Interface {} not found in part id {}",
+						                if_id, pid));
+					}
+					if (!owner_->shape_mapping_.emplace(
+					        InterfaceRef{pid, if_id},
+					        ActorShapePair{px_actor, shape},
+					        std::move(*iface))) {
+						throw std::runtime_error(std::format(
+						    "Failed to map shape to interface {} of part id {}",
+						    if_id, pid));
+					}
 				}
-				std::optional<InterfaceSpec> iface =
-				    pw.wrapped().get_interface(if_id);
-				if (!iface) {
-					throw std::runtime_error(std::format(
-					    "Interface {} not found in part id {}", if_id, pid));
-				}
-				if (!owner_->shape_mapping_.emplace(
-				        InterfaceRef{pid, if_id},
-				        ActorShapePair{px_actor, shape}, std::move(*iface))) {
-					throw std::runtime_error(std::format(
-					    "Failed to map shape to interface {} of part id {}",
-					    if_id, pid));
-				}
-			}
+			});
 		}
 
-		template <class P>
-		void on_part_removing(PartId pid, PhysicsPartWrapper<P> &pw) {
-			// Update shape <-> interface mapping
-
-			physx::PxRigidActor *px_actor =
-			    owner_->topology_.parts()
-			        .template key_of<physx::PxRigidActor *>(pid);
+		void on_part_removing(G::PartEntry entry) {
+			PartId pid = entry.template key<PartId>();
+			auto px_actor = entry.template key<physx::PxRigidActor *>();
 
 			// Thread safety: modifying sim data structures
 			std::lock_guard<std::mutex> lock(owner_->sim_mutex_);
@@ -172,13 +213,17 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			owner_->part_dg_.erase_vertex(part_it->second);
 			owner_->part_actors_.erase(part_it);
 
-			for (const auto &[if_id, shape] : pw.interface_shapes()) {
-				if (!owner_->shape_mapping_.erase(InterfaceRef{pid, if_id})) {
-					throw std::runtime_error(std::format(
-					    "Failed to unmap shape from interface {} of part id {}",
-					    if_id, pid));
+			entry.visit([&](auto &pw) {
+				for (const auto &[if_id, shape] : pw.interface_shapes()) {
+					if (!owner_->shape_mapping_.erase(
+					        InterfaceRef{pid, if_id})) {
+						throw std::runtime_error(
+						    std::format("Failed to unmap shape from interface "
+						                "{} of part id {}",
+						                if_id, pid));
+					}
 				}
-			}
+			});
 		}
 
 		void on_part_removed(PartId pid) {
@@ -186,18 +231,19 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			owner_->constraint_scheduler_.on_part_removed(pid);
 		}
 
-		void
-		on_connected(ConnSegId csid, const ConnSegRef &csref,
-		             [[maybe_unused]] const InterfaceSpec &stud_spec,
-		             [[maybe_unused]] const InterfaceSpec &hole_spec,
-		             PhysicsConnectionSegmentWrapper &csw,
-		             [[maybe_unused]] PhysicsConnectionBundleWrapper &cbw) {
+		void on_connected(G::ConnSegEntry cs_entry,
+		                  [[maybe_unused]] G::ConnBundleEntry cb_entry,
+		                  [[maybe_unused]] const InterfaceSpec &stud_spec,
+		                  [[maybe_unused]] const InterfaceSpec &hole_spec) {
 			if (owner_->contact_exclusion_level_ !=
 			    ContactExclusionLevel::Shape) {
 				return;
 			}
 
-			const auto &[stud_if_ref, hole_if_ref] = csref;
+			ConnSegId csid = cs_entry.template key<ConnSegId>();
+			const auto &[stud_if_ref, hole_if_ref] =
+			    cs_entry.template key<ConnSegRef>();
+			PhysicsConnectionSegmentWrapper &csw = cs_entry.value();
 
 			{
 				// Thread sim data structures: modifying sim data structures
@@ -233,14 +279,18 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			owner_->enqueue_filtering_reset(stud_pid);
 		}
 
-		void
-		on_disconnecting(ConnSegId csid, const ConnSegRef &csref,
-		                 PhysicsConnectionSegmentWrapper &csw,
-		                 [[maybe_unused]] PhysicsConnectionBundleWrapper &cbw) {
+		void on_disconnecting(G::ConnSegEntry cs_entry,
+		                      [[maybe_unused]] G::ConnBundleEntry cb_entry) {
 			if (owner_->contact_exclusion_level_ !=
 			    ContactExclusionLevel::Shape) {
 				return;
 			}
+
+			ConnSegId csid = cs_entry.template key<ConnSegId>();
+			const auto &[stud_if_ref, hole_if_ref] =
+			    cs_entry.template key<ConnSegRef>();
+			const auto &[stud_pid, stud_ifid] = stud_if_ref;
+			PhysicsConnectionSegmentWrapper &csw = cs_entry.value();
 
 			// Remove contact exclusion
 			if (csw.px_stud_shape != NullActorShapePair &&
@@ -258,15 +308,11 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			csw.px_stud_shape = NullActorShapePair;
 			csw.px_hole_shape = NullActorShapePair;
 
-			const auto &[stud_if_ref, hole_if_ref] = csref;
-			const auto &[stud_pid, stud_ifid] = stud_if_ref;
 			owner_->enqueue_filtering_reset(stud_pid);
 		}
 
-		void on_bundle_created(
-		    const ConnectionEndpoint &ep,
-		    [[maybe_unused]] PhysicsConnectionBundleWrapper &cbw) {
-			auto [a_id, b_id] = ep;
+		void on_bundle_created(G::ConnBundleEntry cb_entry) {
+			auto [a_id, b_id] = cb_entry.first;
 
 			// Update constraint scheduler
 			owner_->constraint_scheduler_.on_connected(a_id, b_id);
@@ -308,10 +354,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			}
 		}
 
-		void on_bundle_removing(
-		    const ConnectionEndpoint &ep,
-		    [[maybe_unused]] PhysicsConnectionBundleWrapper &cbw) {
-			auto [a_id, b_id] = ep;
+		void on_bundle_removing(G::ConnBundleEntry cb_entry) {
+			auto [a_id, b_id] = cb_entry.first;
 			auto *actor_a = owner_->topology_.parts()
 			                    .template key_of<physx::PxRigidActor *>(a_id);
 			auto *actor_b = owner_->topology_.parts()
@@ -601,45 +645,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	};
 
   public:
-	using TopologyGraph = LegoGraph<
-	    type_list<Ps...>, PhysicsPartWrapper, type_list<physx::PxRigidActor *>,
-	    type_list<std::hash<physx::PxRigidActor *>>, type_list<std::equal_to<>>,
-	    PhysicsConnectionSegmentWrapper, type_list<>, type_list<>, type_list<>,
-	    PhysicsConnectionBundleWrapper, TopologyHooks>;
-	using ConstraintSchedulingPolicy =
-	    CombinedSchedulingPolicy<TopologyGraph, TreeOnlySchedulingPolicy,
-	                             RamanujanLikeSchedulingPolicy>;
-	// using ConstraintSchedulingPolicy = CombinedSchedulingPolicy<TopologyGraph, FullGraphSchedulingPolicy, RamanujanLikeSchedulingPolicy>;
-	// using ConstraintSchedulingPolicy = RamanujanLikeSchedulingPolicy<TopologyGraph>;
-	// using ConstraintSchedulingPolicy = CombinedSchedulingPolicy<TopologyGraph, FullGraphSchedulingPolicy, ExponentialSkipSchedulingPolicy>;
-	// using ConstraintSchedulingPolicy = FullGraphSchedulingPolicy<TopologyGraph>;
-	// using ConstraintSchedulingPolicy = ExponentialSkipSchedulingPolicy<TopologyGraph>;
-	// using ConstraintSchedulingPolicy = TreeOnlySchedulingPolicy<TopologyGraph>;
-	using PhysicsConstraintScheduler = ConstraintScheduler<
-	    TopologyGraph, ConstraintSchedulingPolicy,
-	    std::function<ConstraintHandle(PartId, PartId, const Transformd &)>,
-	    std::function<void(ConstraintHandle)>, ConstraintHandle>;
-	using ShapeMapping =
-	    MultiKeyMap<type_list<InterfaceRef, ActorShapePair>, InterfaceSpec,
-	                type_list<InterfaceRefHash, ActorShapePairHash>>;
-
-	static constexpr bool HasOnAssembledHook =
-	    requires(Hooks &hooks, ConnSegId csid, const ConnSegRef &csref,
-	             const ConnectionSegment &conn_seg) {
-		    {
-			    // Called after a new connection segment is assembled
-			    hooks.on_assembled(csid, csref, conn_seg)
-		    } -> std::same_as<void>;
-	    };
-
-	static constexpr bool HasOnDisassembledHook =
-	    requires(Hooks &hooks, ConnSegId csid) {
-		    {
-			    // Called after a connection segment is disassembled
-			    hooks.on_disassembled(csid)
-		    } -> std::same_as<void>;
-	    };
-
 	explicit PhysicsLegoGraph(
 	    const MetricSystem &metrics, physx::PxPhysics *px,
 	    Hooks *hooks = nullptr, AssemblyThresholds thresholds = {},
@@ -952,8 +957,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		    std::forward<decltype(args)>(args)...);
 	}
 
-	static_assert(TopologyGraph::HasAllOnPartAddedHooks);
-	static_assert(TopologyGraph::HasAllOnPartRemovingHooks);
+	static_assert(TopologyGraph::HasOnPartAddedHook);
+	static_assert(TopologyGraph::HasOnPartRemovingHook);
 	static_assert(TopologyGraph::HasOnPartRemovedHook);
 	static_assert(TopologyGraph::HasOnConnectedHook);
 	static_assert(TopologyGraph::HasOnBundleCreatedHook);

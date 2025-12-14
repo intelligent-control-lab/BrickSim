@@ -208,40 +208,26 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	                                 ConnSegKeysHash, ConnSegKeysEq>;
 	using ConnBundleStore =
 	    std::pmr::unordered_map<ConnectionEndpoint, ConnBundleWrapper>;
+	using PartEntry = PartStore::entry_reference;
+	using ConnSegEntry = ConnSegStore::entry_type &;
+	using ConnBundleEntry = ConnBundleStore::value_type &;
 
-	template <class P>
-	    requires PartTypeList::template
-	contains<P> static constexpr bool HasOnPartAddedHook =
-	    requires(Hooks &hooks, PartId pid, PartWrapper<P> &pw) {
+	static constexpr bool HasOnPartAddedHook =
+	    requires(Hooks &hooks, PartEntry entry) {
 		    {
 			    // Called after a new part is added
-			    hooks.template on_part_added<P>(pid, pw)
+			    hooks.on_part_added(entry)
 		    } -> std::same_as<void>;
 	    };
 
-	static constexpr bool HasAllOnPartAddedHooks =
-	    (HasOnPartAddedHook<Ps> && ...);
-
-	template <class P>
-	    requires PartTypeList::template
-	contains<P> static constexpr bool HasOnPartRemovingHook =
-	    requires(Hooks &hooks, PartId pid, PartWrapper<P> &pw) {
+	static constexpr bool HasOnPartRemovingHook =
+	    requires(Hooks &hooks, PartEntry entry) {
 		    {
 			    // Called before a part is removed.
 			    // All connections involving this part are still present.
-			    hooks.template on_part_removing<P>(pid, pw)
+			    hooks.on_part_removing(entry)
 		    } -> std::same_as<void>;
 	    };
-
-	static constexpr bool HasChangeBlockHook = requires(Hooks &hooks) {
-		{
-			// Returns an RAII block to group multiple changes
-			hooks.change_block()
-		};
-	};
-
-	static constexpr bool HasAllOnPartRemovingHooks =
-	    (HasOnPartRemovingHook<Ps> && ...);
 
 	static constexpr bool HasOnPartRemovedHook =
 	    requires(Hooks &hooks, PartId pid) {
@@ -253,31 +239,29 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 		    } -> std::same_as<void>;
 	    };
 
-	static constexpr bool HasOnConnectedHook =
-	    requires(Hooks &hooks, ConnSegId csid, const ConnSegRef &csref,
-	             const InterfaceSpec &stud_spec, const InterfaceSpec &hole_spec,
-	             ConnSegWrapper &csw, ConnBundleWrapper &cbw) {
-		    {
-			    // Called after a new connection segment is created.
-			    hooks.on_connected(csid, csref, stud_spec, hole_spec, csw, cbw)
-		    } -> std::same_as<void>;
-	    };
+	static constexpr bool HasOnConnectedHook = requires(
+	    Hooks &hooks, ConnSegEntry cs_entry, ConnBundleEntry cb_entry,
+	    const InterfaceSpec &stud_spec, const InterfaceSpec &hole_spec) {
+		{
+			// Called after a new connection segment is created.
+			hooks.on_connected(cs_entry, cb_entry, stud_spec, hole_spec)
+		} -> std::same_as<void>;
+	};
 
-	static constexpr bool HasOnDisconnectingHook =
-	    requires(Hooks &hooks, ConnSegId csid, const ConnSegRef &csref,
-	             ConnSegWrapper &csw, ConnBundleWrapper &cbw) {
-		    {
-			    // Called before a connection segment is removed.
-			    // When called from explicit disconnect,
-			    // the connection segment is still present in the graph and in cbw.
-			    // When called from part removal,
-			    // all connection segments involving the part are still present in
-			    // the graph and in cbw,
-			    // and this is called for each such connection segment,
-			    // and it's called before on_part_removing for that part.
-			    hooks.on_disconnecting(csid, csref, csw, cbw)
-		    } -> std::same_as<void>;
-	    };
+	static constexpr bool HasOnDisconnectingHook = requires(
+	    Hooks &hooks, ConnSegEntry cs_entry, ConnBundleEntry cb_entry) {
+		{
+			// Called before a connection segment is removed.
+			// When called from explicit disconnect,
+			// the connection segment is still present in the graph and in cbw.
+			// When called from part removal,
+			// all connection segments involving the part are still present in
+			// the graph and in cbw,
+			// and this is called for each such connection segment,
+			// and it's called before on_part_removing for that part.
+			hooks.on_disconnecting(cs_entry, cb_entry)
+		} -> std::same_as<void>;
+	};
 
 	static constexpr bool HasOnDisconnectedHook =
 	    requires(Hooks &hooks, ConnSegId csid, const ConnSegRef &csref) {
@@ -294,30 +278,30 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 		    } -> std::same_as<void>;
 	    };
 
-	static constexpr bool HasOnBundleCreatedHook = requires(
-	    Hooks &hooks, const ConnectionEndpoint &ep, ConnBundleWrapper &cbw) {
-		{
-			// Called after a new connection bundle is created.
-			// The connection segment causing the bundle creation is added to graph
-			// and in cbw. cbw's transform has been set up.
-			// This is called before on_connected.
-			hooks.on_bundle_created(ep, cbw)
-		} -> std::same_as<void>;
-	};
+	static constexpr bool HasOnBundleCreatedHook =
+	    requires(Hooks &hooks, ConnBundleEntry cb_entry) {
+		    {
+			    // Called after a new connection bundle is created.
+			    // The connection segment causing the bundle creation is added to graph
+			    // and in cbw. cbw's transform has been set up.
+			    // This is called before on_connected.
+			    hooks.on_bundle_created(cb_entry)
+		    } -> std::same_as<void>;
+	    };
 
-	static constexpr bool HasOnBundleRemovingHook = requires(
-	    Hooks &hooks, const ConnectionEndpoint &ep, ConnBundleWrapper &cbw) {
-		{
-			// Called before a connection bundle is removed.
-			// If this is caused by a single disconnection, that connection segment
-			// is still present in the graph and in cbw,
-			// and it's called after on_disconnecting.
-			// If this is caused by part removal, the part and all relevant
-			// connection segments are still present in the graph and in cbw,
-			// and it's called before on_part_removing for that part.
-			hooks.on_bundle_removing(ep, cbw)
-		} -> std::same_as<void>;
-	};
+	static constexpr bool HasOnBundleRemovingHook =
+	    requires(Hooks &hooks, ConnBundleEntry cb_entry) {
+		    {
+			    // Called before a connection bundle is removed.
+			    // If this is caused by a single disconnection, that connection segment
+			    // is still present in the graph and in cbw,
+			    // and it's called after on_disconnecting.
+			    // If this is caused by part removal, the part and all relevant
+			    // connection segments are still present in the graph and in cbw,
+			    // and it's called before on_part_removing for that part.
+			    hooks.on_bundle_removing(cb_entry)
+		    } -> std::same_as<void>;
+	    };
 
 	static constexpr bool HasOnBundleRemovedHook =
 	    requires(Hooks &hooks, const ConnectionEndpoint &ep) {
@@ -330,6 +314,13 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 			    hooks.on_bundle_removed(ep)
 		    } -> std::same_as<void>;
 	    };
+
+	static constexpr bool HasChangeBlockHook = requires(Hooks &hooks) {
+		{
+			// Returns an RAII block to group multiple changes
+			hooks.change_block()
+		};
+	};
 
   public:
 	class ComponentView {
@@ -558,7 +549,13 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 			return std::nullopt;
 		}
 		next_part_id_++;
-		call_on_part_added<P>(id);
+
+		if constexpr (HasOnPartAddedHook) {
+			if (hooks_) {
+				hooks_->on_part_added(parts_.entry_of(id));
+			}
+		}
+
 		return id;
 	}
 
@@ -568,28 +565,69 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	std::optional<PartId> remove_part(const PK &key) {
 		auto _changes = acquire_change_block();
 
-		auto entry = parts_.find(key);
-		if (!entry) {
+		auto entry_opt = parts_.find(key);
+		if (!entry_opt) {
 			return std::nullopt;
 		}
-		PartId pid = entry->template key<PartId>();
+		PartEntry entry = *entry_opt;
+		PartId pid = entry.template key<PartId>();
 
 		std::optional<std::pmr::vector<std::tuple<ConnSegId, ConnSegRef>>>
 		    removed_cs;
-		if (HasOnDisconnectedHook && hooks_) {
-			removed_cs.emplace(res_);
+		if constexpr (HasOnDisconnectedHook) {
+			if (hooks_) {
+				removed_cs.emplace(res_);
+			}
 		}
 
 		std::optional<std::pmr::vector<ConnectionEndpoint>> removed_bundles;
-		if (HasOnBundleRemovedHook && hooks_) {
-			removed_bundles.emplace(res_);
+		if constexpr (HasOnBundleRemovedHook) {
+			if (hooks_) {
+				removed_bundles.emplace(res_);
+			}
 		}
 
 		// Remove connections
-		entry->visit([&]<PartLike P>(PartWrapper<P> &pw) {
-			call_on_disconnecting_for_all<P>(pid, pw);
-			call_on_bundle_removing_for_all<P>(pid, pw);
-			call_on_part_removing<P>(pid, pw);
+		entry.visit([&]<PartLike P>(PartWrapper<P> &pw) {
+			// Call disconnecting for all connection segments involving this part
+			if constexpr (HasOnDisconnectingHook) {
+				if (hooks_) {
+					auto call_disconnecting = [this](ConnSegId csid) {
+						ConnSegEntry cs_entry = conn_segs_.entry_of(csid);
+						const auto &[stud_if_ref, hole_if_ref] =
+						    cs_entry.template key<ConnSegRef>();
+						const auto &[stud_pid, stud_ifid] = stud_if_ref;
+						const auto &[hole_pid, hole_ifid] = hole_if_ref;
+						ConnectionEndpoint ep{stud_pid, hole_pid};
+						ConnBundleEntry cb_entry = *conn_bundles_.find(ep);
+						hooks_->on_disconnecting(cs_entry, cb_entry);
+					};
+					for (ConnSegId csid : pw.incomings()) {
+						call_disconnecting(csid);
+					}
+					for (ConnSegId csid : pw.outgoings()) {
+						call_disconnecting(csid);
+					}
+				}
+			}
+
+			// Call bundle removing for all bundles involving this part
+			if constexpr (HasOnBundleRemovingHook) {
+				if (hooks_) {
+					for (PartId npid : pw.neighbor_parts()) {
+						ConnectionEndpoint ep{pid, npid};
+						ConnBundleEntry cb_entry = *conn_bundles_.find(ep);
+						hooks_->on_bundle_removing(cb_entry);
+					}
+				}
+			}
+
+			// Call part removing hook
+			if constexpr (HasOnPartRemovingHook) {
+				if (hooks_) {
+					hooks_->on_part_removing(entry);
+				}
+			}
 
 			for (ConnSegId csid : pw.incomings()) {
 				// Delete from the other side
@@ -630,7 +668,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 		});
 
 		// Remove from dynamic graph
-		DgVertexId dgid = entry->template key<DgVertexId>();
+		DgVertexId dgid = entry.template key<DgVertexId>();
 		dynamic_graph_.erase_vertex(dgid.value());
 
 		// Finally remove the part itself
@@ -638,17 +676,25 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 		// entry is now invalid
 
 		// Call hooks
-		if (removed_cs) {
-			for (const auto &[csid, csref] : *removed_cs) {
-				call_on_disconnected(csid, csref);
+		if constexpr (HasOnDisconnectedHook) {
+			if (removed_cs) {
+				for (const auto &[csid, csref] : *removed_cs) {
+					hooks_->on_disconnected(csid, csref);
+				}
 			}
 		}
-		if (removed_bundles) {
-			for (const auto &ep : *removed_bundles) {
-				call_on_bundle_removed(ep);
+		if constexpr (HasOnBundleRemovedHook) {
+			if (removed_bundles) {
+				for (const auto &ep : *removed_bundles) {
+					hooks_->on_bundle_removed(ep);
+				}
 			}
 		}
-		call_on_part_removed(pid);
+		if constexpr (HasOnPartRemovedHook) {
+			if (hooks_) {
+				hooks_->on_part_removed(pid);
+			}
+		}
 
 		return pid;
 	}
@@ -760,11 +806,17 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 			hole_pw.incomings().add(csid);
 			hole_pw.neighbor_parts().add(stud_pid);
 		});
-		if (!bundle_exists) {
-			call_on_bundle_created(conn_endpoint, conn_bundle_it->second);
+		if constexpr (HasOnBundleCreatedHook) {
+			if (!bundle_exists && hooks_) {
+				hooks_->on_bundle_created(*conn_bundle_it);
+			}
 		}
-		call_on_connected(csid, csref, *stud_spec, *hole_spec,
-		                  conn_bundle_it->second);
+		if constexpr (HasOnConnectedHook) {
+			if (hooks_) {
+				hooks_->on_connected(conn_segs_.entry_of(csid), *conn_bundle_it,
+				                     *stud_spec, *hole_spec);
+			}
+		}
 		return csid;
 	}
 
@@ -775,43 +827,56 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	std::optional<ConnSegId> disconnect(const ConnId &conn_id) {
 		auto _changes = acquire_change_block();
 
-		if (!conn_segs_.contains(conn_id)) {
+		auto *cs_entry_ptr = conn_segs_.find(conn_id);
+		if (!cs_entry_ptr) {
 			return std::nullopt;
 		}
-		ConnSegId csid = conn_segs_.template key_of<ConnSegId>(conn_id);
-		ConnSegRef csref = conn_segs_.template key_of<ConnSegRef>(csid);
+		ConnSegEntry cs_entry = *cs_entry_ptr;
+		ConnSegId csid = cs_entry.template key<ConnSegId>();
+		ConnSegRef csref = cs_entry.template key<ConnSegRef>();
 
 		const auto &[stud_if_ref, hole_if_ref] = csref;
 		const auto &[stud_pid, stud_ifid] = stud_if_ref;
 		const auto &[hole_pid, hole_ifid] = hole_if_ref;
+		PartEntry stud_entry = parts_.entry_of(stud_pid);
+		PartEntry hole_entry = parts_.entry_of(hole_pid);
 
 		ConnectionEndpoint conn_endpoint{stud_pid, hole_pid};
-		auto &cbw = conn_bundles_.at(conn_endpoint);
-		ConnectionBundle &bundle = cbw.wrapped();
+		ConnBundleEntry cb_entry = *conn_bundles_.find(conn_endpoint);
+		ConnectionBundle &bundle = cb_entry.second.wrapped();
 
-		call_on_disconnecting(csid, csref, cbw);
+		if constexpr (HasOnDisconnectingHook) {
+			if (hooks_) {
+				hooks_->on_disconnecting(cs_entry, cb_entry);
+			}
+		}
+
 		bool part_disconnected = bundle.conn_seg_ids.size() == 1;
 		if (part_disconnected) {
-			call_on_bundle_removing(conn_endpoint, cbw);
+			if constexpr (HasOnBundleRemovingHook) {
+				if (hooks_) {
+					hooks_->on_bundle_removing(cb_entry);
+				}
+			}
 		}
 
 		bundle.conn_seg_ids.remove(csid);
 
 		if (part_disconnected) {
 			conn_bundles_.erase(conn_endpoint);
-			DgVertexId stud_dgid = parts_.template key_of<DgVertexId>(stud_pid);
-			DgVertexId hole_dgid = parts_.template key_of<DgVertexId>(hole_pid);
+			auto stud_dgid = stud_entry.template key<DgVertexId>();
+			auto hole_dgid = hole_entry.template key<DgVertexId>();
 			dynamic_graph_.erase_edge(stud_dgid.value(), hole_dgid.value());
 		}
 
-		parts_.visit(stud_pid, [&](auto &stud_pw) {
+		stud_entry.visit([&](auto &stud_pw) {
 			stud_pw.outgoings().remove(csid);
 			if (part_disconnected) {
 				stud_pw.neighbor_parts().remove(hole_pid);
 			}
 		});
 
-		parts_.visit(hole_pid, [&](auto &hole_pw) {
+		hole_entry.visit([&](auto &hole_pw) {
 			hole_pw.incomings().remove(csid);
 			if (part_disconnected) {
 				hole_pw.neighbor_parts().remove(stud_pid);
@@ -821,9 +886,15 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 		conn_segs_.erase(csid);
 
 		// Call hooks
-		call_on_disconnected(csid, csref);
-		if (part_disconnected) {
-			call_on_bundle_removed(conn_endpoint);
+		if constexpr (HasOnDisconnectedHook) {
+			if (hooks_) {
+				hooks_->on_disconnected(csid, csref);
+			}
+		}
+		if constexpr (HasOnBundleRemovedHook) {
+			if (hooks_ && part_disconnected) {
+				hooks_->on_bundle_removed(conn_endpoint);
+			}
 		}
 		return csid;
 	}
@@ -859,149 +930,6 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	ConnBundleStore conn_bundles_;
 	Hooks *hooks_;
 	DynamicGraph dynamic_graph_;
-
-	template <class P>
-	    requires PartTypeList::template
-	contains<P> void call_on_part_added(PartId id) {
-		if constexpr (HasOnPartAddedHook<P>) {
-			if (!hooks_) {
-				return;
-			}
-			PartWrapper<P> &pw = parts_.template value_of<PartWrapper<P>>(id);
-			hooks_->template on_part_added<P>(id, pw);
-		}
-	}
-
-	template <class P>
-	    requires PartTypeList::template
-	contains<P> void call_on_part_removing(PartId id, PartWrapper<P> &pw) {
-		if constexpr (HasOnPartRemovingHook<P>) {
-			if (!hooks_) {
-				return;
-			}
-			hooks_->template on_part_removing<P>(id, pw);
-		}
-	}
-
-	void call_on_connected(ConnSegId csid, const ConnSegRef &csref,
-	                       const InterfaceSpec &stud_spec,
-	                       const InterfaceSpec &hole_spec,
-	                       ConnBundleWrapper &cbw) {
-		if constexpr (HasOnConnectedHook) {
-			if (!hooks_) {
-				return;
-			}
-			ConnSegWrapper &csw = conn_segs_.value_of(csid);
-			hooks_->on_connected(csid, csref, stud_spec, hole_spec, csw, cbw);
-		}
-	}
-
-	void call_on_disconnecting(ConnSegId csid, const ConnSegRef &csref,
-	                           ConnBundleWrapper &cbw) {
-		if constexpr (HasOnDisconnectingHook) {
-			if (!hooks_) {
-				return;
-			}
-			ConnSegWrapper &csw = conn_segs_.value_of(csid);
-			hooks_->on_disconnecting(csid, csref, csw, cbw);
-		}
-	}
-
-	template <class P>
-	    requires PartTypeList::template
-	contains<P> void call_on_disconnecting_for_all(PartId pid,
-	                                               PartWrapper<P> &pw) {
-		if constexpr (HasOnDisconnectingHook) {
-			if (!hooks_) {
-				return;
-			}
-			for (ConnSegId csid : pw.incomings()) {
-				// This is hole, so other side is stud
-				const ConnSegRef &csref =
-				    conn_segs_.template key_of<ConnSegRef>(csid);
-				const auto &[stud_if_ref, hole_if_ref] = csref;
-				const auto &[stud_pid, stud_ifid] = stud_if_ref;
-				ConnectionEndpoint ep{stud_pid, pid};
-				auto &cbw = conn_bundles_.at(ep);
-				auto &csw = conn_segs_.value_of(csid);
-				hooks_->on_disconnecting(csid, csref, csw, cbw);
-			}
-			for (ConnSegId csid : pw.outgoings()) {
-				// This is stud, so other side is hole
-				const ConnSegRef &csref =
-				    conn_segs_.template key_of<ConnSegRef>(csid);
-				const auto &[stud_if_ref, hole_if_ref] = csref;
-				const auto &[hole_pid, hole_ifid] = hole_if_ref;
-				ConnectionEndpoint ep{pid, hole_pid};
-				auto &cbw = conn_bundles_.at(ep);
-				auto &csw = conn_segs_.value_of(csid);
-				hooks_->on_disconnecting(csid, csref, csw, cbw);
-			}
-		}
-	}
-
-	void call_on_bundle_created(const ConnectionEndpoint &ep,
-	                            ConnBundleWrapper &cbw) {
-		if constexpr (HasOnBundleCreatedHook) {
-			if (!hooks_) {
-				return;
-			}
-			hooks_->on_bundle_created(ep, cbw);
-		}
-	}
-
-	void call_on_bundle_removing(const ConnectionEndpoint &ep,
-	                             ConnBundleWrapper &cbw) {
-		if constexpr (HasOnBundleRemovingHook) {
-			if (!hooks_) {
-				return;
-			}
-			hooks_->on_bundle_removing(ep, cbw);
-		}
-	}
-
-	template <class P>
-	    requires PartTypeList::template
-	contains<P> void call_on_bundle_removing_for_all(PartId pid,
-	                                                 PartWrapper<P> &pw) {
-		if constexpr (HasOnBundleRemovingHook) {
-			if (!hooks_) {
-				return;
-			}
-			for (PartId npid : pw.neighbor_parts()) {
-				ConnectionEndpoint ep{pid, npid};
-				auto &cbw = conn_bundles_.at(ep);
-				hooks_->on_bundle_removing(ep, cbw);
-			}
-		}
-	}
-
-	void call_on_part_removed(PartId id) {
-		if constexpr (HasOnPartRemovedHook) {
-			if (!hooks_) {
-				return;
-			}
-			hooks_->on_part_removed(id);
-		}
-	}
-
-	void call_on_disconnected(ConnSegId csid, const ConnSegRef &csref) {
-		if constexpr (HasOnDisconnectedHook) {
-			if (!hooks_) {
-				return;
-			}
-			hooks_->on_disconnected(csid, csref);
-		}
-	}
-
-	void call_on_bundle_removed(const ConnectionEndpoint &ep) {
-		if constexpr (HasOnBundleRemovedHook) {
-			if (!hooks_) {
-				return;
-			}
-			hooks_->on_bundle_removed(ep);
-		}
-	}
 };
 
 } // namespace lego_assemble

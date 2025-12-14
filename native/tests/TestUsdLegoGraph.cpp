@@ -1460,6 +1460,7 @@ static void test_part_pose_relative_to_env_two_parts_connected() {
 
 struct Hooks;
 using GH = UsdLegoGraph<Parts, PartAuthors, PartParsers, Hooks>;
+using GHT = GH::TopologyGraph;
 
 struct Hooks {
 	using PW = UsdPartWrapper<BrickPart>;
@@ -1476,7 +1477,6 @@ struct Hooks {
 	int bundle_removing_calls = 0;
 
 	PartId last_added_pid{};
-	bool added_pw_matches_store = false;
 
 	bool removing_alive_in_store = false;
 	bool removing_has_any_connections = false;
@@ -1491,78 +1491,69 @@ struct Hooks {
 	std::size_t created_bundle_size = 0;
 	std::size_t removing_bundle_size = 0;
 
-	template <class P> void on_part_added(PartId pid, UsdPartWrapper<P> &pw) {
+	void on_part_added(GHT::PartEntry entry) {
 		++added_calls;
-		last_added_pid = pid;
-		const auto *stored =
-		    g->topology().parts().template find_value<UsdPartWrapper<P>>(pid);
-		added_pw_matches_store = (stored == &pw);
+		last_added_pid = entry.template key<PartId>();
 	}
 
-	template <class P>
-	void on_part_removing(PartId pid, UsdPartWrapper<P> &pw) {
+	void on_part_removing(GHT::PartEntry entry) {
 		++removing_calls;
+		PartId pid = entry.template key<PartId>();
 		removing_alive_in_store = g->topology().parts().contains(pid);
-		removing_has_any_connections =
-		    (!pw.incomings().empty() || !pw.outgoings().empty());
+		entry.visit([&](auto &pw) {
+			removing_has_any_connections =
+			    (!pw.incomings().empty() || !pw.outgoings().empty());
+		});
 	}
 
-	void on_connected(ConnSegId csid, const ConnSegRef &csref,
-	                  const InterfaceSpec &, const InterfaceSpec &, CSW &,
-	                  CBW &cbw) {
+	void on_connected(GHT::ConnSegEntry cs_entry, GHT::ConnBundleEntry cb_entry,
+	                  [[maybe_unused]] const InterfaceSpec &stud_spec,
+	                  [[maybe_unused]] const InterfaceSpec &hole_spec) {
 		++connected_calls;
-		last_csid = csid;
-		last_csref = csref;
-		connect_bundle_has_csid = cbw.wrapped().conn_seg_ids.contains(csid);
+		last_csid = cs_entry.template key<ConnSegId>();
+		last_csref = cs_entry.template key<ConnSegRef>();
+		connect_bundle_has_csid =
+		    cb_entry.second.wrapped().conn_seg_ids.contains(last_csid);
 	}
 
-	void on_disconnecting(ConnSegId csid, const ConnSegRef &, CSW &, CBW &cbw) {
+	void on_disconnecting(GHT::ConnSegEntry cs_entry,
+	                      [[maybe_unused]] GHT::ConnBundleEntry cb_entry) {
 		++disconnecting_calls;
+		auto csid = cs_entry.template key<ConnSegId>();
+		auto &cbw = cb_entry.second;
 		disconnect_bundle_has_csid = cbw.wrapped().conn_seg_ids.contains(csid);
 	}
 
-	void on_bundle_created(const ConnectionEndpoint &ep, CBW &cbw) {
+	void on_bundle_created(GHT::ConnBundleEntry cb_entry) {
 		++bundle_created_calls;
-		last_created_ep = ep;
+		last_created_ep = cb_entry.first;
+		auto &cbw = cb_entry.second;
 		created_bundle_size = cbw.wrapped().conn_seg_ids.size();
 	}
 
-	void on_bundle_removing(const ConnectionEndpoint &ep, CBW &cbw) {
+	void on_bundle_removing(GHT::ConnBundleEntry cb_entry) {
 		++bundle_removing_calls;
-		last_removed_ep = ep;
+		last_removed_ep = cb_entry.first;
+		auto &cbw = cb_entry.second;
 		removing_bundle_size = cbw.wrapped().conn_seg_ids.size();
 	}
 };
 
 // Compile-time traits: default (NoHooks) graph should report no hooks.
-static_assert(!G::HasAllOnPartAddedHooks);
-static_assert(!G::HasAllOnPartRemovingHooks);
+static_assert(!G::HasOnPartAddedHook);
+static_assert(!G::HasOnPartRemovingHook);
 static_assert(!G::HasOnConnectedHook);
 static_assert(!G::HasOnDisconnectingHook);
 static_assert(!G::HasOnBundleCreatedHook);
 static_assert(!G::HasOnBundleRemovingHook);
-static_assert(!G::template HasOnPartAddedHook<BrickPart>);
-static_assert(!G::template HasOnPartRemovingHook<BrickPart>);
 
 // Hook-enabled graph should report all hooks available.
-static_assert(GH::HasAllOnPartAddedHooks);
-static_assert(GH::HasAllOnPartRemovingHooks);
+static_assert(GH::HasOnPartAddedHook);
+static_assert(GH::HasOnPartRemovingHook);
 static_assert(GH::HasOnConnectedHook);
 static_assert(GH::HasOnDisconnectingHook);
 static_assert(GH::HasOnBundleCreatedHook);
 static_assert(GH::HasOnBundleRemovingHook);
-static_assert(GH::template HasOnPartAddedHook<BrickPart>);
-static_assert(GH::template HasOnPartRemovingHook<BrickPart>);
-
-// For our single-part graph, per-part flags agree with aggregates.
-static_assert(G::HasAllOnPartAddedHooks ==
-              G::template HasOnPartAddedHook<BrickPart>);
-static_assert(G::HasAllOnPartRemovingHooks ==
-              G::template HasOnPartRemovingHook<BrickPart>);
-static_assert(GH::HasAllOnPartAddedHooks ==
-              GH::template HasOnPartAddedHook<BrickPart>);
-static_assert(GH::HasAllOnPartRemovingHooks ==
-              GH::template HasOnPartRemovingHook<BrickPart>);
 
 // Hooks should be plumbed through get_hooks/set_hooks and invoked on graph ops.
 static void test_usd_lego_graph_hooks_part_added_and_get_set() {
@@ -1600,7 +1591,6 @@ static void test_usd_lego_graph_hooks_part_added_and_get_set() {
 	// Hooks must have observed both part additions.
 	assert(hooks.added_calls == 2);
 	assert(hooks.last_added_pid == *pidB);
-	assert(hooks.added_pw_matches_store);
 }
 
 // Connection lifecycle from graph API should drive connection-related hooks.

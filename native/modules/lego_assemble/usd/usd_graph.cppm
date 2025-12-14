@@ -75,19 +75,11 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 	                          type_list<PPs...>, Hooks>;
 
 	// Re-export hook detection traits
-	template <class P>
 	static constexpr bool HasOnPartAddedHook =
-	    TopologyGraph::template HasOnPartAddedHook<P>;
+	    TopologyGraph::HasOnPartAddedHook;
 
-	static constexpr bool HasAllOnPartAddedHooks =
-	    TopologyGraph::HasAllOnPartAddedHooks;
-
-	template <class P>
 	static constexpr bool HasOnPartRemovingHook =
-	    TopologyGraph::template HasOnPartRemovingHook<P>;
-
-	static constexpr bool HasAllOnPartRemovingHooks =
-	    TopologyGraph::HasAllOnPartRemovingHooks;
+	    TopologyGraph::HasOnPartRemovingHook;
 
 	static constexpr bool HasOnBundleCreatedHook =
 	    TopologyGraph::HasOnBundleCreatedHook;
