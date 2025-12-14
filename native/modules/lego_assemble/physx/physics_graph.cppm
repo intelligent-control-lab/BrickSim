@@ -230,7 +230,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			}
 
 			const auto &[stud_pid, stud_ifid] = stud_if_ref;
-			owner_->reset_filtering_safely(stud_pid);
+			owner_->enqueue_filtering_reset(stud_pid);
 		}
 
 		void
@@ -260,7 +260,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 			const auto &[stud_if_ref, hole_if_ref] = csref;
 			const auto &[stud_pid, stud_ifid] = stud_if_ref;
-			owner_->reset_filtering_safely(stud_pid);
+			owner_->enqueue_filtering_reset(stud_pid);
 		}
 
 		void on_bundle_created(
@@ -301,13 +301,13 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			if (owner_->contact_exclusion_level_ ==
 			    ContactExclusionLevel::Actor) {
 				// Reset filtering for this pair of parts
-				owner_->reset_filtering_safely(a_id);
+				owner_->enqueue_filtering_reset(a_id);
 			} else if (owner_->contact_exclusion_level_ ==
 			           ContactExclusionLevel::ConnectedComponent) {
 				// Reset filtering for all parts in the connected components
 				for (PartId pid :
 				     owner_->topology_.component_view(a_id).vertices()) {
-					owner_->reset_filtering_safely(pid);
+					owner_->enqueue_filtering_reset(pid);
 				}
 			}
 		}
@@ -344,13 +344,13 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			if (owner_->contact_exclusion_level_ ==
 			    ContactExclusionLevel::Actor) {
 				// Reset filtering for this pair of parts
-				owner_->reset_filtering_safely(a_id);
+				owner_->enqueue_filtering_reset(a_id);
 			} else if (owner_->contact_exclusion_level_ ==
 			           ContactExclusionLevel::ConnectedComponent) {
 				// Reset filtering for all parts in the connected components
 				for (PartId pid :
 				     owner_->topology_.component_view(a_id).vertices()) {
-					owner_->reset_filtering_safely(pid);
+					owner_->enqueue_filtering_reset(pid);
 				}
 			}
 		}
@@ -659,9 +659,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	      topology_hooks_{this}, topology_{&topology_hooks_, mr},
 	      constraint_scheduler_{
 	          &topology_, ConstraintSchedulingPolicy{},
-	          std::bind_front(&PhysicsLegoGraph::create_constraint_safely,
+	          std::bind_front(&PhysicsLegoGraph::enqueue_create_constraint,
 	                          this),
-	          std::bind_front(&PhysicsLegoGraph::destroy_constraint_safely,
+	          std::bind_front(&PhysicsLegoGraph::enqueue_destroy_constraint,
 	                          this),
 	          mr},
 	      assembly_checker_{thresholds},
@@ -672,7 +672,15 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	      shape_mapping_{mr}, contact_exclusions_{mr} {}
 	~PhysicsLegoGraph() {
 		unbind_physx_scene();
+
+		// Release constraints
+		// This will enqueue destroy for all realized constraints
+		// But we need to destroy them immediately
 		constraint_scheduler_.clear();
+		for (auto &[handle, px_constraint] : realized_constraints_) {
+			do_release_constraint(px_constraint);
+		}
+		realized_constraints_.clear();
 	}
 	PhysicsLegoGraph(const PhysicsLegoGraph &) = delete;
 	PhysicsLegoGraph &operator=(const PhysicsLegoGraph &) = delete;
@@ -705,13 +713,11 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	// Use a StageUpdateNode with order < 10 to implement this
 	void do_pre_step() {
 		flush_physx_ops();
-		sim_running_ = true;
 	}
 
 	// Should be called AFTER simulation step on USD/Kit thread
 	// Use a StageUpdateNode with order > 10 to implement this
 	void do_post_step() {
-		sim_running_ = false;
 		flush_physx_ops();
 
 		std::pmr::vector<PendingAssembly> pending_assemblies{res_};
@@ -799,7 +805,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	// TODO: use a concurrent dynamic connectivity data structure, or keep a copy for every physics thread
 	HolmDeLichtenbergThorup part_dg_;
 
-	bool sim_running_ = false;
 	std::unordered_map<ConstraintHandle, physx::PxConstraint *>
 	    realized_constraints_;
 	std::unordered_set<ConstraintHandle> constraints_to_remove_;
@@ -808,10 +813,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	ConstraintHandle next_constraint_handle_ = 1;
 	std::unordered_set<PartId> pending_reset_filtering_parts_;
 	void flush_physx_ops() {
-		if (sim_running_) {
-			throw std::runtime_error("Cannot process pending PhysX operations "
-			                         "while simulation is running");
-		}
 		for (ConstraintHandle handle : constraints_to_remove_) {
 			auto it = realized_constraints_.find(handle);
 			if (it != realized_constraints_.end()) {
@@ -846,35 +847,22 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		}
 		pending_reset_filtering_parts_.clear();
 	}
-	ConstraintHandle create_constraint_safely(PartId pid_a, PartId pid_b,
-	                                          const Transformd &T_a_b) {
+	ConstraintHandle enqueue_create_constraint(PartId pid_a, PartId pid_b,
+	                                           const Transformd &T_a_b) {
 		// Always queue, because the rigid actor might haven't been set up yet
 		ConstraintHandle handle = next_constraint_handle_++;
-		auto [it, inserted] = pending_constraints_.emplace(
+		pending_constraints_.insert_or_assign(
 		    handle, std::make_tuple(pid_a, pid_b, T_a_b));
-		if (!inserted) {
-			throw std::runtime_error(std::format(
-			    "Constraint handle {} already exist in pending constraints",
-			    handle));
-		}
 		return handle;
 	}
-	void destroy_constraint_safely(ConstraintHandle handle) {
-		auto it = realized_constraints_.find(handle);
-		if (it != realized_constraints_.end()) {
-			if (sim_running_) {
-				constraints_to_remove_.insert(handle);
-			} else {
-				do_release_constraint(it->second);
-				realized_constraints_.erase(it);
-			}
+	void enqueue_destroy_constraint(ConstraintHandle handle) {
+		auto it_realized = realized_constraints_.find(handle);
+		if (it_realized != realized_constraints_.end()) {
+			constraints_to_remove_.insert(handle);
 		} else {
-			auto pit = pending_constraints_.find(handle);
-			if (pit != pending_constraints_.end()) {
-				pending_constraints_.erase(pit);
-			} else {
-				log_error("Constraint handle {} not found for destruction",
-				          handle);
+			auto it_pending = pending_constraints_.find(handle);
+			if (it_pending != pending_constraints_.end()) {
+				pending_constraints_.erase(it_pending);
 			}
 		}
 	}
@@ -914,21 +902,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	void do_release_constraint(physx::PxConstraint *constraint) {
 		constraint->release();
 	}
-	void reset_filtering_safely(PartId pid) {
-		if (sim_running_) {
-			pending_reset_filtering_parts_.insert(pid);
-		} else {
-			physx::PxRigidActor *const *actor_ptr =
-			    topology_.parts().template find_key<physx::PxRigidActor *>(pid);
-			if (!actor_ptr) {
-				log_warn(
-				    "Cannot find actor for part id {}, skipping filter reset",
-				    pid);
-				return;
-			}
-			physx::PxRigidActor *actor = *actor_ptr;
-			actor->getScene()->resetFiltering(*actor);
-		}
+	void enqueue_filtering_reset(PartId pid) {
+		pending_reset_filtering_parts_.insert(pid);
 	}
 
 	void enqueue_pending_assembly(auto &&...args) {
