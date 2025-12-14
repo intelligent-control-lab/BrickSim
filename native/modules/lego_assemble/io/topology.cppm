@@ -311,6 +311,7 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 	    requires(Graph::PartExtraKeys::size == 0 &&
 	             Graph::ConnSegExtraKeys::size == 0)
 	{
+		auto _changes = g.acquire_change_block();
 		ImportedMapping imported;
 		// 1) Import parts
 		for (const JsonPart &jp : topology.parts) {
@@ -374,63 +375,69 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 	import_usd_graph(const JsonTopology &topology, UsdGraph &g,
 	                 std::int64_t env_id = kNoEnv,
 	                 const Transformd &T_env_ref = SE3d{}.identity()) const {
+		auto _changes = g.acquire_change_block();
 		ImportedMapping imported;
-		// 1) Import parts
-		for (const JsonPart &jp : topology.parts) {
-			bool matched =
-			    visit_by_type_string(jp.type, [&](auto &&serializer) {
-				    using PS = std::remove_cvref_t<decltype(serializer)>;
-				    using P = PS::PartType;
-				    P part = serializer.from_json(jp.payload);
-				    auto added =
-				        g.template add_part<P>(env_id, std::move(part));
-				    if (!added) {
-					    log_warn("TopologySerializer: failed to import part id "
-					             "{} of type {}",
-					             jp.id, jp.type);
-					    return;
-				    }
-				    const auto &[pid, path] = *added;
-				    imported.parts.emplace(jp.id, pid);
-			    });
-			if (!matched) {
-				log_warn(
-				    "TopologySerializer: unknown part type string {} for part "
-				    "id {}",
-				    jp.type, jp.id);
+		{
+			pxr::SdfChangeBlock _usd_changes;
+			// 1) Import parts
+			for (const JsonPart &jp : topology.parts) {
+				bool matched =
+				    visit_by_type_string(jp.type, [&](auto &&serializer) {
+					    using PS = std::remove_cvref_t<decltype(serializer)>;
+					    using P = PS::PartType;
+					    P part = serializer.from_json(jp.payload);
+					    auto added =
+					        g.template add_part<P>(env_id, std::move(part));
+					    if (!added) {
+						    log_warn(
+						        "TopologySerializer: failed to import part id "
+						        "{} of type {}",
+						        jp.id, jp.type);
+						    return;
+					    }
+					    const auto &[pid, path] = *added;
+					    imported.parts.emplace(jp.id, pid);
+				    });
+				if (!matched) {
+					log_warn("TopologySerializer: unknown part type string {} "
+					         "for part "
+					         "id {}",
+					         jp.type, jp.id);
+				}
 			}
-		}
 
-		// 2) Import connections
-		for (const JsonConnection &jc : topology.connections) {
-			auto it_stud = imported.parts.find(jc.stud_id);
-			auto it_hole = imported.parts.find(jc.hole_id);
-			if (it_stud == imported.parts.end() ||
-			    it_hole == imported.parts.end()) {
-				// One of the endpoints failed to import; skip
-				continue;
-			}
-			PartId stud_pid = it_stud->second;
-			PartId hole_pid = it_hole->second;
+			// 2) Import connections
+			for (const JsonConnection &jc : topology.connections) {
+				auto it_stud = imported.parts.find(jc.stud_id);
+				auto it_hole = imported.parts.find(jc.hole_id);
+				if (it_stud == imported.parts.end() ||
+				    it_hole == imported.parts.end()) {
+					// One of the endpoints failed to import; skip
+					continue;
+				}
+				PartId stud_pid = it_stud->second;
+				PartId hole_pid = it_hole->second;
 
-			InterfaceRef stud_if{stud_pid,
-			                     static_cast<InterfaceId>(jc.stud_iface)};
-			InterfaceRef hole_if{hole_pid,
-			                     static_cast<InterfaceId>(jc.hole_iface)};
-			ConnectionSegment conn_seg{
-			    .offset = as<Eigen::Vector2i>(jc.offset),
-			    .yaw = to_c4(static_cast<int>(jc.yaw)),
-			};
-			auto connected = g.connect(stud_if, hole_if, std::move(conn_seg),
-			                           AlignPolicy::None);
-			if (!connected) {
-				log_warn("TopologySerializer: failed to import connection "
-				         "between {}:{} and {}:{}",
-				         jc.stud_id, jc.stud_iface, jc.hole_id, jc.hole_iface);
-				continue;
+				InterfaceRef stud_if{stud_pid,
+				                     static_cast<InterfaceId>(jc.stud_iface)};
+				InterfaceRef hole_if{hole_pid,
+				                     static_cast<InterfaceId>(jc.hole_iface)};
+				ConnectionSegment conn_seg{
+				    .offset = as<Eigen::Vector2i>(jc.offset),
+				    .yaw = to_c4(static_cast<int>(jc.yaw)),
+				};
+				auto connected = g.connect(
+				    stud_if, hole_if, std::move(conn_seg), AlignPolicy::None);
+				if (!connected) {
+					log_warn("TopologySerializer: failed to import connection "
+					         "between {}:{} and {}:{}",
+					         jc.stud_id, jc.stud_iface, jc.hole_id,
+					         jc.hole_iface);
+					continue;
+				}
+				const auto &[csid, conn_path] = *connected;
+				imported.conns.emplace(jc.id, csid);
 			}
-			const auto &[csid, conn_path] = *connected;
-			imported.conns.emplace(jc.id, csid);
 		}
 
 		// 3) Apply pose hints

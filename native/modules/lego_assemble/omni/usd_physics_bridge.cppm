@@ -94,6 +94,16 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 				owner_->unbind_connection(csid);
 			}
 		}
+
+		auto change_block() {
+			auto *pg = owner_->physics_graph_;
+			using RetType = decltype(pg->topology().acquire_change_block());
+			if (pg != nullptr) {
+				return pg->topology().acquire_change_block();
+			} else {
+				return RetType{};
+			}
+		}
 	};
 
 	using PhysicsPartId = TypedId<struct PhysicsPartTag, PartId>;
@@ -192,6 +202,44 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 
 	  private:
 		std::size_t &counter_;
+	};
+
+	std::chrono::high_resolution_clock::duration sync_time_ =
+	    std::chrono::high_resolution_clock::duration::zero();
+	std::uint64_t sync_count_ = 0;
+	bool top_level_sync_ = false;
+	struct SyncStatBlock {
+		Self *owner_;
+		std::chrono::high_resolution_clock::time_point t0;
+		explicit SyncStatBlock(Self *owner) {
+			if (!owner->top_level_sync_) {
+				owner->top_level_sync_ = true;
+				owner_ = owner;
+				t0 = std::chrono::high_resolution_clock::now();
+			} else {
+				owner_ = nullptr;
+			}
+		}
+		~SyncStatBlock() {
+			using namespace std::chrono;
+			if (owner_ == nullptr) {
+				return;
+			}
+			owner_->top_level_sync_ = false;
+			auto t1 = high_resolution_clock::now();
+			owner_->sync_time_ += (t1 - t0);
+			owner_->sync_count_++;
+			log_info(
+			    "UsdPhysicsBridge: sync operation took {} ms "
+			    "(total {} ms over {} ops, avg {} ms/op)",
+			    duration_cast<milliseconds>(t1 - t0).count(),
+			    duration_cast<milliseconds>(owner_->sync_time_).count(),
+			    owner_->sync_count_,
+			    owner_->sync_count_ == 0
+			        ? 0
+			        : duration_cast<milliseconds>(owner_->sync_time_).count() /
+			              owner_->sync_count_);
+		}
 	};
 
 	bool writeback_conn_creation(ConnSegId physics_csid,
@@ -304,6 +352,8 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	template <PartLike P>
 	bool bind_part(PartId usd_pid, const UsdPartWrapper<P> &usd_pw,
 	               physx::PxRigidActor *px_actor) {
+		SyncStatBlock _stat_block{this};
+		auto _change_block = physics_graph_->topology().acquire_change_block();
 		// Bind a USD part to PhysicsGraph. The corresponding actor must already exist.
 		UsdPartId t_usd_pid{usd_pid};
 		if (pid_mapping_.contains(t_usd_pid)) [[unlikely]] {
@@ -342,6 +392,8 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	}
 
 	bool unbind_part(PartId physics_pid) {
+		SyncStatBlock _stat_block{this};
+		auto _change_block = physics_graph_->topology().acquire_change_block();
 		// Unbind a part in PhysicsGraph.
 		// First, remove all connections in bookkeeping table.
 		// No need to remove connections from PhysicsGraph here,
@@ -401,6 +453,8 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 
 	bool bind_connection(ConnSegId usd_csid, const ConnSegRef &usd_csref,
 	                     const SimpleWrapper<ConnectionSegment> &usd_csw) {
+		SyncStatBlock _stat_block{this};
+		auto _change_block = physics_graph_->topology().acquire_change_block();
 		// Bind a USD connection segment to PhysicsGraph.
 		// Requires both endpoint parts to be already bound.
 		UsdConnSegId t_usd_csid{usd_csid};
@@ -447,6 +501,8 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	}
 
 	bool unbind_connection(ConnSegId usd_csid) {
+		SyncStatBlock _stat_block{this};
+		auto _change_block = physics_graph_->topology().acquire_change_block();
 		// Unbind a USD connection from PhysicsGraph.
 		UsdConnSegId t_usd_csid{usd_csid};
 		const PhysicsConnSegId *t_physics_csid_ptr =
@@ -481,6 +537,7 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	}
 
 	void initial_sync() {
+		auto _change_block = physics_graph_->topology().acquire_change_block();
 		usd_graph_->topology().parts().for_each([&](auto &&keys, auto &&pw) {
 			PartId pid = std::get<
 			    UsdGraph::TopologyGraph::PartKeys::template index_of<PartId>>(
@@ -561,6 +618,7 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	static_assert(PhysicsGraph::HasOnDisassembledHook);
 	static_assert(UsdGraph::HasOnConnectedHook);
 	static_assert(UsdGraph::HasOnDisconnectingHook);
+	static_assert(UsdGraph::HasChangeBlockHook);
 };
 
 } // namespace lego_assemble
