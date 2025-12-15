@@ -196,7 +196,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	// Manages data that simulation threads write to
 	class SimOutputData {
 	  private:
-		mutable std::mutex mutex;
 		std::vector<PendingAssembly> pending_assemblies_;
 		std::vector<PendingDisassembly> pending_disassemblies_;
 		std::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_cur_;
@@ -204,32 +203,27 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 	  public:
 		void enqueue_assembly(auto &&...args) {
-			std::lock_guard lock{mutex};
 			pending_assemblies_.emplace_back(
 			    std::forward<decltype(args)>(args)...);
 		}
 
 		void enqueue_assembly_debug_info(auto &&...args) {
-			std::lock_guard lock{mutex};
 			assembly_debug_infos_cur_.emplace_back(
 			    std::forward<decltype(args)>(args)...);
 		}
 
 		void enqueue_disassembly(auto &&...args) {
-			std::lock_guard lock{mutex};
 			pending_disassemblies_.emplace_back(
 			    std::forward<decltype(args)>(args)...);
 		}
 
 		std::vector<PendingAssembly> consume_assemblies() {
-			std::lock_guard lock{mutex};
 			std::vector<PendingAssembly> res = std::move(pending_assemblies_);
 			pending_assemblies_.clear();
 			return res;
 		}
 
 		std::vector<PendingDisassembly> consume_disassemblies() {
-			std::lock_guard lock{mutex};
 			std::vector<PendingDisassembly> res =
 			    std::move(pending_disassemblies_);
 			pending_disassemblies_.clear();
@@ -237,12 +231,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		}
 
 		std::vector<PhysicsAssemblyDebugInfo> get_assembly_debug_infos() const {
-			std::lock_guard lock{mutex};
 			return assembly_debug_infos_prev_;
 		}
 
 		void swap_debug_info_buffers() {
-			std::lock_guard lock{mutex};
 			assembly_debug_infos_prev_ = std::move(assembly_debug_infos_cur_);
 			assembly_debug_infos_cur_.clear();
 		}
