@@ -2,6 +2,7 @@ import lego_assemble.core.specs;
 import lego_assemble.core.graph;
 import lego_assemble.core.connections;
 import lego_assemble.core.assembly;
+import lego_assemble.physx.shape_mapping;
 import lego_assemble.physx.physics_graph;
 import lego_assemble.physx.patcher;
 import lego_assemble.utils.type_list;
@@ -14,7 +15,6 @@ import lego_assemble.vendor;
 #include <cassert>
 #include <cstdint>
 #include <initializer_list>
-#include <memory_resource>
 #include <vector>
 
 using namespace lego_assemble;
@@ -45,22 +45,13 @@ struct TestHooks {
 
 using TestGraph = PhysicsLegoGraph<type_list<BrickPart>, TestHooks>;
 using TopologyGraph = TestGraph::TopologyGraph;
-using ShapeMappingT = TestGraph::ShapeMapping;
 
-static_assert(TopologyGraph::HasOnPartAddedHook);
-static_assert(TopologyGraph::HasOnPartRemovingHook);
-static_assert(TopologyGraph::HasOnConnectedHook);
-static_assert(TopologyGraph::HasOnDisconnectingHook);
-static_assert(TopologyGraph::HasOnBundleCreatedHook);
-static_assert(TopologyGraph::HasOnBundleRemovingHook);
 static_assert(TestGraph::HasOnAssembledHook);
 static_assert(TestGraph::HasOnDisassembledHook);
 
 // Ensure PhysX actor key is integrated into the part key set
 static_assert(
     TopologyGraph::PartKeys::template contains<physx::PxRigidActor *>);
-
-static_assert(std::is_class_v<ShapeMappingT>);
 
 namespace {
 
@@ -163,8 +154,7 @@ struct PhysicsGraphFixture {
 
 	PhysicsGraphFixture(bool create_initial_connection = true)
 	    : env{}, metrics{1.0, 1.0, 1.0}, hooks{},
-	      graph(metrics, env.physics, &hooks, {},
-	            ContactExclusionLevel::Shape) {
+	      graph(metrics, env.physics, &hooks, {}) {
 		// Bind PhysX scene so callbacks are installed.
 		assert(graph.bind_physx_scene(env.scene));
 
@@ -239,8 +229,7 @@ struct PhysicsGraphFixture {
 static void test_bind_unbind_scene() {
 	PhysxEnv env;
 	MetricSystem metrics{1.0, 1.0, 1.0};
-	TestGraph g(metrics, env.physics, nullptr, {},
-	            ContactExclusionLevel::Shape);
+	TestGraph g(metrics, env.physics, nullptr, {});
 
 	assert(g.bind_physx_scene(env.scene));
 	// Second bind must fail (already bound).
@@ -282,7 +271,7 @@ static void test_topology_and_constraints() {
 
 // Exercise PhysxBinding::pairFound branches via the PxScene callback.
 static void test_filter_callback_pairFound() {
-	PhysicsGraphFixture fx;
+	PhysicsGraphFixture fx{false};
 	fx.graph.do_pre_step();
 	// Mirror the offsets used by lego_assemble.physx.patcher to locate
 	// the internal Sc::Scene::mFilterCallback pointer.
@@ -305,14 +294,31 @@ static void test_filter_callback_pairFound() {
 	physx::PxFilterData fd{};
 	physx::PxPairFlags pairFlags{};
 
-	// Case 1: two rigid actors that are parts but whose shapes do NOT have
+	// Case 1: two rigid actors that are non-connected parts do NOT have
 	// contact exclusion => eCONTACT_EVENT_POSE must be enabled.
 	pairFlags = physx::PxPairFlags{};
 	(void)proxy->pairFound(1, {}, fd, fx.actorA, fx.holeShapeA, {}, fd,
 	                       fx.actorB, fx.holeShapeB, pairFlags);
 	assert(pairFlags.isSet(physx::PxPairFlag::eCONTACT_EVENT_POSE));
 
-	// Case 2: pair matches a contact exclusion entry => filter result eKILL.
+	{
+		// Create one connection segment between stud(A) and hole(B).
+		ConnectionSegment cs{};
+		auto csid_opt = fx.graph.topology().connect(
+		    InterfaceRef{fx.pidA, BrickPart::StudId},
+		    InterfaceRef{fx.pidB, BrickPart::HoleId}, cs);
+		assert(csid_opt.has_value());
+
+		const auto &bundles = fx.graph.topology().connection_bundles();
+		assert(bundles.size() == 1);
+		ConnectionEndpoint ep{fx.pidA, fx.pidB};
+		auto it = bundles.find(ep);
+		assert(it != bundles.end());
+	}
+	fx.graph.do_post_step();
+	fx.graph.do_pre_step();
+
+	// Case 2: pairs in the same CC => filter result eKILL.
 	pairFlags = physx::PxPairFlags{};
 	auto kill = proxy->pairFound(2, {}, fd, fx.actorA, fx.studShapeA, {}, fd,
 	                             fx.actorB, fx.holeShapeB, pairFlags);
@@ -400,6 +406,7 @@ static void test_event_callback_onContact() {
 	// Case 1: header flags mark removed actor => early return.
 	{
 		PhysicsGraphFixture fx(/*create_initial_connection=*/false);
+		fx.graph.do_pre_step();
 
 		// One simulation step to ensure getElapsedTime(scene) returns a non-zero dt.
 		fx.env.scene->simulate(1.0f / 60.0f);
@@ -427,6 +434,7 @@ static void test_event_callback_onContact() {
 	// Case 2: shapes not mapped to any interface => ignored.
 	{
 		PhysicsGraphFixture fx(/*create_initial_connection=*/false);
+		fx.graph.do_pre_step();
 
 		fx.env.scene->simulate(1.0f / 60.0f);
 		fx.env.scene->fetchResults(true);
@@ -468,6 +476,7 @@ static void test_event_callback_onContact() {
 	// rejected before force threshold.
 	{
 		PhysicsGraphFixture fx(/*create_initial_connection=*/false);
+		fx.graph.do_pre_step();
 
 		fx.env.scene->simulate(1.0f / 60.0f);
 		fx.env.scene->fetchResults(true);
@@ -494,6 +503,7 @@ static void test_event_callback_onContact() {
 	// and sufficient force to satisfy thresholds.
 	{
 		PhysicsGraphFixture fx(/*create_initial_connection=*/false);
+		fx.graph.do_pre_step();
 
 		fx.env.scene->simulate(1.0f / 60.0f);
 		fx.env.scene->fetchResults(true);

@@ -15,6 +15,8 @@ export template <class... PKs, class G>
 class ComponentLabeling<type_list<PKs...>, G> {
 	static_assert(in_pack<PartId, PKs...>,
 	              "ComponentLabeling: PartId must be one of the key types");
+	static_assert((G::PartKeys::template contains<PKs> && ...),
+	              "ComponentLabeling: All PKs must be part keys of G");
 
   public:
 	using PartKeys = type_list<PKs...>;

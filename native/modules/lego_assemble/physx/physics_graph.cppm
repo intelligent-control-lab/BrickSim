@@ -7,6 +7,8 @@ import lego_assemble.core.connections;
 import lego_assemble.core.assembly;
 import lego_assemble.core.component_labeling;
 import lego_assemble.physx.constraint_scheduler;
+import lego_assemble.physx.filtering_reset;
+import lego_assemble.physx.shape_mapping;
 import lego_assemble.physx.weld_constraint;
 import lego_assemble.physx.patcher;
 import lego_assemble.utils.type_list;
@@ -29,14 +31,6 @@ struct PendingDisassembly {
 	ConnSegId csid;
 };
 
-export using InterfaceShapePair = std::pair<InterfaceId, physx::PxShape *>;
-export using ActorShapePair =
-    std::pair<physx::PxRigidActor *, physx::PxShape *>;
-export using ActorShapePairHash =
-    PairHash<physx::PxRigidActor *, std::hash<physx::PxRigidActor *>,
-             physx::PxShape *, std::hash<physx::PxShape *>>;
-export constexpr ActorShapePair NullActorShapePair{nullptr, nullptr};
-
 export template <PartLike P> struct PhysicsPartWrapper : SimplePartWrapper<P> {
 	template <class... Args>
 	explicit PhysicsPartWrapper(
@@ -52,31 +46,14 @@ export template <PartLike P> struct PhysicsPartWrapper : SimplePartWrapper<P> {
 	std::vector<InterfaceShapePair> interface_shapes_;
 };
 
-export struct PhysicsConnectionSegmentWrapper
-    : SimpleWrapper<ConnectionSegment> {
-	ActorShapePair px_stud_shape{nullptr, nullptr};
-	ActorShapePair px_hole_shape{nullptr, nullptr};
-	template <class... Args>
-	explicit PhysicsConnectionSegmentWrapper(Args &&...args)
-	    : SimpleWrapper<ConnectionSegment>(std::forward<Args>(args)...) {}
-};
-
+export using PhysicsConnectionSegmentWrapper = SimpleWrapper<ConnectionSegment>;
 export using PhysicsConnectionBundleWrapper = SimpleWrapper<ConnectionBundle>;
-
-export enum class ContactExclusionLevel {
-	Shape,
-	Actor,
-	ConnectedComponent,
-};
 
 using ContactExclusionPair = UnorderedPair<ActorShapePair>;
 using ContactExclusionPairHash =
     typename ContactExclusionPair::Hasher<ActorShapePairHash>;
 using ContactExclusionSet =
     std::unordered_set<ContactExclusionPair, ContactExclusionPairHash>;
-using ShapeMapping =
-    MultiKeyMap<type_list<InterfaceRef, ActorShapePair>, InterfaceSpec,
-                type_list<InterfaceRefHash, ActorShapePairHash>>;
 
 physx::PxRigidActor *cast_rigid_actor(physx::PxActor *actor) {
 	auto type = actor->getType();
@@ -125,9 +102,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	using PhysicsComponentLabeling =
 	    ComponentLabeling<type_list<PartId, physx::PxRigidActor *>,
 	                      TopologyGraph>;
-	using ShapeMapping =
-	    MultiKeyMap<type_list<InterfaceRef, ActorShapePair>, InterfaceSpec,
-	                type_list<InterfaceRefHash, ActorShapePairHash>>;
+	using PhysicsFilteringResetAggregator =
+	    FilteringResetAggregator<TopologyGraph>;
+	using PhysicsShapeMapping = ShapeMapping<TopologyGraph>;
 
 	static constexpr bool HasOnAssembledHook =
 	    requires(Hooks &hooks, ConnSegId csid, const ConnSegRef &csref,
@@ -147,273 +124,21 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	    };
 
   private:
-	// Aggregates filtering reset requests
-	class FilteringResetAggregator {
-	  private:
-		// Reference to owner's fields
-		const ContactExclusionLevel &contact_exclusion_level_;
-		const TopologyGraph &topology_;
-
-		// Requested resets
-		std::unordered_set<PartId> reqs_;
-
-		void commit_as_individual_() {
-			for (PartId pid : reqs_) {
-				physx::PxRigidActor *const *actor_ptr =
-				    topology_.parts().template find_key<physx::PxRigidActor *>(
-				        pid);
-				if (!actor_ptr) {
-					throw std::runtime_error(
-					    std::format("Part id {} not found in topology during "
-					                "filtering reset commit",
-					                pid));
-				}
-				physx::PxRigidActor *actor = *actor_ptr;
-				actor->getScene()->resetFiltering(*actor);
-			}
-			reqs_.clear();
-		}
-
-		void commit_as_cc_() {
-			while (!reqs_.empty()) {
-				PartId pid_u = *reqs_.begin();
-				reqs_.erase(pid_u);
-				if (!topology_.parts().contains(pid_u)) {
-					throw std::runtime_error(
-					    std::format("Part id {} not found in topology during "
-					                "filtering reset commit",
-					                pid_u));
-				}
-				for (PartId pid_v :
-				     topology_.component_view(pid_u).vertices()) {
-					reqs_.erase(pid_v);
-					physx::PxRigidActor *actor =
-					    topology_.parts()
-					        .template key_of<physx::PxRigidActor *>(pid_v);
-					actor->getScene()->resetFiltering(*actor);
-				}
-			}
-		}
-
-	  public:
-		explicit FilteringResetAggregator(Self *owner)
-		    : contact_exclusion_level_{owner->contact_exclusion_level_},
-		      topology_{owner->topology_} {}
-
-		void request_reset(PartId pid) {
-			reqs_.insert(pid);
-		}
-
-		void mark_deleted(PartId pid) {
-			reqs_.erase(pid);
-		}
-
-		void commit() {
-			if (contact_exclusion_level_ ==
-			    ContactExclusionLevel::ConnectedComponent) {
-				// We need to reset all parts in the affected connected components
-				commit_as_cc_();
-			} else {
-				// Otherwise, just reset the affected parts
-				commit_as_individual_();
-			}
-		}
-	};
-
-	// Manages data needed for simulation
-	// USD / Kit thread can read/write while holding exclusive lock
-	// Physics threads can read while holding shared lock (const version)
-	class SimInputData {
-	  private:
-		using G = TopologyGraph;
-
-		// Reference to owner's fields
-		// These are needed during updates
-		const ContactExclusionLevel &contact_exclusion_level_;
-		const TopologyGraph &topology_;
-
-	  public:
-		// ==== Should only be accessed with mutex held ====
-		mutable std::shared_mutex mutex;
-		// Data structures protected by mutex:
-		ShapeMapping shape_mapping;
-		ContactExclusionSet contact_exclusions;
-
-		explicit SimInputData(Self *owner)
-		    : contact_exclusion_level_{owner->contact_exclusion_level_},
-		      topology_{owner->topology_} {}
-
-		// ==== Update methods (called from USD hooks) ====
-
-		void add_part(G::PartEntry entry) {
-			PartId pid = entry.template key<PartId>();
-			auto px_actor = entry.template key<physx::PxRigidActor *>();
-			std::unique_lock lock{mutex};
-
-			// Update shape mapping
-			entry.visit([&](auto &pw) {
-				for (const auto &[if_id, shape] : pw.interface_shapes()) {
-					if (shape == nullptr) {
-						throw std::runtime_error(std::format(
-						    "Interface {} of part id {} has null PxShape",
-						    if_id, pid));
-					}
-					auto iface_opt = pw.wrapped().get_interface(if_id);
-					if (!iface_opt) {
-						throw std::runtime_error(
-						    std::format("Interface {} of part id {} not found",
-						                if_id, pid));
-					}
-					if (!shape_mapping.emplace(InterfaceRef{pid, if_id},
-					                           ActorShapePair{px_actor, shape},
-					                           std::move(*iface_opt))) {
-						throw std::runtime_error(
-						    std::format("Shape mapping for interface {} of "
-						                "part id {} already exists",
-						                if_id, pid));
-					}
-				}
-			});
-		}
-
-		void remove_part(G::PartEntry entry) {
-			auto pid = entry.template key<PartId>();
-			std::unique_lock lock{mutex};
-
-			// Update shape mapping
-			entry.visit([&](auto &pw) {
-				for (const auto &[if_id, shape] : pw.interface_shapes()) {
-					if (!shape_mapping.erase(InterfaceRef{pid, if_id})) {
-						throw std::runtime_error(
-						    std::format("Shape mapping for interface {} of "
-						                "part id {} not found",
-						                if_id, pid));
-					}
-				}
-			});
-		}
-
-		void add_conn_seg(G::ConnSegEntry cs_entry) {
-			// Update shape-level contact exclusion
-			if (contact_exclusion_level_ != ContactExclusionLevel::Shape) {
-				return;
-			}
-
-			const auto &[stud_ifref, hole_ifref] =
-			    cs_entry.template key<ConnSegRef>();
-			PhysicsConnectionSegmentWrapper &csw = cs_entry.value();
-
-			std::unique_lock lock{mutex};
-
-			// Set up PhysX shapes for connection segment
-			if (auto stud_shape =
-			        shape_mapping.template find_key<ActorShapePair>(
-			            stud_ifref)) {
-				csw.px_stud_shape = *stud_shape;
-			}
-			if (auto hole_shape =
-			        shape_mapping.template find_key<ActorShapePair>(
-			            hole_ifref)) {
-				csw.px_hole_shape = *hole_shape;
-			}
-
-			// Add contact exclusion
-			if (csw.px_stud_shape != NullActorShapePair &&
-			    csw.px_hole_shape != NullActorShapePair) {
-				auto [_, inserted] = contact_exclusions.emplace(
-				    csw.px_stud_shape, csw.px_hole_shape);
-				if (!inserted) {
-					throw std::runtime_error(
-					    std::format("Contact exclusion for connection segment "
-					                "{} already exists",
-					                cs_entry.template key<ConnSegId>()));
-				}
-			}
-		}
-
-		void remove_conn_seg(G::ConnSegEntry cs_entry) {
-			// Update shape-level contact exclusion
-			if (contact_exclusion_level_ != ContactExclusionLevel::Shape) {
-				return;
-			}
-
-			PhysicsConnectionSegmentWrapper &csw = cs_entry.value();
-
-			// Remove contact exclusion
-			if (csw.px_stud_shape != NullActorShapePair &&
-			    csw.px_hole_shape != NullActorShapePair) {
-				std::unique_lock lock{mutex};
-				if (!contact_exclusions.erase(
-				        {csw.px_stud_shape, csw.px_hole_shape})) {
-					throw std::runtime_error(std::format(
-					    "Contact exclusion for connection segment {} not found",
-					    cs_entry.template key<ConnSegId>()));
-				}
-			}
-			csw.px_stud_shape = NullActorShapePair;
-			csw.px_hole_shape = NullActorShapePair;
-		}
-
-		void add_conn_bundle(G::ConnBundleEntry cb_entry) {
-			auto [pid_a, pid_b] = cb_entry.first;
-			auto actor_a =
-			    topology_.parts().template key_of<physx::PxRigidActor *>(pid_a);
-			auto actor_b =
-			    topology_.parts().template key_of<physx::PxRigidActor *>(pid_b);
-
-			// Add contact exclusion if level is Actor
-			if (contact_exclusion_level_ == ContactExclusionLevel::Actor) {
-				std::unique_lock lock{mutex};
-				auto [_, inserted] =
-				    contact_exclusions.emplace(ContactExclusionPair{
-				        {actor_a, nullptr}, {actor_b, nullptr}});
-				if (!inserted) {
-					throw std::runtime_error(
-					    std::format("Contact exclusion for connection bundle "
-					                "({}, {}) already exists",
-					                pid_a, pid_b));
-				}
-			}
-		}
-
-		void remove_conn_bundle(G::ConnBundleEntry cb_entry) {
-			auto [pid_a, pid_b] = cb_entry.first;
-			auto actor_a =
-			    topology_.parts().template key_of<physx::PxRigidActor *>(pid_a);
-			auto actor_b =
-			    topology_.parts().template key_of<physx::PxRigidActor *>(pid_b);
-
-			// Remove contact exclusion if level is Actor
-			if (contact_exclusion_level_ == ContactExclusionLevel::Actor) {
-				std::unique_lock lock{mutex};
-				if (!contact_exclusions.erase(ContactExclusionPair{
-				        {actor_a, nullptr}, {actor_b, nullptr}})) {
-					throw std::runtime_error(
-					    std::format("Contact exclusion for connection bundle "
-					                "({}, {}) not found",
-					                pid_a, pid_b));
-				}
-			}
-		}
-	};
-
 	class TopologyHooks {
 	  private:
 		using G = TopologyGraph;
 
 		// Reference to owner's fields
-		const ContactExclusionLevel &contact_exclusion_level_;
+		PhysicsShapeMapping &shape_mapping_;
 		PhysicsComponentLabeling &cc_labeling_;
 		PhysicsConstraintScheduler &constraint_scheduler_;
-		SimInputData &sim_in_;
-		FilteringResetAggregator &filtering_reset_;
+		PhysicsFilteringResetAggregator &filtering_reset_;
 
 	  public:
 		TopologyHooks(Self *owner)
-		    : contact_exclusion_level_{owner->contact_exclusion_level_},
+		    : shape_mapping_{owner->shape_mapping_},
 		      cc_labeling_{owner->cc_labeling_},
 		      constraint_scheduler_{owner->constraint_scheduler_},
-		      sim_in_{owner->sim_in_},
 		      filtering_reset_{owner->filtering_reset_} {}
 
 		~TopologyHooks() = default;
@@ -424,83 +149,32 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 		void on_part_added(G::PartEntry entry) {
 			PartId pid = entry.template key<PartId>();
-			sim_in_.add_part(entry);
+			shape_mapping_.add_part(entry);
 			cc_labeling_.mark_dirty(pid);
 			constraint_scheduler_.notify_part_added(pid);
 		}
 
 		void on_part_removing(G::PartEntry entry) {
-			// We need interface_shapes so we must call this before it's gone
-			sim_in_.remove_part(entry);
+			shape_mapping_.remove_part(entry);
 		}
 
 		void on_part_removed(PartId pid) {
 			// Do this after removed so we schedule constraints on the updated graph
-			constraint_scheduler_.notify_part_removed(pid);
 			cc_labeling_.mark_removed(pid);
-			filtering_reset_.mark_deleted(pid);
-		}
-
-		void on_connected(G::ConnSegEntry cs_entry,
-		                  [[maybe_unused]] G::ConnBundleEntry cb_entry,
-		                  [[maybe_unused]] const InterfaceSpec &stud_spec,
-		                  [[maybe_unused]] const InterfaceSpec &hole_spec) {
-			const auto &[stud_ifref, hole_ifref] =
-			    cs_entry.template key<ConnSegRef>();
-			const auto &[stud_pid, stud_ifid] = stud_ifref;
-
-			sim_in_.add_conn_seg(cs_entry);
-
-			// Reset filtering if in Shape level
-			if (contact_exclusion_level_ == ContactExclusionLevel::Shape) {
-				filtering_reset_.request_reset(stud_pid);
-			}
-		}
-
-		void on_disconnecting(G::ConnSegEntry cs_entry,
-		                      [[maybe_unused]] G::ConnBundleEntry cb_entry) {
-			const auto &[stud_ifref, hole_ifref] =
-			    cs_entry.template key<ConnSegRef>();
-			const auto &[stud_pid, stud_ifid] = stud_ifref;
-
-			sim_in_.remove_conn_seg(cs_entry);
-
-			// Reset filtering if in Shape level
-			if (contact_exclusion_level_ == ContactExclusionLevel::Shape) {
-				filtering_reset_.request_reset(stud_pid);
-			}
+			constraint_scheduler_.notify_part_removed(pid);
+			filtering_reset_.mark_removed(pid);
 		}
 
 		void on_bundle_created(G::ConnBundleEntry cb_entry) {
 			auto [pid_a, pid_b] = cb_entry.first;
-
-			sim_in_.add_conn_bundle(cb_entry);
 
 			// One vertex is enough because both parts are in the same CC
 			cc_labeling_.mark_dirty(pid_a);
 
 			constraint_scheduler_.notify_connected(pid_a, pid_b);
 
-			if (contact_exclusion_level_ == ContactExclusionLevel::Actor ||
-			    contact_exclusion_level_ ==
-			        ContactExclusionLevel::ConnectedComponent) {
-				// Actor Level: Reset filtering for this pair of parts
-				// ConnectedComponent Level: Reset filtering for all parts in the merged connected component
-				filtering_reset_.request_reset(pid_a);
-			}
-		}
-
-		void on_bundle_removing(G::ConnBundleEntry cb_entry) {
-			sim_in_.remove_conn_bundle(cb_entry);
-
-			if (contact_exclusion_level_ == ContactExclusionLevel::Actor ||
-			    contact_exclusion_level_ ==
-			        ContactExclusionLevel::ConnectedComponent) {
-				// Actor Level: Reset filtering for this pair of parts
-				// ConnectedComponent Level: Reset filtering for all parts in one of the connected components
-				auto [pid_a, pid_b] = cb_entry.first;
-				filtering_reset_.request_reset(pid_a);
-			}
+			// Reset filtering for all parts in the merged connected component
+			filtering_reset_.mark_for_reset(pid_a);
 		}
 
 		void on_bundle_removed(const ConnectionEndpoint &ep) {
@@ -512,6 +186,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 			// Do this after removed so the scheduler sees the updated graph
 			constraint_scheduler_.notify_disconnected(pid_a, pid_b);
+
+			// Reset filtering for BOTH (needed for correctness in vertex-deletion case)
+			filtering_reset_.mark_for_reset(pid_a);
+			filtering_reset_.mark_for_reset(pid_b);
 		}
 	};
 
@@ -576,9 +254,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		explicit PhysxBinding(Self *owner, physx::PxScene *px_scene)
 		    : PxSimulationFilterPatch{px_scene},
 		      PxSimulationEventPatch{px_scene}, metrics_{owner->metrics_},
-		      cc_labeling_{owner->cc_labeling_}, sim_in_{owner->sim_in_},
+		      shape_map_{owner->shape_mapping_.committed_view()},
+		      cc_labeling_{owner->cc_labeling_},
 		      assembly_checker_{owner->assembly_checker_},
-		      contact_exclusion_level_{owner->contact_exclusion_level_},
 		      collect_assembly_debug_info_{owner->collect_assembly_debug_info_},
 		      sim_out_{owner->sim_out_}, px_scene_{px_scene} {}
 		~PhysxBinding() {}
@@ -612,25 +290,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			if (rb1 == nullptr) {
 				return result;
 			}
-			auto *s0 = const_cast<physx::PxShape *>(cs0);
-			auto *s1 = const_cast<physx::PxShape *>(cs1);
-
-			// Thread safety: reading sim data structures
-			std::shared_lock lock{sim_in_.mutex};
-
-			if (contact_exclusion_level_ == ContactExclusionLevel::Shape) {
-				if (sim_in_.contact_exclusions.contains(
-				        ContactExclusionPair{{rb0, s0}, {rb1, s1}})) {
-					return physx::PxFilterFlag::eKILL;
-				}
-			} else if (contact_exclusion_level_ ==
-			           ContactExclusionLevel::Actor) {
-				if (sim_in_.contact_exclusions.contains(
-				        ContactExclusionPair{{rb0, nullptr}, {rb1, nullptr}})) {
-					return physx::PxFilterFlag::eKILL;
-				}
-			}
-			// For ConnectedComponent level, we will check later
 
 			const auto &cc_mapping = cc_labeling_.mapping();
 			const ComponentId *cc0 = cc_mapping.find_value(rb0);
@@ -640,11 +299,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				return result;
 			}
 
-			if (contact_exclusion_level_ ==
-			    ContactExclusionLevel::ConnectedComponent) {
-				if (*cc0 == *cc1) {
-					return physx::PxFilterFlag::eKILL;
-				}
+			if (*cc0 == *cc1) {
+				// Same connected component
+				return physx::PxFilterFlag::eKILL;
 			}
 
 			// Enable contact pose report
@@ -674,9 +331,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				return;
 			}
 
-			// Thread safety: reading sim data structures
-			std::shared_lock lock{sim_in_.mutex};
-
 			physx::PxReal dt = getPxSceneElapsedTime(px_scene_);
 
 			// Iterate over contact pairs
@@ -702,10 +356,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				}
 				const auto &[shape0, shape1] = pair.shapes;
 
-				const InterfaceSpec *if0 = sim_in_.shape_mapping.find_value(
-				    ActorShapePair{rb0, shape0});
-				const InterfaceSpec *if1 = sim_in_.shape_mapping.find_value(
-				    ActorShapePair{rb1, shape1});
+				const InterfaceSpec *if0 =
+				    shape_map_.find_value(ActorShapePair{rb0, shape0});
+				const InterfaceSpec *if1 =
+				    shape_map_.find_value(ActorShapePair{rb1, shape1});
 				if (!if0 || !if1) {
 					continue;
 				}
@@ -753,10 +407,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 	  private:
 		const MetricSystem &metrics_;
+		const ShapeMap &shape_map_;
 		const PhysicsComponentLabeling &cc_labeling_;
-		const SimInputData &sim_in_;
 		const AssemblyChecker &assembly_checker_;
-		const ContactExclusionLevel &contact_exclusion_level_;
 		const bool &collect_assembly_debug_info_;
 		SimOutputData &sim_out_;
 		physx::PxScene *px_scene_;
@@ -789,10 +442,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 			if (collect_assembly_debug_info_) {
 				const InterfaceRef *ifref0 =
-				    sim_in_.shape_mapping.template find_key<InterfaceRef>(
+				    shape_map_.template find_key<InterfaceRef>(
 				        ActorShapePair{rb0, s0});
 				const InterfaceRef *ifref1 =
-				    sim_in_.shape_mapping.template find_key<InterfaceRef>(
+				    shape_map_.template find_key<InterfaceRef>(
 				        ActorShapePair{rb1, s1});
 				if (ifref0 && ifref1) {
 					debug_info.csref = {*ifref0, *ifref1};
@@ -804,13 +457,11 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				return;
 			}
 
-			// Thread safety: read lock already acquired in caller
-
 			const InterfaceRef &ifref0 =
-			    sim_in_.shape_mapping.template key_of<InterfaceRef>(
+			    shape_map_.template key_of<InterfaceRef>(
 			        ActorShapePair{rb0, s0});
 			const InterfaceRef &ifref1 =
-			    sim_in_.shape_mapping.template key_of<InterfaceRef>(
+			    shape_map_.template key_of<InterfaceRef>(
 			        ActorShapePair{rb1, s1});
 
 			sim_out_.enqueue_assembly(ConnSegRef{ifref0, ifref1}, *result);
@@ -821,19 +472,18 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	explicit PhysicsLegoGraph(const MetricSystem &metrics, physx::PxPhysics *px,
 	                          Hooks *hooks = nullptr,
 	                          AssemblyThresholds thresholds = {},
-	                          ContactExclusionLevel contact_exclusion_level =
-	                              ContactExclusionLevel::ConnectedComponent,
 	                          bool collect_assembly_debug_info = true)
-	    : metrics_{metrics}, px_{px}, hooks_{hooks}, topology_hooks_{this},
-	      topology_{&topology_hooks_},
+	    : metrics_{metrics}, px_{px}, hooks_{hooks},
+	      collect_assembly_debug_info_{collect_assembly_debug_info},
+	      topology_{}, assembly_checker_{thresholds}, shape_mapping_{},
+	      cc_labeling_{topology_},
 	      constraint_scheduler_{
 	          &topology_, ConstraintSchedulingPolicy{},
 	          std::bind_front(&PhysicsLegoGraph::create_constraint, this),
 	          std::bind_front(&PhysicsLegoGraph::release_constraint, this)},
-	      assembly_checker_{thresholds},
-	      contact_exclusion_level_{contact_exclusion_level},
-	      collect_assembly_debug_info_{collect_assembly_debug_info},
-	      cc_labeling_{topology_}, filtering_reset_{this}, sim_in_{this} {}
+	      filtering_reset_{topology_}, sim_out_{}, topology_hooks_{this} {
+		topology_.set_hooks(&topology_hooks_);
+	}
 	~PhysicsLegoGraph() {
 		unbind_physx_scene();
 
@@ -932,20 +582,21 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	MetricSystem metrics_;
 	physx::PxPhysics *px_;
 	Hooks *hooks_;
-	TopologyHooks topology_hooks_;
-	TopologyGraph topology_;
-	PhysicsConstraintScheduler constraint_scheduler_;
-	std::unique_ptr<PhysxBinding> physx_binding_;
-	AssemblyChecker assembly_checker_;
-	ContactExclusionLevel contact_exclusion_level_;
 	bool collect_assembly_debug_info_;
 
+	TopologyGraph topology_;
+	AssemblyChecker assembly_checker_;
+	PhysicsShapeMapping shape_mapping_;
 	PhysicsComponentLabeling cc_labeling_;
-	FilteringResetAggregator filtering_reset_;
-	SimInputData sim_in_;
+	PhysicsConstraintScheduler constraint_scheduler_;
+	PhysicsFilteringResetAggregator filtering_reset_;
 	SimOutputData sim_out_;
 
+	TopologyHooks topology_hooks_;
+	std::unique_ptr<PhysxBinding> physx_binding_;
+
 	void flush_physx_ops() {
+		shape_mapping_.commit();
 		cc_labeling_.commit();
 		constraint_scheduler_.commit();
 		filtering_reset_.commit();
@@ -992,9 +643,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	static_assert(TopologyGraph::HasOnPartAddedHook);
 	static_assert(TopologyGraph::HasOnPartRemovingHook);
 	static_assert(TopologyGraph::HasOnPartRemovedHook);
-	static_assert(TopologyGraph::HasOnConnectedHook);
 	static_assert(TopologyGraph::HasOnBundleCreatedHook);
-	static_assert(TopologyGraph::HasOnBundleRemovingHook);
 	static_assert(TopologyGraph::HasOnBundleRemovedHook);
 };
 

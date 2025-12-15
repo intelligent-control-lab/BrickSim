@@ -194,6 +194,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	using PartKeysEq = type_list<std::equal_to<>, std::equal_to<>, PEKEqs...>;
 	using PartStore =
 	    PolyStore<PartKeys, WrappedPartList, PartKeysHash, PartKeysEq>;
+	using WrappedConnSeg = ConnSegWrapper;
 	using ConnSegExtraKeys = type_list<CSEKs...>;
 	using ConnSegKeys = type_list<ConnSegId, ConnSegRef, CSEKs...>;
 	using ConnSegKeysHash =
@@ -202,6 +203,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	    type_list<std::equal_to<>, std::equal_to<>, CSEKEqs...>;
 	using ConnSegStore = MultiKeyMap<ConnSegKeys, ConnSegWrapper,
 	                                 ConnSegKeysHash, ConnSegKeysEq>;
+	using WrappedConnBundle = ConnBundleWrapper;
 	using ConnBundleStore =
 	    std::pmr::unordered_map<ConnectionEndpoint, ConnBundleWrapper>;
 	using PartEntry = PartStore::entry_reference;

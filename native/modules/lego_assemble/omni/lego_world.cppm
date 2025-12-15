@@ -19,8 +19,6 @@ export struct LegoConfig {
 	bool sync_conns_to_usd{true};
 	bool sync_conns_to_physics{true};
 	bool warn_divergence{false};
-	ContactExclusionLevel contact_exclusion_level{
-	    ContactExclusionLevel::ConnectedComponent};
 	AlignPolicy align_policy{AlignPolicy::MoveHoleCC};
 	AssemblyThresholds assembly_thresholds{};
 };
@@ -235,7 +233,7 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		px_scene_ = new_scene;
 		physics_graph_ = std::make_unique<PhysicsGraph>(
 		    MetricSystem(stage_), &new_scene->getPhysics(), nullptr,
-		    cfg_.assembly_thresholds, cfg_.contact_exclusion_level);
+		    cfg_.assembly_thresholds);
 		bool physics_graph_bound = physics_graph_->bind_physx_scene(px_scene_);
 		if (!physics_graph_bound) {
 			throw std::runtime_error(
