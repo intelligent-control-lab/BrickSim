@@ -283,6 +283,7 @@ static void test_topology_and_constraints() {
 // Exercise PhysxBinding::pairFound branches via the PxScene callback.
 static void test_filter_callback_pairFound() {
 	PhysicsGraphFixture fx;
+	fx.graph.do_pre_step();
 	// Mirror the offsets used by lego_assemble.physx.patcher to locate
 	// the internal Sc::Scene::mFilterCallback pointer.
 	constexpr std::size_t offset_NpScene_mScene = 1440;
