@@ -144,6 +144,8 @@ concept PartLike = requires(const P &p, InterfaceId ifid) {
 	} -> std::convertible_to<std::optional<InterfaceSpec>>;
 	{ p.interfaces() } -> range_of<InterfaceSpec>;
 	{ p.faces() } -> FaceSpecRange;
+	{ p.com() } -> std::convertible_to<Eigen::Vector3d>;
+	{ p.inertia_tensor() } -> std::convertible_to<Eigen::Matrix3d>;
 } && std::equality_comparable<P>;
 
 export template <class... Ps>
@@ -331,6 +333,21 @@ export class BrickPart {
 		        pos_y_face(), neg_x_face(), pos_x_face()};
 	}
 
+	Eigen::Vector3d com() const {
+		return {0.0, 0.0, H_ * PlateUnitHeight / 2.0};
+	}
+
+	Eigen::Matrix3d inertia_tensor() const {
+		double m = this->mass();
+		double lx = L_ * BrickUnitLength;
+		double ly = W_ * BrickUnitLength;
+		double lz = H_ * PlateUnitHeight;
+		double Ixx = (1.0 / 12.0) * m * (ly * ly + lz * lz);
+		double Iyy = (1.0 / 12.0) * m * (lx * lx + lz * lz);
+		double Izz = (1.0 / 12.0) * m * (lx * lx + ly * ly);
+		return Eigen::Vector3d{Ixx, Iyy, Izz}.asDiagonal();
+	}
+
 	bool operator==(const BrickPart &other) const = default;
 
   private:
@@ -345,12 +362,14 @@ static_assert(PartLike<BrickPart>);
 
 export struct CustomPart {
   public:
-	CustomPart(double mass, BrickColor color,
-	           std::initializer_list<InterfaceSpec> ifs, BBox3d bbox,
+	CustomPart(double mass, const BrickColor &color,
+	           std::initializer_list<InterfaceSpec> ifs, const BBox3d &bbox,
 	           std::initializer_list<CustomFaceSpec> faces,
+	           const Eigen::Vector3d &com,
+	           const Eigen::Matrix3d &inertia_tensor,
 	           std::pmr::memory_resource *r = std::pmr::get_default_resource())
-	    : mass_{mass}, color_{color}, interfaces_{ifs, r},
-	      bbox_{std::move(bbox)}, faces_{faces, r} {}
+	    : mass_{mass}, color_{color}, interfaces_{ifs, r}, bbox_{bbox},
+	      faces_{faces, r}, com_{com}, inertia_tensor_{inertia_tensor} {}
 
 	CustomPart(double mass, BrickColor color,
 	           std::initializer_list<InterfaceSpec> ifs,
@@ -364,7 +383,7 @@ export struct CustomPart {
 	double mass() const {
 		return mass_;
 	}
-	BrickColor color() const {
+	const BrickColor &color() const {
 		return color_;
 	}
 	std::span<const InterfaceSpec> interfaces() const {
@@ -379,11 +398,17 @@ export struct CustomPart {
 		}
 		return std::nullopt;
 	}
-	BBox3d bbox() const {
+	const BBox3d &bbox() const {
 		return bbox_;
 	}
 	std::span<const CustomFaceSpec> faces() const {
 		return faces_;
+	}
+	const Eigen::Vector3d &com() const {
+		return com_;
+	}
+	const Eigen::Matrix3d &inertia_tensor() const {
+		return inertia_tensor_;
 	}
 
 	bool operator==(const CustomPart &other) const = default;
@@ -394,6 +419,8 @@ export struct CustomPart {
 	std::pmr::vector<InterfaceSpec> interfaces_;
 	BBox3d bbox_;
 	std::pmr::vector<CustomFaceSpec> faces_;
+	Eigen::Vector3d com_;
+	Eigen::Matrix3d inertia_tensor_;
 };
 static_assert(PartLike<CustomPart>);
 
