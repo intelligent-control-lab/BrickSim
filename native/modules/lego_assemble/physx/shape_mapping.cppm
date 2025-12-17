@@ -4,7 +4,7 @@ import std;
 import lego_assemble.core.specs;
 import lego_assemble.core.graph;
 import lego_assemble.utils.pair;
-import lego_assemble.utils.ranges;
+import lego_assemble.utils.concepts;
 import lego_assemble.utils.type_list;
 import lego_assemble.utils.multi_key_map;
 import lego_assemble.vendor;

@@ -30,6 +30,10 @@ export struct BBox2d {
 		min = min.cwiseMin(other.min);
 		max = max.cwiseMax(other.max);
 	}
+	bool overlaps(const BBox2d &other) const {
+		return (min.x() <= other.max.x() && max.x() >= other.min.x()) &&
+		       (min.y() <= other.max.y() && max.y() >= other.min.y());
+	}
 };
 
 export struct BBox3d {
@@ -55,6 +59,11 @@ export struct BBox3d {
 	void expand_to_include(const BBox3d &other) {
 		min = min.cwiseMin(other.min);
 		max = max.cwiseMax(other.max);
+	}
+	bool overlaps(const BBox3d &other) const {
+		return (min.x() <= other.max.x() && max.x() >= other.min.x()) &&
+		       (min.y() <= other.max.y() && max.y() >= other.min.y()) &&
+		       (min.z() <= other.max.z() && max.z() >= other.min.z());
 	}
 	BBox2d to_2d() const {
 		return {

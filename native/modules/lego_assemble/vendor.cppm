@@ -95,6 +95,7 @@ using Eigen::Affine3f;
 using Eigen::AngleAxis;
 using Eigen::AngleAxisd;
 using Eigen::AngleAxisf;
+using Eigen::Index;
 using Eigen::Isometry;
 using Eigen::Isometry2d;
 using Eigen::Isometry2f;

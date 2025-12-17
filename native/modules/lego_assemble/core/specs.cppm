@@ -3,7 +3,7 @@ export module lego_assemble.core.specs;
 import std;
 import lego_assemble.utils.type_list;
 import lego_assemble.utils.transforms;
-import lego_assemble.utils.ranges;
+import lego_assemble.utils.concepts;
 import lego_assemble.utils.bbox;
 import lego_assemble.vendor;
 
@@ -56,6 +56,10 @@ concept FaceSpecLike = requires(const T &s) {
 	// +z is the outward normal
 	{ s.transform() } -> std::convertible_to<Transformd>;
 } && std::equality_comparable<T>;
+
+export template <class T>
+concept FaceSpecOptional =
+    is_optional_v<T> && FaceSpecLike<optional_value_t<T>>;
 
 export template <class R>
 concept FaceSpecRange =
@@ -135,7 +139,7 @@ static_assert(FaceSpecLike<CustomFaceSpec>);
 export using BrickColor = std::array<std::uint8_t, 3>; // RGB
 
 export template <class P>
-concept PartLike = requires(const P &p, InterfaceId ifid) {
+concept PartLike = requires(const P &p, InterfaceId ifid, FaceId fid) {
 	{ p.mass() } -> std::convertible_to<double>;
 	{ p.color() } -> std::convertible_to<BrickColor>;
 	{ p.bbox() } -> std::convertible_to<BBox3d>;
@@ -143,6 +147,7 @@ concept PartLike = requires(const P &p, InterfaceId ifid) {
 		p.get_interface(ifid)
 	} -> std::convertible_to<std::optional<InterfaceSpec>>;
 	{ p.interfaces() } -> range_of<InterfaceSpec>;
+	{ p.get_face(fid) } -> FaceSpecOptional;
 	{ p.faces() } -> FaceSpecRange;
 	{ p.com() } -> std::convertible_to<Eigen::Vector3d>;
 	{ p.inertia_tensor() } -> std::convertible_to<Eigen::Matrix3d>;
@@ -328,6 +333,24 @@ export class BrickPart {
 		        }};
 	}
 
+	std::optional<RectFaceSpec> get_face(FaceId fid) const {
+		switch (fid) {
+		case PosXFaceId:
+			return pos_x_face();
+		case NegXFaceId:
+			return neg_x_face();
+		case PosYFaceId:
+			return pos_y_face();
+		case NegYFaceId:
+			return neg_y_face();
+		case PosZFaceId:
+			return pos_z_face();
+		case NegZFaceId:
+			return neg_z_face();
+		default:
+			return std::nullopt;
+		}
+	}
 	std::array<RectFaceSpec, 6> faces() const {
 		return {pos_z_face(), neg_z_face(), neg_y_face(),
 		        pos_y_face(), neg_x_face(), pos_x_face()};
@@ -400,6 +423,15 @@ export struct CustomPart {
 	}
 	const BBox3d &bbox() const {
 		return bbox_;
+	}
+	std::optional<CustomFaceSpec> get_face(FaceId fid) const {
+		// Linear search because number of faces is usually small
+		for (const auto &face : faces_) {
+			if (face.id() == fid) {
+				return face;
+			}
+		}
+		return std::nullopt;
 	}
 	std::span<const CustomFaceSpec> faces() const {
 		return faces_;
