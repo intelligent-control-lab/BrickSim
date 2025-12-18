@@ -311,8 +311,8 @@ double sat(std::span<const Eigen::Vector2d> poly_a,
 				continue;
 			}
 			axis.normalize();
-			auto [min_a, max_a] = project_polygon(poly, axis);
-			auto [min_b, max_b] = project_polygon(poly, axis);
+			auto [min_a, max_a] = project_polygon(poly_a, axis);
+			auto [min_b, max_b] = project_polygon(poly_b, axis);
 			double overlap = std::min(max_a, max_b) - std::max(min_a, min_b);
 			if (overlap <= 0.0) {
 				// Separating axis found
