@@ -200,7 +200,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		std::vector<PendingDisassembly> pending_disassemblies_;
 		std::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_cur_;
 		std::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_prev_;
-		std::vector<std::tuple<PartId, physx::PxVec3, physx::PxVec3>>
+		std::unordered_map<PartId, std::tuple<physx::PxVec3, physx::PxVec3>>
 		    external_wrenches_;
 
 	  public:
@@ -223,7 +223,14 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		    PartId pid,
 		    const std::tuple<physx::PxVec3, physx::PxVec3> &wrench) {
 			const auto &[force, torque] = wrench;
-			external_wrenches_.emplace_back(pid, force, torque);
+			auto it = external_wrenches_.find(pid);
+			if (it != external_wrenches_.end()) {
+				auto &[acc_force, acc_torque] = it->second;
+				acc_force += force;
+				acc_torque += torque;
+			} else {
+				external_wrenches_.emplace(pid, wrench);
+			}
 		}
 
 		std::vector<PendingAssembly> consume_assemblies() {
@@ -248,10 +255,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			assembly_debug_infos_cur_.clear();
 		}
 
-		std::vector<std::tuple<PartId, physx::PxVec3, physx::PxVec3>>
+		std::unordered_map<PartId, std::tuple<physx::PxVec3, physx::PxVec3>>
 		consume_external_wrenches() {
-			std::vector<std::tuple<PartId, physx::PxVec3, physx::PxVec3>> res =
-			    std::move(external_wrenches_);
+			std::unordered_map<PartId, std::tuple<physx::PxVec3, physx::PxVec3>>
+			    res = std::move(external_wrenches_);
 			external_wrenches_.clear();
 			return res;
 		}
