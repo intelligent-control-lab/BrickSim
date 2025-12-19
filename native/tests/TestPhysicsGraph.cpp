@@ -324,7 +324,7 @@ static void test_filter_callback_pairFound() {
 	                             fx.actorB, fx.holeShapeB, pairFlags);
 	assert(kill == physx::PxFilterFlag::eKILL);
 
-	// Case 3: one actor not tracked as a part => no CONTACT_EVENT_POSE flag.
+	// Case 3: one actor not tracked as a part => CONTACT_EVENT_POSE flag.
 	physx::PxRigidDynamic *extraActor = fx.env.physics->createRigidDynamic(
 	    physx::PxTransform(physx::PxVec3(1.0f, 0.0f, 0.0f)));
 	assert(extraActor);
@@ -336,7 +336,7 @@ static void test_filter_callback_pairFound() {
 	pairFlags = physx::PxPairFlags{};
 	(void)proxy->pairFound(3, {}, fd, extraActor, extraShape, {}, fd, fx.actorB,
 	                       fx.holeShapeB, pairFlags);
-	assert(!pairFlags.isSet(physx::PxPairFlag::eCONTACT_EVENT_POSE));
+	assert(pairFlags.isSet(physx::PxPairFlag::eCONTACT_EVENT_POSE));
 
 	extraActor->release();
 }

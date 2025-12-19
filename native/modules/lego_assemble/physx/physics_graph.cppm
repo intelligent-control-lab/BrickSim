@@ -200,6 +200,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		std::vector<PendingDisassembly> pending_disassemblies_;
 		std::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_cur_;
 		std::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_prev_;
+		std::vector<std::tuple<PartId, physx::PxVec3, physx::PxVec3>>
+		    external_wrenches_;
 
 	  public:
 		void enqueue_assembly(auto &&...args) {
@@ -215,6 +217,13 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		void enqueue_disassembly(auto &&...args) {
 			pending_disassemblies_.emplace_back(
 			    std::forward<decltype(args)>(args)...);
+		}
+
+		void enqueue_external_wrench(
+		    PartId pid,
+		    const std::tuple<physx::PxVec3, physx::PxVec3> &wrench) {
+			const auto &[force, torque] = wrench;
+			external_wrenches_.emplace_back(pid, force, torque);
 		}
 
 		std::vector<PendingAssembly> consume_assemblies() {
@@ -237,6 +246,14 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		void swap_debug_info_buffers() {
 			assembly_debug_infos_prev_ = std::move(assembly_debug_infos_cur_);
 			assembly_debug_infos_cur_.clear();
+		}
+
+		std::vector<std::tuple<PartId, physx::PxVec3, physx::PxVec3>>
+		consume_external_wrenches() {
+			std::vector<std::tuple<PartId, physx::PxVec3, physx::PxVec3>> res =
+			    std::move(external_wrenches_);
+			external_wrenches_.clear();
+			return res;
 		}
 	};
 
@@ -268,36 +285,34 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		    physx::PxFilterObjectAttributes attributes1,
 		    physx::PxFilterData filterData1, const physx::PxActor *ca1,
 		    const physx::PxShape *cs1, physx::PxPairFlags &pairFlags) override {
+			using namespace physx;
 
-			physx::PxFilterFlags result = PxSimulationFilterPatch::pairFound(
+			PxFilterFlags result = PxSimulationFilterPatch::pairFound(
 			    pairID, attributes0, filterData0, ca0, cs0, attributes1,
 			    filterData1, ca1, cs1, pairFlags);
 
-			// Only if both actors are rigid actors
-			auto *rb0 = cast_rigid_actor(const_cast<physx::PxActor *>(ca0));
-			if (rb0 == nullptr) {
+			const ComponentId *cc0 = lookup_cc(ca0);
+			const ComponentId *cc1 = lookup_cc(ca1);
+
+			if (cc0 == nullptr && cc1 == nullptr) {
+				// Non-lego vs. non-lego contact
 				return result;
-			}
-			auto *rb1 = cast_rigid_actor(const_cast<physx::PxActor *>(ca1));
-			if (rb1 == nullptr) {
-				return result;
+			} else if (cc0 != nullptr && cc1 != nullptr) {
+				// Lego vs. lego contact
+				if (*cc0 == *cc1) {
+					// Same connected component
+					return PxFilterFlag::eKILL;
+				} else {
+					// Different connected components
+					// Fallthrough
+				}
+			} else {
+				// Lego vs. non-lego contact
+				// Fallthrough
 			}
 
-			const auto &cc_mapping = cc_labeling_.mapping();
-			const ComponentId *cc0 = cc_mapping.find_value(rb0);
-			const ComponentId *cc1 = cc_mapping.find_value(rb1);
-			if (cc0 == nullptr || cc1 == nullptr) {
-				// Not part-part contact
-				return result;
-			}
-
-			if (*cc0 == *cc1) {
-				// Same connected component
-				return physx::PxFilterFlag::eKILL;
-			}
-
-			// Enable contact pose report
-			pairFlags |= physx::PxPairFlag::eCONTACT_EVENT_POSE;
+			pairFlags |= PxPairFlag::eNOTIFY_CONTACT_POINTS;
+			pairFlags |= PxPairFlag::eCONTACT_EVENT_POSE;
 
 			return result;
 		}
@@ -305,95 +320,53 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		virtual void onContact(const physx::PxContactPairHeader &header,
 		                       const physx::PxContactPair *pairs,
 		                       physx::PxU32 nbPairs) override {
+			using namespace physx;
 
 			PxSimulationEventPatch::onContact(header, pairs, nbPairs);
 
 			// Ignore removed actors
-			if (header.flags.isSet(
-			        physx::PxContactPairHeaderFlag::eREMOVED_ACTOR_0) ||
-			    header.flags.isSet(
-			        physx::PxContactPairHeaderFlag::eREMOVED_ACTOR_1)) {
+			if (header.flags.isSet(PxContactPairHeaderFlag::eREMOVED_ACTOR_0)) {
+				return;
+			}
+			if (header.flags.isSet(PxContactPairHeaderFlag::eREMOVED_ACTOR_1)) {
 				return;
 			}
 
-			// Only if both actors are rigid actors
-			physx::PxRigidActor *rb0 = cast_rigid_actor(header.actors[0]);
-			physx::PxRigidActor *rb1 = cast_rigid_actor(header.actors[1]);
-			if (rb0 == nullptr || rb1 == nullptr) {
+			PxActor *a0 = header.actors[0];
+			PxActor *a1 = header.actors[1];
+			const ComponentId *cc0 = lookup_cc(a0);
+			const ComponentId *cc1 = lookup_cc(a1);
+			if (cc0 == nullptr && cc1 == nullptr) {
+				// Non-lego vs. non-lego contact
 				return;
+			} else if (cc0 != nullptr && cc1 != nullptr) {
+				// Lego vs. lego contact
+				if (*cc0 == *cc1) {
+					// Same connected component
+					return;
+				} else {
+					// Different connected components
+					// Fallthrough
+				}
+			} else {
+				// Lego vs. non-lego contact
+				// Fallthrough
 			}
 
-			physx::PxReal dt = getPxSceneElapsedTime(px_scene_);
+			// 1. For lego-lego contact, check assembly
+			if (cc0 != nullptr && cc1 != nullptr) {
+				process_assembly_contacts(header, pairs, nbPairs);
+			}
 
-			// Iterate over contact pairs
-			physx::PxContactPairExtraDataIterator extra_it(
-			    header.extraDataStream, header.extraDataStreamSize);
-			const physx::PxContactPairPose *event_pose = nullptr;
-			bool extra_has_next = extra_it.nextItemSet();
-			for (physx::PxU32 i = 0; i < nbPairs; i++) {
-				while (extra_has_next && extra_it.contactPairIndex <= i) {
-					event_pose = extra_it.eventPose;
-					extra_has_next = extra_it.nextItemSet();
-				}
-				if (event_pose == nullptr) {
-					continue;
-				}
-				const auto &pair = pairs[i];
-				if (!pair.flags.isSet(
-				        physx::PxContactPairFlag::eINTERNAL_HAS_IMPULSES)) {
-					continue;
-				}
-				if (!pair.contactPatches) {
-					continue;
-				}
-				const auto &[shape0, shape1] = pair.shapes;
-
-				const InterfaceSpec *if0 =
-				    shape_map_.find_value(ActorShapePair{rb0, shape0});
-				const InterfaceSpec *if1 =
-				    shape_map_.find_value(ActorShapePair{rb1, shape1});
-				if (!if0 || !if1) {
-					continue;
-				}
-
-				// rb0 should offer stud, rb1 should offer hole
-				bool to_swap;
-				if (if0->type == InterfaceType::Stud &&
-				    if1->type == InterfaceType::Hole) {
-					to_swap = false;
-				} else if (if0->type == InterfaceType::Hole &&
-				           if1->type == InterfaceType::Stud) {
-					to_swap = true;
-				} else {
-					continue;
-				}
-
-				// Sum up contact impulses
-				physx::PxVec3 total_impulse(0, 0, 0);
-				const auto *patches =
-				    reinterpret_cast<const physx::PxContactPatch *>(
-				        pair.contactPatches);
-				for (physx::PxU32 j = 0; j < pair.patchCount; j++) {
-					const auto &patch = patches[j];
-					physx::PxReal patch_impulse = 0;
-					for (physx::PxU32 k = 0; k < patch.nbContacts; k++) {
-						patch_impulse +=
-						    pair.contactImpulses[patch.startContactIndex + k];
-					}
-					total_impulse += patch.normal * patch_impulse;
-				}
-
-				const auto &[pose0, pose1] = event_pose->globalPose;
-
-				if (to_swap) {
-					process_assembly_contact(rb1, shape1, *if1, pose1, rb0,
-					                         shape0, *if0, pose0,
-					                         -total_impulse, dt);
-				} else {
-					process_assembly_contact(rb0, shape0, *if0, pose0, rb1,
-					                         shape1, *if1, pose1, total_impulse,
-					                         dt);
-				}
+			// 2. Collect all external wrenches
+			auto [w0, w1] = accumulate_wrenches(header, pairs, nbPairs);
+			if (cc0 != nullptr) {
+				PartId pid0 = *lookup_part_id(a0);
+				sim_out_.enqueue_external_wrench(pid0, w0);
+			}
+			if (cc1 != nullptr) {
+				PartId pid1 = *lookup_part_id(a1);
+				sim_out_.enqueue_external_wrench(pid1, w1);
 			}
 		}
 
@@ -405,6 +378,249 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		const bool &collect_assembly_debug_info_;
 		SimOutputData &sim_out_;
 		physx::PxScene *px_scene_;
+
+		static void
+		iterate_contact_itemsets(const physx::PxContactPairHeader &header,
+		                         const physx::PxContactPair *pairs,
+		                         physx::PxU32 nbPairs, auto &&fn) {
+			using namespace physx;
+			if (!header.extraDataStream || header.extraDataStreamSize == 0) {
+				return;
+			}
+			PxContactPairExtraDataIterator it{header.extraDataStream,
+			                                  header.extraDataStreamSize};
+			// Read first item set
+			if (!it.nextItemSet())
+				return;
+			PxU32 begin = it.contactPairIndex;
+			const PxContactPairPose *eventPose = it.eventPose;
+			while (it.nextItemSet()) {
+				const PxU32 nextStart = it.contactPairIndex;
+				if (eventPose) {
+					PxU32 end = std::min(nextStart, nbPairs);
+					std::span<const PxContactPair> span_pairs{&pairs[begin],
+					                                          end - begin};
+					std::invoke(fn, span_pairs, eventPose->globalPose[0],
+					            eventPose->globalPose[1]);
+				}
+				// Advance "current" to the set we just read
+				begin = nextStart;
+				eventPose = it.eventPose;
+			}
+			// Process the last item set (ends at nbPairs)
+			if (eventPose) {
+				std::span<const PxContactPair> span_pairs{&pairs[begin],
+				                                          nbPairs - begin};
+				std::invoke(fn, span_pairs, eventPose->globalPose[0],
+				            eventPose->globalPose[1]);
+			}
+		}
+
+		static void
+		iterate_contact_pairs(std::span<const physx::PxContactPair> pairs,
+		                      auto &&fn) {
+			using namespace physx;
+			for (const auto &pair : pairs) {
+				const auto &flags = pair.flags;
+				if (flags.isSet(PxContactPairFlag::eREMOVED_SHAPE_0) ||
+				    flags.isSet(PxContactPairFlag::eREMOVED_SHAPE_1) ||
+				    !flags.isSet(PxContactPairFlag::eINTERNAL_HAS_IMPULSES) ||
+				    !pair.contactPatches) {
+					continue;
+				}
+				std::span<const PxContactPatch> patches{
+				    reinterpret_cast<const PxContactPatch *>(
+				        pair.contactPatches),
+				    pair.patchCount};
+				std::invoke(fn, pair, patches);
+			}
+		}
+
+		static void
+		iterate_contact_pairs(const physx::PxContactPairHeader &header,
+		                      const physx::PxContactPair *pairs,
+		                      physx::PxU32 nbPairs, auto &&fn) {
+			using namespace physx;
+			iterate_contact_itemsets(
+			    header, pairs, nbPairs,
+			    [&](std::span<const PxContactPair> pairs,
+			        const physx::PxTransform &pose0,
+			        const physx::PxTransform &pose1) {
+				    iterate_contact_pairs(
+				        pairs, [&](const PxContactPair &pair,
+				                   std::span<const PxContactPatch> patches) {
+					        std::invoke(fn, pair, patches, pose0, pose1);
+				        });
+			    });
+		}
+
+		static std::span<const physx::PxReal>
+		impulses_view(const physx::PxContactPair &pair,
+		              const physx::PxContactPatch &patch) {
+			return std::span<const physx::PxReal>{
+			    &pair.contactImpulses[patch.startContactIndex],
+			    patch.nbContacts};
+		}
+
+		// Returns total wrenches applied to each actor,
+		// in the world frame w.r.t. center of mass
+		std::array<std::tuple<physx::PxVec3, physx::PxVec3>, 2>
+		accumulate_wrenches(const physx::PxContactPairHeader &header,
+		                    const physx::PxContactPair *pairs,
+		                    physx::PxU32 nbPairs) {
+			using namespace physx;
+
+			auto get_com = [](PxActor *actor) {
+				if (actor->is<PxRigidBody>()) {
+					return static_cast<PxRigidBody *>(actor)
+					    ->getCMassLocalPose()
+					    .p;
+				} else {
+					return PxVec3{0, 0, 0};
+				}
+			};
+			PxVec3 p_0_com0 = get_com(header.actors[0]);
+			PxVec3 p_1_com1 = get_com(header.actors[1]);
+
+			PxVec3 total_J0{0, 0, 0};
+			PxVec3 total_J1{0, 0, 0};
+			PxVec3 total_tau0{0, 0, 0};
+			PxVec3 total_tau1{0, 0, 0};
+			iterate_contact_itemsets(
+			    header, pairs, nbPairs,
+			    [&](std::span<const PxContactPair> pairs,
+			        const physx::PxTransform &T_world_0,
+			        const physx::PxTransform &T_world_1) {
+				    PxVec3 p_world_com0 = T_world_0.transform(p_0_com0);
+				    PxVec3 p_world_com1 = T_world_1.transform(p_1_com1);
+				    for (const auto &pair : pairs) {
+					    const auto &flags = pair.flags;
+					    if (flags.isSet(PxContactPairFlag::eREMOVED_SHAPE_0) ||
+					        flags.isSet(PxContactPairFlag::eREMOVED_SHAPE_1) ||
+					        !flags.isSet(
+					            PxContactPairFlag::eINTERNAL_HAS_IMPULSES) ||
+					        !pair.contactPatches || !pair.contactPoints ||
+					        !pair.contactImpulses) {
+						    continue;
+					    }
+
+					    PxContactStreamIterator it{
+					        pair.contactPatches, pair.contactPoints,
+					        pair.getInternalFaceIndices(), pair.patchCount,
+					        pair.contactCount};
+					    PxU32 k = 0;
+					    while (it.hasNextPatch()) {
+						    it.nextPatch();
+						    while (it.hasNextContact()) {
+							    it.nextContact();
+							    PxVec3 x = it.getContactPoint();
+							    PxVec3 n = it.getContactNormal();
+							    PxReal j = pair.contactImpulses[k++];
+							    PxVec3 J = n * j;
+							    total_J0 += J;
+							    total_J1 += -J;
+							    total_tau0 += (x - p_world_com0).cross(J);
+							    total_tau1 += (x - p_world_com1).cross(-J);
+						    }
+					    }
+
+					    PxFrictionAnchorStreamIterator faIt{
+					        pair.contactPatches, pair.frictionPatches,
+					        pair.patchCount};
+					    while (faIt.hasNextPatch()) {
+						    faIt.nextPatch();
+						    while (faIt.hasNextFrictionAnchor()) {
+							    faIt.nextFrictionAnchor();
+							    PxVec3 x = faIt.getPosition();
+							    PxVec3 J = faIt.getImpulse();
+							    total_J0 += J;
+							    total_J1 += -J;
+							    total_tau0 += (x - p_world_com0).cross(J);
+							    total_tau1 += (x - p_world_com1).cross(-J);
+						    }
+					    }
+				    }
+			    });
+			double dt = getPxSceneElapsedTime(px_scene_);
+			return {std::make_tuple(total_J0 / dt, total_tau0 / dt),
+			        std::make_tuple(total_J1 / dt, total_tau1 / dt)};
+		}
+
+		const PartId *lookup_part_id(const physx::PxActor *ca) {
+			auto *rb = cast_rigid_actor(const_cast<physx::PxActor *>(ca));
+			if (rb == nullptr) {
+				return nullptr;
+			}
+			return cc_labeling_.mapping().template find_key<PartId>(rb);
+		};
+
+		const ComponentId *lookup_cc(const physx::PxActor *ca) {
+			auto *rb = cast_rigid_actor(const_cast<physx::PxActor *>(ca));
+			if (rb == nullptr) {
+				return nullptr;
+			}
+			return cc_labeling_.mapping().find_value(rb);
+		};
+
+		void process_assembly_contacts(const physx::PxContactPairHeader &header,
+		                               const physx::PxContactPair *pairs,
+		                               physx::PxU32 nbPairs) {
+			using namespace physx;
+			PxRigidActor *rb0 = cast_rigid_actor(header.actors[0]);
+			PxRigidActor *rb1 = cast_rigid_actor(header.actors[1]);
+			if (rb0 == nullptr || rb1 == nullptr) {
+				return;
+			}
+			double dt = getPxSceneElapsedTime(px_scene_);
+			iterate_contact_pairs(
+			    header, pairs, nbPairs,
+			    [&](const PxContactPair &pair,
+			        std::span<const PxContactPatch> patches,
+			        const PxTransform &pose0, const PxTransform &pose1) {
+				    // For each contact pair in each CCD pass
+
+				    const auto &[shape0, shape1] = pair.shapes;
+				    const InterfaceSpec *if0 =
+				        shape_map_.find_value(ActorShapePair{rb0, shape0});
+				    const InterfaceSpec *if1 =
+				        shape_map_.find_value(ActorShapePair{rb1, shape1});
+				    if (!if0 || !if1) {
+					    return;
+				    }
+
+				    // rb0 should offer stud, rb1 should offer hole
+				    bool to_swap;
+				    if (if0->type == InterfaceType::Stud &&
+				        if1->type == InterfaceType::Hole) {
+					    to_swap = false;
+				    } else if (if0->type == InterfaceType::Hole &&
+				               if1->type == InterfaceType::Stud) {
+					    to_swap = true;
+				    } else {
+					    return;
+				    }
+
+				    // Sum up contact impulses
+				    PxVec3 total_impulse{0, 0, 0};
+				    for (const auto &patch : patches) {
+					    PxReal patch_impulse = 0;
+					    for (const auto &impulse : impulses_view(pair, patch)) {
+						    patch_impulse += impulse;
+					    }
+					    total_impulse += patch.normal * patch_impulse;
+				    }
+
+				    if (to_swap) {
+					    process_assembly_contact(rb1, shape1, *if1, pose1, rb0,
+					                             shape0, *if0, pose0,
+					                             -total_impulse, dt);
+				    } else {
+					    process_assembly_contact(rb0, shape0, *if0, pose0, rb1,
+					                             shape1, *if1, pose1,
+					                             total_impulse, dt);
+				    }
+			    });
+		}
 
 		void process_assembly_contact(
 		    physx::PxRigidActor *rb0, physx::PxShape *s0,
@@ -521,6 +737,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		auto pending_assemblies = sim_out_.consume_assemblies();
 		auto pending_disassemblies = sim_out_.consume_disassemblies();
 		sim_out_.swap_debug_info_buffers();
+		auto external_wrenches = sim_out_.consume_external_wrenches();
+		(void)external_wrenches; // TODO: use external wrenches
 
 		for (const auto &[csid] : pending_disassemblies) {
 			bool disconnected = topology_.disconnect(csid).has_value();
