@@ -5,7 +5,7 @@ import lego_assemble.core.specs;
 import lego_assemble.core.graph;
 import lego_assemble.core.connections;
 import lego_assemble.core.assembly;
-import lego_assemble.core.component_labeling;
+import lego_assemble.core.component_index;
 import lego_assemble.physx.constraint_scheduler;
 import lego_assemble.physx.filtering_reset;
 import lego_assemble.physx.shape_mapping;
@@ -65,6 +65,10 @@ physx::PxRigidActor *cast_rigid_actor(physx::PxActor *actor) {
 	}
 }
 
+struct ComponentData {
+	PartId representative;
+};
+
 export struct PhysicsAssemblyDebugInfo : AssemblyDebugInfo {
 	ConnSegRef csref;
 };
@@ -99,9 +103,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	                        std::function<physx::PxConstraint *(
 	                            PartId, PartId, const Transformd &)>,
 	                        std::function<void(physx::PxConstraint *)>>;
-	using PhysicsComponentLabeling =
-	    ComponentLabeling<type_list<PartId, physx::PxRigidActor *>,
-	                      TopologyGraph>;
+	using PhysicsComponentIndex =
+	    ComponentIndex<TopologyGraph, type_list<PartId, physx::PxRigidActor *>,
+	                   ComponentData>;
 	using PhysicsFilteringResetAggregator =
 	    FilteringResetAggregator<TopologyGraph>;
 	using PhysicsShapeMapping = ShapeMapping<TopologyGraph>;
@@ -130,14 +134,14 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 		// Reference to owner's fields
 		PhysicsShapeMapping &shape_mapping_;
-		PhysicsComponentLabeling &cc_labeling_;
+		PhysicsComponentIndex &cc_index_;
 		PhysicsConstraintScheduler &constraint_scheduler_;
 		PhysicsFilteringResetAggregator &filtering_reset_;
 
 	  public:
 		TopologyHooks(Self *owner)
 		    : shape_mapping_{owner->shape_mapping_},
-		      cc_labeling_{owner->cc_labeling_},
+		      cc_index_{owner->cc_index_},
 		      constraint_scheduler_{owner->constraint_scheduler_},
 		      filtering_reset_{owner->filtering_reset_} {}
 
@@ -150,7 +154,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		void on_part_added(G::PartEntry entry) {
 			PartId pid = entry.template key<PartId>();
 			shape_mapping_.add_part(entry);
-			cc_labeling_.mark_dirty(pid);
+			cc_index_.mark_dirty_topological(pid);
 			constraint_scheduler_.notify_part_added(pid);
 		}
 
@@ -160,7 +164,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 		void on_part_removed(PartId pid) {
 			// Do this after removed so we schedule constraints on the updated graph
-			cc_labeling_.mark_removed(pid);
+			cc_index_.mark_removed(pid);
 			constraint_scheduler_.notify_part_removed(pid);
 			filtering_reset_.mark_removed(pid);
 		}
@@ -169,7 +173,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			auto [pid_a, pid_b] = cb_entry.first;
 
 			// One vertex is enough because both parts are in the same CC
-			cc_labeling_.mark_dirty(pid_a);
+			cc_index_.mark_dirty_topological(pid_a);
 
 			constraint_scheduler_.notify_connected(pid_a, pid_b);
 
@@ -181,8 +185,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			auto [pid_a, pid_b] = ep;
 
 			// Mark both parts as dirty
-			cc_labeling_.mark_dirty(pid_a);
-			cc_labeling_.mark_dirty(pid_b);
+			cc_index_.mark_dirty_topological(pid_a);
+			cc_index_.mark_dirty_topological(pid_b);
 
 			// Do this after removed so the scheduler sees the updated graph
 			constraint_scheduler_.notify_disconnected(pid_a, pid_b);
@@ -190,6 +194,27 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			// Reset filtering for BOTH (needed for correctness in vertex-deletion case)
 			filtering_reset_.mark_for_reset(pid_a);
 			filtering_reset_.mark_for_reset(pid_b);
+		}
+
+		void on_connected(G::ConnSegEntry cs_entry,
+		                  [[maybe_unused]] G::ConnBundleEntry cb_entry,
+		                  [[maybe_unused]] const InterfaceSpec &stud_spec,
+		                  [[maybe_unused]] const InterfaceSpec &hole_spec) {
+			const auto &[stud_if_ref, hole_if_ref] =
+			    cs_entry.template key<ConnSegRef>();
+			const auto &[stud_pid, stud_ifid] = stud_if_ref;
+			const auto &[hole_pid, hole_ifid] = hole_if_ref;
+			cc_index_.mark_dirty_data_by_part(stud_pid);
+			cc_index_.mark_dirty_data_by_part(hole_pid);
+		}
+
+		void on_disconnected([[maybe_unused]] ConnSegId csid,
+		                     const ConnSegRef &csref) {
+			const auto &[stud_if_ref, hole_if_ref] = csref;
+			const auto &[stud_pid, stud_ifid] = stud_if_ref;
+			const auto &[hole_pid, hole_ifid] = hole_if_ref;
+			cc_index_.mark_dirty_data_by_part(stud_pid);
+			cc_index_.mark_dirty_data_by_part(hole_pid);
 		}
 	};
 
@@ -271,7 +296,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		    : PxSimulationFilterPatch{px_scene},
 		      PxSimulationEventPatch{px_scene}, metrics_{owner->metrics_},
 		      shape_map_{owner->shape_mapping_.committed_view()},
-		      cc_labeling_{owner->cc_labeling_},
+		      cc_index_{owner->cc_index_},
 		      assembly_checker_{owner->assembly_checker_},
 		      collect_assembly_debug_info_{owner->collect_assembly_debug_info_},
 		      sim_out_{owner->sim_out_}, px_scene_{px_scene} {}
@@ -380,7 +405,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	  private:
 		const MetricSystem &metrics_;
 		const ShapeMap &shape_map_;
-		const PhysicsComponentLabeling &cc_labeling_;
+		const PhysicsComponentIndex &cc_index_;
 		const AssemblyChecker &assembly_checker_;
 		const bool &collect_assembly_debug_info_;
 		SimOutputData &sim_out_;
@@ -558,7 +583,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			if (rb == nullptr) {
 				return nullptr;
 			}
-			return cc_labeling_.mapping().template find_key<PartId>(rb);
+			return cc_index_.ids().template find_key<PartId>(rb);
 		};
 
 		const ComponentId *lookup_cc(const physx::PxActor *ca) {
@@ -566,7 +591,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			if (rb == nullptr) {
 				return nullptr;
 			}
-			return cc_labeling_.mapping().find_value(rb);
+			return cc_index_.ids().find_value(rb);
 		};
 
 		void process_assembly_contacts(const physx::PxContactPairHeader &header,
@@ -691,7 +716,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	    : metrics_{metrics}, px_{px}, hooks_{hooks},
 	      collect_assembly_debug_info_{collect_assembly_debug_info},
 	      topology_{}, assembly_checker_{thresholds}, shape_mapping_{},
-	      cc_labeling_{topology_},
+	      cc_index_{topology_},
 	      constraint_scheduler_{
 	          &topology_, ConstraintSchedulingPolicy{},
 	          std::bind_front(&PhysicsLegoGraph::create_constraint, this),
@@ -804,7 +829,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	TopologyGraph topology_;
 	AssemblyChecker assembly_checker_;
 	PhysicsShapeMapping shape_mapping_;
-	PhysicsComponentLabeling cc_labeling_;
+	PhysicsComponentIndex cc_index_;
 	PhysicsConstraintScheduler constraint_scheduler_;
 	PhysicsFilteringResetAggregator filtering_reset_;
 	SimOutputData sim_out_;
@@ -814,7 +839,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 	void flush_physx_ops() {
 		shape_mapping_.commit();
-		cc_labeling_.commit();
+		cc_index_.commit(
+		    std::bind_front(&PhysicsLegoGraph::build_cc_data, this),
+		    std::bind_front(&PhysicsLegoGraph::update_cc_data, this));
 		constraint_scheduler_.commit();
 		filtering_reset_.commit();
 	}
@@ -857,11 +884,25 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		constraint->release();
 	}
 
+	ComponentData build_cc_data(ComponentId cc_id, PartId rep) {
+		// TODO
+		(void)cc_id;
+		return ComponentData{rep};
+	}
+
+	void update_cc_data(ComponentId cc_id, ComponentData &data) {
+		// TODO
+		(void)cc_id;
+		(void)data;
+	}
+
 	static_assert(TopologyGraph::HasOnPartAddedHook);
 	static_assert(TopologyGraph::HasOnPartRemovingHook);
 	static_assert(TopologyGraph::HasOnPartRemovedHook);
 	static_assert(TopologyGraph::HasOnBundleCreatedHook);
 	static_assert(TopologyGraph::HasOnBundleRemovedHook);
+	static_assert(TopologyGraph::HasOnConnectedHook);
+	static_assert(TopologyGraph::HasOnDisconnectedHook);
 };
 
 } // namespace lego_assemble
