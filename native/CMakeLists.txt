@@ -71,6 +71,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 
 include(SdkPatches)
 set(SDK_PATCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/sdk_patches")
+apply_sdk_patch_once(patch_eigen "${eigen_SOURCE_DIR}" "${SDK_PATCH_DIR}/eigen.patch" 1)
 apply_sdk_patch_once(patch_usd "${ISAACSIM_USD_INCLUDE}" "${SDK_PATCH_DIR}/usd_include.patch" 1)
 apply_sdk_patch_once(patch_kit "${ISAACSIM_KIT_INCLUDE}" "${SDK_PATCH_DIR}/kit_include.patch" 1)
 
@@ -82,7 +83,7 @@ target_sources(lego_assemble_modules PUBLIC
   BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/modules"
   FILES ${CXX_MODULE_IFACES}
 )
-add_dependencies(lego_assemble_modules patch_usd_patch patch_kit_patch)
+add_dependencies(lego_assemble_modules patch_eigen patch_usd patch_kit)
 target_include_directories(lego_assemble_modules SYSTEM PUBLIC
   "${ISAACSIM_KIT_INCLUDE}"
   "${ISAACSIM_CARB_INCLUDE}"

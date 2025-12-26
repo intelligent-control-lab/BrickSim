@@ -26,5 +26,5 @@ function(apply_sdk_patch_once name include_dir patch_file strip)
     COMMENT "Applying ${name} patch in ${include_dir}"
   )
 
-  add_custom_target("${name}_patch" DEPENDS "${stamp}")
+  add_custom_target("${name}" DEPENDS "${stamp}")
 endfunction()
