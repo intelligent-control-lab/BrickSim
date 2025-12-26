@@ -1,9 +1,5 @@
 module;
 
-// See pxr/base/arch/defines.h
-#define _GLIBCXX_PERMIT_BACKWARD_HASH
-#define ARCH_HAS_GNU_STL_EXTENSIONS
-
 // ==== STL ====
 #include <format>
 #include <source_location>
@@ -354,11 +350,6 @@ namespace usd {
 using omni::usd::UsdContext;
 }
 } // namespace omni
-
-namespace lego_assemble::omni_physx {
-using SubscriptionId = omni::physx::SubscriptionId;
-export constexpr SubscriptionId kInvalidSubscriptionId(0xFFffFFffFF);
-} // namespace lego_assemble::omni_physx
 
 // ==== Carb Logging Utils ====
 namespace lego_assemble {
