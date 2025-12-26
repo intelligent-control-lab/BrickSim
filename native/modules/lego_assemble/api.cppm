@@ -4,7 +4,7 @@ import std;
 import lego_assemble.core.specs;
 import lego_assemble.core.graph;
 import lego_assemble.core.connections;
-import lego_assemble.core.assembly;
+import lego_assemble.physx.assembly;
 import lego_assemble.physx.physics_graph;
 import lego_assemble.usd.arrange;
 import lego_assemble.omni.usd_physics_bridge;

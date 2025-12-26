@@ -2,7 +2,7 @@ export module lego_assemble.omni.lego_world;
 
 import std;
 import lego_assemble.core.specs;
-import lego_assemble.core.assembly;
+import lego_assemble.physx.assembly;
 import lego_assemble.physx.physics_graph;
 import lego_assemble.usd.usd_graph;
 import lego_assemble.usd.author;

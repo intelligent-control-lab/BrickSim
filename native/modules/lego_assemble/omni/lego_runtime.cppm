@@ -2,7 +2,7 @@ export module lego_assemble.omni.lego_runtime;
 
 import std;
 import lego_assemble.core.specs;
-import lego_assemble.core.assembly;
+import lego_assemble.physx.assembly;
 import lego_assemble.usd.author;
 import lego_assemble.usd.parse;
 import lego_assemble.utils.type_list;

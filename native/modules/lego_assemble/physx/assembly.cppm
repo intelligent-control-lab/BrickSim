@@ -1,4 +1,4 @@
-export module lego_assemble.core.assembly;
+export module lego_assemble.physx.assembly;
 
 import std;
 import lego_assemble.core.specs;
