@@ -94,7 +94,7 @@ Eigen::Vector2d segment_line_intersection(const Eigen::Vector2d &p0,
 
 // Sutherland-Hodgman polygon clipping algorithm.
 // Returns intersection polygon (convex) of subject ∩ clip.
-// Works even if either polygon is CW or CCW; we detect clip winding.
+// Works for CCW polygons.
 export std::vector<Eigen::Vector2d>
 convex_polygon_intersection(std::span<const Eigen::Vector2d> subject,
                             std::span<const Eigen::Vector2d> clip,
@@ -143,7 +143,6 @@ convex_polygon_intersection(std::span<const Eigen::Vector2d> subject,
 		}
 	}
 
-	// Final cleanup and normalize output winding to CCW (optional).
 	cleanup_polygon(out, eps);
 	if (out.size() < 3)
 		return {}; // intersection is a segment/point/empty
