@@ -382,7 +382,8 @@ BBox2d transform_bbox2d(const BBox2d &bbox, const Eigen::Matrix2d &R,
 }
 
 export template <class G, class Fn>
-    requires std::invocable<Fn, const Face &, const Face &>
+    requires std::invocable<Fn, const Face &, std::span<const Eigen::Vector2d>,
+                            const Face &, std::span<const Eigen::Vector2d>>
 void detect_touching_faces(const G &g, PartId root, Fn &&fn) {
 	LegoFaceBinMap face_bins;
 	// Broadphase: Collect faces
@@ -405,8 +406,8 @@ void detect_touching_faces(const G &g, PartId root, Fn &&fn) {
 		});
 	}
 	// Narrowphase: Test coplanar face pairs
-	std::vector<Eigen::Vector2d> vertices_u; // CCW order
-	std::vector<Eigen::Vector2d> vertices_v; // CW order
+	std::vector<Eigen::Vector2d> vbuf_u;
+	std::vector<Eigen::Vector2d> vbuf_v;
 	for_each_coplanar_face_pair(
 	    face_bins, [&](const Face &f_u, const Face &f_v) {
 		    const Transformd &T_root_u = f_u.T;
@@ -416,7 +417,6 @@ void detect_touching_faces(const G &g, PartId root, Fn &&fn) {
 		    Eigen::Vector3d e1 = q_u_v * Eigen::Vector3d::UnitX();
 		    Eigen::Vector3d e2 = q_u_v * Eigen::Vector3d::UnitY();
 		    // CAUTION: det(R2d) = -1 (improper rotation)
-		    // CAUTION: because R2d is improper, the vertex order for f_u is CCW, but for f_v it's CW
 		    Eigen::Matrix2d R2d;
 		    R2d.col(0) = e1.head<2>();
 		    R2d.col(1) = e2.head<2>();
@@ -431,26 +431,29 @@ void detect_touching_faces(const G &g, PartId root, Fn &&fn) {
 		    }
 
 		    // 2. Collect vertices
-		    vertices_u.clear();
-		    vertices_v.clear();
+		    // CAUTION: because R2d is improper, the vertex order for vbuf_u is CCW, but for vbuf_v it's CW
+		    vbuf_u.clear();
+		    vbuf_v.clear();
 		    g.parts().visit(f_u.ref.pid, [&](const auto &pw) {
 			    for (const Eigen::Vector2d &vertex :
 			         pw.wrapped().get_face(f_u.ref.fid)->polygon_vertices()) {
-				    vertices_u.emplace_back(vertex);
+				    vbuf_u.emplace_back(vertex);
 			    }
 		    });
 		    g.parts().visit(f_v.ref.pid, [&](const auto &pw) {
 			    for (const Eigen::Vector2d &vertex :
 			         pw.wrapped().get_face(f_v.ref.fid)->polygon_vertices()) {
-				    vertices_v.emplace_back(R2d * vertex + t2d);
+				    vbuf_v.emplace_back(R2d * vertex + t2d);
 			    }
 		    });
 
 		    // 3. SAT
-		    // It works with CW also.
-		    double penetration = sat(vertices_u, vertices_v);
+		    // SAT also accepts CW ordering
+		    double penetration = sat(vbuf_u, vbuf_v);
 		    if (penetration >= kSATMinPenetration) {
-			    std::invoke(fn, f_u, f_v);
+			    // Convert vbuf_v to CCW before invoking callback
+			    std::ranges::reverse(vbuf_v);
+			    std::invoke(fn, f_u, std::span{vbuf_u}, f_v, std::span{vbuf_v});
 		    }
 	    });
 }

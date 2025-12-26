@@ -10,19 +10,6 @@ double cross2(const Eigen::Vector2d &a, const Eigen::Vector2d &b) {
 	return a.x() * b.y() - a.y() * b.x();
 }
 
-// Signed area: >0 => CCW, <0 => CW.
-double signed_area(std::span<const Eigen::Vector2d> poly) {
-	if (poly.size() < 3)
-		return 0.0;
-	double a = 0.0;
-	for (std::size_t i = 0; i < poly.size(); ++i) {
-		const auto &p = poly[i];
-		const auto &q = poly[(i + 1) % poly.size()];
-		a += cross2(p, q);
-	}
-	return 0.5 * a;
-}
-
 bool near2(const Eigen::Vector2d &a, const Eigen::Vector2d &b, double eps) {
 	return (a - b).squaredNorm() <= eps * eps;
 }
@@ -89,12 +76,12 @@ Eigen::Vector2d segment_line_intersection(const Eigen::Vector2d &p0,
                                           const Eigen::Vector2d &a,
                                           const Eigen::Vector2d &b,
                                           double eps = 1e-18) {
-	const Eigen::Vector2d e = b - a;
+	Eigen::Vector2d e = b - a;
 
 	// Signed "distance" from point to line in units of cross product.
-	const double d0 = cross2(e, p0 - a);
-	const double d1 = cross2(e, p1 - a);
-	const double denom = (d0 - d1);
+	double d0 = cross2(e, p0 - a);
+	double d1 = cross2(e, p1 - a);
+	double denom = (d0 - d1);
 
 	if (std::abs(denom) < eps) {
 		// Nearly parallel / numerically unstable; return an endpoint.
@@ -118,21 +105,14 @@ convex_polygon_intersection(std::span<const Eigen::Vector2d> subject,
 	// Start with subject polygon.
 	std::vector<Eigen::Vector2d> out(subject.begin(), subject.end());
 
-	// Determine clip orientation: +1 for CCW, -1 for CW.
-	const double clip_area = signed_area(clip);
-	const double orient_sign = (clip_area >= 0.0) ? 1.0 : -1.0;
-
 	auto inside = [&](const Eigen::Vector2d &a, const Eigen::Vector2d &b,
 	                  const Eigen::Vector2d &p) {
-		// For CCW clip: inside if cross(b-a, p-a) >= 0
-		// For CW clip:  inside if cross(b-a, p-a) <= 0
-		const double s = cross2(b - a, p - a);
-		return orient_sign * s >= -eps;
+		return cross2(b - a, p - a) >= -eps;
 	};
 
 	for (std::size_t i = 0; i < clip.size(); ++i) {
-		const Eigen::Vector2d A = clip[i];
-		const Eigen::Vector2d B = clip[(i + 1) % clip.size()];
+		Eigen::Vector2d A = clip[i];
+		Eigen::Vector2d B = clip[(i + 1) % clip.size()];
 
 		if (out.size() < 3)
 			return {}; // already empty/degenerate
@@ -161,23 +141,13 @@ convex_polygon_intersection(std::span<const Eigen::Vector2d> subject,
 			S = E;
 			S_in = E_in;
 		}
-
-		cleanup_polygon(out, eps);
 	}
 
 	// Final cleanup and normalize output winding to CCW (optional).
 	cleanup_polygon(out, eps);
 	if (out.size() < 3)
 		return {}; // intersection is a segment/point/empty
-	if (signed_area(out) < 0.0) {
-		std::ranges::reverse(out);
-	}
 	return out;
-}
-
-// Absolute area of a polygon (CCW or CW).
-export double polygon_area(std::span<const Eigen::Vector2d> poly) {
-	return std::abs(signed_area(poly));
 }
 
 } // namespace lego_assemble
