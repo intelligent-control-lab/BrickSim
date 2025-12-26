@@ -29,7 +29,7 @@ template <int S2Level, int DExp2> struct FaceBinKey {
 	// Yields **this key** plus its neighbor bins:
 	// - 3x3 neighborhood on S^2 at fixed S2Level (deduped)
 	// - d_bin +/- 1
-	void for_each_neighbor(auto &&fn) const {
+	std::generator<FaceBinKey> neighborhood() const {
 		int face = 0;
 		std::uint32_t i = 0;
 		std::uint32_t j = 0;
@@ -40,8 +40,9 @@ template <int S2Level, int DExp2> struct FaceBinKey {
 		int cell_count = 0;
 		auto add_cell = [&](std::uint64_t cid) {
 			for (int k = 0; k < cell_count; ++k) {
-				if (cells[k] == cid)
+				if (cells[k] == cid) {
 					return;
+				}
 			}
 			cells[cell_count++] = cid;
 		};
@@ -74,11 +75,10 @@ template <int S2Level, int DExp2> struct FaceBinKey {
 		// Emit (S2-neighbor cells) x (d neighbors).
 		for (int c = 0; c < cell_count; ++c) {
 			for (int dd = -1; dd <= 1; ++dd) {
-				FaceBinKey neighbor_key{
+				co_yield FaceBinKey{
 				    .s2_cell = cells[c],
 				    .d_bin = add_d_saturating(d_bin, dd),
 				};
-				std::invoke(fn, neighbor_key);
 			}
 		}
 	}
@@ -330,7 +330,8 @@ double sat(std::span<const Eigen::Vector2d> poly_a,
 	return min_penetration;
 }
 
-void for_each_coplanar_face_pair(const LegoFaceBinMap &face_bins, auto &&fn) {
+std::generator<std::tuple<const Face &, const Face &>>
+coplanar_face_pairs(const LegoFaceBinMap &face_bins) {
 	double dot_threshold = -std::cos(kCoplanarAngleThreshold);
 	for (const auto &[bk_u, f_us] : face_bins) {
 		for (const Face &f_u : f_us) {
@@ -338,27 +339,26 @@ void for_each_coplanar_face_pair(const LegoFaceBinMap &face_bins, auto &&fn) {
 			Eigen::Vector3d n_u = q_u * Eigen::Vector3d::UnitZ();
 			double d_u = n_u.dot(t_u);
 			auto bk_u_opposite = LegoFaceBinKey::from_face(-n_u, -d_u);
-			bk_u_opposite.for_each_neighbor([&](const LegoFaceBinKey &bk_v) {
+			for (LegoFaceBinKey bk_v : bk_u_opposite.neighborhood()) {
 				auto it_f_vs = face_bins.find(bk_v);
-				if (it_f_vs == face_bins.end()) {
-					return;
+				if (it_f_vs != face_bins.end()) {
+					for (const Face &f_v : it_f_vs->second) {
+						if (f_u.ref >= f_v.ref) {
+							continue;
+						}
+						const auto &[q_v, t_v] = f_v.T;
+						Eigen::Vector3d n_v = q_v * Eigen::Vector3d::UnitZ();
+						if (n_u.dot(n_v) > dot_threshold) {
+							continue;
+						}
+						double d = (t_v - t_u).dot(n_u);
+						if (std::abs(d) > kCoplanarDisplacementThreshold) {
+							continue;
+						}
+						co_yield {f_u, f_v};
+					}
 				}
-				for (const Face &f_v : it_f_vs->second) {
-					if (f_u.ref >= f_v.ref) {
-						continue;
-					}
-					const auto &[q_v, t_v] = f_v.T;
-					Eigen::Vector3d n_v = q_v * Eigen::Vector3d::UnitZ();
-					if (n_u.dot(n_v) > dot_threshold) {
-						continue;
-					}
-					double d = (t_v - t_u).dot(n_u);
-					if (std::abs(d) > kCoplanarDisplacementThreshold) {
-						continue;
-					}
-					std::invoke(fn, f_u, f_v);
-				}
-			});
+			}
 		}
 	}
 }
@@ -381,10 +381,16 @@ BBox2d transform_bbox2d(const BBox2d &bbox, const Eigen::Matrix2d &R,
 	return {.min = new_min, .max = new_max};
 }
 
-export template <class G, class Fn>
-    requires std::invocable<Fn, const Face &, std::span<const Eigen::Vector2d>,
-                            const Face &, std::span<const Eigen::Vector2d>>
-void detect_touching_faces(const G &g, PartId root, Fn &&fn) {
+export struct TouchingFacePair {
+	const Face &face_u;
+	const Face &face_v;
+	std::span<const Eigen::Vector2d> polygon_u;
+	std::span<const Eigen::Vector2d> polygon_v;
+};
+
+export template <class G>
+std::generator<TouchingFacePair> detect_touching_faces(const G &g,
+                                                       PartId root) {
 	LegoFaceBinMap face_bins;
 	// Broadphase: Collect faces
 	for (auto [u, T_root_u] : g.component_view(root).transforms()) {
@@ -408,54 +414,56 @@ void detect_touching_faces(const G &g, PartId root, Fn &&fn) {
 	// Narrowphase: Test coplanar face pairs
 	std::vector<Eigen::Vector2d> vbuf_u;
 	std::vector<Eigen::Vector2d> vbuf_v;
-	for_each_coplanar_face_pair(
-	    face_bins, [&](const Face &f_u, const Face &f_v) {
-		    const Transformd &T_root_u = f_u.T;
-		    const Transformd &T_root_v = f_v.T;
-		    Transformd T_u_v = inverse(T_root_u) * T_root_v;
-		    const auto &[q_u_v, t_u_v] = T_u_v;
-		    Eigen::Vector3d e1 = q_u_v * Eigen::Vector3d::UnitX();
-		    Eigen::Vector3d e2 = q_u_v * Eigen::Vector3d::UnitY();
-		    // CAUTION: det(R2d) = -1 (improper rotation)
-		    Eigen::Matrix2d R2d;
-		    R2d.col(0) = e1.head<2>();
-		    R2d.col(1) = e2.head<2>();
-		    Eigen::Vector2d t2d = t_u_v.head<2>();
+	for (const auto &[f_u, f_v] : coplanar_face_pairs(face_bins)) {
+		const Transformd &T_root_u = f_u.T;
+		const Transformd &T_root_v = f_v.T;
+		Transformd T_u_v = inverse(T_root_u) * T_root_v;
+		const auto &[q_u_v, t_u_v] = T_u_v;
+		Eigen::Vector3d e1 = q_u_v * Eigen::Vector3d::UnitX();
+		Eigen::Vector3d e2 = q_u_v * Eigen::Vector3d::UnitY();
+		// CAUTION: det(R2d) = -1 (improper rotation)
+		Eigen::Matrix2d R2d;
+		R2d.col(0) = e1.head<2>();
+		R2d.col(1) = e2.head<2>();
+		Eigen::Vector2d t2d = t_u_v.head<2>();
 
-		    // 1. Fast reject check by bbox overlap
-		    const BBox2d &bbox_u = f_u.bbox;
-		    const BBox2d &bbox_v = f_v.bbox;
-		    BBox2d bbox_v_in_u = transform_bbox2d(bbox_v, R2d, t2d);
-		    if (!bbox_u.overlaps(bbox_v_in_u)) {
-			    return;
-		    }
+		// 1. Fast reject check by bbox overlap
+		const BBox2d &bbox_u = f_u.bbox;
+		const BBox2d &bbox_v = f_v.bbox;
+		BBox2d bbox_v_in_u = transform_bbox2d(bbox_v, R2d, t2d);
+		if (!bbox_u.overlaps(bbox_v_in_u)) {
+			continue;
+		}
 
-		    // 2. Collect vertices
-		    // CAUTION: because R2d is improper, the vertex order for vbuf_u is CCW, but for vbuf_v it's CW
-		    vbuf_u.clear();
-		    vbuf_v.clear();
-		    g.parts().visit(f_u.ref.pid, [&](const auto &pw) {
-			    for (const Eigen::Vector2d &vertex :
-			         pw.wrapped().get_face(f_u.ref.fid)->polygon_vertices()) {
-				    vbuf_u.emplace_back(vertex);
-			    }
-		    });
-		    g.parts().visit(f_v.ref.pid, [&](const auto &pw) {
-			    for (const Eigen::Vector2d &vertex :
-			         pw.wrapped().get_face(f_v.ref.fid)->polygon_vertices()) {
-				    vbuf_v.emplace_back(R2d * vertex + t2d);
-			    }
-		    });
+		// 2. Collect vertices
+		// CAUTION: because R2d is improper, the vertex order for vbuf_u is CCW, but for vbuf_v it's CW
+		vbuf_u.clear();
+		vbuf_v.clear();
+		g.parts().visit(f_u.ref.pid, [&](const auto &pw) {
+			for (const Eigen::Vector2d &vertex :
+			     pw.wrapped().get_face(f_u.ref.fid)->polygon_vertices()) {
+				vbuf_u.emplace_back(vertex);
+			}
+		});
+		g.parts().visit(f_v.ref.pid, [&](const auto &pw) {
+			for (const Eigen::Vector2d &vertex :
+			     pw.wrapped().get_face(f_v.ref.fid)->polygon_vertices()) {
+				vbuf_v.emplace_back(R2d * vertex + t2d);
+			}
+		});
 
-		    // 3. SAT
-		    // SAT also accepts CW ordering
-		    double penetration = sat(vbuf_u, vbuf_v);
-		    if (penetration >= kSATMinPenetration) {
-			    // Convert vbuf_v to CCW before invoking callback
-			    std::ranges::reverse(vbuf_v);
-			    std::invoke(fn, f_u, std::span{vbuf_u}, f_v, std::span{vbuf_v});
-		    }
-	    });
+		// 3. SAT
+		// SAT also accepts CW ordering
+		double penetration = sat(vbuf_u, vbuf_v);
+		if (penetration >= kSATMinPenetration) {
+			// Convert vbuf_v to CCW before yielding
+			std::ranges::reverse(vbuf_v);
+			co_yield {.face_u = f_u,
+			          .face_v = f_v,
+			          .polygon_u = std::span{vbuf_u},
+			          .polygon_v = std::span{vbuf_v}};
+		}
+	};
 }
 
 } // namespace lego_assemble
