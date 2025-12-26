@@ -208,7 +208,9 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	    std::pmr::unordered_map<ConnectionEndpoint, ConnBundleWrapper>;
 	using PartEntry = PartStore::entry_reference;
 	using ConnSegEntry = ConnSegStore::entry_type &;
+	using ConnSegConstEntry = const ConnSegStore::entry_type &;
 	using ConnBundleEntry = ConnBundleStore::value_type &;
+	using ConnBundleConstEntry = const ConnBundleStore::value_type &;
 
 	static constexpr bool HasOnPartAddedHook =
 	    requires(Hooks &hooks, PartEntry entry) {
@@ -399,6 +401,22 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 				// Yield and Cache
 				cache.emplace(child_id, T_root_child);
 				co_yield {child_id, T_root_child};
+			}
+		}
+
+		std::generator<ConnSegConstEntry> connection_segments() const {
+			DgVertexId root_dgid =
+			    g_->parts_.template key_of<DgVertexId>(root_);
+
+			for (vertex_id vid :
+			     g_->dynamic_graph_.component_view(root_dgid.value())
+			         .vertices()) {
+				for (ConnSegId csid :
+				     g_->parts_.visit(DgVertexId{vid}, [](const auto &pw) {
+					     return pw.incomings();
+				     })) {
+					co_yield g_->connection_segments().entry_of(csid);
+				}
 			}
 		}
 
