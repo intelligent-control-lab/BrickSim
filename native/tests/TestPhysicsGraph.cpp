@@ -272,7 +272,6 @@ static void test_topology_and_constraints() {
 // Exercise PhysxBinding::pairFound branches via the PxScene callback.
 static void test_filter_callback_pairFound() {
 	PhysicsGraphFixture fx{false};
-	fx.graph.do_pre_step();
 	// Mirror the offsets used by lego_assemble.physx.patcher to locate
 	// the internal Sc::Scene::mFilterCallback pointer.
 	constexpr std::size_t offset_NpScene_mScene = 1440;
@@ -296,10 +295,14 @@ static void test_filter_callback_pairFound() {
 
 	// Case 1: two rigid actors that are non-connected parts do NOT have
 	// contact exclusion => eCONTACT_EVENT_POSE must be enabled.
+	fx.graph.do_pre_step();
 	pairFlags = physx::PxPairFlags{};
 	(void)proxy->pairFound(1, {}, fd, fx.actorA, fx.holeShapeA, {}, fd,
 	                       fx.actorB, fx.holeShapeB, pairFlags);
 	assert(pairFlags.isSet(physx::PxPairFlag::eCONTACT_EVENT_POSE));
+	fx.env.scene->simulate(1.0f / 60.0f);
+	fx.env.scene->fetchResults(true);
+	fx.graph.do_post_step();
 
 	{
 		// Create one connection segment between stud(A) and hole(B).
@@ -315,14 +318,16 @@ static void test_filter_callback_pairFound() {
 		auto it = bundles.find(ep);
 		assert(it != bundles.end());
 	}
-	fx.graph.do_post_step();
-	fx.graph.do_pre_step();
 
 	// Case 2: pairs in the same CC => filter result eKILL.
+	fx.graph.do_pre_step();
 	pairFlags = physx::PxPairFlags{};
 	auto kill = proxy->pairFound(2, {}, fd, fx.actorA, fx.studShapeA, {}, fd,
 	                             fx.actorB, fx.holeShapeB, pairFlags);
 	assert(kill == physx::PxFilterFlag::eKILL);
+	fx.env.scene->simulate(1.0f / 60.0f);
+	fx.env.scene->fetchResults(true);
+	fx.graph.do_post_step();
 
 	// Case 3: one actor not tracked as a part => CONTACT_EVENT_POSE flag.
 	physx::PxRigidDynamic *extraActor = fx.env.physics->createRigidDynamic(
@@ -333,10 +338,14 @@ static void test_filter_callback_pairFound() {
 	assert(extraShape);
 	extraActor->attachShape(*extraShape);
 
+	fx.graph.do_pre_step();
 	pairFlags = physx::PxPairFlags{};
 	(void)proxy->pairFound(3, {}, fd, extraActor, extraShape, {}, fd, fx.actorB,
 	                       fx.holeShapeB, pairFlags);
 	assert(pairFlags.isSet(physx::PxPairFlag::eCONTACT_EVENT_POSE));
+	fx.env.scene->simulate(1.0f / 60.0f);
+	fx.env.scene->fetchResults(true);
+	fx.graph.do_post_step();
 
 	extraActor->release();
 }
@@ -546,6 +555,9 @@ static void test_event_callback_onContact() {
 		assert(evt.conn_seg.offset == Eigen::Vector2i(0, 0));
 
 		// After processing once, subsequent processing should be idempotent.
+		fx.graph.do_pre_step();
+		fx.env.scene->simulate(1.0f / 60.0f);
+		fx.env.scene->fetchResults(true);
 		fx.graph.do_post_step();
 		assert(fx.hooks.assembled_events.size() == 1);
 		assert(fx.graph.topology().connection_segments().size() == 1);

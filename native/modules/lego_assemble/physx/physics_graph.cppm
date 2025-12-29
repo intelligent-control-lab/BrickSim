@@ -130,13 +130,22 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		PhysicsComponentIndex &cc_index_;
 		PhysicsConstraintScheduler &constraint_scheduler_;
 		PhysicsFilteringResetAggregator &filtering_reset_;
+		bool &in_simulation_step_;
+
+		void check_not_in_simulation_step() const {
+			if (in_simulation_step_) {
+				throw std::runtime_error(
+				    "Topology modification not allowed during simulation step");
+			}
+		}
 
 	  public:
 		TopologyHooks(Self *owner)
 		    : shape_mapping_{owner->shape_mapping_},
 		      cc_index_{owner->cc_index_},
 		      constraint_scheduler_{owner->constraint_scheduler_},
-		      filtering_reset_{owner->filtering_reset_} {}
+		      filtering_reset_{owner->filtering_reset_},
+		      in_simulation_step_{owner->in_simulation_step_} {}
 
 		~TopologyHooks() = default;
 		TopologyHooks(const TopologyHooks &) = delete;
@@ -145,6 +154,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		TopologyHooks &operator=(TopologyHooks &&) = delete;
 
 		void on_part_added(G::PartEntry entry) {
+			check_not_in_simulation_step();
 			PartId pid = entry.template key<PartId>();
 			shape_mapping_.add_part(entry);
 			cc_index_.mark_dirty_topological(pid);
@@ -152,6 +162,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		}
 
 		void on_part_removing(G::PartEntry entry) {
+			check_not_in_simulation_step();
 			shape_mapping_.remove_part(entry);
 		}
 
@@ -193,6 +204,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		                  [[maybe_unused]] G::ConnBundleEntry cb_entry,
 		                  [[maybe_unused]] const InterfaceSpec &stud_spec,
 		                  [[maybe_unused]] const InterfaceSpec &hole_spec) {
+			check_not_in_simulation_step();
 			const auto &[stud_if_ref, hole_if_ref] =
 			    cs_entry.template key<ConnSegRef>();
 			const auto &[stud_pid, stud_ifid] = stud_if_ref;
@@ -203,6 +215,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 		void on_disconnected([[maybe_unused]] ConnSegId csid,
 		                     const ConnSegRef &csref) {
+			check_not_in_simulation_step();
 			const auto &[stud_if_ref, hole_if_ref] = csref;
 			const auto &[stud_pid, stud_ifid] = stud_if_ref;
 			const auto &[hole_pid, hole_ifid] = hole_if_ref;
@@ -749,18 +762,26 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	// Use a StageUpdateNode with order < 10 to implement this
 	void do_pre_step() {
 		flush_physx_ops();
+		if (in_simulation_step_) {
+			throw std::runtime_error(
+			    "do_pre_step called while already in simulation step");
+		}
+		in_simulation_step_ = true;
 	}
 
 	// Should be called AFTER simulation step on USD/Kit thread
 	// Use a StageUpdateNode with order > 10 to implement this
 	void do_post_step() {
-		flush_physx_ops();
-
+		if (!in_simulation_step_) {
+			throw std::runtime_error(
+			    "do_post_step called without matching do_pre_step");
+		}
 		auto pending_assemblies = sim_out_.consume_assemblies();
 		auto pending_disassemblies = sim_out_.consume_disassemblies();
 		sim_out_.swap_debug_info_buffers();
 		auto external_impulses = sim_out_.consume_external_impulses();
 		(void)external_impulses; // TODO: use external impulses
+		in_simulation_step_ = false;
 
 		for (const auto &[csid] : pending_disassemblies) {
 			bool disconnected = topology_.disconnect(csid).has_value();
@@ -826,6 +847,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 	TopologyHooks topology_hooks_;
 	std::unique_ptr<PhysxBinding> physx_binding_;
+
+	bool in_simulation_step_{false};
 
 	void flush_physx_ops() {
 		shape_mapping_.commit();
