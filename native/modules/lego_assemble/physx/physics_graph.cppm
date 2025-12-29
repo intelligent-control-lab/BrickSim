@@ -55,6 +55,8 @@ using ContactExclusionPairHash =
 using ContactExclusionSet =
     std::unordered_set<ContactExclusionPair, ContactExclusionPairHash>;
 
+using ExternalImpulseMap =
+    std::unordered_map<PartId, std::tuple<physx::PxVec3, physx::PxVec3>>;
 
 struct ComponentData {
 	PartId representative;
@@ -216,8 +218,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		std::vector<PendingDisassembly> pending_disassemblies_;
 		std::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_cur_;
 		std::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_prev_;
-		std::unordered_map<PartId, std::tuple<physx::PxVec3, physx::PxVec3>>
-		    external_impulses_;
+		ExternalImpulseMap external_impulses_;
 
 	  public:
 		void enqueue_assembly(auto &&...args) {
@@ -270,10 +271,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			assembly_debug_infos_cur_.clear();
 		}
 
-		std::unordered_map<PartId, std::tuple<physx::PxVec3, physx::PxVec3>>
-		consume_external_impulses() {
-			std::unordered_map<PartId, std::tuple<physx::PxVec3, physx::PxVec3>>
-			    res = std::move(external_impulses_);
+		ExternalImpulseMap consume_external_impulses() {
+			ExternalImpulseMap res = std::move(external_impulses_);
 			external_impulses_.clear();
 			return res;
 		}
