@@ -41,14 +41,6 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 
 	explicit LegoWorld(pxr::UsdStageRefPtr stage, LegoConfig cfg = {})
 	    : stage_{std::move(stage)}, cfg_{std::move(cfg)} {
-
-		// Retrieve interfaces
-		auto *stage_update_iface =
-		    carb::getCachedInterface<omni::kit::IStageUpdate>();
-		if (!stage_update_iface) {
-			throw std::runtime_error("IStageUpdate unavailable");
-		}
-		stage_update_ = stage_update_iface->getStageUpdate();
 		omni_px_ = carb::getCachedInterface<omni::physx::IPhysx>();
 		if (!omni_px_) {
 			throw std::runtime_error("IPhysx unavailable");
@@ -56,7 +48,6 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 
 		// Register Omni PhysX callbacks
 		physx_obj_sub_ = omni_px_->subscribeObjectChangeNotifications({
-		    // Thead safety: called on USD/Kit thread
 		    .objectCreationNotifyFn =
 		        std::bind_front(&Self::on_object_creation_notify, this),
 		    .objectDestructionNotifyFn = nullptr,
@@ -65,60 +56,27 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		    .userData = nullptr,
 		    .stopCallbackWhenSimStopped = false,
 		});
-
-		// Register StageUpdateNodes
-		stage_update_pre_ = stage_update_->createStageUpdateNode({
-		    .displayName = "lego_assemble (pre-physics)",
-		    .userData = this,
-		    .order = 9, // "Physics"'s order is 10
-		    .onAttach = nullptr,
-		    .onDetach = nullptr,
-		    .onPause = nullptr,
-		    .onStop = nullptr,
-		    .onResume = nullptr,
-		    .onUpdate =
-		        []([[maybe_unused]] float currentTime,
-		           [[maybe_unused]] float elapsedSecs,
-		           [[maybe_unused]] const omni::kit::StageUpdateSettings
-		               *settings,
-		           void *userData) {
+		physx_prestep_sub_ = omni_px_->subscribePhysicsOnStepEvents(
+		    true, 0,
+		    []([[maybe_unused]] float elapsedTime, void *userData) {
 			        if (auto *self = static_cast<Self *>(userData)) {
 				        if (self->physics_graph_) {
 					        self->physics_graph_->do_pre_step();
 				        }
 			        }
 		        },
-		    .onPrimAdd = nullptr,
-		    .onPrimOrPropertyChange = nullptr,
-		    .onPrimRemove = nullptr,
-		    .onRaycast = nullptr,
-		});
-		stage_update_post_ = stage_update_->createStageUpdateNode({
-		    .displayName = "lego_assemble (post-physics)",
-		    .userData = this,
-		    .order = 11, // "Physics"'s order is 10
-		    .onAttach = nullptr,
-		    .onDetach = nullptr,
-		    .onPause = nullptr,
-		    .onStop = nullptr,
-		    .onResume = nullptr,
-		    .onUpdate =
-		        []([[maybe_unused]] float currentTime,
-		           [[maybe_unused]] float elapsedSecs,
-		           [[maybe_unused]] const omni::kit::StageUpdateSettings
-		               *settings,
-		           void *userData) {
+		    this);
+		physx_events_sub_ = omni_px_->subscribePhysicsSimulationEvents(
+		    [](omni::physx::SimulationStatusEvent eventStatus, void *userData) {
 			        if (auto *self = static_cast<Self *>(userData)) {
+				    if (eventStatus == omni::physx::eSimulationComplete) {
 				        if (self->physics_graph_) {
 					        self->physics_graph_->do_post_step();
+					    }
 				        }
 			        }
 		        },
-		    .onPrimAdd = nullptr,
-		    .onPrimOrPropertyChange = nullptr,
-		    .onPrimRemove = nullptr,
-		    .onRaycast = nullptr,
-		});
+		    this);
 
 		// Initialize UsdGraph
 		usd_graph_ = std::make_unique<UsdGraph>(stage_);
@@ -139,25 +97,22 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		// Destroy UsdGraph
 		usd_graph_.reset();
 
-		// Remove StageUpdateNodes
-		if (stage_update_ && stage_update_pre_) {
-			stage_update_->destroyStageUpdateNode(stage_update_pre_);
-			stage_update_pre_ = nullptr;
-		}
-		if (stage_update_ && stage_update_post_) {
-			stage_update_->destroyStageUpdateNode(stage_update_post_);
-			stage_update_post_ = nullptr;
-		}
-
 		// Unsubscribe Omni PhysX callbacks
 		if (omni_px_ && physx_obj_sub_) {
 			omni_px_->unsubscribeObjectChangeNotifications(*physx_obj_sub_);
 			physx_obj_sub_.reset();
 		}
+		if (omni_px_ && physx_prestep_sub_) {
+			omni_px_->unsubscribePhysicsOnStepEvents(*physx_prestep_sub_);
+			physx_prestep_sub_.reset();
+		}
+		if (omni_px_ && physx_events_sub_) {
+			omni_px_->unsubscribePhysicsSimulationEvents(*physx_events_sub_);
+			physx_events_sub_.reset();
+		}
 
 		// Unset interfaces
 		omni_px_ = nullptr;
-		stage_update_.reset();
 	}
 
 	LegoWorld(const LegoWorld &) = delete;
@@ -204,12 +159,11 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	pxr::UsdStageRefPtr stage_;
 	LegoConfig cfg_;
 
-	std::shared_ptr<omni::kit::StageUpdate> stage_update_;
 	omni::physx::IPhysx *omni_px_ = nullptr;
 
 	std::optional<omni::physx::SubscriptionId> physx_obj_sub_;
-	omni::kit::StageUpdateNode *stage_update_pre_ = nullptr;
-	omni::kit::StageUpdateNode *stage_update_post_ = nullptr;
+	std::optional<omni::physx::SubscriptionId> physx_prestep_sub_;
+	std::optional<omni::physx::SubscriptionId> physx_events_sub_;
 
 	// UsdGraph is always available
 	std::unique_ptr<UsdGraph> usd_graph_;

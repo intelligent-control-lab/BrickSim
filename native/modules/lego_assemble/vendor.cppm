@@ -336,9 +336,13 @@ namespace physx {
 using omni::physx::ePTActor;
 using omni::physx::ePTPhysics;
 using omni::physx::ePTShape;
+using omni::physx::eSimulationComplete;
+using omni::physx::eSimulationEnded;
+using omni::physx::eSimulationStarting;
 using omni::physx::IPhysicsObjectChangeCallback;
 using omni::physx::IPhysx;
 using omni::physx::PhysXType;
+using omni::physx::SimulationStatusEvent;
 using omni::physx::SubscriptionId;
 
 namespace usdparser {
