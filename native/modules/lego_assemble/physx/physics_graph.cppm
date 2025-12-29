@@ -55,15 +55,6 @@ using ContactExclusionPairHash =
 using ContactExclusionSet =
     std::unordered_set<ContactExclusionPair, ContactExclusionPairHash>;
 
-physx::PxRigidActor *cast_rigid_actor(physx::PxActor *actor) {
-	auto type = actor->getType();
-	if (type == physx::PxActorType::eRIGID_DYNAMIC ||
-	    type == physx::PxActorType::eRIGID_STATIC) {
-		return static_cast<physx::PxRigidActor *>(actor);
-	} else {
-		return nullptr;
-	}
-}
 
 struct ComponentData {
 	PartId representative;
@@ -502,10 +493,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			using namespace physx;
 
 			auto get_com = [](PxActor *actor) {
-				if (actor->is<PxRigidBody>()) {
-					return static_cast<PxRigidBody *>(actor)
-					    ->getCMassLocalPose()
-					    .p;
+				if (PxRigidBody *rb = actor->is<PxRigidBody>()) {
+					return rb->getCMassLocalPose().p;
 				} else {
 					return PxVec3{0, 0, 0};
 				}
@@ -576,28 +565,32 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			        std::make_tuple(total_J1, total_H1)};
 		}
 
-		const PartId *lookup_part_id(const physx::PxActor *ca) {
-			auto *rb = cast_rigid_actor(const_cast<physx::PxActor *>(ca));
-			if (rb == nullptr) {
+		const PartId *lookup_part_id(const physx::PxActor *actor) {
+			if (const physx::PxRigidActor *ra =
+			        actor->is<physx::PxRigidActor>()) {
+				return cc_index_.ids().template find_key<PartId>(
+				    const_cast<physx::PxRigidActor *>(ra));
+			} else {
 				return nullptr;
 			}
-			return cc_index_.ids().template find_key<PartId>(rb);
 		};
 
-		const ComponentId *lookup_cc(const physx::PxActor *ca) {
-			auto *rb = cast_rigid_actor(const_cast<physx::PxActor *>(ca));
-			if (rb == nullptr) {
+		const ComponentId *lookup_cc(const physx::PxActor *actor) {
+			if (const physx::PxRigidActor *ra =
+			        actor->is<physx::PxRigidActor>()) {
+				return cc_index_.ids().find_value(
+				    const_cast<physx::PxRigidActor *>(ra));
+			} else {
 				return nullptr;
 			}
-			return cc_index_.ids().find_value(rb);
 		};
 
 		void process_assembly_contacts(const physx::PxContactPairHeader &header,
 		                               const physx::PxContactPair *pairs,
 		                               physx::PxU32 nbPairs) {
 			using namespace physx;
-			PxRigidActor *rb0 = cast_rigid_actor(header.actors[0]);
-			PxRigidActor *rb1 = cast_rigid_actor(header.actors[1]);
+			PxRigidActor *rb0 = header.actors[0]->is<PxRigidActor>();
+			PxRigidActor *rb1 = header.actors[1]->is<PxRigidActor>();
 			if (rb0 == nullptr || rb1 == nullptr) {
 				return;
 			}
