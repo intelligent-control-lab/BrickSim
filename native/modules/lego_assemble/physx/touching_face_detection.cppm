@@ -256,7 +256,34 @@ export struct FaceRef {
 	PartId pid;
 	FaceId fid;
 	auto operator<=>(const FaceRef &) const = default;
+	struct Hash {
+		std::size_t operator()(const FaceRef &fr) const {
+			std::size_t h1 = std::hash<PartId>{}(fr.pid);
+			std::size_t h2 = std::hash<FaceId>{}(fr.fid);
+			hash_combine(h2, h1);
+			return h2;
+		}
+	};
 };
+} // namespace lego_assemble
+
+namespace std {
+template <int S2Level, int DExp2>
+struct hash<lego_assemble::FaceBinKey<S2Level, DExp2>> {
+	using FaceBinKey = lego_assemble::FaceBinKey<S2Level, DExp2>;
+	std::size_t operator()(const FaceBinKey &key) const {
+		return typename FaceBinKey::Hash{}(key);
+	}
+};
+
+export template <> struct hash<lego_assemble::FaceRef> {
+	std::size_t operator()(const lego_assemble::FaceRef &fr) const {
+		return lego_assemble::FaceRef::Hash{}(fr);
+	}
+};
+} // namespace std
+
+namespace lego_assemble {
 
 export struct Face {
 	FaceRef ref;
@@ -278,8 +305,7 @@ constexpr int kS2Level = 18;
 
 using LegoFaceBinKey = FaceBinKey<kS2Level, kDExp2>;
 using FaceKey = std::pair<PartId, FaceId>;
-using LegoFaceBinMap =
-    std::unordered_map<LegoFaceBinKey, std::vector<Face>, LegoFaceBinKey::Hash>;
+using LegoFaceBinMap = std::unordered_map<LegoFaceBinKey, std::vector<Face>>;
 
 // Projects vertices onto an axis and returns {min, max}
 std::tuple<double, double>
