@@ -226,7 +226,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		std::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_cur_;
 		std::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_prev_;
 		std::unordered_map<PartId, std::tuple<physx::PxVec3, physx::PxVec3>>
-		    external_wrenches_;
+		    external_impulses_;
 
 	  public:
 		void enqueue_assembly(auto &&...args) {
@@ -244,17 +244,16 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			    std::forward<decltype(args)>(args)...);
 		}
 
-		void enqueue_external_wrench(
-		    PartId pid,
-		    const std::tuple<physx::PxVec3, physx::PxVec3> &wrench) {
-			const auto &[force, torque] = wrench;
-			auto it = external_wrenches_.find(pid);
-			if (it != external_wrenches_.end()) {
-				auto &[acc_force, acc_torque] = it->second;
-				acc_force += force;
-				acc_torque += torque;
+		void enqueue_external_impulse(
+		    PartId pid, const std::tuple<physx::PxVec3, physx::PxVec3> &I) {
+			const auto &[J, H] = I;
+			auto it = external_impulses_.find(pid);
+			if (it != external_impulses_.end()) {
+				auto &[acc_J, acc_H] = it->second;
+				acc_J += J;
+				acc_H += H;
 			} else {
-				external_wrenches_.emplace(pid, wrench);
+				external_impulses_.emplace(pid, I);
 			}
 		}
 
@@ -281,10 +280,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		}
 
 		std::unordered_map<PartId, std::tuple<physx::PxVec3, physx::PxVec3>>
-		consume_external_wrenches() {
+		consume_external_impulses() {
 			std::unordered_map<PartId, std::tuple<physx::PxVec3, physx::PxVec3>>
-			    res = std::move(external_wrenches_);
-			external_wrenches_.clear();
+			    res = std::move(external_impulses_);
+			external_impulses_.clear();
 			return res;
 		}
 	};
@@ -390,15 +389,15 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				process_assembly_contacts(header, pairs, nbPairs);
 			}
 
-			// 2. Collect all external wrenches
-			auto [w0, w1] = accumulate_wrenches(header, pairs, nbPairs);
+			// 2. Collect all external impulses
+			auto [I0, I1] = accumulate_impulses(header, pairs, nbPairs);
 			if (cc0 != nullptr) {
 				PartId pid0 = *lookup_part_id(a0);
-				sim_out_.enqueue_external_wrench(pid0, w0);
+				sim_out_.enqueue_external_impulse(pid0, I0);
 			}
 			if (cc1 != nullptr) {
 				PartId pid1 = *lookup_part_id(a1);
-				sim_out_.enqueue_external_wrench(pid1, w1);
+				sim_out_.enqueue_external_impulse(pid1, I1);
 			}
 		}
 
@@ -494,10 +493,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			    patch.nbContacts};
 		}
 
-		// Returns total wrenches applied to each actor,
+		// Returns total impulses applied to each actor,
 		// in the world frame w.r.t. center of mass
-		std::array<std::tuple<physx::PxVec3, physx::PxVec3>, 2>
-		accumulate_wrenches(const physx::PxContactPairHeader &header,
+		static std::array<std::tuple<physx::PxVec3, physx::PxVec3>, 2>
+		accumulate_impulses(const physx::PxContactPairHeader &header,
 		                    const physx::PxContactPair *pairs,
 		                    physx::PxU32 nbPairs) {
 			using namespace physx;
@@ -516,8 +515,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 			PxVec3 total_J0{0, 0, 0};
 			PxVec3 total_J1{0, 0, 0};
-			PxVec3 total_tau0{0, 0, 0};
-			PxVec3 total_tau1{0, 0, 0};
+			PxVec3 total_H0{0, 0, 0};
+			PxVec3 total_H1{0, 0, 0};
 			iterate_contact_itemsets(
 			    header, pairs, nbPairs,
 			    [&](std::span<const PxContactPair> pairs,
@@ -551,8 +550,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 							    PxVec3 J = n * j;
 							    total_J0 += J;
 							    total_J1 += -J;
-							    total_tau0 += (x - p_world_com0).cross(J);
-							    total_tau1 += (x - p_world_com1).cross(-J);
+							    total_H0 += (x - p_world_com0).cross(J);
+							    total_H1 += (x - p_world_com1).cross(-J);
 						    }
 					    }
 
@@ -567,15 +566,14 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 							    PxVec3 J = faIt.getImpulse();
 							    total_J0 += J;
 							    total_J1 += -J;
-							    total_tau0 += (x - p_world_com0).cross(J);
-							    total_tau1 += (x - p_world_com1).cross(-J);
+							    total_H0 += (x - p_world_com0).cross(J);
+							    total_H1 += (x - p_world_com1).cross(-J);
 						    }
 					    }
 				    }
 			    });
-			double dt = getPxSceneElapsedTime(px_scene_);
-			return {std::make_tuple(total_J0 / dt, total_tau0 / dt),
-			        std::make_tuple(total_J1 / dt, total_tau1 / dt)};
+			return {std::make_tuple(total_J0, total_H0),
+			        std::make_tuple(total_J1, total_H1)};
 		}
 
 		const PartId *lookup_part_id(const physx::PxActor *ca) {
@@ -769,8 +767,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		auto pending_assemblies = sim_out_.consume_assemblies();
 		auto pending_disassemblies = sim_out_.consume_disassemblies();
 		sim_out_.swap_debug_info_buffers();
-		auto external_wrenches = sim_out_.consume_external_wrenches();
-		(void)external_wrenches; // TODO: use external wrenches
+		auto external_impulses = sim_out_.consume_external_impulses();
+		(void)external_impulses; // TODO: use external impulses
 
 		for (const auto &[csid] : pending_disassemblies) {
 			bool disconnected = topology_.disconnect(csid).has_value();
