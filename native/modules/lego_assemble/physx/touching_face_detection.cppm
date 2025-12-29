@@ -441,6 +441,9 @@ std::generator<TouchingFacePair> detect_touching_faces(const G &g,
 	std::vector<Eigen::Vector2d> vbuf_u;
 	std::vector<Eigen::Vector2d> vbuf_v;
 	for (const auto &[f_u, f_v] : coplanar_face_pairs(face_bins)) {
+		if (f_u.ref.pid == f_v.ref.pid) {
+			continue;
+		}
 		const Transformd &T_root_u = f_u.T;
 		const Transformd &T_root_v = f_v.T;
 		Transformd T_u_v = inverse(T_root_u) * T_root_v;
