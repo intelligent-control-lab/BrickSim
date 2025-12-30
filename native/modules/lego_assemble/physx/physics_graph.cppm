@@ -1002,7 +1002,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			if (sol.info.converged) {
 				for (int idx_k = 0; idx_k < sys.num_clutches(); ++idx_k) {
 					if (sol.utilization(idx_k) > 1.0) {
-						ConnSegId csid = sys.clutch_id_to_index().at(idx_k);
+						ConnSegId csid = sys.clutch_ids().at(idx_k);
 						pending_disassemblies.emplace_back(csid);
 					}
 				}
