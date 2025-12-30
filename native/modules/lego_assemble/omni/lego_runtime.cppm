@@ -3,6 +3,7 @@ export module lego_assemble.omni.lego_runtime;
 import std;
 import lego_assemble.core.specs;
 import lego_assemble.physx.assembly;
+import lego_assemble.physx.breakage;
 import lego_assemble.usd.author;
 import lego_assemble.usd.parse;
 import lego_assemble.utils.type_list;
@@ -42,6 +43,21 @@ export class LegoRuntime {
 		cfg_.assembly_thresholds = thresholds;
 		if (world_) {
 			world_->set_assembly_thresholds(thresholds);
+		}
+	}
+
+	BreakageThresholds get_breakage_thresholds() const {
+		if (world_) {
+			return world_->get_breakage_thresholds();
+		} else {
+			return cfg_.breakage_thresholds;
+		}
+	}
+
+	void set_breakage_thresholds(const BreakageThresholds &thresholds) {
+		cfg_.breakage_thresholds = thresholds;
+		if (world_) {
+			world_->set_breakage_thresholds(thresholds);
 		}
 	}
 

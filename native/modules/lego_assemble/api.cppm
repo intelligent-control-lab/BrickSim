@@ -5,6 +5,7 @@ import lego_assemble.core.specs;
 import lego_assemble.core.graph;
 import lego_assemble.core.connections;
 import lego_assemble.physx.assembly;
+import lego_assemble.physx.breakage;
 import lego_assemble.physx.physics_graph;
 import lego_assemble.usd.arrange;
 import lego_assemble.omni.usd_physics_bridge;
@@ -397,6 +398,25 @@ export void set_assembly_thresholds(const AssemblyThresholds &thr) {
 
 export AssemblyThresholds get_assembly_thresholds() {
 	return LegoRuntime::instance().get_assembly_thresholds();
+}
+
+export using BreakageThresholds = lego_assemble::BreakageThresholds;
+
+export std::string repr_breakage_thresholds(const BreakageThresholds &t) {
+	return std::format(
+	    "BreakageThresholds(enabled={}, contact_normal_compliance={}, "
+	    "clutch_normal_compliance={}, clutch_shear_compliance={}, "
+	    "max_clutch_force_per_stud={})",
+	    t.Enabled, t.ContactNormalCompliance, t.ClutchNormalCompliance,
+	    t.ClutchShearCompliance, t.MaxClutchForcePerStud);
+}
+
+export void set_breakage_thresholds(const BreakageThresholds &thr) {
+	LegoRuntime::instance().set_breakage_thresholds(thr);
+}
+
+export BreakageThresholds get_breakage_thresholds() {
+	return LegoRuntime::instance().get_breakage_thresholds();
 }
 
 std::optional<PathStr> lookup_path_by_physx_pid(PartId physx_pid) {

@@ -3,6 +3,7 @@ export module lego_assemble.omni.lego_world;
 import std;
 import lego_assemble.core.specs;
 import lego_assemble.physx.assembly;
+import lego_assemble.physx.breakage;
 import lego_assemble.physx.physics_graph;
 import lego_assemble.usd.usd_graph;
 import lego_assemble.usd.author;
@@ -22,6 +23,9 @@ export struct LegoConfig {
 	bool warn_divergence{false};
 	AlignPolicy align_policy{AlignPolicy::MoveHoleCC};
 	AssemblyThresholds assembly_thresholds{};
+	BreakageThresholds breakage_thresholds{
+	    .Enabled = false, // disable now because it's still experimental
+	};
 };
 
 export template <class Parts, class PartAuthors, class PartParsers>
@@ -60,23 +64,23 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		physx_prestep_sub_ = omni_px_->subscribePhysicsOnStepEvents(
 		    true, 0,
 		    []([[maybe_unused]] float elapsedTime, void *userData) {
-			        if (auto *self = static_cast<Self *>(userData)) {
-				        if (self->physics_graph_) {
-					        self->physics_graph_->do_pre_step();
-				        }
-			        }
-		        },
+			    if (auto *self = static_cast<Self *>(userData)) {
+				    if (self->physics_graph_) {
+					    self->physics_graph_->do_pre_step();
+				    }
+			    }
+		    },
 		    this);
 		physx_events_sub_ = omni_px_->subscribePhysicsSimulationEvents(
 		    [](omni::physx::SimulationStatusEvent eventStatus, void *userData) {
-			        if (auto *self = static_cast<Self *>(userData)) {
+			    if (auto *self = static_cast<Self *>(userData)) {
 				    if (eventStatus == omni::physx::eSimulationComplete) {
-				        if (self->physics_graph_) {
-					        self->physics_graph_->do_post_step();
+					    if (self->physics_graph_) {
+						    self->physics_graph_->do_post_step();
 					    }
-				        }
-			        }
-		        },
+				    }
+			    }
+		    },
 		    this);
 
 		// Initialize UsdGraph
@@ -156,6 +160,21 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		}
 	}
 
+	BreakageThresholds get_breakage_thresholds() const {
+		if (physics_graph_) {
+			return physics_graph_->breakage_checker().thresholds;
+		} else {
+			return cfg_.breakage_thresholds;
+		}
+	}
+
+	void set_breakage_thresholds(const BreakageThresholds &thresholds) {
+		cfg_.breakage_thresholds = thresholds;
+		if (physics_graph_) {
+			physics_graph_->breakage_checker().thresholds = thresholds;
+		}
+	}
+
   private:
 	pxr::UsdStageRefPtr stage_;
 	LegoConfig cfg_;
@@ -188,7 +207,7 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		px_scene_ = new_scene;
 		physics_graph_ = std::make_unique<PhysicsGraph>(
 		    MetricSystem(stage_), &new_scene->getPhysics(), nullptr,
-		    cfg_.assembly_thresholds);
+		    cfg_.assembly_thresholds, cfg_.breakage_thresholds);
 		bool physics_graph_bound = physics_graph_->bind_physx_scene(px_scene_);
 		if (!physics_graph_bound) {
 			throw std::runtime_error(
@@ -262,7 +281,7 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 
 		log_info("LegoWorld: detected PhysX scene creation for {}",
 		         sdf_path.GetText());
-				setup_simulation(new_scene);
+		setup_simulation(new_scene);
 	}
 
 	void on_all_objects_destruction_notify([[maybe_unused]] void *user_data) {

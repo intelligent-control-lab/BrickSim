@@ -11,6 +11,7 @@ import lego_assemble.physx.filtering_reset;
 import lego_assemble.physx.shape_mapping;
 import lego_assemble.physx.weld_constraint;
 import lego_assemble.physx.patcher;
+import lego_assemble.physx.breakage;
 import lego_assemble.utils.type_list;
 import lego_assemble.utils.poly_store;
 import lego_assemble.utils.transforms;
@@ -60,6 +61,8 @@ using ExternalImpulseMap =
 
 struct ComponentData {
 	PartId representative;
+	std::optional<BreakageSystem> breakage_system;
+	std::optional<BreakageState> breakage_state;
 };
 
 export struct PhysicsAssemblyDebugInfo : AssemblyDebugInfo {
@@ -228,7 +231,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	class SimOutputData {
 	  private:
 		std::vector<PendingAssembly> pending_assemblies_;
-		std::vector<PendingDisassembly> pending_disassemblies_;
 		std::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_cur_;
 		std::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_prev_;
 		ExternalImpulseMap external_impulses_;
@@ -241,11 +243,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 		void enqueue_assembly_debug_info(auto &&...args) {
 			assembly_debug_infos_cur_.emplace_back(
-			    std::forward<decltype(args)>(args)...);
-		}
-
-		void enqueue_disassembly(auto &&...args) {
-			pending_disassemblies_.emplace_back(
 			    std::forward<decltype(args)>(args)...);
 		}
 
@@ -265,13 +262,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		std::vector<PendingAssembly> consume_assemblies() {
 			std::vector<PendingAssembly> res = std::move(pending_assemblies_);
 			pending_assemblies_.clear();
-			return res;
-		}
-
-		std::vector<PendingDisassembly> consume_disassemblies() {
-			std::vector<PendingDisassembly> res =
-			    std::move(pending_disassemblies_);
-			pending_disassemblies_.clear();
 			return res;
 		}
 
@@ -714,11 +704,13 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
   public:
 	explicit PhysicsLegoGraph(const MetricSystem &metrics, physx::PxPhysics *px,
 	                          Hooks *hooks = nullptr,
-	                          AssemblyThresholds thresholds = {},
+	                          AssemblyThresholds assembly_thresholds = {},
+	                          BreakageThresholds breakage_thresholds = {},
 	                          bool collect_assembly_debug_info = true)
 	    : metrics_{metrics}, px_{px}, hooks_{hooks},
 	      collect_assembly_debug_info_{collect_assembly_debug_info},
-	      topology_{}, assembly_checker_{thresholds}, shape_mapping_{},
+	      topology_{}, assembly_checker_{assembly_thresholds},
+	      breakage_checker_{breakage_thresholds}, shape_mapping_{},
 	      cc_index_{topology_},
 	      constraint_scheduler_{
 	          &topology_, ConstraintSchedulingPolicy{},
@@ -754,6 +746,14 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		return assembly_checker_;
 	}
 
+	BreakageChecker &breakage_checker() {
+		return breakage_checker_;
+	}
+
+	const BreakageChecker &breakage_checker() const {
+		return breakage_checker_;
+	}
+
 	std::vector<PhysicsAssemblyDebugInfo> get_assembly_debug_infos() const {
 		return sim_out_.get_assembly_debug_infos();
 	}
@@ -777,11 +777,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			    "do_post_step called without matching do_pre_step");
 		}
 		auto pending_assemblies = sim_out_.consume_assemblies();
-		auto pending_disassemblies = sim_out_.consume_disassemblies();
 		sim_out_.swap_debug_info_buffers();
 		auto external_impulses = sim_out_.consume_external_impulses();
-		(void)external_impulses; // TODO: use external impulses
 		in_simulation_step_ = false;
+		auto pending_disassemblies = compute_breakages(external_impulses);
 
 		for (const auto &[csid] : pending_disassemblies) {
 			bool disconnected = topology_.disconnect(csid).has_value();
@@ -839,6 +838,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 	TopologyGraph topology_;
 	AssemblyChecker assembly_checker_;
+	BreakageChecker breakage_checker_;
 	PhysicsShapeMapping shape_mapping_;
 	PhysicsComponentIndex cc_index_;
 	PhysicsConstraintScheduler constraint_scheduler_;
@@ -897,16 +897,118 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		constraint->release();
 	}
 
-	ComponentData build_cc_data(ComponentId cc_id, PartId rep) {
-		// TODO
-		(void)cc_id;
-		return ComponentData{rep};
+	ComponentData build_cc_data([[maybe_unused]] ComponentId cc_id,
+	                            PartId rep) {
+		ComponentData data;
+		data.representative = rep;
+		initialize_cc_data(data);
+		return data;
 	}
 
-	void update_cc_data(ComponentId cc_id, ComponentData &data) {
-		// TODO
-		(void)cc_id;
-		(void)data;
+	void update_cc_data([[maybe_unused]] ComponentId cc_id,
+	                    ComponentData &data) {
+		initialize_cc_data(data);
+	}
+
+	void initialize_cc_data(ComponentData &cc_data) {
+		cc_data.breakage_system =
+		    breakage_checker_.build_system(topology_, cc_data.representative);
+		BreakageInitialInput in;
+		prepare_breakage_input_base(cc_data, in);
+		cc_data.breakage_state =
+		    breakage_checker_.build_initial_state(*cc_data.breakage_system, in);
+	}
+
+	void prepare_breakage_input_base(const ComponentData &cc_data,
+	                                 BreakageInitialInput &input) {
+		const BreakageSystem &sys = *cc_data.breakage_system;
+		int num_parts = sys.num_parts();
+		input.w.resize(num_parts, 3);
+		input.v.resize(num_parts, 3);
+		input.q.resize(num_parts, 4);
+		input.c.resize(num_parts, 3);
+
+		for (int index = 0; index < num_parts; ++index) {
+			PartId pid = sys.part_ids().at(index);
+			physx::PxRigidActor *actor =
+			    topology_.parts().template key_of<physx::PxRigidActor *>(pid);
+
+			if (physx::PxRigidBody *rb = actor->is<physx::PxRigidBody>()) {
+				input.w.row(index) = metrics_.to_rps(
+				    as<Eigen::Vector3d>(rb->getAngularVelocity()));
+				input.v.row(index) = metrics_.to_mps(
+				    as<Eigen::Vector3d>(rb->getLinearVelocity()));
+			} else {
+				input.w.row(index).setZero();
+				input.v.row(index).setZero();
+			}
+
+			physx::PxTransform body_pose = actor->getGlobalPose();
+			Eigen::Quaterniond q =
+			    as<Eigen::Quaterniond>(body_pose.q).normalized();
+			input.q.row(index) = q.coeffs();
+			physx::PxVec3 com_pos;
+			if (physx::PxRigidBody *rb = actor->is<physx::PxRigidBody>()) {
+				physx::PxTransform com_local_pose = rb->getCMassLocalPose();
+				com_pos = body_pose.transform(com_local_pose.p);
+			} else {
+				com_pos = body_pose.p;
+			}
+			Eigen::Vector3d t_com = metrics_.to_m(as<Eigen::Vector3d>(com_pos));
+			input.c.row(index) = t_com;
+		}
+	}
+
+	void
+	prepare_breakage_input_impulses(const ComponentData &cc_data,
+	                                const ExternalImpulseMap &external_impulses,
+	                                BreakageInput &input) {
+		const BreakageSystem &sys = *cc_data.breakage_system;
+		int num_parts = sys.num_parts();
+		input.J = Eigen::MatrixXd::Zero(num_parts, 3);
+		input.H = Eigen::MatrixXd::Zero(num_parts, 3);
+
+		PartId rep = cc_data.representative;
+		physx::PxRigidActor *rep_actor =
+		    topology_.parts().template key_of<physx::PxRigidActor *>(rep);
+		const physx::PxScene *scene = rep_actor->getScene();
+		input.dt = getPxSceneElapsedTime(scene);
+
+		input.gravity =
+		    metrics_.to_mps2(as<Eigen::Vector3d>(scene->getGravity()));
+
+		for (int index = 0; index < num_parts; ++index) {
+			PartId pid = sys.part_ids().at(index);
+			auto it_I = external_impulses.find(pid);
+			if (it_I != external_impulses.end()) {
+				const auto &[J_p, H_p] = it_I->second;
+				input.J.row(index) = metrics_.to_Ns(as<Eigen::Vector3d>(J_p));
+				input.H.row(index) = metrics_.to_Nms(as<Eigen::Vector3d>(H_p));
+			}
+		}
+	}
+
+	std::vector<PendingDisassembly>
+	compute_breakages(const ExternalImpulseMap &external_impulses) {
+		std::vector<PendingDisassembly> pending_disassemblies;
+		for (const auto &[cc_id, cc_data_const] : cc_index_.data()) {
+			ComponentData &cc_data = const_cast<ComponentData &>(cc_data_const);
+			BreakageSystem &sys = *cc_data.breakage_system;
+			BreakageInput in;
+			prepare_breakage_input_base(cc_data, in);
+			prepare_breakage_input_impulses(cc_data, external_impulses, in);
+			BreakageSolution sol =
+			    breakage_checker_.solve(sys, in, *cc_data.breakage_state);
+			if (sol.info.converged) {
+				for (int idx_k = 0; idx_k < sys.num_clutches(); ++idx_k) {
+					if (sol.utilization(idx_k) > 1.0) {
+						ConnSegId csid = sys.clutch_id_to_index().at(idx_k);
+						pending_disassemblies.emplace_back(csid);
+					}
+				}
+			}
+		}
+		return pending_disassemblies;
 	}
 
 	static_assert(TopologyGraph::HasOnPartAddedHook);

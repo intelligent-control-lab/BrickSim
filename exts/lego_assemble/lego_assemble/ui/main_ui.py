@@ -14,6 +14,8 @@ from lego_assemble._native import (
     import_lego,
     get_assembly_thresholds,
     set_assembly_thresholds,
+    get_breakage_thresholds,
+    set_breakage_thresholds,
     arrange_parts_in_workspace,
 )
 from lego_assemble.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
@@ -126,6 +128,44 @@ class LegoUI():
                             lambda m: self._set_threshold("position_tolerance", float(m.as_float))
                         )
 
+                    _bthr = get_breakage_thresholds()
+                    with omni.ui.HStack(spacing=10):
+                        omni.ui.Label("Enable breakage check", width=140)
+                        self._breakage_enabled_model = omni.ui.SimpleBoolModel()
+                        self._breakage_enabled_model.set_value(bool(_bthr.enabled))
+                        omni.ui.CheckBox(model=self._breakage_enabled_model)
+                        self._breakage_enabled_model.add_value_changed_fn(
+                            lambda m: self._set_breakage_threshold("enabled", bool(m.get_value_as_bool()))
+                        )
+                    with omni.ui.HStack(spacing=10):
+                        omni.ui.Label("Contact normal comp:", width=140)
+                        self._contact_norm_comp_field = omni.ui.FloatDrag(min=0.0, max=1e6)
+                        self._contact_norm_comp_field.model.set_value(float(_bthr.contact_normal_compliance))
+                        self._contact_norm_comp_field.model.add_value_changed_fn(
+                            lambda m: self._set_breakage_threshold("contact_normal_compliance", float(m.as_float))
+                        )
+                    with omni.ui.HStack(spacing=10):
+                        omni.ui.Label("Clutch normal comp:", width=140)
+                        self._clutch_norm_comp_field = omni.ui.FloatDrag(min=0.0, max=1e6)
+                        self._clutch_norm_comp_field.model.set_value(float(_bthr.clutch_normal_compliance))
+                        self._clutch_norm_comp_field.model.add_value_changed_fn(
+                            lambda m: self._set_breakage_threshold("clutch_normal_compliance", float(m.as_float))
+                        )
+                    with omni.ui.HStack(spacing=10):
+                        omni.ui.Label("Clutch shear comp:", width=140)
+                        self._clutch_shear_comp_field = omni.ui.FloatDrag(min=0.0, max=1e6)
+                        self._clutch_shear_comp_field.model.set_value(float(_bthr.clutch_shear_compliance))
+                        self._clutch_shear_comp_field.model.add_value_changed_fn(
+                            lambda m: self._set_breakage_threshold("clutch_shear_compliance", float(m.as_float))
+                        )
+                    with omni.ui.HStack(spacing=10):
+                        omni.ui.Label("Max clutch force/stud (N):", width=140)
+                        self._max_clutch_force_field = omni.ui.FloatDrag(min=0.0, max=100.0)
+                        self._max_clutch_force_field.model.set_value(float(_bthr.max_clutch_force_per_stud))
+                        self._max_clutch_force_field.model.add_value_changed_fn(
+                            lambda m: self._set_breakage_threshold("max_clutch_force_per_stud", float(m.as_float))
+                        )
+
                 # TODO: currently disabled
                 # # Right: monitoring column (delegated)
                 # with omni.ui.VStack(height=0, spacing=5):
@@ -234,6 +274,11 @@ class LegoUI():
         thr = get_assembly_thresholds()
         setattr(thr, name, value)
         set_assembly_thresholds(thr)
+
+    def _set_breakage_threshold(self, name: str, value: float):
+        thr = get_breakage_thresholds()
+        setattr(thr, name, value)
+        set_breakage_thresholds(thr)
 
     def _on_hot_reload_setting_changed(self, *args):
         if self._hot_reload_button is None:

@@ -173,6 +173,27 @@ PYBIND11_MODULE(_native, m) {
 	m.def("get_assembly_thresholds", &get_assembly_thresholds,
 	      "Get the current assembly detection thresholds.");
 
+	pybind11::class_<BreakageThresholds>(m, "BreakageThresholds",
+	                                     "Breakage detection thresholds.")
+	    .def(pybind11::init<>())
+	    .def_readwrite("enabled", &BreakageThresholds::Enabled)
+	    .def_readwrite("contact_normal_compliance",
+	                   &BreakageThresholds::ContactNormalCompliance)
+	    .def_readwrite("clutch_normal_compliance",
+	                   &BreakageThresholds::ClutchNormalCompliance)
+	    .def_readwrite("clutch_shear_compliance",
+	                   &BreakageThresholds::ClutchShearCompliance)
+	    .def_readwrite("max_clutch_force_per_stud",
+	                   &BreakageThresholds::MaxClutchForcePerStud)
+	    .def("__repr__", &repr_breakage_thresholds);
+
+	m.def("set_breakage_thresholds", &set_breakage_thresholds,
+	      pybind11::arg("thresholds"),
+	      "Set the breakage detection thresholds.");
+
+	m.def("get_breakage_thresholds", &get_breakage_thresholds,
+	      "Get the current breakage detection thresholds.");
+
 	pybind11::class_<AssemblyDebugInfo>(m, "AssemblyDebugInfo",
 	                                    "Debug information for assembly "
 	                                    "detection of a connection segment.")
