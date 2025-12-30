@@ -1,3 +1,4 @@
+import lego_assemble.physx.physx_maprange_patch_v107;
 import lego_assemble.api;
 
 #include <unistd.h>

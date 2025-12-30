@@ -33,24 +33,6 @@ concept PartPrototypeNaming =
 	    } -> std::same_as<InterfaceCollidersVector>;
     };
 
-// This path MUST be sorted after /World due to Omni PhysX's bug.
-// Defected functions:
-// - omni::physics::schema::PrimIteratorMapRange::reset(...) (BUG)
-// - omni::physx::usdparser::loadPhysicsFromPrimitive(...) (Calls above function)
-// PrimIteratorMapRange::reset(...) does the following:
-// 1. Builds a UsdPrimRange over the per-frame "physics change map" roots (lexical SdfPath order, RB-tree).
-// 2. Advances to the first prim that passes USD's DefaultPredicate:
-//     Active && Loaded && Defined && !Abstract
-// 3. If the first root fails the predicate, it prunes once; if there's no next acceptable root,
-//    the range is empty (mAtEnd stays 1) and the "heavy load" (PhysX rigid/shape creation) is skipped.
-// Why path name order mattered:
-// * Brick prototype prims are authored as Class (SdfSpecifierClass) -> Abstract=true -> fail DefaultPredicate.
-// * With prototypes under "/BrickPrototypes", that path sorts before "/World". The first changed root
-//   the loader sees is the Class prototype -> it prunes; often no next acceptable root that frame ->
-//   empty range -> heavy load skipped -> no rigid.
-// * Moving prototypes to "/_BrickPrototypes" makes them sort after "/World"
-//   (ASCII 'W'=0x57, '_'=0x5F). The first root becomes the /World instance (a Def Xform), which
-//   passes DefaultPredicate, so loadPhysicsFromPrimitive runs the heavy path and creates the rigid.
 const pxr::SdfPath PrototypesPath{"/_Prototypes"};
 
 export template <PartAuthor PA, PartPrototypeNaming<typename PA::PartType> PN>

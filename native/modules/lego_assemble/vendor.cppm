@@ -332,6 +332,7 @@ using pxr::UsdStageWeakPtr;
 using pxr::UsdTimeCode;
 using pxr::UsdTimeCodeTokens;
 using pxr::UsdTokens;
+using pxr::UsdTraverseInstanceProxies;
 using pxr::UsdUtilsStageCache;
 using pxr::VtIntArray;
 using pxr::VtTokenArray;
