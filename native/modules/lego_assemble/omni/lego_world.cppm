@@ -219,15 +219,49 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	                          omni::physx::usdparser::ObjectId object_id,
 	                          omni::physx::PhysXType type,
 	                          [[maybe_unused]] void *user_data) {
-		if (type == omni::physx::ePTScene) {
-			auto *new_scene = static_cast<physx::PxScene *>(
-			    omni_px_->getPhysXPtrFast(object_id));
-			if (new_scene) {
-				log_info("LegoWorld: detected PhysX scene creation for {}",
-				         sdf_path.GetText());
-				setup_simulation(new_scene);
-			}
+		if (type != omni::physx::ePTScene) {
+			return;
 		}
+		auto *new_scene =
+		    static_cast<physx::PxScene *>(omni_px_->getPhysXPtrFast(object_id));
+		if (!new_scene) {
+			log_error("LegoWorld: failed to retrieve PxScene pointer for {}",
+			          sdf_path.GetText());
+			return;
+		}
+		pxr::UsdPrim stage_prim = stage_->GetPrimAtPath(sdf_path);
+		if (!stage_prim.IsValid()) {
+			log_error("LegoWorld: invalid prim for {}", sdf_path.GetText());
+			return;
+		}
+		pxr::TfToken update_type;
+		if (stage_prim
+		        .GetAttribute(pxr::PhysxSchemaTokens->physxSceneUpdateType)
+		        .Get(&update_type) &&
+		    !update_type.IsEmpty()) {
+			if (update_type == pxr::PhysxSchemaTokens->Synchronous) {
+				// Continue
+			} else if (update_type == pxr::PhysxSchemaTokens->Asynchronous) {
+				log_error("LegoWorld: Asynchronous PhysX update type is "
+				          "unsupported for {}",
+				          sdf_path.GetText());
+				return;
+			} else if (update_type == pxr::PhysxSchemaTokens->Disabled) {
+				log_info("LegoWorld: PhysX update disabled for {}",
+				         sdf_path.GetText());
+				return;
+			} else {
+				log_error("LegoWorld: unknown PhysX update type {} for {}",
+				          update_type.GetText(), sdf_path.GetText());
+				return;
+			}
+		} else {
+			// PhysX defaults to Synchronous (see PhysXScene ctor).
+		}
+
+		log_info("LegoWorld: detected PhysX scene creation for {}",
+		         sdf_path.GetText());
+				setup_simulation(new_scene);
 	}
 
 	void on_all_objects_destruction_notify([[maybe_unused]] void *user_data) {
