@@ -10,6 +10,9 @@ import lego_assemble.vendor;
 namespace lego_assemble {
 
 export struct AssemblyThresholds {
+	// Whether assembly checking is enabled
+	bool Enabled = true;
+
 	// Maximum distance between bricks (m)
 	double DistanceTolerance = 0.001;
 
@@ -114,7 +117,7 @@ export class AssemblyChecker {
 			debug->grid_pos = p0;
 			debug->grid_pos_snapped = p0_snap;
 		}
-		if (!accept) {
+		if (!accept || !thresholds.Enabled) {
 			return std::nullopt;
 		}
 		return ConnectionSegment{

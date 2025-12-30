@@ -154,6 +154,7 @@ PYBIND11_MODULE(_native, m) {
 	pybind11::class_<AssemblyThresholds>(m, "AssemblyThresholds",
 	                                     "Assembly detection thresholds.")
 	    .def(pybind11::init<>())
+	    .def_readwrite("enabled", &AssemblyThresholds::Enabled)
 	    .def_readwrite("distance_tolerance",
 	                   &AssemblyThresholds::DistanceTolerance)
 	    .def_readwrite("max_penetration", &AssemblyThresholds::MaxPenetration)

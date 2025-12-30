@@ -94,6 +94,7 @@ def arrange_parts_in_workspace(
 class AssemblyThresholds:
     def __init__(self) -> None: ...
     def __repr__(self) -> str: ...
+    enabled: bool
     distance_tolerance: float
     max_penetration: float
     z_angle_tolerance: float

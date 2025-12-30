@@ -76,6 +76,14 @@ class LegoUI():
                     # Read current native thresholds and use them to initialize the UI
                     _thr = get_assembly_thresholds()
                     with omni.ui.HStack(spacing=10):
+                        omni.ui.Label("Enable assembly check", width=140)
+                        self._assembly_enabled_model = omni.ui.SimpleBoolModel()
+                        self._assembly_enabled_model.set_value(bool(_thr.enabled))
+                        omni.ui.CheckBox(model=self._assembly_enabled_model)
+                        self._assembly_enabled_model.add_value_changed_fn(
+                            lambda m: self._set_threshold("enabled", bool(m.get_value_as_bool()))
+                        )
+                    with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Distance tol (m):", width=140)
                         self._dist_tol_field = omni.ui.FloatDrag(min=0.0, max=0.05)
                         self._dist_tol_field.model.set_value(float(_thr.distance_tolerance))

@@ -384,10 +384,10 @@ export using AssemblyThresholds = lego_assemble::AssemblyThresholds;
 
 export std::string repr_assembly_thresholds(const AssemblyThresholds &t) {
 	return std::format(
-	    "AssemblyThresholds(distance_tolerance={}, max_penetration={}, "
-	    "z_angle_tolerance={}, required_force={}, yaw_tolerance={}, "
-	    "position_tolerance={})",
-	    t.DistanceTolerance, t.MaxPenetration, t.ZAngleTolerance,
+	    "AssemblyThresholds(enabled={}, distance_tolerance={}, "
+	    "max_penetration={}, z_angle_tolerance={}, required_force={}, "
+	    "yaw_tolerance={}, position_tolerance={})",
+	    t.Enabled, t.DistanceTolerance, t.MaxPenetration, t.ZAngleTolerance,
 	    t.RequiredForce, t.YawTolerance, t.PositionTolerance);
 }
 
