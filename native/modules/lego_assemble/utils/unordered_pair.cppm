@@ -2,6 +2,7 @@ export module lego_assemble.utils.unordered_pair;
 
 import std;
 import lego_assemble.utils.hash;
+import lego_assemble.vendor;
 
 namespace lego_assemble {
 
@@ -59,6 +60,19 @@ struct UnorderedPair {
 export template <class A, class B>
 UnorderedPair(A, B) -> UnorderedPair<
     std::common_type_t<std::remove_cvref_t<A>, std::remove_cvref_t<B>>>;
+
+export template <class T>
+void to_json(nlohmann::ordered_json &j, const UnorderedPair<T> &p) {
+	j = nlohmann::ordered_json::array({p.first, p.second});
+}
+export template <class T>
+void from_json(const nlohmann::ordered_json &j, UnorderedPair<T> &p) {
+	if (!j.is_array() || j.size() != 2) {
+		throw std::runtime_error("UnorderedPair: expected array of size 2");
+	}
+	j.at(0).get_to(p.first);
+	j.at(1).get_to(p.second);
+}
 
 } // namespace lego_assemble
 

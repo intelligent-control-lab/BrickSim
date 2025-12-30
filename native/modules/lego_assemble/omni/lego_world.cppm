@@ -26,6 +26,7 @@ export struct LegoConfig {
 	BreakageThresholds breakage_thresholds{
 	    .Enabled = false, // disable now because it's still experimental
 	};
+	std::string breakage_debug_dump_dir{};
 };
 
 export template <class Parts, class PartAuthors, class PartParsers>
@@ -208,6 +209,8 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		physics_graph_ = std::make_unique<PhysicsGraph>(
 		    MetricSystem(stage_), &new_scene->getPhysics(), nullptr,
 		    cfg_.assembly_thresholds, cfg_.breakage_thresholds);
+		physics_graph_->breakage_checker().set_debug_dump_dir(
+		    cfg_.breakage_debug_dump_dir);
 		bool physics_graph_bound = physics_graph_->bind_physx_scene(px_scene_);
 		if (!physics_graph_bound) {
 			throw std::runtime_error(

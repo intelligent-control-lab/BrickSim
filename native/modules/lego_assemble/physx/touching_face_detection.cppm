@@ -265,6 +265,13 @@ export struct FaceRef {
 		}
 	};
 };
+
+export void to_json(nlohmann::ordered_json &j, const FaceRef &fr) {
+	j = nlohmann::ordered_json{
+	    {"part_id", fr.pid},
+	    {"face_id", fr.fid},
+	};
+}
 } // namespace lego_assemble
 
 namespace std {

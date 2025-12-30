@@ -1,6 +1,7 @@
 export module lego_assemble.physx.admm_solver;
 
 import std;
+import lego_assemble.utils.matrix_serialization;
 import lego_assemble.vendor;
 
 namespace lego_assemble {
@@ -34,6 +35,20 @@ export struct AdmmQpOptions {
 	bool warm_start_duals{true};
 };
 
+export void to_json(nlohmann::ordered_json &j, const AdmmQpOptions &opt) {
+	j = nlohmann::ordered_json{
+	    {"rho_eq", opt.rho_eq},
+	    {"rho_ineq", opt.rho_ineq},
+	    {"eq_slack_weight", opt.eq_slack_weight},
+	    {"diag_reg", opt.diag_reg},
+	    {"max_iter", opt.max_iter},
+	    {"abs_tol", opt.abs_tol},
+	    {"rel_tol", opt.rel_tol},
+	    {"alpha", opt.alpha},
+	    {"warm_start_duals", opt.warm_start_duals},
+	};
+}
+
 export struct AdmmQpInfo {
 	bool converged{false};
 	int iterations{0};
@@ -47,6 +62,20 @@ export struct AdmmQpInfo {
 	// ||s|| for equality slack (0 if disabled)
 	double eq_slack_norm{};
 };
+
+export void to_json(nlohmann::ordered_json &j, const AdmmQpInfo &info) {
+	j = nlohmann::ordered_json{
+	    {"converged", info.converged},
+	    {"iterations", info.iterations},
+	    {"r_eq_norm", info.r_eq_norm},
+	    {"r_ineq_norm", info.r_ineq_norm},
+	    {"s_norm", info.s_norm},
+	    {"eps_eq", info.eps_eq},
+	    {"eps_ineq", info.eps_ineq},
+	    {"eps_dual", info.eps_dual},
+	    {"eq_slack_norm", info.eq_slack_norm},
+	};
+}
 
 export struct AdmmQpState {
 	// If true, (x,y,z) are valid warm-start candidates for the next solve.
@@ -78,6 +107,15 @@ export struct AdmmQpState {
 			z.setZero();
 	}
 };
+
+export void to_json(nlohmann::ordered_json &j, const AdmmQpState &state) {
+	j = nlohmann::ordered_json{
+	    {"has_state", state.has_state},
+	    {"x", matrix_to_json(state.x)},
+	    {"y", matrix_to_json(state.y)},
+	    {"z", matrix_to_json(state.z)},
+	};
+}
 
 export class AdmmQpSolver {
   public:

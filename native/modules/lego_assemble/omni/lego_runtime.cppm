@@ -62,7 +62,10 @@ export class LegoRuntime {
 	}
 
   private:
-	LegoConfig cfg_{};
+	LegoConfig cfg_{
+	    .breakage_debug_dump_dir =
+	        std::filesystem::temp_directory_path().string(),
+	};
 
 	std::shared_ptr<omni::kit::StageUpdate> stage_update_;
 	omni::kit::StageUpdateNode *stage_update_node_ = nullptr;

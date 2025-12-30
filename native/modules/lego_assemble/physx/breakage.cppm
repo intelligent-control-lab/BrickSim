@@ -9,6 +9,7 @@ import lego_assemble.physx.polygon_clipping;
 import lego_assemble.physx.admm_solver;
 import lego_assemble.utils.transforms;
 import lego_assemble.utils.unordered_pair;
+import lego_assemble.utils.matrix_serialization;
 import lego_assemble.utils.logging;
 import lego_assemble.vendor;
 
@@ -301,6 +302,18 @@ export struct BreakageThresholds {
 	};
 };
 
+export void to_json(nlohmann::ordered_json &j,
+                    const BreakageThresholds &thresholds) {
+	j = {
+	    {"enabled", thresholds.Enabled},
+	    {"contact_normal_compliance", thresholds.ContactNormalCompliance},
+	    {"clutch_normal_compliance", thresholds.ClutchNormalCompliance},
+	    {"clutch_shear_compliance", thresholds.ClutchShearCompliance},
+	    {"max_clutch_force_per_stud", thresholds.MaxClutchForcePerStud},
+	    {"solver_options", thresholds.SolverOptions},
+	};
+}
+
 // FaceRef compares pid then fid,
 // UnorderedPair ensures fref1 <= fref2,
 // thus pid1 <= pid2,
@@ -333,11 +346,10 @@ export class BreakageSystem {
 	const std::unordered_map<PartId, int> &part_id_to_index() const {
 		return pid_to_index_;
 	}
-	std::span<const FaceRefPair> contact_face_refs() const {
+	std::span<const FaceRefPair> contact_pairs() const {
 		return contact_pairs_;
 	}
-	const std::unordered_map<FaceRefPair, int> &
-	contact_face_ref_to_index() const {
+	const std::unordered_map<FaceRefPair, int> &contact_pair_to_index() const {
 		return contact_pair_to_index_;
 	}
 	std::span<const ConnSegId> clutch_ids() const {
@@ -375,6 +387,7 @@ export class BreakageSystem {
 
   private:
 	friend class BreakageChecker;
+	friend void to_json(nlohmann::ordered_json &j, const BreakageSystem &sys);
 
 	int num_parts_{};
 	int num_contacts_{};
@@ -408,6 +421,35 @@ export class BreakageSystem {
 	std::optional<AdmmQpSolver> solver_;
 };
 
+export void to_json(nlohmann::ordered_json &j, const BreakageSystem &sys) {
+	j = nlohmann::ordered_json{
+	    {"num_parts", sys.num_parts_},
+	    {"num_contacts", sys.num_contacts_},
+	    {"num_clutches", sys.num_clutches_},
+	    {"num_vars", sys.num_vars_},
+	    {"num_eq", sys.num_eq_},
+	    {"num_ineq", sys.num_ineq_},
+	    {"A", matrix_to_json(sys.solver_->A())},
+	    {"Q", matrix_to_json(sys.solver_->Q())},
+	    {"G", matrix_to_json(sys.solver_->G())},
+	    {"part_ids", sys.pids_},
+	    {"contact_pairs", sys.contact_pairs_},
+	    {"clutch_ids", sys.clutches_},
+	    {"total_mass", sys.total_mass_},
+	    {"mass", matrix_to_json(sys.mass_)},
+	    {"q_CC", matrix_to_json(sys.q_CC_)},
+	    {"c_CC", matrix_to_json(sys.c_CC_)},
+	    {"I_CC", matrix_to_json(Map<const Matrix<double, Dynamic, 9, RowMajor>>{
+	                 reinterpret_cast<const double *>(sys.I_CC_.data()),
+	                 static_cast<Index>(sys.I_CC_.size()), 9})},
+	    {"characteristic_radius", sys.characteristic_radius_},
+	    {"clutch_half_extents",
+	     matrix_to_json(Map<const Matrix<double, Dynamic, 2, RowMajor>>{
+	         reinterpret_cast<const double *>(sys.clutch_half_extents_.data()),
+	         static_cast<Index>(sys.clutch_half_extents_.size()), 2})},
+	};
+}
+
 export struct BreakageInitialInput {
 	// Angular velocities of COMs, in rad/s, num_parts_ x 3
 	MatrixX3d w;
@@ -426,6 +468,16 @@ export struct BreakageInitialInput {
 	}
 };
 
+export void to_json(nlohmann::ordered_json &j,
+                    const BreakageInitialInput &input) {
+	j = nlohmann::ordered_json{
+	    {"w", matrix_to_json(input.w)},
+	    {"v", matrix_to_json(input.v)},
+	    {"q", matrix_to_json(input.q)},
+	    {"c", matrix_to_json(input.c)},
+	};
+}
+
 export struct BreakageInput : public BreakageInitialInput {
 	// Duration of the simulation step, in seconds
 	double dt{};
@@ -442,6 +494,14 @@ export struct BreakageInput : public BreakageInitialInput {
 	}
 };
 
+export void to_json(nlohmann::ordered_json &j, const BreakageInput &input) {
+	to_json(j, static_cast<const BreakageInitialInput &>(input));
+	j["dt"] = input.dt;
+	j["gravity"] = matrix_to_json(input.gravity);
+	j["J"] = matrix_to_json(input.J);
+	j["H"] = matrix_to_json(input.H);
+}
+
 export class BreakageState {
   public:
 	bool check_shape(const BreakageSystem &sys) const {
@@ -451,12 +511,22 @@ export class BreakageState {
 
   private:
 	friend class BreakageChecker;
+	friend void to_json(nlohmann::ordered_json &j, const BreakageState &state);
 
 	Quaterniond q_W_CC_prev;
 	MatrixX3d v_W_prev;
 	MatrixX3d L_prev;
 	AdmmQpState solver_state;
 };
+
+export void to_json(nlohmann::ordered_json &j, const BreakageState &state) {
+	j = nlohmann::ordered_json{
+	    {"q_W_CC_prev", matrix_to_json(state.q_W_CC_prev.coeffs().transpose())},
+	    {"v_W_prev", matrix_to_json(state.v_W_prev)},
+	    {"L_prev", matrix_to_json(state.L_prev)},
+	    {"solver_state", state.solver_state},
+	};
+}
 
 export struct BreakageSolution {
 	// num_vars_ x 1
@@ -468,6 +538,15 @@ export struct BreakageSolution {
 	// QP Solver info
 	AdmmQpInfo info;
 };
+
+export void to_json(nlohmann::ordered_json &j,
+                    const BreakageSolution &solution) {
+	j = nlohmann::ordered_json{
+	    {"x", matrix_to_json(solution.x)},
+	    {"utilization", matrix_to_json(solution.utilization)},
+	    {"info", solution.info},
+	};
+}
 
 export class BreakageChecker {
   public:
@@ -716,7 +795,7 @@ export class BreakageChecker {
 	}
 
 	BreakageSolution solve(const BreakageSystem &sys, const BreakageInput &in,
-	                       BreakageState &state) {
+	                       BreakageState &state) const {
 		if (!sys.check_shape()) {
 			throw std::runtime_error("solve_breakage: invalid system");
 		}
@@ -775,6 +854,8 @@ export class BreakageChecker {
 			          "r_eq_norm={:.4e}, r_ineq_norm={:.4e}, s_norm={:.4e}",
 			          sol.info.r_eq_norm, sol.info.r_ineq_norm,
 			          sol.info.s_norm);
+			sol.utilization = VectorXd::Zero(sys.num_clutches_);
+			dump_debug_data(sys, in, state, sol);
 			return sol;
 		}
 
@@ -791,6 +872,48 @@ export class BreakageChecker {
 		     Xk.col(2).cwiseAbs().cwiseProduct(extents.col(1)));
 
 		return sol;
+	}
+
+	void set_debug_dump_dir(std::string dir) {
+		debug_dump_dir_ = std::move(dir);
+	}
+
+  private:
+	std::string debug_dump_dir_;
+	mutable bool debug_data_dumped_{false};
+
+	void dump_debug_data(const BreakageSystem &sys, const BreakageInput &in,
+	                     const BreakageState &state,
+	                     const BreakageSolution &sol) const {
+		// Only dump once per BreakageChecker instance
+		if (debug_data_dumped_ || debug_dump_dir_.empty()) {
+			return;
+		}
+		debug_data_dumped_ = true;
+		nlohmann::ordered_json j;
+		j["thresholds"] = thresholds;
+		j["system"] = sys;
+		j["input"] = in;
+		j["state"] = state;
+		j["solution"] = sol;
+
+		std::time_t t = std::chrono::system_clock::to_time_t(
+		    std::chrono::system_clock::now());
+		std::tm tm = *std::localtime(&t);
+		char ts[32];
+		std::strftime(ts, sizeof(ts), "%Y%m%d_%H%M%S", &tm);
+		std::string filename = std::string("breakage_debug_") + ts + ".json";
+
+		std::filesystem::path filepath =
+		    std::filesystem::path(debug_dump_dir_) / filename;
+		std::ofstream ofs(filepath);
+		if (!ofs) {
+			log_error("BreakageChecker: failed to open debug dump file {}",
+			          filepath.string());
+			return;
+		}
+		ofs << j.dump(4);
+		log_info("BreakageChecker: dumped debug data to {}", filepath.string());
 	}
 };
 
