@@ -335,7 +335,14 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				// Fallthrough
 			}
 
+			pairFlags |= PxPairFlag::eSOLVE_CONTACT;
+			pairFlags |= PxPairFlag::eNOTIFY_TOUCH_FOUND;
+			pairFlags |= PxPairFlag::eNOTIFY_TOUCH_LOST;
+			pairFlags |= PxPairFlag::eNOTIFY_TOUCH_PERSISTS;
+			pairFlags |= PxPairFlag::eNOTIFY_TOUCH_CCD;
 			pairFlags |= PxPairFlag::eNOTIFY_CONTACT_POINTS;
+			pairFlags |= PxPairFlag::eDETECT_DISCRETE_CONTACT;
+			pairFlags |= PxPairFlag::eDETECT_CCD_CONTACT;
 			pairFlags |= PxPairFlag::eCONTACT_EVENT_POSE;
 
 			return result;

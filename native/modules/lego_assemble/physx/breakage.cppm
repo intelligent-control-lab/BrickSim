@@ -298,7 +298,7 @@ export struct BreakageThresholds {
 	double ClutchShearCompliance{2.0};
 	double MaxClutchForcePerStud{0.702}; // in N
 	AdmmQpOptions SolverOptions{
-	    .eq_slack_weight = 1e1,
+	    .eq_slack_weight = 1e6,
 	};
 };
 
@@ -654,6 +654,7 @@ export class BreakageChecker {
 			G.col(0) = VectorXd::Ones(intersection.size());
 			G.block(0, 1, intersection.size(), 2) =
 			    V.rowwise() - m.centroid.transpose();
+			G *= m.area;
 
 			int var_idx = 3 * index_c;
 			add_block_triplets(A_triplets, 6 * index_i, var_idx, A_i);
@@ -729,6 +730,8 @@ export class BreakageChecker {
 			    {1.0, -p.x(), -p.y()},
 			    {1.0, p.x(), -p.y()},
 			};
+			G_block *= m.area * std::sqrt(thresholds.ClutchNormalCompliance /
+			                              thresholds.ContactNormalCompliance);
 			int ineq_idx = sys.num_ineq_;
 			sys.num_ineq_ += 4;
 			add_block_triplets(G_triplets, ineq_idx, var_idx, G_block);

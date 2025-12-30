@@ -109,6 +109,8 @@ export struct SimpleBrickAuthor {
 		SetAttr<pxr::GfVec3i>(root, LegoTokens->BrickColor, color);
 		SetAttr<float>(
 		    root, pxr::PhysxSchemaTokens->physxContactReportThreshold, 0.0f);
+		SetAttr<float>(
+		    root, pxr::PhysxSchemaTokens->physxRigidBodySleepThreshold, 0.0f);
 		SetAttr<bool>(root, pxr::UsdPhysicsTokens->physicsRigidBodyEnabled,
 		              true);
 
