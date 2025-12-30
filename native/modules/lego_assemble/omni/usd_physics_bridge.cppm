@@ -15,6 +15,7 @@ import lego_assemble.utils.type_list;
 import lego_assemble.utils.multi_key_set;
 import lego_assemble.utils.typed_id;
 import lego_assemble.utils.poly_store;
+import lego_assemble.utils.logging;
 import lego_assemble.vendor;
 
 namespace lego_assemble {

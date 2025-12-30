@@ -11,6 +11,7 @@ import lego_assemble.usd.specs;
 import lego_assemble.omni.usd_physics_bridge;
 import lego_assemble.utils.type_list;
 import lego_assemble.utils.metric_system;
+import lego_assemble.utils.logging;
 import lego_assemble.vendor;
 
 namespace lego_assemble {

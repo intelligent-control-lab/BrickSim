@@ -11,6 +11,7 @@ import lego_assemble.utils.usd_envs;
 import lego_assemble.utils.conversions;
 import lego_assemble.utils.transforms;
 import lego_assemble.utils.c4_rotation;
+import lego_assemble.utils.logging;
 import lego_assemble.vendor;
 
 namespace lego_assemble {

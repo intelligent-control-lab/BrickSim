@@ -2,6 +2,7 @@ export module lego_assemble.utils.sdf;
 
 import std;
 import lego_assemble.utils.conversions;
+import lego_assemble.utils.logging;
 import lego_assemble.vendor;
 
 namespace lego_assemble {

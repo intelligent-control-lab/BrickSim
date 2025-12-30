@@ -1,9 +1,5 @@
 module;
 
-// ==== STL ====
-#include <format>
-#include <source_location>
-
 // ==== Eigen ====
 #include <Eigen/Eigen>
 
@@ -80,6 +76,8 @@ module;
 CARB_BINDINGS("lego_assemble", "python")
 
 export module lego_assemble.vendor;
+
+// NOLINTBEGIN(misc-unused-using-decls)
 
 // ==== Eigen ====
 export namespace Eigen {
@@ -228,6 +226,10 @@ using pvdsdk::PvdDataStream;
 // ==== carb ====
 export namespace carb {
 using carb::getCachedInterface;
+
+namespace logging {
+using carb::logging::LogFn;
+} // namespace logging
 } // namespace carb
 
 // ==== pxr ====
@@ -356,47 +358,16 @@ using omni::usd::UsdContext;
 }
 } // namespace omni
 
-// ==== Carb Logging Utils ====
-namespace lego_assemble {
+// NOLINTEND(misc-unused-using-decls)
 
-template <class... Args>
-void _log(int level, std::source_location loc, std::format_string<Args...> fmt,
-          Args &&...args) {
-	if (!(g_carbLogFn && g_carbLogLevel <= level))
-		return;
-	g_carbLogFn(g_carbClientName, level, loc.file_name(), loc.function_name(),
-	            static_cast<int>(loc.line()), "%s",
-	            std::format(fmt, std::forward<Args>(args)...).c_str());
+namespace lego_assemble::vendor::carb {
+export auto &g_carbLogFn() {
+	return ::g_carbLogFn;
 }
-
-export template <class... Args>
-void log_verbose(std::format_string<Args...> fmt, Args &&...args) {
-	_log(carb::logging::kLevelVerbose, std::source_location::current(), fmt,
-	     std::forward<Args>(args)...);
+export auto &g_carbLogLevel() {
+	return ::g_carbLogLevel;
 }
-
-export template <class... Args>
-void log_info(std::format_string<Args...> fmt, Args &&...args) {
-	_log(carb::logging::kLevelInfo, std::source_location::current(), fmt,
-	     std::forward<Args>(args)...);
+export auto &g_carbClientName() {
+	return ::g_carbClientName;
 }
-
-export template <class... Args>
-void log_warn(std::format_string<Args...> fmt, Args &&...args) {
-	_log(carb::logging::kLevelWarn, std::source_location::current(), fmt,
-	     std::forward<Args>(args)...);
-}
-
-export template <class... Args>
-void log_error(std::format_string<Args...> fmt, Args &&...args) {
-	_log(carb::logging::kLevelError, std::source_location::current(), fmt,
-	     std::forward<Args>(args)...);
-}
-
-export template <class... Args>
-void log_fatal(std::format_string<Args...> fmt, Args &&...args) {
-	_log(carb::logging::kLevelFatal, std::source_location::current(), fmt,
-	     std::forward<Args>(args)...);
-}
-
-} // namespace lego_assemble
+} // namespace lego_assemble::vendor::carb

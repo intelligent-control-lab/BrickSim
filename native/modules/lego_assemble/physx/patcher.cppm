@@ -1,6 +1,7 @@
 export module lego_assemble.physx.patcher;
 
 import std;
+import lego_assemble.utils.logging;
 import lego_assemble.vendor;
 
 namespace lego_assemble {
