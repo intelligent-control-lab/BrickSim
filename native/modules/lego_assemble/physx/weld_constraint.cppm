@@ -47,7 +47,6 @@ static void fillLinear(Px1DConstraint &c, const PxVec3 &axis, const PxVec3 &ra,
 	c.linear1 = axis;
 	c.angular1 = rb.cross(axis);
 	c.geometricError = posErr;
-	c.flags = PxU16(c.flags | Px1DConstraintFlag::eOUTPUT_FORCE);
 }
 
 static void fillAngular(Px1DConstraint &c, const PxVec3 &axis, float posErr,
@@ -58,8 +57,7 @@ static void fillAngular(Px1DConstraint &c, const PxVec3 &axis, float posErr,
 	c.linear1 = PxVec3(0.0f);
 	c.angular1 = axis;
 	c.geometricError = posErr;
-	c.flags = PxU16(c.flags | Px1DConstraintFlag::eANGULAR_CONSTRAINT |
-	                Px1DConstraintFlag::eOUTPUT_FORCE);
+	c.flags = PxU16(c.flags | Px1DConstraintFlag::eANGULAR_CONSTRAINT);
 }
 
 static PxU32 prepareLockedAxes(Px1DConstraint *rows, const PxQuat &qA,
