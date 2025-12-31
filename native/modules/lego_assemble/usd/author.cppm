@@ -70,6 +70,42 @@ struct PrototypePartAuthor {
 	}
 };
 
+void setup_mass_properties(const MetricSystem &metrics,
+                           const pxr::SdfPrimSpecHandle &prim,
+                           const PartLike auto &part) {
+	double mass = part.mass();
+	Eigen::Vector3d com = part.com();
+	Eigen::Matrix3d I = part.inertia_tensor();
+
+	Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{I};
+	if (solver.info() != Eigen::Success) {
+		throw std::runtime_error(
+		    "setup_mass_properties: eigen decomposition failed");
+	}
+
+	Eigen::Vector3d com_u = metrics.from_m(com);
+	Eigen::Vector3d diag_u = metrics.from_kgm2(solver.eigenvalues());
+
+	Eigen::Matrix3d Q = solver.eigenvectors();
+	if (Q.determinant() < 0.0) {
+		Q.col(0) *= -1.0;
+	}
+	Eigen::Matrix3d R = Q.transpose();
+	Eigen::Quaterniond q_pa = Eigen::Quaterniond(R).normalized();
+	if (q_pa.w() < 0.0) {
+		q_pa.coeffs() *= -1.0;
+	}
+
+	SetAttr<float>(prim, pxr::UsdPhysicsTokens->physicsMass,
+	               static_cast<float>(metrics.from_kg(mass)));
+	SetAttr<pxr::GfVec3f>(prim, pxr::UsdPhysicsTokens->physicsCenterOfMass,
+	                      as<pxr::GfVec3f>(com_u));
+	SetAttr<pxr::GfVec3f>(prim, pxr::UsdPhysicsTokens->physicsDiagonalInertia,
+	                      as<pxr::GfVec3f>(diag_u));
+	SetAttr<pxr::GfQuatf>(prim, pxr::UsdPhysicsTokens->physicsPrincipalAxes,
+	                      as<pxr::GfQuatf>(q_pa));
+}
+
 export struct SimpleBrickAuthor {
 	using PartType = BrickPart;
 
@@ -101,6 +137,7 @@ export struct SimpleBrickAuthor {
 		            pxr::UsdPhysicsTokens->PhysicsRigidBodyAPI,
 		            pxr::PhysxSchemaTokens->PhysxRigidBodyAPI,
 		            pxr::PhysxSchemaTokens->PhysxContactReportAPI,
+		            pxr::UsdPhysicsTokens->PhysicsMassAPI,
 		        }));
 		SetInfo(root, pxr::SdfFieldKeys->Kind, pxr::KindTokens->component);
 		SetAttr<pxr::TfToken>(root, LegoTokens->PartKind,
@@ -113,16 +150,15 @@ export struct SimpleBrickAuthor {
 		    root, pxr::PhysxSchemaTokens->physxRigidBodySleepThreshold, 0.0f);
 		SetAttr<bool>(root, pxr::UsdPhysicsTokens->physicsRigidBodyEnabled,
 		              true);
+		setup_mass_properties(metrics, root, part);
 
 		auto bodyCollider = pxr::SdfCreatePrimInLayer(
 		    layer, root_path.AppendChild(LegoTokens->BodyCollider));
 		bodyCollider->SetSpecifier(pxr::SdfSpecifierDef);
 		bodyCollider->SetTypeName(pxr::UsdGeomTokens->Cube);
 		SetInfo(bodyCollider, pxr::UsdTokens->apiSchemas,
-		        pxr::SdfTokenListOp::Create({
-		            pxr::UsdPhysicsTokens->PhysicsCollisionAPI,
-		            pxr::UsdPhysicsTokens->PhysicsMassAPI,
-		        }));
+		        pxr::SdfTokenListOp::Create(
+		            {pxr::UsdPhysicsTokens->PhysicsCollisionAPI}));
 		SetAttr<double>(bodyCollider, pxr::UsdGeomTokens->size, 1.0);
 		SetAttr<pxr::TfToken>(bodyCollider, pxr::UsdGeomTokens->visibility,
 		                      pxr::UsdGeomTokens->invisible);
@@ -143,8 +179,6 @@ export struct SimpleBrickAuthor {
 		                           {xformOpTranslate, xformOpScale});
 		SetAttr<bool>(bodyCollider,
 		              pxr::UsdPhysicsTokens->physicsCollisionEnabled, true);
-		SetAttr<float>(bodyCollider, pxr::UsdPhysicsTokens->physicsMass,
-		               metrics.from_kg(part.mass()));
 		SetAttr<float>(bodyCollider,
 		               pxr::UsdPhysicsTokens->physicsStaticFriction, 0.5f);
 		SetAttr<float>(bodyCollider,
@@ -157,10 +191,8 @@ export struct SimpleBrickAuthor {
 		topCollider->SetSpecifier(pxr::SdfSpecifierDef);
 		topCollider->SetTypeName(pxr::UsdGeomTokens->Cube);
 		SetInfo(topCollider, pxr::UsdTokens->apiSchemas,
-		        pxr::SdfTokenListOp::Create({
-		            pxr::UsdPhysicsTokens->PhysicsCollisionAPI,
-		            pxr::UsdPhysicsTokens->PhysicsMassAPI,
-		        }));
+		        pxr::SdfTokenListOp::Create(
+		            {pxr::UsdPhysicsTokens->PhysicsCollisionAPI}));
 		SetAttr<double>(topCollider, pxr::UsdGeomTokens->size, 1.0);
 		SetAttr<pxr::TfToken>(topCollider, pxr::UsdGeomTokens->visibility,
 		                      pxr::UsdGeomTokens->invisible);
@@ -182,7 +214,6 @@ export struct SimpleBrickAuthor {
 		                           {xformOpTranslate, xformOpScale});
 		SetAttr<bool>(topCollider,
 		              pxr::UsdPhysicsTokens->physicsCollisionEnabled, true);
-		SetAttr<float>(topCollider, pxr::UsdPhysicsTokens->physicsMass, 0.0f);
 		SetAttr<float>(topCollider,
 		               pxr::UsdPhysicsTokens->physicsStaticFriction, 1.0f);
 		SetAttr<float>(topCollider,

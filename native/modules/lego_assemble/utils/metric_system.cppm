@@ -127,6 +127,16 @@ export struct MetricSystem {
 		return u * f;
 	}
 
+	// kg*m^2 (moment of inertia)
+	auto from_kgm2(const auto &I) const {
+		const double f = 1.0 / (kpu_ * mpu_ * mpu_);
+		return I * f;
+	}
+	auto to_kgm2(const auto &u) const {
+		const double f = kpu_ * mpu_ * mpu_;
+		return u * f;
+	}
+
 	// SE(3) transforms
 	Transformd from_m(const Transformd &T) const {
 		return {

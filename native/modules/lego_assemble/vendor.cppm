@@ -124,6 +124,7 @@ using Eigen::Rotation2D;
 using Eigen::Rotation2Dd;
 using Eigen::Rotation2Df;
 using Eigen::RowMajor;
+using Eigen::SelfAdjointEigenSolver;
 using Eigen::SimplicialLDLT;
 using Eigen::SparseMatrix;
 using Eigen::SparseMatrixBase;
