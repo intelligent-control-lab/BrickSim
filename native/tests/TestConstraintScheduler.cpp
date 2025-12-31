@@ -121,8 +121,7 @@ static void test_scheduler_dtor_no_constraints() {
 		auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 		Strat strat{};
-		Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-		                       std::pmr::get_default_resource()};
+		Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 		// No events fired → no constraints allocated.
 		assert(events.created.empty());
@@ -151,8 +150,7 @@ static void test_scheduler_dtor_with_constraints() {
 		auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 		Strat strat{};
-		Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-		                       std::pmr::get_default_resource()};
+		Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 		// Mark connection once; scheduler should create two tree edges {0,1},{1,2}
 		sched.notify_connected(0, 1);
@@ -187,8 +185,7 @@ static void test_manual_commit_batches_flush() {
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-	                       std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 	// Notifications do not flush immediately; only commit() triggers scheduling.
 	sched.notify_connected(0, 1);
@@ -220,8 +217,7 @@ static void test_commit_is_idempotent_with_no_dirty_vertices() {
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-	                       std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 	sched.notify_connected(0, 1);
 	sched.commit();
@@ -249,8 +245,7 @@ static void test_notify_requires_commit_for_incremental_updates() {
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-	                       std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 	sched.notify_connected(0, 1);
 	assert(events.created.empty());
@@ -282,8 +277,7 @@ static void test_on_part_added_outside_block() {
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-	                       std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 	// Add an extra isolated part (pid 3)
 	auto ifs3 = std::initializer_list<InterfaceSpec>{mk_stud(40, 1, 1),
@@ -315,8 +309,7 @@ static void test_on_part_added_inside_block() {
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-	                       std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 	auto ifs3 = std::initializer_list<InterfaceSpec>{mk_stud(40, 1, 1),
 	                                                 mk_hole(41, 1, 1)};
@@ -355,8 +348,7 @@ static void test_connect_two_single_parts() {
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-	                       std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 	sched.notify_connected(0, 1);
 	sched.commit();
@@ -383,8 +375,7 @@ static void test_connect_within_same_cc_tree_only_no_churn() {
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-	                       std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 	// Initial scheduling from a single connect
 	sched.notify_connected(0, 1);
@@ -425,8 +416,7 @@ static void test_connect_within_same_cc_fullgraph_adds_edge() {
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-	                       std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 	// Initial scheduling from a single connect
 	sched.notify_connected(0, 1);
@@ -465,8 +455,7 @@ static void test_disconnect_non_bridge_edge_fullgraph() {
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-	                       std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 	// Seed scheduling once
 	sched.notify_connected(0, 1);
@@ -509,8 +498,7 @@ static void test_disconnect_bridge_edge_splits_cc() {
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-	                       std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 	// Seed scheduling
 	sched.notify_connected(0, 1);
@@ -546,8 +534,7 @@ static void test_on_part_removed_no_constraints() {
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-	                       std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 	// Remove an isolated part (no constraint edges in scheduler).
 	assert(g.remove_part(PartId{2}));
@@ -575,8 +562,7 @@ static void test_on_part_removed_with_multiple_constraints() {
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-	                       std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 	// Initial schedule: edges {0-1,1-2}
 	sched.notify_connected(0, 1);
@@ -633,8 +619,7 @@ static void test_multiple_dirty_vertices_same_cc_only_one_compute() {
 	};
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
-	Scheduler<LoggingStrategy> sched{&g, strat, create_edge, destroy_edge,
-	                                 std::pmr::get_default_resource()};
+	Scheduler<LoggingStrategy> sched{&g, strat, create_edge, destroy_edge};
 
 	// Mark endpoints of the same CC as dirty.
 	sched.notify_connected(0, 2);
@@ -664,8 +649,7 @@ static void test_flush_with_no_dirty_vertices_is_noop() {
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-	                       std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 	// First schedule once so that edges exist.
 	sched.notify_connected(0, 1);
@@ -698,8 +682,7 @@ static void test_no_change_in_desired_edges_no_churn() {
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-	                       std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 	// First scheduling
 	sched.notify_connected(0, 1);
@@ -732,8 +715,7 @@ static void test_add_new_desired_edges_only_create_new() {
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-	                       std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 	// First schedule: edge {0,1}
 	sched.notify_connected(0, 1);
@@ -790,8 +772,7 @@ static void test_cross_cc_edges_removed_after_split() {
 	auto destroy_edge = [&events](std::size_t h) { events.destroy(h); };
 
 	Strat strat{};
-	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge,
-	                       std::pmr::get_default_resource()};
+	Scheduler<Strat> sched{&g, strat, create_edge, destroy_edge};
 
 	// Initial constraints: strategy requests edge {0,2} over CC {0,1,2}.
 	sched.notify_connected(0, 1);

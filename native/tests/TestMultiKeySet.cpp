@@ -61,10 +61,7 @@ static int copies_sum() {
 
 // --------- Tests ----------
 int main() {
-	// Use a PMR to exercise the constructors
-	std::byte buf[1 << 16];
-	std::pmr::monotonic_buffer_resource mr{buf, sizeof buf};
-	Set s{&mr};
+	Set s;
 
 	// Reset counters
 	K1::reset_counts();

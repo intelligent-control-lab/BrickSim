@@ -42,19 +42,6 @@ export template <class T> struct SimpleWrapper {
 	explicit constexpr SimpleWrapper(Args &&...args)
 	    : wrapped_(std::forward<Args>(args)...) {}
 
-	// Remove trailing PMR
-	template <class... Args>
-	    requires(!std::constructible_from<T, Args...> && sizeof...(Args) > 0 &&
-	             std::same_as<std::remove_cvref_t<last_type<Args...>>,
-	                          std::pmr::memory_resource *> &&
-	             type_list<Args...>::template drop_back<
-	                 1>::template can_construct<T>)
-	explicit constexpr SimpleWrapper(Args &&...args)
-	    : wrapped_(std::make_from_tuple<T>(
-	          select_forward_as_tuple<
-	              typename type_list<Args...>::template drop_back_seq<1>>(
-	              std::forward<Args>(args)...))) {}
-
 	template <class Self> constexpr auto &&wrapped(this Self &&self) noexcept {
 		return std::forward<Self>(self).wrapped_;
 	}
@@ -102,9 +89,7 @@ export template <PartLike T> struct SimplePartWrapper : SimpleWrapper<T> {
 
 	template <class... Args>
 	explicit SimplePartWrapper(Args &&...args)
-	    : SimpleWrapper<T>(std::forward<Args>(args)...),
-	      incomings_(tail_mr(args...)), outgoings_(tail_mr(args...)),
-	      neighbor_parts_(tail_mr(args...)) {}
+	    : SimpleWrapper<T>(std::forward<Args>(args)...) {}
 
 	template <class Self>
 	constexpr auto &&incomings(this Self &&self) noexcept {
@@ -128,9 +113,6 @@ export struct ConnectionBundle {
 	OrderedVecSet<ConnSegId> conn_seg_ids;
 	Transformd T_a_b;
 	Transformd T_b_a;
-	explicit ConnectionBundle(
-	    std::pmr::memory_resource *r = std::pmr::get_default_resource())
-	    : conn_seg_ids{r} {}
 };
 template <class T>
 concept ConnBundleWrapperLike =
@@ -205,7 +187,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	                                 ConnSegKeysHash, ConnSegKeysEq>;
 	using WrappedConnBundle = ConnBundleWrapper;
 	using ConnBundleStore =
-	    std::pmr::unordered_map<ConnectionEndpoint, ConnBundleWrapper>;
+	    std::unordered_map<ConnectionEndpoint, ConnBundleWrapper>;
 	using PartEntry = PartStore::entry_reference;
 	using PartConstEntry = PartStore::const_entry_reference;
 	using ConnSegEntry = ConnSegStore::entry_type &;
@@ -371,8 +353,6 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 			co_yield {root_, identity};
 
 			// 2. Cache for calculated transforms relative to root
-			//    We use pmr::unordered_map if we want to utilize the graph's resource,
-			//    but this view is transient. Standard map is fine, or we can use a temporary resource.
 			std::unordered_map<PartId, Transformd> cache;
 			cache.reserve(size()); // Hint size
 			cache.emplace(root_, identity);
@@ -430,11 +410,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 		friend Self;
 	};
 
-	explicit LegoGraph(
-	    Hooks *hooks = nullptr,
-	    std::pmr::memory_resource *r = std::pmr::get_default_resource())
-	    : res_{r}, parts_{r}, conn_segs_{r}, conn_bundles_(r), hooks_{hooks},
-	      dynamic_graph_(std::size_t(0), r) {}
+	explicit LegoGraph(Hooks *hooks = nullptr) : hooks_{hooks} {}
 
 	const PartStore &parts() const noexcept {
 		return parts_;
@@ -545,13 +521,12 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	    requires(sizeof...(Args) >= sizeof...(PEKs) &&
 	             type_list<Args...>::template take_front<
 	                 sizeof...(PEKs)>::template convertible_to<PEKs...> &&
-	             type_list<Args...>::template drop_front<sizeof...(
-	                 PEKs)>::template append<std::pmr::memory_resource *>::
-	                 template can_construct<PartWrapper<P>>)
+	             type_list<Args...>::template drop_front<
+	                 sizeof...(PEKs)>::template can_construct<PartWrapper<P>>)
 	std::optional<PartId> add_part(Args &&...args) {
 		PartId id = next_part_id_;
 		DgVertexId dgid{dynamic_graph_.add_vertex()};
-		if (!parts_.template emplace<PartWrapper<P>>(id, dgid, args..., res_)) {
+		if (!parts_.template emplace<PartWrapper<P>>(id, dgid, args...)) {
 			// rollback
 			dynamic_graph_.erase_vertex(dgid.value());
 			return std::nullopt;
@@ -578,18 +553,18 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 		PartEntry entry = *entry_opt;
 		PartId pid = entry.template key<PartId>();
 
-		std::optional<std::pmr::vector<std::tuple<ConnSegId, ConnSegRef>>>
+		std::optional<std::vector<std::tuple<ConnSegId, ConnSegRef>>>
 		    removed_cs;
 		if constexpr (HasOnDisconnectedHook) {
 			if (hooks_) {
-				removed_cs.emplace(res_);
+				removed_cs.emplace();
 			}
 		}
 
-		std::optional<std::pmr::vector<ConnectionEndpoint>> removed_bundles;
+		std::optional<std::vector<ConnectionEndpoint>> removed_bundles;
 		if constexpr (HasOnBundleRemovedHook) {
 			if (hooks_) {
-				removed_bundles.emplace(res_);
+				removed_bundles.emplace();
 			}
 		}
 
@@ -712,9 +687,8 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	    requires(sizeof...(Args) >= sizeof...(CSEKs) &&
 	             type_list<Args...>::template take_front<
 	                 sizeof...(CSEKs)>::template convertible_to<CSEKs...> &&
-	             type_list<Args...>::template drop_front<sizeof...(
-	                 CSEKs)>::template append<std::pmr::memory_resource *>::
-	                 template can_construct<ConnSegWrapper>)
+	             type_list<Args...>::template drop_front<
+	                 sizeof...(CSEKs)>::template can_construct<ConnSegWrapper>)
 	std::optional<ConnSegId> connect(const InterfaceRef &stud_if,
 	                                 const InterfaceRef &hole_if,
 	                                 Args &&...args) {
@@ -743,10 +717,9 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 		}
 
 		auto csw = std::make_from_tuple<ConnSegWrapper>(
-		    select_forward_as_tuple<
-		        typename type_list<Args..., std::pmr::memory_resource *>::
-		            template drop_front_seq<sizeof...(CSEKs)>>(
-		        std::forward<Args>(args)..., res_));
+		    select_forward_as_tuple<typename type_list<
+		        Args...>::template drop_front_seq<sizeof...(CSEKs)>>(
+		        std::forward<Args>(args)...));
 
 		Transformd new_transform = SE3d{}.project(
 		    csw.wrapped().compute_transform(*stud_spec, *hole_spec));
@@ -783,7 +756,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 
 		if (!bundle_exists) {
 			auto [new_it, _] =
-			    conn_bundles_.emplace(conn_endpoint, ConnBundleWrapper{res_});
+			    conn_bundles_.emplace(conn_endpoint, ConnBundleWrapper{});
 			conn_bundle_it = new_it;
 			ConnectionBundle &bundle = conn_bundle_it->second.wrapped();
 			if (stud_pid < hole_pid) {
@@ -910,7 +883,6 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	}
 
   private:
-	std::pmr::memory_resource *res_;
 	PartStore parts_;
 	PartId next_part_id_ = 0;
 	ConnSegStore conn_segs_;

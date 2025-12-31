@@ -35,9 +35,7 @@ class MultiKeySet<type_list<Ks...>, type_list<Hs...>, type_list<Es...>> {
 
 	using entry_type = std::tuple<Ks...>;
 
-	explicit MultiKeySet(
-	    std::pmr::memory_resource *r = std::pmr::get_default_resource())
-	    : records_{r}, maps_{make_map<Ks, Hs, Es>(r)...} {}
+	explicit MultiKeySet() : maps_{make_map<Ks, Hs, Es>()...} {}
 
 	template <class... Args>
 	    requires(sizeof...(Args) == sizeof...(Ks) &&
@@ -136,21 +134,16 @@ class MultiKeySet<type_list<Ks...>, type_list<Hs...>, type_list<Es...>> {
   private:
 	using index_type = std::uint32_t;
 
-	template <class K>
-	using MapAlloc =
-	    std::pmr::polymorphic_allocator<std::pair<const K, index_type>>;
-
 	template <class K, class H, class E>
-	using KeyMap = std::unordered_map<K, index_type, H, E, MapAlloc<K>>;
+	using KeyMap = std::unordered_map<K, index_type, H, E>;
 
 	using Maps = std::tuple<KeyMap<Ks, Hs, Es>...>;
 
-	template <class K, class H, class E>
-	static KeyMap<K, H, E> make_map(std::pmr::memory_resource *r) {
-		return KeyMap<K, H, E>(0, H{}, E{}, MapAlloc<K>{r});
+	template <class K, class H, class E> static KeyMap<K, H, E> make_map() {
+		return KeyMap<K, H, E>(0, H{}, E{});
 	}
 
-	std::pmr::vector<entry_type> records_;
+	std::vector<entry_type> records_;
 	Maps maps_;
 
 	template <class K>

@@ -11,32 +11,6 @@ using namespace lego_assemble;
 
 namespace {
 
-struct CountingResource : std::pmr::memory_resource {
-	std::pmr::memory_resource *upstream;
-	std::atomic<std::size_t> allocs{0}, deallocs{0};
-	std::atomic<std::size_t> bytes_alloc{0}, bytes_dealloc{0};
-
-	explicit CountingResource(
-	    std::pmr::memory_resource *up = std::pmr::new_delete_resource())
-	    : upstream(up) {}
-
-  private:
-	void *do_allocate(std::size_t bytes, std::size_t align) override {
-		allocs.fetch_add(1, std::memory_order_relaxed);
-		bytes_alloc.fetch_add(bytes, std::memory_order_relaxed);
-		return upstream->allocate(bytes, align);
-	}
-	void do_deallocate(void *p, std::size_t bytes, std::size_t align) override {
-		deallocs.fetch_add(1, std::memory_order_relaxed);
-		bytes_dealloc.fetch_add(bytes, std::memory_order_relaxed);
-		upstream->deallocate(p, bytes, align);
-	}
-	bool do_is_equal(
-	    const std::pmr::memory_resource &other) const noexcept override {
-		return this == &other;
-	}
-};
-
 // Helpers to build interface specs quickly
 static Transformd Ixf() {
 	return SE3d{}.identity();
@@ -105,19 +79,6 @@ static std::vector<std::vector<PartId>> collect_components(const G &g) {
 }
 
 // --------------------------- tests ---------------------------
-
-static void test_resource_wiring_and_initial_state() {
-	CountingResource arena;
-	G g(nullptr, &arena);
-	build_three_parts(g);
-
-	// Parts are assigned PartIds 0,1,2 and DgVertexIds 0,1,2 with 3 alive
-	assert(g.parts().size() == 3);
-	assert(g.dynamic_graph().num_vertices() == 3);
-
-	// Some allocations must have happened on our arena (stores/dirs)
-	assert(arena.allocs.load() > 0);
-}
 
 static void test_find_interface_spec_and_lookup_visit() {
 	G g; // default resource is fine here
@@ -609,7 +570,6 @@ static void test_remove_part_variants() {
 } // namespace
 
 int main() {
-	test_resource_wiring_and_initial_state();
 	test_find_interface_spec_and_lookup_visit();
 	test_part_bfs_invalid_and_isolated();
 	test_part_bfs_matches_lookup_transform();

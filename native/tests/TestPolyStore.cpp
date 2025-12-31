@@ -10,29 +10,6 @@ using namespace lego_assemble;
 namespace {
 template <class... Ts> using TL = type_list<Ts...>;
 
-// Counting PMR to ensure allocations go through our resource.
-struct counting_resource : pmr::memory_resource {
-	size_t alloc_calls = 0, dealloc_calls = 0;
-	size_t alloc_bytes = 0, dealloc_bytes = 0;
-	pmr::memory_resource *upstream = pmr::get_default_resource();
-
-  private:
-	void *do_allocate(size_t bytes, size_t align) override {
-		alloc_calls++;
-		alloc_bytes += bytes;
-		return upstream->allocate(bytes, align);
-	}
-	void do_deallocate(void *p, size_t bytes, size_t align) override {
-		dealloc_calls++;
-		dealloc_bytes += bytes;
-		upstream->deallocate(p, bytes, align);
-	}
-	bool
-	do_is_equal(const pmr::memory_resource &other) const noexcept override {
-		return this == &other;
-	}
-};
-
 // Test payload types
 struct Player {
 	int hp;
@@ -60,15 +37,13 @@ int main() {
 		static_assert(unique_types<Player, Enemy, Chest>);
 	}
 
-	counting_resource counter;
-
 	// ====================== multi-key PolyStore ======================
 	{
 		using Keys = TL<std::uint32_t, std::string, std::uint64_t>;
 		using Types = TL<Player, Enemy, Chest>;
 		using Store = PolyStore<Keys, Types>;
 
-		Store store{&counter};
+		Store store;
 
 		// Reserve APIs (not deeply observable, but we want them exercised)
 		store.reserve_for_type<Enemy>(8);
@@ -321,9 +296,6 @@ int main() {
 		}
 	}
 
-	// We should have seen allocations routed through counting_resource
-	assert(counter.alloc_calls > 0);
-
 	// ====================== single-key PolyStore ======================
 	{
 		using MyTypes = TL<Player, Enemy, Chest>;
@@ -333,7 +305,7 @@ int main() {
 
 		// -------- multi-type single-key store --------
 		{
-			Store store{&counter};
+			Store store;
 
 			store.reserve_for_type<Enemy>(16);
 

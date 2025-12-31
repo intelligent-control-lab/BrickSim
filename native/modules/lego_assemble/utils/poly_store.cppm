@@ -51,9 +51,8 @@ class PolyStore<type_list<Ks...>, type_list<Ts...>, type_list<Hs...>,
 	using Anchor = std::tuple_element_t<0, std::tuple<Ks...>>;
 
 	template <class T> struct Storage {
-		std::pmr::vector<T> data;
-		std::pmr::vector<Anchor> ids;
-		explicit Storage(std::pmr::memory_resource *r) : data{r}, ids{r} {}
+		std::vector<T> data;
+		std::vector<Anchor> ids;
 	};
 
 	using Storages = std::tuple<Storage<Ts>...>;
@@ -143,9 +142,7 @@ class PolyStore<type_list<Ks...>, type_list<Ts...>, type_list<Hs...>,
 	using entry_reference = EntryRef<false>;
 	using const_entry_reference = EntryRef<true>;
 
-	explicit PolyStore(
-	    std::pmr::memory_resource *r = std::pmr::get_default_resource())
-	    : storages_{Storage<Ts>(r)...}, directory_{r} {}
+	explicit PolyStore() : storages_{Storage<Ts>()...} {}
 
 	template <in_pack<Ts...> T, tuple_of_size<sizeof...(Ks)> KeysTuple,
 	          class... Args>

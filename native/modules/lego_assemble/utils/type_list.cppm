@@ -11,17 +11,6 @@ export template <class... Ts> decltype(auto) last_value(Ts &&...args) {
 	return args...[sizeof...(args) - 1];
 }
 
-export template <class... Args>
-constexpr std::pmr::memory_resource *tail_mr(Args &&...args) {
-	if constexpr (sizeof...(args) > 0 &&
-	              std::same_as<std::remove_cvref_t<last_type<Args...>>,
-	                           std::pmr::memory_resource *>) {
-		return last_value(std::forward<Args>(args)...);
-	} else {
-		return std::pmr::get_default_resource();
-	}
-}
-
 export template <class T, class... Ts>
 concept in_pack = (std::same_as<T, Ts> || ... || false);
 

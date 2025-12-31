@@ -7,11 +7,10 @@ import lego_assemble.utils.multi_key_map;
 using namespace lego_assemble;
 
 static int smoke_basic_two_keys() {
-	std::pmr::unsynchronized_pool_resource pool;
 	using Keys = type_list<int, std::string>;
 	using Map = MultiKeyMap<Keys, std::string>;
 
-	Map m{&pool};
+	Map m;
 	assert(m.size() == 0);
 	assert(m.empty());
 	assert(!m.contains(1));
@@ -169,10 +168,9 @@ static int smoke_basic_two_keys() {
 
 static int piecewise_and_move_only() {
 	// Piecewise construction (mapped_type requires multi-arg constructor)
-	std::pmr::unsynchronized_pool_resource pool1;
 	using KeysP = type_list<int, std::string>;
 	using MapP = MultiKeyMap<KeysP, std::pair<int, int>>;
-	MapP mp{&pool1};
+	MapP mp;
 
 	// New emplace naturally supports it: emplace(TupleKeys, Arg1, Arg2...)
 	assert(mp.emplace(std::make_tuple(10, std::string{"X"}), 7, 8));
@@ -190,10 +188,9 @@ static int piecewise_and_move_only() {
 	assert(mp.size() == 0);
 
 	// Move-only mapped_type coverage
-	std::pmr::unsynchronized_pool_resource pool2;
 	using KeysU = type_list<int, std::string>;
 	using MapU = MultiKeyMap<KeysU, std::unique_ptr<int>>;
-	MapU mu{&pool2};
+	MapU mu;
 
 	// insert with lvalue keys
 	MapU::keys_type ku1{7, "G"};

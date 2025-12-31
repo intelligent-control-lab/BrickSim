@@ -105,11 +105,9 @@ static_assert(FaceSpecLike<RectFaceSpec>);
 
 export struct CustomFaceSpec {
   public:
-	CustomFaceSpec(
-	    FaceId id, std::initializer_list<Eigen::Vector2d> vertices,
-	    const Transformd &tf,
-	    std::pmr::memory_resource *r = std::pmr::get_default_resource())
-	    : id_{id}, vertices_{vertices, r}, tf_{tf},
+	CustomFaceSpec(FaceId id, std::initializer_list<Eigen::Vector2d> vertices,
+	               const Transformd &tf)
+	    : id_{id}, vertices_{vertices}, tf_{tf},
 	      bbox_{BBox2d::from_vertices(vertices_)} {}
 
 	FaceId id() const {
@@ -128,7 +126,7 @@ export struct CustomFaceSpec {
 
   private:
 	FaceId id_;
-	std::pmr::vector<Eigen::Vector2d> vertices_;
+	std::vector<Eigen::Vector2d> vertices_;
 	Transformd tf_;
 	BBox2d bbox_;
 };
@@ -389,15 +387,13 @@ export struct CustomPart {
 	           std::initializer_list<InterfaceSpec> ifs, const BBox3d &bbox,
 	           std::initializer_list<CustomFaceSpec> faces,
 	           const Eigen::Vector3d &com,
-	           const Eigen::Matrix3d &inertia_tensor,
-	           std::pmr::memory_resource *r = std::pmr::get_default_resource())
-	    : mass_{mass}, color_{color}, interfaces_{ifs, r}, bbox_{bbox},
-	      faces_{faces, r}, com_{com}, inertia_tensor_{inertia_tensor} {}
+	           const Eigen::Matrix3d &inertia_tensor)
+	    : mass_{mass}, color_{color}, interfaces_{ifs}, bbox_{bbox},
+	      faces_{faces}, com_{com}, inertia_tensor_{inertia_tensor} {}
 
 	CustomPart(double mass, BrickColor color,
-	           std::initializer_list<InterfaceSpec> ifs,
-	           std::pmr::memory_resource *r = std::pmr::get_default_resource())
-	    : mass_{mass}, color_{color}, interfaces_{ifs, r},
+	           std::initializer_list<InterfaceSpec> ifs)
+	    : mass_{mass}, color_{color}, interfaces_{ifs},
 	      bbox_{
 	          .min = {0.0, 0.0, 0.0},
 	          .max = {0.0, 0.0, 0.0},
@@ -448,9 +444,9 @@ export struct CustomPart {
   private:
 	double mass_;
 	BrickColor color_;
-	std::pmr::vector<InterfaceSpec> interfaces_;
+	std::vector<InterfaceSpec> interfaces_;
 	BBox3d bbox_;
-	std::pmr::vector<CustomFaceSpec> faces_;
+	std::vector<CustomFaceSpec> faces_;
 	Eigen::Vector3d com_;
 	Eigen::Matrix3d inertia_tensor_;
 };

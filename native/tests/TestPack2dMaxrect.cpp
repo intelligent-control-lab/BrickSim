@@ -24,7 +24,7 @@ template <typename R1, typename R2> bool intersects(const R1 &a, const R2 &b) {
 void check_no_overlap(const Bin &bin, const PackResult &res) {
 	// Each rect within bin
 	for (const auto &r : res.packed) {
-        
+
 		assert(r.x >= 0);
 		assert(r.y >= 0);
 		assert(r.width > 0);

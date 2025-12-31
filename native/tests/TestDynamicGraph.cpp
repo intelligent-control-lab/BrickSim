@@ -149,174 +149,6 @@ static void test_random(std::uint32_t seed = 20240229) {
 	}
 }
 
-struct FailResource : std::pmr::memory_resource {
-	void *do_allocate(std::size_t, std::size_t) override {
-		assert(false && "[PMR TEST] ERROR: default pmr used!");
-		std::unreachable();
-	}
-	void do_deallocate(void *, std::size_t, std::size_t) override {
-		assert(false && "[PMR TEST] ERROR: default pmr deallocate called!");
-		std::unreachable();
-	}
-	bool do_is_equal(
-	    const std::pmr::memory_resource &other) const noexcept override {
-		return this == &other;
-	}
-};
-
-struct CountingResource : std::pmr::memory_resource {
-	std::pmr::memory_resource *upstream;
-	std::atomic<std::size_t> allocs{0}, deallocs{0};
-	std::atomic<std::size_t> bytes_alloc{0}, bytes_dealloc{0};
-
-	explicit CountingResource(
-	    std::pmr::memory_resource *up = std::pmr::new_delete_resource())
-	    : upstream(up) {}
-
-	void *do_allocate(std::size_t bytes, std::size_t align) override {
-		allocs.fetch_add(1, std::memory_order_relaxed);
-		bytes_alloc.fetch_add(bytes, std::memory_order_relaxed);
-		return upstream->allocate(bytes, align);
-	}
-	void do_deallocate(void *p, std::size_t bytes, std::size_t align) override {
-		deallocs.fetch_add(1, std::memory_order_relaxed);
-		bytes_dealloc.fetch_add(bytes, std::memory_order_relaxed);
-		upstream->deallocate(p, bytes, align);
-	}
-	bool do_is_equal(
-	    const std::pmr::memory_resource &other) const noexcept override {
-		return this == &other;
-	}
-};
-
-struct DefaultResourceGuard {
-	std::pmr::memory_resource *prev{};
-	explicit DefaultResourceGuard(std::pmr::memory_resource *r)
-	    : prev(std::pmr::set_default_resource(r)) {}
-	~DefaultResourceGuard() {
-		std::pmr::set_default_resource(prev);
-	}
-};
-
-static void test_naive_dynamic_graph_uses_given_pmr() {
-	FailResource fail;
-	DefaultResourceGuard guard(&fail); // any use of default PMR aborts
-
-	CountingResource arena;
-
-	// 1) Build with explicit arena and force allocations in reset/assign
-	NaiveDynamicGraph g(0, &arena);
-	g.reset(64); // adj_.assign + alive_.assign allocate
-
-	// 2) Force adj_ growth (vector reallocation) and inner set construction
-	for (int i = 0; i < 200; ++i)
-		(void)g.add_vertex(); // grow adj_, alive_, free_ path later
-
-	// 3) Create a high-degree star to force unordered_set bucket/node allocations and rehash
-	for (vertex_id v = 1; v < 180; ++v) {
-		[[maybe_unused]] bool ok = g.add_edge(0, v);
-		(void)ok;
-	}
-
-	// 4) BFS allocations: pmr::deque and pmr::vector in connected()
-	[[maybe_unused]] bool conn = g.connected(0, 179);
-
-	// 5) Force erase_vertex path that allocates a pmr::vector<vertex_id> neigh with reserve()
-	[[maybe_unused]] bool erased = g.erase_vertex(100);
-
-	// 6) Fill free_ to force its growth (pmr::vector reallocation)
-	for (vertex_id v = 150; v < 200; ++v) {
-		(void)g.erase_vertex(v);
-	}
-
-	// 7) Trigger more unordered_set activity (erase, then re-add)
-	for (vertex_id v = 1; v < 90; ++v) {
-		(void)g.erase_edge(0, v);
-	}
-	for (vertex_id v = 1; v < 90; ++v) {
-		(void)g.add_edge(0, v);
-	}
-
-	// 8) Clear to free pmr allocations (dealloc counters should move)
-	g.clear();
-
-	// If we reached here, default PMR was never used (would have aborted).
-	// Also sanity-check we actually allocated via our arena.
-	assert(arena.allocs.load() > 0 &&
-	       "No allocations observed on arena for NaiveDynamicGraph");
-}
-
-static void test_hlt_uses_given_pmr_and_exercises_allocation_branches() {
-	FailResource fail;
-	DefaultResourceGuard guard(&fail); // any use of default PMR aborts
-
-	CountingResource arena;
-
-	// Construct with n0>0 to exercise reset(cap_, L_) and initial emplace_back of forests_.
-	// IMPORTANT: This will immediately fail if LinkCutForest objects inside forests_
-	// are created with the default PMR (i.e., if you forgot to pass mr_).
-	HolmDeLichtenbergThorup hlt(8, &arena);
-
-	// 1) Touch Link-Cut Forest splay path allocations via connected()
-	[[maybe_unused]] bool c01 =
-	    hlt.connected(0, 1); // causes push_path stack alloc in LCT
-
-	// 2) Grow capacity to add new levels/forests and resize nested structures
-	for (int i = 0; i < 40; ++i) {
-		(void)hlt.add_vertex();
-	} // triggers grow_capacity()
-
-	// 3) Build a tree (chain) to allocate in treeAdj_, forests_ link() paths
-	for (vertex_id v = 0; v + 1 < 20; ++v) {
-		[[maybe_unused]] bool ok = hlt.add_edge(v, v + 1);
-		(void)ok;
-	}
-
-	// 4) Add several non-tree edges at level 0 to allocate in nonTreeAdj_[0] sets + edges_ map
-	// They are all already connected through the chain.
-	auto add_nt = [&](vertex_id u, vertex_id v) {
-		[[maybe_unused]] bool ok = hlt.add_edge(u, v);
-		(void)ok;
-	};
-	add_nt(0, 2);
-	add_nt(2, 4);
-	add_nt(4, 6);
-	add_nt(6, 8);
-	add_nt(1, 3);
-	add_nt(3, 5);
-	add_nt(5, 7);
-	add_nt(7, 9);
-
-	// 5) Non-tree erase branch (no replacement search)
-	[[maybe_unused]] bool er1 = hlt.erase_edge(7, 9);
-
-	// 6) Tree erase + replacement exists (should convert a non-tree crossing edge into a tree edge)
-	// Cutting the middle edge splits the chain; (2,4) or (4,6) crosses and should be chosen.
-	[[maybe_unused]] bool er2 =
-	    hlt.erase_edge(9, 10); // remove end tree edge first (no replacement)
-	[[maybe_unused]] bool er3 =
-	    hlt.erase_edge(3, 4); // central cut ⇒ replacement search at level 0
-
-	// 7) Force internal non-tree promotions (Step 3) by cutting again elsewhere
-	// so a non-tree internal to the small side gets promoted to the next level.
-	[[maybe_unused]] bool er4 =
-	    hlt.erase_edge(11, 12); // another tree edge erase at a different place
-
-	// 8) Exercise enumerate_Fi_component() BFS allocations
-	[[maybe_unused]] bool c = hlt.connected(0, 12);
-
-	// 9) Exercise component_size() which hits LCT push_path and splay again
-	[[maybe_unused]] std::size_t s = hlt.num_vertices();
-	(void)s;
-
-	// 10) Clear to free pmr memory everywhere
-	hlt.clear();
-
-	// If we’re here, no default PMR was used (allocation would have aborted).
-	assert(arena.allocs.load() > 0 &&
-	       "No allocations observed on arena for HLT");
-}
-
 static void test_visit_path_both_impls() {
 	HolmDeLichtenbergThorup G(0);
 	NaiveDynamicGraph O(0);
@@ -714,10 +546,8 @@ struct BenchRes {
 };
 
 template <class G>
-static BenchRes
-run_once(const char *impl_name, const Workload &W,
-         std::pmr::memory_resource *mr = std::pmr::get_default_resource()) {
-	G g(0, mr);
+static BenchRes run_once(const char *impl_name, const Workload &W) {
+	G g(0);
 	(void)build_graph(g, W.N, W.initial_edges);
 	auto [ns, sum] = apply_ops(g, W.ops);
 	BenchRes R;
@@ -1218,8 +1048,6 @@ int main() {
 	test_vertex_add_delete_basic();
 	test_cut_all_levels();
 	test_random();
-	test_naive_dynamic_graph_uses_given_pmr();
-	test_hlt_uses_given_pmr_and_exercises_allocation_branches();
 	test_visit_path_both_impls();
 	// run_performance_benchmarks();
 	test_components_direct_basic();

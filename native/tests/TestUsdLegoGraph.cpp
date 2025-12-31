@@ -26,32 +26,6 @@ using PartAuthors = type_list<PrototypeBrickAuthor>;
 using PartParsers = type_list<BrickParser>;
 using G = UsdLegoGraph<Parts, PartAuthors, PartParsers>;
 
-struct CountingResource : std::pmr::memory_resource {
-	std::pmr::memory_resource *upstream;
-	std::atomic<std::size_t> allocs{0}, deallocs{0};
-	std::atomic<std::size_t> bytes_alloc{0}, bytes_dealloc{0};
-
-	explicit CountingResource(
-	    std::pmr::memory_resource *up = std::pmr::new_delete_resource())
-	    : upstream(up) {}
-
-  private:
-	void *do_allocate(std::size_t bytes, std::size_t align) override {
-		allocs.fetch_add(1, std::memory_order_relaxed);
-		bytes_alloc.fetch_add(bytes, std::memory_order_relaxed);
-		return upstream->allocate(bytes, align);
-	}
-	void do_deallocate(void *p, std::size_t bytes, std::size_t align) override {
-		deallocs.fetch_add(1, std::memory_order_relaxed);
-		bytes_dealloc.fetch_add(bytes, std::memory_order_relaxed);
-		upstream->deallocate(p, bytes, align);
-	}
-	bool do_is_equal(
-	    const std::pmr::memory_resource &other) const noexcept override {
-		return this == &other;
-	}
-};
-
 static pxr::UsdStageRefPtr make_stage() {
 	pxr::UsdStageRefPtr stage = pxr::UsdStage::CreateInMemory();
 	// create default /World prim
@@ -165,8 +139,7 @@ static void test_initial_sync_prepopulated_stage() {
 	    pathA, BrickPart::StudId, pathB, BrickPart::HoleId, cs);
 	(void)connPath;
 
-	CountingResource arena;
-	G g(stage, &arena);
+		G g(stage);
 
 	// Two physical bricks and a single realized connection between them.
 	assert(g.topology().parts().size() == 2);
@@ -198,9 +171,8 @@ static void test_initial_sync_prepopulated_stage() {
 	assert(
 	    g.topology().dynamic_graph().connected(a_dg->value(), b_dg->value()));
 
-	// pmr wiring: some allocations must have gone through our arena
-	assert(arena.allocs.load() > 0);
-}
+
+	}
 
 // UsdLegoGraph is constructed first on an empty stage; later authoring bricks
 // and connections via LegoAllocator should be picked up by the TfNotice sink.
@@ -208,8 +180,7 @@ static void test_incremental_alloc_via_allocator() {
 	auto stage = make_stage();
 	LegoAllocator alloc(stage);
 
-	CountingResource arena;
-	G g(stage, &arena);
+		G g(stage);
 
 	assert(g.topology().parts().size() == 0);
 	assert(g.topology().connection_segments().size() == 0);
@@ -281,8 +252,7 @@ static void test_connection_before_parts_unrealized_then_realized() {
 	author_connection(stage, connPath, pathA, BrickPart::StudId, pathB,
 	                  BrickPart::HoleId, cs);
 
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	// initial_sync: connection parsed but cannot be realized yet (no parts)
 	assert(g.topology().parts().size() == 0);
@@ -413,8 +383,7 @@ static void test_resync_part_modified_updates_brick() {
 	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brick);
 	pxr::SdfPath path = std::get<0>(alloc_result);
 
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	assert(g.topology().parts().size() == 1);
 	assert(g.topology().connection_segments().size() == 0);
@@ -464,8 +433,7 @@ static void test_resync_part_becomes_unrecognized() {
 	    alloc.allocate_part_managed<PrototypeBrickAuthor>(env_id, brick);
 	pxr::SdfPath path = std::get<0>(alloc_result);
 
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	assert(g.topology().parts().size() == 1);
 
@@ -506,8 +474,7 @@ static void test_resync_connection_modified_segment_updates_topology() {
 	pxr::SdfPath connPath = alloc.allocate_conn_managed(
 	    pathA, BrickPart::StudId, pathB, BrickPart::HoleId, cs);
 
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	assert(g.topology().connection_segments().size() == 1);
 	assert(g.topology().connection_bundles().size() == 1);
@@ -549,8 +516,7 @@ static void test_resync_unrealized_connection_deleted_cleans_state() {
 	pxr::SdfPath connPath = alloc.allocate_conn_managed(
 	    stud_path, BrickPart::StudId, hole_path, BrickPart::HoleId, cs);
 
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	assert(g.topology().parts().size() == 0);
 	assert(g.topology().connection_segments().size() == 0);
@@ -589,8 +555,7 @@ static void test_add_part_graph_to_usd() {
 	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
 	BrickPart brickB = make_brick(2, 4, BrickHeightPerPlate, green);
 
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	// kNoEnv -> /World/managed/Parts/...
 	std::int64_t env_world = kNoEnv;
@@ -637,8 +602,7 @@ static void test_remove_part_no_connections_graph_api() {
 	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
 	BrickPart brickB = make_brick(2, 4, BrickHeightPerPlate, green);
 
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	std::int64_t env_id = 3;
 	create_env_root(stage, env_id);
@@ -677,8 +641,7 @@ static void test_remove_part_unmanaged_returns_false() {
 	pxr::SdfPath unmanaged_path("/World/FreeBrick");
 	PrototypeBrickAuthor{}(stage, unmanaged_path, brick);
 
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	assert(g.topology().parts().size() == 1);
 
@@ -704,8 +667,7 @@ static void test_unrealized_helpers_for_managed_connection_only() {
 	pxr::SdfPath connPath = alloc.allocate_conn_managed(
 	    stud_path, BrickPart::StudId, hole_path, BrickPart::HoleId, cs);
 
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	// No realized topology yet.
 	assert(g.topology().parts().size() == 0);
@@ -782,8 +744,7 @@ static void test_remove_part_with_unrealized_connection() {
 	alloc.allocate_conn_unmanaged(conn_path, part_path, BrickPart::StudId,
 	                              hole_path, BrickPart::HoleId, cs);
 
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	// initial_sync: part_path is realized, hole_path is not; the connection
 	// is therefore unrealized.
@@ -830,8 +791,7 @@ static void test_connect_and_disconnect_realized_graph_api() {
 	BrickPart brickA = make_brick(2, 4, BrickHeightPerPlate, red);
 	BrickPart brickB = make_brick(2, 4, BrickHeightPerPlate, green);
 
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	std::int64_t env_id = 7;
 	create_env_root(stage, env_id);
@@ -896,8 +856,7 @@ static void test_connect_and_disconnect_realized_graph_api() {
 // topology should return std::nullopt and author no USD connection prim.
 static void test_connect_invalid_interfaces_returns_nullopt() {
 	auto stage = make_stage();
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	InterfaceRef bad_stud{PartId{123u}, BrickPart::StudId};
 	InterfaceRef bad_hole{PartId{456u}, BrickPart::HoleId};
@@ -914,8 +873,7 @@ static void test_connect_invalid_interfaces_returns_nullopt() {
 //   transform between stud and hole is satisfied in env coordinates.
 static void test_connect_align_move_hole_component() {
 	auto stage = make_stage();
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	BrickColor red{255, 0, 0};
 	BrickColor green{0, 255, 0};
@@ -1001,8 +959,7 @@ static void test_connect_align_move_hole_component() {
 //   transform between stud and hole is satisfied in env coordinates.
 static void test_connect_align_move_stud_component() {
 	auto stage = make_stage();
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	BrickColor red{255, 0, 0};
 	BrickColor green{0, 255, 0};
@@ -1082,8 +1039,7 @@ static void test_connect_align_move_stud_component() {
 // connected component; it should only add topology + USD connection prim.
 static void test_connect_align_policy_none_preserves_env_poses() {
 	auto stage = make_stage();
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	BrickColor red{255, 0, 0};
 	BrickColor green{0, 255, 0};
@@ -1165,8 +1121,7 @@ static void test_connect_align_policy_none_preserves_env_poses() {
 // not affect state.
 static void test_disconnect_nonexistent_or_unmanaged_returns_false() {
 	auto stage = make_stage();
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	// Non-existent managed-like path.
 	pxr::SdfPath bogus_managed("/World/managed/Conns/DoesNotExist");
@@ -1190,7 +1145,7 @@ static void test_disconnect_nonexistent_or_unmanaged_returns_false() {
 	                  hole_path, BrickPart::HoleId, cs);
 
 	// Reconstruct G so it picks up the bricks and the unmanaged connection.
-	G g2(stage, &arena);
+		G g2(stage);
 
 	// The unmanaged connection is realized in topology/conn_path_table_, but
 	// disconnect via graph API should return false because the prim is not
@@ -1202,8 +1157,7 @@ static void test_disconnect_nonexistent_or_unmanaged_returns_false() {
 // orient and scale xformOps that match the requested env-local pose.
 static void test_set_component_transform_single_part() {
 	auto stage = make_stage();
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	BrickColor red{255, 0, 0};
 	BrickPart brick = make_brick(2, 4, BrickHeightPerPlate, red);
@@ -1255,8 +1209,7 @@ static void test_set_component_transform_single_part() {
 // consistently with the gain-graph relative transform.
 static void test_set_component_transform_two_parts_connected() {
 	auto stage = make_stage();
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	BrickColor red{255, 0, 0};
 	BrickColor green{0, 255, 0};
@@ -1346,8 +1299,7 @@ static void test_set_component_transform_two_parts_connected() {
 // should return identity (env-local) in SI.
 static void test_part_pose_relative_to_env_single_part() {
 	auto stage = make_stage();
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	BrickColor red{255, 0, 0};
 	BrickPart brick = make_brick(2, 4, BrickHeightPerPlate, red);
@@ -1374,8 +1326,7 @@ static void test_part_pose_relative_to_env_single_part() {
 // after set_component_transform on a connected component.
 static void test_part_pose_relative_to_env_two_parts_connected() {
 	auto stage = make_stage();
-	CountingResource arena;
-	G g(stage, &arena);
+	G g(stage);
 
 	BrickColor red{255, 0, 0};
 	BrickColor green{0, 255, 0};
@@ -1558,8 +1509,7 @@ static_assert(GH::HasOnBundleRemovingHook);
 // Hooks should be plumbed through get_hooks/set_hooks and invoked on graph ops.
 static void test_usd_lego_graph_hooks_part_added_and_get_set() {
 	auto stage = make_stage();
-	CountingResource arena;
-	GH g(stage, &arena);
+	GH g(stage);
 
 	// Initially, hooks pointer is null.
 	assert(g.get_hooks() == nullptr);
@@ -1596,8 +1546,7 @@ static void test_usd_lego_graph_hooks_part_added_and_get_set() {
 // Connection lifecycle from graph API should drive connection-related hooks.
 static void test_usd_lego_graph_hooks_connection_lifecycle() {
 	auto stage = make_stage();
-	CountingResource arena;
-	GH g(stage, &arena);
+	GH g(stage);
 
 	Hooks hooks;
 	g.set_hooks(&hooks);

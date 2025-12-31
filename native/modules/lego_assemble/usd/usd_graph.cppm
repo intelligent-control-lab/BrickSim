@@ -105,9 +105,8 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 	    PartParserList::template at<PartParserPartTypes::template index_of<P>>;
 
 	explicit UsdLegoGraph(
-	    pxr::UsdStageRefPtr stage,
-	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
-	    : topology_(nullptr, mr), stage_(std::move(stage)), allocator_(stage_) {
+	    pxr::UsdStageRefPtr stage)
+	    : stage_(std::move(stage)), allocator_(stage_) {
 		notice_sink_ = std::make_unique<UsdNoticeSink>(this);
 		initial_sync();
 		notice_sink_->connect();

@@ -39,11 +39,9 @@ class ConstraintScheduler {
 
 	ConstraintScheduler(
 	    const Graph *graph, Strategy strategy, CreateEdge create_edge,
-	    DestroyEdge destroy_edge,
-	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
-	    : mr_(mr), graph_(graph), strategy_(std::move(strategy)),
-	      create_(std::move(create_edge)), destroy_(std::move(destroy_edge)),
-	      handles_(mr), skeleton_adj_(mr), dirty_vertices_(mr) {}
+	    DestroyEdge destroy_edge)
+	    : graph_(graph), strategy_(std::move(strategy)),
+	      create_(std::move(create_edge)), destroy_(std::move(destroy_edge)) {}
 
 	~ConstraintScheduler() {
 		clear();
@@ -118,8 +116,8 @@ class ConstraintScheduler {
 	void commit() {
 		for (auto cc : consume_dirty_ccs_()) {
 			// 1. Collect all existing constraint edges, and transforms
-			std::pmr::unordered_map<PartId, Transformd> transforms{mr_};
-			std::pmr::unordered_set<EdgeKey> existing_edges{mr_};
+			std::unordered_map<PartId, Transformd> transforms;
+			std::unordered_set<EdgeKey> existing_edges;
 			for (auto [u, T_root_u] : cc.transforms()) {
 				transforms.emplace(u, T_root_u);
 				auto it_adj = skeleton_adj_.find(u);
@@ -152,15 +150,14 @@ class ConstraintScheduler {
 	}
 
   private:
-	std::pmr::memory_resource *mr_;
 	const Graph *graph_;
 	Strategy strategy_;
 	CreateEdge create_;
 	DestroyEdge destroy_;
-	std::pmr::unordered_map<EdgeKey, Handle> handles_;
-	std::pmr::unordered_map<PartId, std::pmr::unordered_set<PartId>>
+	std::unordered_map<EdgeKey, Handle> handles_;
+	std::unordered_map<PartId, std::unordered_set<PartId>>
 	    skeleton_adj_;
-	std::pmr::unordered_set<PartId> dirty_vertices_;
+	std::unordered_set<PartId> dirty_vertices_;
 
 	void add_constraint_edge_(const EdgeKey &ek, Handle &&h) {
 		const auto &[a, b] = ek;
@@ -208,7 +205,7 @@ class ConstraintScheduler {
 		if (graph_ == nullptr || dirty_vertices_.empty()) {
 			co_return;
 		}
-		std::pmr::unordered_set<PartId> remaining_vertices{mr_};
+		std::unordered_set<PartId> remaining_vertices;
 		remaining_vertices.swap(dirty_vertices_);
 		while (!remaining_vertices.empty()) {
 			PartId seed = *remaining_vertices.begin();

@@ -52,7 +52,7 @@ concept DynamicGraphLike = requires(G g, const G cg, vertex_id u, vertex_id v) {
 		// If a non-existent vertex is given, it returns an empty view
 		cg.component_view(u)
 	} -> std::same_as<typename G::component_view_type>;
-} && std::constructible_from<G, std::size_t, std::pmr::memory_resource *>;
+} && std::constructible_from<G, std::size_t>;
 
 // --------- Naive dynamic graph (PMR, fixed-width ints, const connected) ---------
 
@@ -76,9 +76,9 @@ export class NaiveDynamicGraph {
 
 			// Optimization: Use unordered_set for O(|Component|) memory/init
 			// instead of O(|Graph|) vector.
-			std::pmr::unordered_set<vertex_id> vis(g_->mr_);
-			std::pmr::deque<vertex_id> dq{g_->mr_};
-			std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
+			std::unordered_set<vertex_id> vis;
+			std::deque<vertex_id> dq;
+			std::queue<vertex_id, std::deque<vertex_id>> q(std::move(dq));
 
 			vis.insert(root_);
 			q.push(root_);
@@ -101,9 +101,9 @@ export class NaiveDynamicGraph {
 			if (!g_->valid(root_))
 				co_return;
 
-			std::pmr::unordered_set<vertex_id> vis(g_->mr_);
-			std::pmr::deque<vertex_id> dq{g_->mr_};
-			std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
+			std::unordered_set<vertex_id> vis;
+			std::deque<vertex_id> dq;
+			std::queue<vertex_id, std::deque<vertex_id>> q(std::move(dq));
 
 			vis.insert(root_);
 			q.push(root_);
@@ -132,9 +132,9 @@ export class NaiveDynamicGraph {
 			if (!g_->valid(root_))
 				co_return;
 
-			std::pmr::unordered_set<vertex_id> vis(g_->mr_);
-			std::pmr::deque<vertex_id> dq{g_->mr_};
-			std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
+			std::unordered_set<vertex_id> vis;
+			std::deque<vertex_id> dq;
+			std::queue<vertex_id, std::deque<vertex_id>> q(std::move(dq));
 
 			vis.insert(root_);
 			q.push(root_);
@@ -165,10 +165,7 @@ export class NaiveDynamicGraph {
 
 	using component_view_type = ComponentView;
 
-	explicit NaiveDynamicGraph(
-	    std::size_t n0 = 0,
-	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
-	    : adj_{mr}, alive_{mr}, free_{mr}, mr_{mr} {
+	explicit NaiveDynamicGraph(std::size_t n0 = 0) {
 		reset(n0);
 	}
 
@@ -203,7 +200,7 @@ export class NaiveDynamicGraph {
 		if (v >= adj_.size() || alive_[v] == 0)
 			return false;
 
-		std::pmr::vector<vertex_id> neigh{mr_};
+		std::vector<vertex_id> neigh;
 		neigh.reserve(adj_[v].size());
 		for (auto u : adj_[v])
 			neigh.push_back(u);
@@ -247,10 +244,10 @@ export class NaiveDynamicGraph {
 		if (!valid(s) || !valid(t))
 			return false;
 
-		std::pmr::deque<vertex_id> dq{mr_};
-		std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
-		std::pmr::vector<std::uint8_t> vis(adj_.size(),
-		                                   static_cast<std::uint8_t>(0), mr_);
+		std::deque<vertex_id> dq;
+		std::queue<vertex_id, std::deque<vertex_id>> q(std::move(dq));
+		std::vector<std::uint8_t> vis(adj_.size(),
+		                              static_cast<std::uint8_t>(0));
 
 		vis[s] = static_cast<std::uint8_t>(1);
 		q.push(s);
@@ -286,10 +283,10 @@ export class NaiveDynamicGraph {
 
 		// BFS parent map to reconstruct a simple u->v path.
 		const vertex_id NIL = std::numeric_limits<vertex_id>::max();
-		std::pmr::vector<std::uint8_t> seen(adj_.size(),
-		                                    static_cast<std::uint8_t>(0), mr_);
-		std::pmr::vector<vertex_id> parent(adj_.size(), NIL, mr_);
-		std::pmr::deque<vertex_id> q{mr_};
+		std::vector<std::uint8_t> seen(adj_.size(),
+		                               static_cast<std::uint8_t>(0));
+		std::vector<vertex_id> parent(adj_.size(), NIL);
+		std::deque<vertex_id> q;
 
 		seen[u] = static_cast<std::uint8_t>(1);
 		parent[u] = u;
@@ -316,7 +313,7 @@ export class NaiveDynamicGraph {
 			co_return;
 
 		// Reconstruct vertex path [u = p0, p1, ..., pk = v]
-		std::pmr::vector<vertex_id> path{mr_};
+		std::vector<vertex_id> path;
 		for (vertex_id cur = v; cur != u; cur = parent[cur])
 			path.push_back(cur);
 		path.push_back(u);
@@ -331,10 +328,10 @@ export class NaiveDynamicGraph {
 		if (!valid(s))
 			return 0;
 
-		std::pmr::deque<vertex_id> dq{mr_};
-		std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
-		std::pmr::vector<std::uint8_t> vis(adj_.size(),
-		                                   static_cast<std::uint8_t>(0), mr_);
+		std::deque<vertex_id> dq;
+		std::queue<vertex_id, std::deque<vertex_id>> q(std::move(dq));
+		std::vector<std::uint8_t> vis(adj_.size(),
+		                              static_cast<std::uint8_t>(0));
 
 		vis[s] = static_cast<std::uint8_t>(1);
 		q.push(s);
@@ -354,16 +351,16 @@ export class NaiveDynamicGraph {
 	}
 
 	std::generator<component_view_type> components() const {
-		std::pmr::vector<std::uint8_t> vis(adj_.size(),
-		                                   static_cast<std::uint8_t>(0), mr_);
+		std::vector<std::uint8_t> vis(adj_.size(),
+		                              static_cast<std::uint8_t>(0));
 
 		for (vertex_id s = 0; s < static_cast<vertex_id>(adj_.size()); ++s) {
 			if (!valid(s) || vis[s])
 				continue;
 
 			// Mark this component so we don't yield it again.
-			std::pmr::deque<vertex_id> dq{mr_};
-			std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
+			std::deque<vertex_id> dq;
+			std::queue<vertex_id, std::deque<vertex_id>> q(std::move(dq));
 
 			vis[s] = static_cast<std::uint8_t>(1);
 			q.push(s);
@@ -391,11 +388,10 @@ export class NaiveDynamicGraph {
 		return v < adj_.size() && alive_[v] != 0;
 	}
 
-	std::pmr::vector<std::pmr::unordered_set<vertex_id>> adj_;
-	std::pmr::vector<std::uint8_t> alive_; // 0 or 1
-	std::pmr::vector<vertex_id> free_;
+	std::vector<std::unordered_set<vertex_id>> adj_;
+	std::vector<std::uint8_t> alive_; // 0 or 1
+	std::vector<vertex_id> free_;
 	vertex_id alive_count_{0};
-	std::pmr::memory_resource *mr_;
 };
 
 static_assert(DynamicGraphLike<NaiveDynamicGraph>);
@@ -404,10 +400,7 @@ static_assert(DynamicGraphLike<NaiveDynamicGraph>);
 
 class LinkCutForest {
   public:
-	explicit LinkCutForest(
-	    std::size_t n = 0,
-	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
-	    : ch_{mr}, p_{mr}, rev_{mr}, size_{mr}, vir_{mr}, mr_{mr} {
+	explicit LinkCutForest(std::size_t n = 0) {
 		reset(n);
 	}
 
@@ -529,7 +522,7 @@ class LinkCutForest {
 		splay(v);
 
 		// Iterative in-order traversal of the exposed path.
-		std::pmr::vector<std::uint32_t> stack{mr_};
+		std::vector<std::uint32_t> stack;
 		std::uint32_t curr = v;
 		std::uint32_t prev = 0u;
 
@@ -568,17 +561,15 @@ class LinkCutForest {
 
 	// These members are mutated even in logically-const queries (splay/access),
 	// so they are marked mutable for const-correctness of 'connected'.
-	mutable std::pmr::vector<std::array<std::uint32_t, 2>> ch_; // children
-	mutable std::pmr::vector<std::uint32_t> p_;                 // parent
-	mutable std::pmr::vector<std::uint8_t> rev_; // path-reversal flag
-	mutable std::pmr::vector<std::int64_t> size_,
+	mutable std::vector<std::array<std::uint32_t, 2>> ch_; // children
+	mutable std::vector<std::uint32_t> p_;                 // parent
+	mutable std::vector<std::uint8_t> rev_;                // path-reversal flag
+	mutable std::vector<std::int64_t> size_,
 	    vir_; // subtree size; virtual size
 
-	std::pmr::memory_resource *mr_;
-
 	static bool
-	is_root_of_aux(const std::pmr::vector<std::array<std::uint32_t, 2>> &ch,
-	               const std::pmr::vector<std::uint32_t> &p, std::uint32_t x) {
+	is_root_of_aux(const std::vector<std::array<std::uint32_t, 2>> &ch,
+	               const std::vector<std::uint32_t> &p, std::uint32_t x) {
 		const std::uint32_t px = p[x];
 		return px == 0u || (ch[px][0] != x && ch[px][1] != x);
 	}
@@ -616,7 +607,7 @@ class LinkCutForest {
 	}
 
 	void push_path(std::uint32_t x) const {
-		std::pmr::vector<std::uint32_t> stk{mr_};
+		std::vector<std::uint32_t> stk;
 		for (std::uint32_t y = x;; y = p_[y]) {
 			stk.push_back(y);
 			if (is_root_of_aux(ch_, p_, y))
@@ -694,10 +685,10 @@ class LinkCutForest {
 		if (!x)
 			return;
 		// iterative stack to avoid recursion depth issues
-		std::pmr::vector<std::uint32_t> st{mr_};
+		std::vector<std::uint32_t> st;
 		st.push_back(x);
 		// First, collect nodes in a stack for post-order push
-		std::pmr::vector<std::uint32_t> post{mr_};
+		std::vector<std::uint32_t> post;
 		while (!st.empty()) {
 			auto y = st.back();
 			st.pop_back();
@@ -734,7 +725,7 @@ export class HolmDeLichtenbergThorup {
 			// BFS on F0 (Spanning Forest).
 			// Queue stores {current_node, parent_node} to avoid backtracking.
 			// No visited set needed because F0 contains no cycles.
-			std::pmr::deque<std::pair<vertex_id, vertex_id>> dq{g_->mr_};
+			std::deque<std::pair<vertex_id, vertex_id>> dq;
 			dq.push_back({root_, std::numeric_limits<vertex_id>::max()});
 
 			while (!dq.empty()) {
@@ -756,7 +747,7 @@ export class HolmDeLichtenbergThorup {
 			if (!g_->valid(root_))
 				co_return;
 
-			std::pmr::deque<std::pair<vertex_id, vertex_id>> dq{g_->mr_};
+			std::deque<std::pair<vertex_id, vertex_id>> dq;
 			dq.push_back({root_, std::numeric_limits<vertex_id>::max()});
 
 			while (!dq.empty()) {
@@ -779,7 +770,7 @@ export class HolmDeLichtenbergThorup {
 				co_return;
 
 			// Use BFS on F0 to discover all nodes, then iterate ALL lists.
-			std::pmr::deque<std::pair<vertex_id, vertex_id>> dq{g_->mr_};
+			std::deque<std::pair<vertex_id, vertex_id>> dq;
 			dq.push_back({root_, std::numeric_limits<vertex_id>::max()});
 
 			while (!dq.empty()) {
@@ -824,12 +815,7 @@ export class HolmDeLichtenbergThorup {
 
 	using component_view_type = ComponentView;
 
-	explicit HolmDeLichtenbergThorup(
-	    std::size_t n0 = 0,
-	    std::pmr::memory_resource *mr = std::pmr::get_default_resource())
-	    : forests_{mr}, nonTreeAdj_{mr}, treeAdj_{mr}, edges_{mr},
-	      treeLevel_{mr}, alive_{mr}, free_{mr}, vis_mark_{mr}, side_mark_{mr},
-	      mr_{mr} {
+	explicit HolmDeLichtenbergThorup(std::size_t n0 = 0) {
 		reset(n0);
 	}
 
@@ -840,7 +826,7 @@ export class HolmDeLichtenbergThorup {
 		forests_.clear();
 		forests_.reserve(L_ + 1u);
 		for (std::uint32_t i = 0; i <= L_; ++i)
-			forests_.emplace_back(LinkCutForest{cap_, mr_});
+			forests_.emplace_back(LinkCutForest{cap_});
 
 		nonTreeAdj_.clear();
 		nonTreeAdj_.reserve(L_ + 1u);
@@ -901,14 +887,14 @@ export class HolmDeLichtenbergThorup {
 		if (!valid(v))
 			return false;
 
-		std::pmr::unordered_set<vertex_id> neigh{mr_};
+		std::unordered_set<vertex_id> neigh;
 		for (auto u : treeAdj_[v])
 			neigh.insert(u);
 		for (std::uint32_t i = 0; i <= L_; ++i)
 			for (auto u : nonTreeAdj_[i][v])
 				neigh.insert(u);
 
-		std::pmr::vector<vertex_id> buf{mr_};
+		std::vector<vertex_id> buf;
 		buf.reserve(neigh.size());
 		for (auto u : neigh)
 			buf.push_back(u);
@@ -1034,15 +1020,15 @@ export class HolmDeLichtenbergThorup {
 	}
 
 	std::generator<component_view_type> components() const {
-		std::pmr::vector<std::uint8_t> vis(alive_.size(),
-		                                   static_cast<std::uint8_t>(0), mr_);
+		std::vector<std::uint8_t> vis(alive_.size(),
+		                              static_cast<std::uint8_t>(0));
 
 		for (vertex_id s = 0; s < static_cast<vertex_id>(alive_.size()); ++s) {
 			if (!valid(s) || vis[s])
 				continue;
 
-			std::pmr::deque<vertex_id> dq{mr_};
-			std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
+			std::deque<vertex_id> dq;
+			std::queue<vertex_id, std::deque<vertex_id>> q(std::move(dq));
 
 			vis[s] = static_cast<std::uint8_t>(1);
 			q.push(s);
@@ -1085,23 +1071,20 @@ export class HolmDeLichtenbergThorup {
 
 	std::size_t cap_{1};
 	std::uint32_t L_{0};
-	std::pmr::vector<LinkCutForest> forests_;
-	std::pmr::vector<std::pmr::vector<std::pmr::unordered_set<vertex_id>>>
-	    nonTreeAdj_;
-	std::pmr::vector<std::pmr::unordered_set<vertex_id>> treeAdj_;
-	std::pmr::unordered_map<EdgeKey, EdgeRec> edges_;
-	std::pmr::unordered_map<EdgeKey, std::uint32_t> treeLevel_;
-	std::pmr::vector<std::uint8_t> alive_;
-	std::pmr::vector<vertex_id> free_;
+	std::vector<LinkCutForest> forests_;
+	std::vector<std::vector<std::unordered_set<vertex_id>>> nonTreeAdj_;
+	std::vector<std::unordered_set<vertex_id>> treeAdj_;
+	std::unordered_map<EdgeKey, EdgeRec> edges_;
+	std::unordered_map<EdgeKey, std::uint32_t> treeLevel_;
+	std::vector<std::uint8_t> alive_;
+	std::vector<vertex_id> free_;
 	vertex_id alive_count_{0}, next_new_id_{0};
 
 	std::uint64_t epoch_{1};
 	mutable std::uint64_t bfs_epoch_{1};
-	mutable std::pmr::vector<std::uint64_t> vis_mark_;
+	mutable std::vector<std::uint64_t> vis_mark_;
 	std::uint64_t side_epoch_{1};
-	std::pmr::vector<std::uint64_t> side_mark_;
-
-	std::pmr::memory_resource *mr_;
+	std::vector<std::uint64_t> side_mark_;
 
 	[[nodiscard]] bool valid(vertex_id v) const noexcept {
 		return v < alive_.size() && alive_[v] != 0;
@@ -1138,7 +1121,7 @@ export class HolmDeLichtenbergThorup {
 		if (newL > L_) {
 			forests_.reserve(newL + 1u);
 			for (std::uint32_t i = L_ + 1u; i <= newL; ++i)
-				forests_.emplace_back(LinkCutForest{cap_, mr_});
+				forests_.emplace_back(LinkCutForest{cap_});
 		}
 
 		for (auto &lvl : nonTreeAdj_)
@@ -1159,15 +1142,15 @@ export class HolmDeLichtenbergThorup {
 	}
 
 	void enumerate_Fi_component(vertex_id seed, std::uint32_t i,
-	                            std::pmr::vector<vertex_id> &out) const {
+	                            std::vector<vertex_id> &out) const {
 		out.clear();
 		if (++bfs_epoch_ == std::numeric_limits<std::uint64_t>::max()) {
 			std::fill(vis_mark_.begin(), vis_mark_.end(), 0u);
 			bfs_epoch_ = 1u;
 		}
 
-		std::pmr::deque<vertex_id> dq{mr_};
-		std::queue<vertex_id, std::pmr::deque<vertex_id>> q(std::move(dq));
+		std::deque<vertex_id> dq;
+		std::queue<vertex_id, std::deque<vertex_id>> q(std::move(dq));
 
 		vis_mark_[seed] = bfs_epoch_;
 		q.push(seed);
@@ -1221,8 +1204,9 @@ export class HolmDeLichtenbergThorup {
 		edges_[EdgeKey(u, v)] = rec;
 	}
 
-	void promote_tree_edges_in_small_Fi_component(
-	    const std::pmr::vector<vertex_id> &side, std::uint32_t i) {
+	void
+	promote_tree_edges_in_small_Fi_component(const std::vector<vertex_id> &side,
+	                                         std::uint32_t i) {
 		if (i >= L_)
 			return;
 		if (++side_epoch_ == std::numeric_limits<std::uint64_t>::max()) {
@@ -1265,7 +1249,7 @@ export class HolmDeLichtenbergThorup {
 			    forests_[static_cast<std::uint32_t>(i)].component_size(v);
 			const vertex_id s = (su <= sv) ? u : v;
 
-			std::pmr::vector<vertex_id> side{mr_};
+			std::vector<vertex_id> side;
 			enumerate_Fi_component(s, static_cast<std::uint32_t>(i), side);
 
 			// HLT Step 2: raise level-i tree edges on the small side to i+1
@@ -1276,7 +1260,7 @@ export class HolmDeLichtenbergThorup {
 			if (++epoch_ == 0)
 				++epoch_; // keep epoch non-zero
 			for (vertex_id x : side) {
-				std::pmr::vector<vertex_id> cand{mr_};
+				std::vector<vertex_id> cand;
 				cand.reserve(
 				    nonTreeAdj_[static_cast<std::uint32_t>(i)][x].size());
 				for (auto y : nonTreeAdj_[static_cast<std::uint32_t>(i)][x])
