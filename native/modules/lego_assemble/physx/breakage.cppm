@@ -858,7 +858,7 @@ export class BreakageChecker {
 			          sol.info.r_eq_norm, sol.info.r_ineq_norm,
 			          sol.info.s_norm);
 			sol.utilization = VectorXd::Zero(sys.num_clutches_);
-			dump_debug_data(sys, in, state, sol);
+			dump_debug_data(sys, in, state, sol, b);
 			return sol;
 		}
 
@@ -887,7 +887,7 @@ export class BreakageChecker {
 
 	void dump_debug_data(const BreakageSystem &sys, const BreakageInput &in,
 	                     const BreakageState &state,
-	                     const BreakageSolution &sol) const {
+	                     const BreakageSolution &sol, const VectorXd &b) const {
 		// Only dump once per BreakageChecker instance
 		if (debug_data_dumped_ || debug_dump_dir_.empty()) {
 			return;
@@ -899,6 +899,7 @@ export class BreakageChecker {
 		j["input"] = in;
 		j["state"] = state;
 		j["solution"] = sol;
+		j["b"] = matrix_to_json(b);
 
 		std::time_t t = std::chrono::system_clock::to_time_t(
 		    std::chrono::system_clock::now());
