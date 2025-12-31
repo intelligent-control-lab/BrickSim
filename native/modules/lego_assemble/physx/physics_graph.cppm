@@ -20,6 +20,8 @@ import lego_assemble.utils.multi_key_map;
 import lego_assemble.utils.pair;
 import lego_assemble.utils.unordered_pair;
 import lego_assemble.utils.metric_system;
+import lego_assemble.utils.eigen_format;
+import lego_assemble.utils.logging;
 import lego_assemble.vendor;
 
 namespace lego_assemble {
@@ -68,6 +70,8 @@ struct ComponentData {
 export struct PhysicsAssemblyDebugInfo : AssemblyDebugInfo {
 	ConnSegRef csref;
 };
+
+using PartValidationQueue = std::unordered_set<PartId>;
 
 export template <class Ps, class Hooks> class PhysicsLegoGraph;
 
@@ -133,6 +137,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		PhysicsComponentIndex &cc_index_;
 		PhysicsConstraintScheduler &constraint_scheduler_;
 		PhysicsFilteringResetAggregator &filtering_reset_;
+		PartValidationQueue &parts_to_validate_;
 		bool &in_simulation_step_;
 
 		void check_not_in_simulation_step() const {
@@ -148,6 +153,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		      cc_index_{owner->cc_index_},
 		      constraint_scheduler_{owner->constraint_scheduler_},
 		      filtering_reset_{owner->filtering_reset_},
+		      parts_to_validate_{owner->parts_to_validate_},
 		      in_simulation_step_{owner->in_simulation_step_} {}
 
 		~TopologyHooks() = default;
@@ -159,6 +165,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		void on_part_added(G::PartEntry entry) {
 			check_not_in_simulation_step();
 			PartId pid = entry.template key<PartId>();
+			parts_to_validate_.emplace(pid);
 			shape_mapping_.add_part(entry);
 			cc_index_.mark_dirty_topological(pid);
 			constraint_scheduler_.notify_part_added(pid);
@@ -166,6 +173,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 		void on_part_removing(G::PartEntry entry) {
 			check_not_in_simulation_step();
+			PartId pid = entry.template key<PartId>();
+			parts_to_validate_.erase(pid);
 			shape_mapping_.remove_part(entry);
 		}
 
@@ -851,13 +860,60 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	PhysicsConstraintScheduler constraint_scheduler_;
 	PhysicsFilteringResetAggregator filtering_reset_;
 	SimOutputData sim_out_;
+	PartValidationQueue parts_to_validate_;
 
 	TopologyHooks topology_hooks_;
 	std::unique_ptr<PhysxBinding> physx_binding_;
 
 	bool in_simulation_step_{false};
 
+	void validate_part_actor(PartId pid) {
+		typename TopologyGraph::PartConstEntry entry =
+		    topology_.parts().entry_of(pid);
+		physx::PxRigidActor *actor =
+		    entry.template key<physx::PxRigidActor *>();
+		if (physx::PxRigidBody *rb = actor->is<physx::PxRigidBody>()) {
+			auto [mass, com, inertia_tensor] = entry.visit([](const auto &pw) {
+				const auto &part = pw.wrapped();
+				return std::make_tuple(part.mass(), part.com(),
+				                       part.inertia_tensor());
+			});
+			double px_mass = rb->getMass();
+			if (px_mass <= 0.0 || std::abs(px_mass - mass) > 1e-6) {
+				log_error(
+				    "PhysicsLegoGraph::validate_part_actor: mass mismatch "
+				    "for {} (expected {:.6e}, got {:.6e})",
+				    pid, mass, px_mass);
+			}
+			physx::PxTransform Tcm = rb->getCMassLocalPose();
+			Eigen::Vector3d px_com = as<Eigen::Vector3d>(Tcm.p);
+			if ((px_com - com).norm() > 1e-6) {
+				log_error(
+				    "PhysicsLegoGraph::validate_part_actor: center of mass "
+				    "mismatch for {} (expected {:.6e}, got {:.6e})",
+				    pid, com, px_com);
+			}
+			physx::PxVec3 I_diag = rb->getMassSpaceInertiaTensor();
+			physx::PxMat33 I_mass{physx::PxVec3{I_diag.x, 0, 0},
+			                      physx::PxVec3{0, I_diag.y, 0},
+			                      physx::PxVec3{0, 0, I_diag.z}};
+			physx::PxMat33 R(Tcm.q);
+			physx::PxMat33 I_actor = R * I_mass * R.getTranspose();
+			Eigen::Matrix3d px_inertia_tensor = as<Eigen::Matrix3d>(I_actor);
+			if ((px_inertia_tensor - inertia_tensor).norm() > 1e-6) {
+				log_error(
+				    "PhysicsLegoGraph::validate_part_actor: inertia tensor "
+				    "mismatch for {} (expected {:.6e}, got {:.6e})",
+				    pid, inertia_tensor, px_inertia_tensor);
+			}
+		}
+	}
+
 	void flush_physx_ops() {
+		for (PartId pid : parts_to_validate_) {
+			validate_part_actor(pid);
+		}
+		parts_to_validate_.clear();
 		shape_mapping_.commit();
 		cc_index_.commit(
 		    std::bind_front(&PhysicsLegoGraph::build_cc_data, this),

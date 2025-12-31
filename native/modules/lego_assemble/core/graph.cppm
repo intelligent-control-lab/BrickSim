@@ -207,6 +207,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 	using ConnBundleStore =
 	    std::pmr::unordered_map<ConnectionEndpoint, ConnBundleWrapper>;
 	using PartEntry = PartStore::entry_reference;
+	using PartConstEntry = PartStore::const_entry_reference;
 	using ConnSegEntry = ConnSegStore::entry_type &;
 	using ConnSegConstEntry = const ConnSegStore::entry_type &;
 	using ConnBundleEntry = ConnBundleStore::value_type &;
