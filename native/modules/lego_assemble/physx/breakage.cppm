@@ -358,6 +358,9 @@ export class BreakageSystem {
 	const std::unordered_map<ConnSegId, int> &clutch_id_to_index() const {
 		return clutch_to_index_;
 	}
+	const VectorXd &mass() const {
+		return mass_;
+	}
 
 	bool check_shape() const {
 		return (num_parts_ > 0) && (num_contacts_ >= 0) &&
@@ -481,8 +484,6 @@ export void to_json(nlohmann::ordered_json &j,
 export struct BreakageInput : public BreakageInitialInput {
 	// Duration of the simulation step, in seconds
 	double dt{};
-	// Gravity, in m/s^2, e.g. [0, 0, -9.81]
-	Vector3d gravity{0.0, 0.0, 0.0};
 	// External linear impulses w.r.t. COMs, in Ns, num_parts_ x 3
 	MatrixX3d J;
 	// External angular impulses w.r.t. COMs, in Ns*m, num_parts_ x 3
@@ -497,7 +498,6 @@ export struct BreakageInput : public BreakageInitialInput {
 export void to_json(nlohmann::ordered_json &j, const BreakageInput &input) {
 	to_json(j, static_cast<const BreakageInitialInput &>(input));
 	j["dt"] = input.dt;
-	j["gravity"] = matrix_to_json(input.gravity);
 	j["J"] = matrix_to_json(input.J);
 	j["H"] = matrix_to_json(input.H);
 }
@@ -828,7 +828,7 @@ export class BreakageChecker {
 		b_mat.leftCols<3>() =
 		    (((v_W_curr - v_W_prev).array().colwise() * sys.mass_.array())
 		         .matrix() -
-		     in.J - sys.mass_ * (in.gravity.transpose() * in.dt)) *
+		     in.J) *
 		    Pi.transpose() / in.dt;
 		b_mat.rightCols<3>() =
 		    ((L_curr - L_prev - in.H) * Pi.transpose()) / in.dt;

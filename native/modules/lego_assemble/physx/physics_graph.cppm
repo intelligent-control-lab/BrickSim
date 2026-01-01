@@ -1037,7 +1037,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		const physx::PxScene *scene = rep_actor->getScene();
 		input.dt = getPxSceneElapsedTime(scene);
 
-		input.gravity =
+		Eigen::Vector3d gravity =
 		    metrics_.to_mps2(as<Eigen::Vector3d>(scene->getGravity()));
 
 		for (int index = 0; index < num_parts; ++index) {
@@ -1047,6 +1047,15 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				const auto &[J_p, H_p] = it_I->second;
 				input.J.row(index) = metrics_.to_Ns(as<Eigen::Vector3d>(J_p));
 				input.H.row(index) = metrics_.to_Nms(as<Eigen::Vector3d>(H_p));
+			}
+			// Gravity impulse
+			physx::PxRigidActor *actor =
+			    topology_.parts().template key_of<physx::PxRigidActor *>(pid);
+			if (!actor->getActorFlags().isSet(
+			        physx::PxActorFlag::eDISABLE_GRAVITY)) {
+				double mass = sys.mass()(index);
+				Eigen::Vector3d J_g = gravity * mass * input.dt;
+				input.J.row(index) += J_g;
 			}
 		}
 	}
