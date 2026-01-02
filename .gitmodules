@@ -4,3 +4,4 @@
 [submodule "BrickGPT"]
 	path = BrickGPT
 	url = https://github.com/AvaLovelace1/BrickGPT.git
+	ignore = dirty
