@@ -851,6 +851,10 @@ export class BreakageChecker {
 			return sol;
 		}
 
+		// Do not warm start to avoid pollute from previous steps
+		// TODO: consider warm start in the future
+		state.solver_state.clear();
+
 		sol.x = sys.solver_->solve(b, state.solver_state, nullptr, &sol.info);
 		if (!sol.info.converged) {
 			log_error("BreakageChecker: ADMM solver did not converge, "
