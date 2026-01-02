@@ -373,10 +373,6 @@ class PolyStore<type_list<Ks...>, type_list<Ts...>, type_list<Hs...>,
 		return {storage.data.data(), storage.data.size()};
 	}
 
-	std::span<const keys_type> keys_view() const noexcept {
-		return directory_.keys_view();
-	}
-
 	template <in_pack<Ts...> T>
 	auto entries_of_type(this auto &&self) -> std::generator<
 	    std::tuple<const keys_type &,
