@@ -60,8 +60,8 @@ using ContactExclusionSet =
 
 struct ComponentData {
 	PartId representative;
-	std::optional<BreakageSystem> breakage_system;
-	std::optional<BreakageState> breakage_state;
+	std::unique_ptr<BreakageSystem> breakage_system;
+	std::unique_ptr<BreakageState> breakage_state;
 };
 
 export struct PhysicsAssemblyDebugInfo : AssemblyDebugInfo {
@@ -826,36 +826,43 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		constraint->release();
 	}
 
-	ComponentData build_cc_data([[maybe_unused]] ComponentId cc_id,
-	                            PartId rep) {
+	ComponentData build_cc_data(ComponentId cc_id, PartId rep) {
 		ComponentData data;
 		data.representative = rep;
-		initialize_cc_data(data);
+		initialize_cc_data(cc_id, data);
 		return data;
 	}
 
-	void update_cc_data([[maybe_unused]] ComponentId cc_id,
-	                    ComponentData &data) {
-		initialize_cc_data(data);
+	void update_cc_data(ComponentId cc_id, ComponentData &data) {
+		initialize_cc_data(cc_id, data);
 	}
 
-	void initialize_cc_data(ComponentData &cc_data) {
-		cc_data.breakage_system =
-		    breakage_checker_.build_system(topology_, cc_data.representative);
-		BreakageInitialInput in =
+	void initialize_cc_data(ComponentId cc_id, ComponentData &cc_data) {
+		if (cc_index_.cc_sizes().at(cc_id) <= 1) {
+			cc_data.breakage_system = nullptr;
+			cc_data.breakage_state = nullptr;
+			return;
+		}
+		cc_data.breakage_system = std::make_unique<BreakageSystem>(
+		    breakage_checker_.build_system(topology_, cc_data.representative));
+		BreakageInitialInput initial_input =
 		    prepare_breakage_input<BreakageInitialInput>(cc_data);
-		cc_data.breakage_state =
-		    breakage_checker_.build_initial_state(*cc_data.breakage_system, in);
+		cc_data.breakage_state = std::make_unique<BreakageState>(
+		    breakage_checker_.build_initial_state(*cc_data.breakage_system,
+		                                          initial_input));
 	}
 
 	std::vector<PendingDisassembly> compute_breakages() {
 		std::vector<PendingDisassembly> pending_disassemblies;
 		for (const auto &[cc_id, cc_data_const] : cc_index_.data()) {
 			ComponentData &cc_data = const_cast<ComponentData &>(cc_data_const);
+			if (!cc_data.breakage_system || !cc_data.breakage_state) {
+				continue;
+			}
 			BreakageSystem &sys = *cc_data.breakage_system;
+			BreakageState &state = *cc_data.breakage_state;
 			BreakageInput in = prepare_breakage_input<BreakageInput>(cc_data);
-			BreakageSolution sol =
-			    breakage_checker_.solve(sys, in, *cc_data.breakage_state);
+			BreakageSolution sol = breakage_checker_.solve(sys, in, state);
 			if (sol.info.converged) {
 				for (int idx_k = 0; idx_k < sys.num_clutches(); ++idx_k) {
 					if (sol.utilization(idx_k) > 1.0) {
