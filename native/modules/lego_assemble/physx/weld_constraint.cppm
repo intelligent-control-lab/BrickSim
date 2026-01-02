@@ -7,9 +7,13 @@ using namespace physx;
 
 namespace lego_assemble {
 
+export constexpr physx::PxConstraintExtIDs::Enum kWeldConstraintExtID =
+    static_cast<physx::PxConstraintExtIDs::Enum>(
+        physx::PxConstraintExtIDs::eNEXT_FREE_ID + 0x4bce);
+
 export struct WeldConstraintData {
-	physx::PxTransform parentLocal; // joint frame in parent actor local space
-	physx::PxTransform childLocal;  // joint frame in child actor local space
+	physx::PxTransform parentLocal; // joint frame in parent actor mass space
+	physx::PxTransform childLocal;  // joint frame in child actor mass space
 };
 
 static void applyNeighborhood(PxTransform32 &a, PxTransform32 &b) {
@@ -47,6 +51,7 @@ static void fillLinear(Px1DConstraint &c, const PxVec3 &axis, const PxVec3 &ra,
 	c.linear1 = axis;
 	c.angular1 = rb.cross(axis);
 	c.geometricError = posErr;
+	c.flags = PxU16(c.flags | Px1DConstraintFlag::eOUTPUT_FORCE);
 }
 
 static void fillAngular(Px1DConstraint &c, const PxVec3 &axis, float posErr,
@@ -57,7 +62,8 @@ static void fillAngular(Px1DConstraint &c, const PxVec3 &axis, float posErr,
 	c.linear1 = PxVec3(0.0f);
 	c.angular1 = axis;
 	c.geometricError = posErr;
-	c.flags = PxU16(c.flags | Px1DConstraintFlag::eANGULAR_CONSTRAINT);
+	c.flags = PxU16(c.flags | Px1DConstraintFlag::eANGULAR_CONSTRAINT |
+	                Px1DConstraintFlag::eOUTPUT_FORCE);
 }
 
 static PxU32 prepareLockedAxes(Px1DConstraint *rows, const PxQuat &qA,
@@ -149,8 +155,8 @@ class WeldConstraintConnector : public PxConstraintConnector {
 	void onComShift(PxU32) override {}
 	void onOriginShift(const PxVec3 &) override {}
 	void *getExternalReference(PxU32 &typeID) override {
-		typeID = PxConstraintExtIDs::eJOINT;
-		return nullptr;
+		typeID = kWeldConstraintExtID;
+		return &data;
 	}
 	PxBase *getSerializable() override {
 		return nullptr;

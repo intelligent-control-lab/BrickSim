@@ -388,7 +388,16 @@ class PolyStore<type_list<Ks...>, type_list<Ts...>, type_list<Hs...>,
 		}
 	}
 
-	template <class Fn> void for_each(this auto &&self, Fn &&fn) {
+	template <class Fn>
+	void for_each(this auto &&self, Fn &&fn)
+	    requires(
+	        (std::is_void_v<std::invoke_result_t<
+	             Fn, const keys_type &,
+	             std::conditional_t<
+	                 std::is_const_v<std::remove_reference_t<decltype(self)>>,
+	                 const Ts &, Ts &>>>) &&
+	        ...)
+	{
 		(
 		    [&](auto &storage) {
 			    for (std::size_t i = 0; i < storage.data.size(); ++i) {
@@ -399,6 +408,15 @@ class PolyStore<type_list<Ks...>, type_list<Ts...>, type_list<Hs...>,
 			    }
 		    }(std::get<index_of_type<Ts>>(self.storages_)),
 		    ...);
+	}
+
+	template <class Fn>
+	void for_each(Fn &&fn) const
+	    requires(std::is_void_v<std::invoke_result_t<Fn, const keys_type &>>)
+	{
+		for (const auto &dir_entry : directory_.view()) {
+			std::invoke(fn, dir_entry.keys());
+		}
 	}
 
 	template <in_pack<Ts...> T> void reserve_for_type(std::size_t n) {

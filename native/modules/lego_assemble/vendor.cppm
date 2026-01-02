@@ -234,6 +234,7 @@ using physx::PxVec3T;
 using physx::PxVec4;
 using physx::PxVec4d;
 using physx::PxVec4T;
+using physx::PxZero;
 
 namespace pvdsdk {
 using pvdsdk::PvdDataStream;

@@ -37,9 +37,8 @@ class ConstraintScheduler {
   public:
 	using EdgeKey = UnorderedPair<PartId>;
 
-	ConstraintScheduler(
-	    const Graph *graph, Strategy strategy, CreateEdge create_edge,
-	    DestroyEdge destroy_edge)
+	ConstraintScheduler(const Graph *graph, Strategy strategy,
+	                    CreateEdge create_edge, DestroyEdge destroy_edge)
 	    : graph_(graph), strategy_(std::move(strategy)),
 	      create_(std::move(create_edge)), destroy_(std::move(destroy_edge)) {}
 
@@ -149,14 +148,17 @@ class ConstraintScheduler {
 		}
 	}
 
+	const std::unordered_map<EdgeKey, Handle> &constraints() const {
+		return handles_;
+	}
+
   private:
 	const Graph *graph_;
 	Strategy strategy_;
 	CreateEdge create_;
 	DestroyEdge destroy_;
 	std::unordered_map<EdgeKey, Handle> handles_;
-	std::unordered_map<PartId, std::unordered_set<PartId>>
-	    skeleton_adj_;
+	std::unordered_map<PartId, std::unordered_set<PartId>> skeleton_adj_;
 	std::unordered_set<PartId> dirty_vertices_;
 
 	void add_constraint_edge_(const EdgeKey &ek, Handle &&h) {

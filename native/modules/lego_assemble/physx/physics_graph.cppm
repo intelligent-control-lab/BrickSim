@@ -58,9 +58,6 @@ using ContactExclusionPairHash =
 using ContactExclusionSet =
     std::unordered_set<ContactExclusionPair, ContactExclusionPairHash>;
 
-using ExternalImpulseMap =
-    std::unordered_map<PartId, std::tuple<physx::PxVec3, physx::PxVec3>>;
-
 struct ComponentData {
 	PartId representative;
 	std::optional<BreakageSystem> breakage_system;
@@ -72,6 +69,30 @@ export struct PhysicsAssemblyDebugInfo : AssemblyDebugInfo {
 };
 
 using PartValidationQueue = std::unordered_set<PartId>;
+
+struct PartRigidInfo {
+	physx::PxVec3 com_pos{physx::PxZero};
+	physx::PxQuat body_rot{physx::PxIdentity};
+	physx::PxVec3 linear_velocity{physx::PxZero};
+	physx::PxVec3 angular_velocity{physx::PxZero};
+	physx::PxVec3 linear_impulse{physx::PxZero};
+	physx::PxVec3 angular_impulse{physx::PxZero};
+};
+
+using PartRigidInfoMap = std::unordered_map<PartId, PartRigidInfo>;
+
+physx::PxVec3 compute_linear_momentum(physx::PxRigidBody *rb) {
+	return rb->getLinearVelocity() * rb->getMass();
+}
+
+physx::PxVec3 compute_angular_momentum(physx::PxRigidBody *rb) {
+	physx::PxQuat q_WA = rb->getGlobalPose().q;
+	physx::PxQuat q_AM = rb->getCMassLocalPose().q;
+	physx::PxQuat q_WM = q_WA * q_AM;
+	physx::PxVec3 omega_W = rb->getAngularVelocity();
+	physx::PxVec3 omega_M = q_WM.rotateInv(omega_W);
+	return q_WM.rotate(rb->getMassSpaceInertiaTensor().multiply(omega_M));
+}
 
 export template <class Ps, class Hooks> class PhysicsLegoGraph;
 
@@ -242,7 +263,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		std::vector<PendingAssembly> pending_assemblies_;
 		std::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_cur_;
 		std::vector<PhysicsAssemblyDebugInfo> assembly_debug_infos_prev_;
-		ExternalImpulseMap external_impulses_;
 
 	  public:
 		void enqueue_assembly(auto &&...args) {
@@ -253,19 +273,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		void enqueue_assembly_debug_info(auto &&...args) {
 			assembly_debug_infos_cur_.emplace_back(
 			    std::forward<decltype(args)>(args)...);
-		}
-
-		void enqueue_external_impulse(
-		    PartId pid, const std::tuple<physx::PxVec3, physx::PxVec3> &I) {
-			const auto &[J, H] = I;
-			auto it = external_impulses_.find(pid);
-			if (it != external_impulses_.end()) {
-				auto &[acc_J, acc_H] = it->second;
-				acc_J += J;
-				acc_H += H;
-			} else {
-				external_impulses_.emplace(pid, I);
-			}
 		}
 
 		std::vector<PendingAssembly> consume_assemblies() {
@@ -281,12 +288,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		void swap_debug_info_buffers() {
 			assembly_debug_infos_prev_ = std::move(assembly_debug_infos_cur_);
 			assembly_debug_infos_cur_.clear();
-		}
-
-		ExternalImpulseMap consume_external_impulses() {
-			ExternalImpulseMap res = std::move(external_impulses_);
-			external_impulses_.clear();
-			return res;
 		}
 	};
 
@@ -371,42 +372,11 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			if (header.flags.isSet(PxContactPairHeaderFlag::eREMOVED_ACTOR_1)) {
 				return;
 			}
-
-			PxActor *a0 = header.actors[0];
-			PxActor *a1 = header.actors[1];
-			const ComponentId *cc0 = lookup_cc(a0);
-			const ComponentId *cc1 = lookup_cc(a1);
-			if (cc0 == nullptr && cc1 == nullptr) {
-				// Non-lego vs. non-lego contact
-				return;
-			} else if (cc0 != nullptr && cc1 != nullptr) {
-				// Lego vs. lego contact
-				if (*cc0 == *cc1) {
-					// Same connected component
-					return;
-				} else {
-					// Different connected components
-					// Fallthrough
-				}
-			} else {
-				// Lego vs. non-lego contact
-				// Fallthrough
-			}
-
-			// 1. For lego-lego contact, check assembly
-			if (cc0 != nullptr && cc1 != nullptr) {
+			const ComponentId *cc0 = lookup_cc(header.actors[0]);
+			const ComponentId *cc1 = lookup_cc(header.actors[1]);
+			if (cc0 != nullptr && cc1 != nullptr && *cc0 != *cc1) {
+				// Lego vs. lego contact, different connected components
 				process_assembly_contacts(header, pairs, nbPairs);
-			}
-
-			// 2. Collect all external impulses
-			auto [I0, I1] = accumulate_impulses(header, pairs, nbPairs);
-			if (cc0 != nullptr) {
-				PartId pid0 = *lookup_part_id(a0);
-				sim_out_.enqueue_external_impulse(pid0, I0);
-			}
-			if (cc1 != nullptr) {
-				PartId pid1 = *lookup_part_id(a1);
-				sim_out_.enqueue_external_impulse(pid1, I1);
 			}
 		}
 
@@ -501,97 +471,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			    &pair.contactImpulses[patch.startContactIndex],
 			    patch.nbContacts};
 		}
-
-		// Returns total impulses applied to each actor,
-		// in the world frame w.r.t. center of mass
-		static std::array<std::tuple<physx::PxVec3, physx::PxVec3>, 2>
-		accumulate_impulses(const physx::PxContactPairHeader &header,
-		                    const physx::PxContactPair *pairs,
-		                    physx::PxU32 nbPairs) {
-			using namespace physx;
-
-			auto get_com = [](PxActor *actor) {
-				if (PxRigidBody *rb = actor->is<PxRigidBody>()) {
-					return rb->getCMassLocalPose().p;
-				} else {
-					return PxVec3{0, 0, 0};
-				}
-			};
-			PxVec3 p_0_com0 = get_com(header.actors[0]);
-			PxVec3 p_1_com1 = get_com(header.actors[1]);
-
-			PxVec3 total_J0{0, 0, 0};
-			PxVec3 total_J1{0, 0, 0};
-			PxVec3 total_H0{0, 0, 0};
-			PxVec3 total_H1{0, 0, 0};
-			iterate_contact_itemsets(
-			    header, pairs, nbPairs,
-			    [&](std::span<const PxContactPair> pairs,
-			        const physx::PxTransform &T_world_0,
-			        const physx::PxTransform &T_world_1) {
-				    PxVec3 p_world_com0 = T_world_0.transform(p_0_com0);
-				    PxVec3 p_world_com1 = T_world_1.transform(p_1_com1);
-				    for (const auto &pair : pairs) {
-					    const auto &flags = pair.flags;
-					    if (flags.isSet(PxContactPairFlag::eREMOVED_SHAPE_0) ||
-					        flags.isSet(PxContactPairFlag::eREMOVED_SHAPE_1) ||
-					        !flags.isSet(
-					            PxContactPairFlag::eINTERNAL_HAS_IMPULSES) ||
-					        !pair.contactPatches || !pair.contactPoints ||
-					        !pair.contactImpulses) {
-						    continue;
-					    }
-
-					    PxContactStreamIterator it{
-					        pair.contactPatches, pair.contactPoints,
-					        pair.getInternalFaceIndices(), pair.patchCount,
-					        pair.contactCount};
-					    PxU32 k = 0;
-					    while (it.hasNextPatch()) {
-						    it.nextPatch();
-						    while (it.hasNextContact()) {
-							    it.nextContact();
-							    PxVec3 x = it.getContactPoint();
-							    PxVec3 n = it.getContactNormal();
-							    PxReal j = pair.contactImpulses[k++];
-							    PxVec3 J = n * j;
-							    total_J0 += J;
-							    total_J1 += -J;
-							    total_H0 += (x - p_world_com0).cross(J);
-							    total_H1 += (x - p_world_com1).cross(-J);
-						    }
-					    }
-
-					    PxFrictionAnchorStreamIterator faIt{
-					        pair.contactPatches, pair.frictionPatches,
-					        pair.patchCount};
-					    while (faIt.hasNextPatch()) {
-						    faIt.nextPatch();
-						    while (faIt.hasNextFrictionAnchor()) {
-							    faIt.nextFrictionAnchor();
-							    PxVec3 x = faIt.getPosition();
-							    PxVec3 J = faIt.getImpulse();
-							    total_J0 += J;
-							    total_J1 += -J;
-							    total_H0 += (x - p_world_com0).cross(J);
-							    total_H1 += (x - p_world_com1).cross(-J);
-						    }
-					    }
-				    }
-			    });
-			return {std::make_tuple(total_J0, total_H0),
-			        std::make_tuple(total_J1, total_H1)};
-		}
-
-		const PartId *lookup_part_id(const physx::PxActor *actor) {
-			if (const physx::PxRigidActor *ra =
-			        actor->is<physx::PxRigidActor>()) {
-				return cc_index_.ids().template find_key<PartId>(
-				    const_cast<physx::PxRigidActor *>(ra));
-			} else {
-				return nullptr;
-			}
-		};
 
 		const ComponentId *lookup_cc(const physx::PxActor *actor) {
 			if (const physx::PxRigidActor *ra =
@@ -774,10 +653,19 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		return sim_out_.get_assembly_debug_infos();
 	}
 
-	// Should be called BEFORE simulation step on USD/Kit thread
-	// Use a StageUpdateNode with order < 10 to implement this
 	void do_pre_step() {
-		flush_physx_ops();
+		for (PartId pid : parts_to_validate_) {
+			validate_part_actor(pid);
+		}
+		parts_to_validate_.clear();
+		shape_mapping_.commit();
+		prepare_rigid_info_map();
+		cc_index_.commit(
+		    std::bind_front(&PhysicsLegoGraph::build_cc_data, this),
+		    std::bind_front(&PhysicsLegoGraph::update_cc_data, this));
+		constraint_scheduler_.commit();
+		filtering_reset_.commit();
+
 		if (in_simulation_step_) {
 			throw std::runtime_error(
 			    "do_pre_step called while already in simulation step");
@@ -785,8 +673,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		in_simulation_step_ = true;
 	}
 
-	// Should be called AFTER simulation step on USD/Kit thread
-	// Use a StageUpdateNode with order > 10 to implement this
 	void do_post_step() {
 		if (!in_simulation_step_) {
 			throw std::runtime_error(
@@ -794,9 +680,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		}
 		auto pending_assemblies = sim_out_.consume_assemblies();
 		sim_out_.swap_debug_info_buffers();
-		auto external_impulses = sim_out_.consume_external_impulses();
+		populate_rigid_info_map();
 		in_simulation_step_ = false;
-		auto pending_disassemblies = compute_breakages(external_impulses);
+		auto pending_disassemblies = compute_breakages();
 
 		for (const auto &[csid] : pending_disassemblies) {
 			bool disconnected = topology_.disconnect(csid).has_value();
@@ -861,6 +747,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	PhysicsFilteringResetAggregator filtering_reset_;
 	SimOutputData sim_out_;
 	PartValidationQueue parts_to_validate_;
+	PartRigidInfoMap part_rigid_info_map_;
 
 	TopologyHooks topology_hooks_;
 	std::unique_ptr<PhysxBinding> physx_binding_;
@@ -907,19 +794,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				    pid, inertia_tensor, px_inertia_tensor);
 			}
 		}
-	}
-
-	void flush_physx_ops() {
-		for (PartId pid : parts_to_validate_) {
-			validate_part_actor(pid);
-		}
-		parts_to_validate_.clear();
-		shape_mapping_.commit();
-		cc_index_.commit(
-		    std::bind_front(&PhysicsLegoGraph::build_cc_data, this),
-		    std::bind_front(&PhysicsLegoGraph::update_cc_data, this));
-		constraint_scheduler_.commit();
-		filtering_reset_.commit();
 	}
 
 	physx::PxConstraint *create_constraint(PartId a_id, PartId b_id,
@@ -976,99 +850,18 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	void initialize_cc_data(ComponentData &cc_data) {
 		cc_data.breakage_system =
 		    breakage_checker_.build_system(topology_, cc_data.representative);
-		BreakageInitialInput in;
-		prepare_breakage_input_base(cc_data, in);
+		BreakageInitialInput in =
+		    prepare_breakage_input<BreakageInitialInput>(cc_data);
 		cc_data.breakage_state =
 		    breakage_checker_.build_initial_state(*cc_data.breakage_system, in);
 	}
 
-	void prepare_breakage_input_base(const ComponentData &cc_data,
-	                                 BreakageInitialInput &input) {
-		const BreakageSystem &sys = *cc_data.breakage_system;
-		int num_parts = sys.num_parts();
-		input.w.resize(num_parts, 3);
-		input.v.resize(num_parts, 3);
-		input.q.resize(num_parts, 4);
-		input.c.resize(num_parts, 3);
-
-		for (int index = 0; index < num_parts; ++index) {
-			PartId pid = sys.part_ids().at(index);
-			physx::PxRigidActor *actor =
-			    topology_.parts().template key_of<physx::PxRigidActor *>(pid);
-
-			if (physx::PxRigidBody *rb = actor->is<physx::PxRigidBody>()) {
-				input.w.row(index) = metrics_.to_rps(
-				    as<Eigen::Vector3d>(rb->getAngularVelocity()));
-				input.v.row(index) = metrics_.to_mps(
-				    as<Eigen::Vector3d>(rb->getLinearVelocity()));
-			} else {
-				input.w.row(index).setZero();
-				input.v.row(index).setZero();
-			}
-
-			physx::PxTransform body_pose = actor->getGlobalPose();
-			Eigen::Quaterniond q =
-			    as<Eigen::Quaterniond>(body_pose.q).normalized();
-			input.q.row(index) = q.coeffs();
-			physx::PxVec3 com_pos;
-			if (physx::PxRigidBody *rb = actor->is<physx::PxRigidBody>()) {
-				physx::PxTransform com_local_pose = rb->getCMassLocalPose();
-				com_pos = body_pose.transform(com_local_pose.p);
-			} else {
-				com_pos = body_pose.p;
-			}
-			Eigen::Vector3d t_com = metrics_.to_m(as<Eigen::Vector3d>(com_pos));
-			input.c.row(index) = t_com;
-		}
-	}
-
-	void
-	prepare_breakage_input_impulses(const ComponentData &cc_data,
-	                                const ExternalImpulseMap &external_impulses,
-	                                BreakageInput &input) {
-		const BreakageSystem &sys = *cc_data.breakage_system;
-		int num_parts = sys.num_parts();
-		input.J = Eigen::MatrixXd::Zero(num_parts, 3);
-		input.H = Eigen::MatrixXd::Zero(num_parts, 3);
-
-		PartId rep = cc_data.representative;
-		physx::PxRigidActor *rep_actor =
-		    topology_.parts().template key_of<physx::PxRigidActor *>(rep);
-		const physx::PxScene *scene = rep_actor->getScene();
-		input.dt = getPxSceneElapsedTime(scene);
-
-		Eigen::Vector3d gravity =
-		    metrics_.to_mps2(as<Eigen::Vector3d>(scene->getGravity()));
-
-		for (int index = 0; index < num_parts; ++index) {
-			PartId pid = sys.part_ids().at(index);
-			auto it_I = external_impulses.find(pid);
-			if (it_I != external_impulses.end()) {
-				const auto &[J_p, H_p] = it_I->second;
-				input.J.row(index) = metrics_.to_Ns(as<Eigen::Vector3d>(J_p));
-				input.H.row(index) = metrics_.to_Nms(as<Eigen::Vector3d>(H_p));
-			}
-			// Gravity impulse
-			physx::PxRigidActor *actor =
-			    topology_.parts().template key_of<physx::PxRigidActor *>(pid);
-			if (!actor->getActorFlags().isSet(
-			        physx::PxActorFlag::eDISABLE_GRAVITY)) {
-				double mass = sys.mass()(index);
-				Eigen::Vector3d J_g = gravity * mass * input.dt;
-				input.J.row(index) += J_g;
-			}
-		}
-	}
-
-	std::vector<PendingDisassembly>
-	compute_breakages(const ExternalImpulseMap &external_impulses) {
+	std::vector<PendingDisassembly> compute_breakages() {
 		std::vector<PendingDisassembly> pending_disassemblies;
 		for (const auto &[cc_id, cc_data_const] : cc_index_.data()) {
 			ComponentData &cc_data = const_cast<ComponentData &>(cc_data_const);
 			BreakageSystem &sys = *cc_data.breakage_system;
-			BreakageInput in;
-			prepare_breakage_input_base(cc_data, in);
-			prepare_breakage_input_impulses(cc_data, external_impulses, in);
+			BreakageInput in = prepare_breakage_input<BreakageInput>(cc_data);
 			BreakageSolution sol =
 			    breakage_checker_.solve(sys, in, *cc_data.breakage_state);
 			if (sol.info.converged) {
@@ -1081,6 +874,140 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			}
 		}
 		return pending_disassemblies;
+	}
+
+	template <class T>
+	    requires std::same_as<T, BreakageInitialInput> ||
+	             std::same_as<T, BreakageInput>
+	T prepare_breakage_input(const ComponentData &cc_data) {
+		T input{};
+		const BreakageSystem &sys = *cc_data.breakage_system;
+		int num_parts = sys.num_parts();
+		input.w.resize(num_parts, 3);
+		input.v.resize(num_parts, 3);
+		input.q.resize(num_parts, 4);
+		input.c.resize(num_parts, 3);
+		if constexpr (std::same_as<T, BreakageInput>) {
+			input.J.resize(num_parts, 3);
+			input.H.resize(num_parts, 3);
+			physx::PxRigidActor *actor_rep =
+			    topology_.parts().template key_of<physx::PxRigidActor *>(
+			        cc_data.representative);
+			physx::PxScene *px_scene = actor_rep->getScene();
+			input.dt = getPxSceneElapsedTime(px_scene);
+		}
+
+		for (int index = 0; index < num_parts; ++index) {
+			PartId pid = sys.part_ids().at(index);
+			PartRigidInfo info = part_rigid_info_map_.at(pid);
+			input.w.row(index) =
+			    metrics_.to_rps(as<Eigen::Vector3d>(info.angular_velocity));
+			input.v.row(index) =
+			    metrics_.to_mps(as<Eigen::Vector3d>(info.linear_velocity));
+			input.q.row(index) =
+			    as<Eigen::Quaterniond>(info.body_rot).normalized().coeffs();
+			input.c.row(index) =
+			    metrics_.to_m(as<Eigen::Vector3d>(info.com_pos));
+			if constexpr (std::same_as<T, BreakageInput>) {
+				input.J.row(index) =
+				    metrics_.to_Ns(as<Eigen::Vector3d>(info.linear_impulse));
+				input.H.row(index) =
+				    metrics_.to_Nms(as<Eigen::Vector3d>(info.angular_impulse));
+			}
+		}
+		return input;
+	}
+
+	void prepare_rigid_info_map() {
+		part_rigid_info_map_.clear();
+		topology_.parts().for_each([&](const auto &keys) {
+			PartId pid =
+			    std::get<TopologyGraph::PartKeys::template index_of<PartId>>(
+			        keys);
+			physx::PxRigidActor *actor =
+			    std::get<TopologyGraph::PartKeys::template index_of<
+			        physx::PxRigidActor *>>(keys);
+			PartRigidInfo info;
+			physx::PxTransform pose = actor->getGlobalPose();
+			info.body_rot = pose.q;
+			if (physx::PxRigidBody *rb = actor->is<physx::PxRigidBody>()) {
+				physx::PxTransform com_local = rb->getCMassLocalPose();
+				info.com_pos = pose.transform(com_local.p);
+				info.linear_velocity = rb->getLinearVelocity();
+				info.angular_velocity = rb->getAngularVelocity();
+				// Pre-fill impulses with negative momentum
+				info.linear_impulse = -compute_linear_momentum(rb);
+				info.angular_impulse = -compute_angular_momentum(rb);
+			} else {
+				info.com_pos = pose.p;
+			}
+			part_rigid_info_map_.emplace(pid, info);
+		});
+	}
+
+	void populate_rigid_info_map() {
+		topology_.parts().for_each([&](const auto &keys) {
+			PartId pid =
+			    std::get<TopologyGraph::PartKeys::template index_of<PartId>>(
+			        keys);
+			physx::PxRigidActor *actor =
+			    std::get<TopologyGraph::PartKeys::template index_of<
+			        physx::PxRigidActor *>>(keys);
+			PartRigidInfo &info = part_rigid_info_map_.at(pid);
+			physx::PxTransform pose = actor->getGlobalPose();
+			info.body_rot = pose.q;
+			if (physx::PxRigidBody *rb = actor->is<physx::PxRigidBody>()) {
+				physx::PxTransform com_local = rb->getCMassLocalPose();
+				info.com_pos = pose.transform(com_local.p);
+				info.linear_velocity = rb->getLinearVelocity();
+				info.angular_velocity = rb->getAngularVelocity();
+				info.linear_impulse += compute_linear_momentum(rb);
+				info.angular_impulse += compute_angular_momentum(rb);
+			} else {
+				info.com_pos = pose.p;
+			}
+		});
+		auto comFrameToWorld = [](physx::PxRigidActor *a) {
+			if (auto *rb = a->is<physx::PxRigidBody>()) {
+				return a->getGlobalPose() * rb->getCMassLocalPose();
+			} else {
+				return a->getGlobalPose();
+			}
+		};
+		for (const auto &[edge, constraint] :
+		     constraint_scheduler_.constraints()) {
+			physx::PxU32 typeID = physx::PxConstraintExtIDs::eINVALID_ID;
+			const WeldConstraintData *weld_data =
+			    reinterpret_cast<const WeldConstraintData *>(
+			        constraint->getExternalReference(typeID));
+			if (!weld_data || typeID != kWeldConstraintExtID) {
+				continue;
+			}
+			auto [pid_a, pid_b] = edge;
+			PartRigidInfo &info_a = part_rigid_info_map_.at(pid_a);
+			PartRigidInfo &info_b = part_rigid_info_map_.at(pid_b);
+			physx::PxReal dt = getPxSceneElapsedTime(constraint->getScene());
+			physx::PxRigidActor *actor_a = nullptr;
+			physx::PxRigidActor *actor_b = nullptr;
+			constraint->getActors(actor_a, actor_b);
+			physx::PxTransform bA2w = comFrameToWorld(actor_a);
+			physx::PxTransform bB2w = comFrameToWorld(actor_b);
+			physx::PxVec3 F0_W, tau0_W_atP;
+			constraint->getForce(F0_W, tau0_W_atP);
+			physx::PxVec3 P_W = bB2w.transform(weld_data->childLocal).p;
+			physx::PxVec3 com0_W = bA2w.p;
+			physx::PxVec3 r0_W = P_W - com0_W;
+			physx::PxVec3 tau0_W_atCOM0 = tau0_W_atP + r0_W.cross(F0_W);
+			physx::PxVec3 F1_W = -F0_W;
+			physx::PxVec3 tau1_W_atP = -tau0_W_atP;
+			physx::PxVec3 com1_W = bB2w.p;
+			physx::PxVec3 r1_W = P_W - com1_W;
+			physx::PxVec3 tau1_W_atCOM1 = tau1_W_atP + r1_W.cross(F1_W);
+			info_a.linear_impulse -= F0_W * dt;
+			info_a.angular_impulse -= tau0_W_atCOM0 * dt;
+			info_b.linear_impulse -= F1_W * dt;
+			info_b.angular_impulse -= tau1_W_atCOM1 * dt;
+		}
 	}
 
 	static_assert(TopologyGraph::HasOnPartAddedHook);
