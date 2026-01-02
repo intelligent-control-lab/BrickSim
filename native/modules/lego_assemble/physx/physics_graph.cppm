@@ -81,11 +81,11 @@ struct PartRigidInfo {
 
 using PartRigidInfoMap = std::unordered_map<PartId, PartRigidInfo>;
 
-physx::PxVec3 compute_linear_momentum(physx::PxRigidBody *rb) {
+physx::PxVec3 compute_linear_momentum(physx::PxRigidDynamic *rb) {
 	return rb->getLinearVelocity() * rb->getMass();
 }
 
-physx::PxVec3 compute_angular_momentum(physx::PxRigidBody *rb) {
+physx::PxVec3 compute_angular_momentum(physx::PxRigidDynamic *rb) {
 	physx::PxQuat q_WA = rb->getGlobalPose().q;
 	physx::PxQuat q_AM = rb->getCMassLocalPose().q;
 	physx::PxQuat q_WM = q_WA * q_AM;
@@ -104,11 +104,13 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
   public:
 	using Self = PhysicsLegoGraph<type_list<Ps...>, Hooks>;
 
-	using TopologyGraph = LegoGraph<
-	    type_list<Ps...>, PhysicsPartWrapper, type_list<physx::PxRigidActor *>,
-	    type_list<std::hash<physx::PxRigidActor *>>, type_list<std::equal_to<>>,
-	    PhysicsConnectionSegmentWrapper, type_list<>, type_list<>, type_list<>,
-	    PhysicsConnectionBundleWrapper, TopologyHooks>;
+	using TopologyGraph =
+	    LegoGraph<type_list<Ps...>, PhysicsPartWrapper,
+	              type_list<physx::PxRigidDynamic *>,
+	              type_list<std::hash<physx::PxRigidDynamic *>>,
+	              type_list<std::equal_to<>>, PhysicsConnectionSegmentWrapper,
+	              type_list<>, type_list<>, type_list<>,
+	              PhysicsConnectionBundleWrapper, TopologyHooks>;
 	using ConstraintSchedulingPolicy =
 	    CombinedSchedulingPolicy<TopologyGraph, TreeOnlySchedulingPolicy,
 	                             RamanujanLikeSchedulingPolicy>;
@@ -125,7 +127,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	                            PartId, PartId, const Transformd &)>,
 	                        std::function<void(physx::PxConstraint *)>>;
 	using PhysicsComponentIndex =
-	    ComponentIndex<TopologyGraph, type_list<PartId, physx::PxRigidActor *>,
+	    ComponentIndex<TopologyGraph,
+	                   type_list<PartId, physx::PxRigidDynamic *>,
 	                   ComponentData>;
 	using PhysicsFilteringResetAggregator =
 	    FilteringResetAggregator<TopologyGraph>;
@@ -473,10 +476,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		}
 
 		const ComponentId *lookup_cc(const physx::PxActor *actor) {
-			if (const physx::PxRigidActor *ra =
-			        actor->is<physx::PxRigidActor>()) {
+			if (const physx::PxRigidDynamic *ra =
+			        actor->is<physx::PxRigidDynamic>()) {
 				return cc_index_.ids().find_value(
-				    const_cast<physx::PxRigidActor *>(ra));
+				    const_cast<physx::PxRigidDynamic *>(ra));
 			} else {
 				return nullptr;
 			}
@@ -486,8 +489,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		                               const physx::PxContactPair *pairs,
 		                               physx::PxU32 nbPairs) {
 			using namespace physx;
-			PxRigidActor *rb0 = header.actors[0]->is<PxRigidActor>();
-			PxRigidActor *rb1 = header.actors[1]->is<PxRigidActor>();
+			PxRigidDynamic *rb0 = header.actors[0]->is<PxRigidDynamic>();
+			PxRigidDynamic *rb1 = header.actors[1]->is<PxRigidDynamic>();
 			if (rb0 == nullptr || rb1 == nullptr) {
 				return;
 			}
@@ -543,9 +546,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		}
 
 		void process_assembly_contact(
-		    physx::PxRigidActor *rb0, physx::PxShape *s0,
+		    physx::PxRigidDynamic *rb0, physx::PxShape *s0,
 		    const InterfaceSpec &if0, const physx::PxTransform &pose0_px,
-		    physx::PxRigidActor *rb1, physx::PxShape *s1,
+		    physx::PxRigidDynamic *rb1, physx::PxShape *s1,
 		    const InterfaceSpec &if1, const physx::PxTransform &pose1_px,
 		    const physx::PxVec3 &impulse_px, physx::PxReal dt) {
 
@@ -757,42 +760,37 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	void validate_part_actor(PartId pid) {
 		typename TopologyGraph::PartConstEntry entry =
 		    topology_.parts().entry_of(pid);
-		physx::PxRigidActor *actor =
-		    entry.template key<physx::PxRigidActor *>();
-		if (physx::PxRigidBody *rb = actor->is<physx::PxRigidBody>()) {
-			auto [mass, com, inertia_tensor] = entry.visit([](const auto &pw) {
-				const auto &part = pw.wrapped();
-				return std::make_tuple(part.mass(), part.com(),
-				                       part.inertia_tensor());
-			});
-			double px_mass = rb->getMass();
-			if (px_mass <= 0.0 || std::abs(px_mass - mass) > 1e-6) {
-				log_error(
-				    "PhysicsLegoGraph::validate_part_actor: mass mismatch "
-				    "for {} (expected {:.6e}, got {:.6e})",
-				    pid, mass, px_mass);
-			}
-			physx::PxTransform Tcm = rb->getCMassLocalPose();
-			Eigen::Vector3d px_com = as<Eigen::Vector3d>(Tcm.p);
-			if ((px_com - com).norm() > 1e-6) {
-				log_error(
-				    "PhysicsLegoGraph::validate_part_actor: center of mass "
-				    "mismatch for {} (expected {:.6e}, got {:.6e})",
-				    pid, com, px_com);
-			}
-			physx::PxVec3 I_diag = rb->getMassSpaceInertiaTensor();
-			physx::PxMat33 I_mass{physx::PxVec3{I_diag.x, 0, 0},
-			                      physx::PxVec3{0, I_diag.y, 0},
-			                      physx::PxVec3{0, 0, I_diag.z}};
-			physx::PxMat33 R(Tcm.q);
-			physx::PxMat33 I_actor = R * I_mass * R.getTranspose();
-			Eigen::Matrix3d px_inertia_tensor = as<Eigen::Matrix3d>(I_actor);
-			if ((px_inertia_tensor - inertia_tensor).norm() > 1e-6) {
-				log_error(
-				    "PhysicsLegoGraph::validate_part_actor: inertia tensor "
-				    "mismatch for {} (expected {:.6e}, got {:.6e})",
-				    pid, inertia_tensor, px_inertia_tensor);
-			}
+		physx::PxRigidDynamic *actor =
+		    entry.template key<physx::PxRigidDynamic *>();
+		auto [mass, com, inertia_tensor] = entry.visit([](const auto &pw) {
+			const auto &part = pw.wrapped();
+			return std::make_tuple(part.mass(), part.com(),
+			                       part.inertia_tensor());
+		});
+		double px_mass = actor->getMass();
+		if (px_mass <= 0.0 || std::abs(px_mass - mass) > 1e-6) {
+			log_error("PhysicsLegoGraph::validate_part_actor: mass mismatch "
+			          "for {} (expected {:.6e}, got {:.6e})",
+			          pid, mass, px_mass);
+		}
+		physx::PxTransform Tcm = actor->getCMassLocalPose();
+		Eigen::Vector3d px_com = as<Eigen::Vector3d>(Tcm.p);
+		if ((px_com - com).norm() > 1e-6) {
+			log_error("PhysicsLegoGraph::validate_part_actor: center of mass "
+			          "mismatch for {} (expected {:.6e}, got {:.6e})",
+			          pid, com, px_com);
+		}
+		physx::PxVec3 I_diag = actor->getMassSpaceInertiaTensor();
+		physx::PxMat33 I_mass{physx::PxVec3{I_diag.x, 0, 0},
+		                      physx::PxVec3{0, I_diag.y, 0},
+		                      physx::PxVec3{0, 0, I_diag.z}};
+		physx::PxMat33 R(Tcm.q);
+		physx::PxMat33 I_actor = R * I_mass * R.getTranspose();
+		Eigen::Matrix3d px_inertia_tensor = as<Eigen::Matrix3d>(I_actor);
+		if ((px_inertia_tensor - inertia_tensor).norm() > 1e-6) {
+			log_error("PhysicsLegoGraph::validate_part_actor: inertia tensor "
+			          "mismatch for {} (expected {:.6e}, got {:.6e})",
+			          pid, inertia_tensor, px_inertia_tensor);
 		}
 	}
 
@@ -804,20 +802,14 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		//
 		// parentLocal (A_com -> B_com) = (A_com -> A_orig) * (A_orig -> B_orig) * (B_orig -> B_com)
 		// childLocal is identity so cB2w = bB2w (B_com).
-		physx::PxRigidActor *actor_a =
-		    topology_.parts().template key_of<physx::PxRigidActor *>(a_id);
-		physx::PxRigidActor *actor_b =
-		    topology_.parts().template key_of<physx::PxRigidActor *>(b_id);
-
-		auto get_com = [this](physx::PxRigidActor *actor) {
-			if (auto *rb = actor->is<physx::PxRigidBody>()) {
-				return metrics_.to_m(as<Transformd>(rb->getCMassLocalPose()));
-			} else {
-				return SE3d{}.identity();
-			}
-		};
-		Transformd T_a_acom = get_com(actor_a);
-		Transformd T_b_bcom = get_com(actor_b);
+		physx::PxRigidDynamic *actor_a =
+		    topology_.parts().template key_of<physx::PxRigidDynamic *>(a_id);
+		physx::PxRigidDynamic *actor_b =
+		    topology_.parts().template key_of<physx::PxRigidDynamic *>(b_id);
+		Transformd T_a_acom =
+		    metrics_.to_m(as<Transformd>(actor_a->getCMassLocalPose()));
+		Transformd T_b_bcom =
+		    metrics_.to_m(as<Transformd>(actor_b->getCMassLocalPose()));
 		Transformd T_acom_a = inverse(T_a_acom);
 		Transformd parent_local = T_acom_a * T_a_b * T_b_bcom;
 		physx::PxTransform parent_local_px =
@@ -890,8 +882,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		if constexpr (std::same_as<T, BreakageInput>) {
 			input.J.resize(num_parts, 3);
 			input.H.resize(num_parts, 3);
-			physx::PxRigidActor *actor_rep =
-			    topology_.parts().template key_of<physx::PxRigidActor *>(
+			physx::PxRigidDynamic *actor_rep =
+			    topology_.parts().template key_of<physx::PxRigidDynamic *>(
 			        cc_data.representative);
 			physx::PxScene *px_scene = actor_rep->getScene();
 			input.dt = getPxSceneElapsedTime(px_scene);
@@ -924,23 +916,18 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			PartId pid =
 			    std::get<TopologyGraph::PartKeys::template index_of<PartId>>(
 			        keys);
-			physx::PxRigidActor *actor =
+			physx::PxRigidDynamic *actor =
 			    std::get<TopologyGraph::PartKeys::template index_of<
-			        physx::PxRigidActor *>>(keys);
+			        physx::PxRigidDynamic *>>(keys);
 			PartRigidInfo info;
 			physx::PxTransform pose = actor->getGlobalPose();
 			info.body_rot = pose.q;
-			if (physx::PxRigidBody *rb = actor->is<physx::PxRigidBody>()) {
-				physx::PxTransform com_local = rb->getCMassLocalPose();
-				info.com_pos = pose.transform(com_local.p);
-				info.linear_velocity = rb->getLinearVelocity();
-				info.angular_velocity = rb->getAngularVelocity();
-				// Pre-fill impulses with negative momentum
-				info.linear_impulse = -compute_linear_momentum(rb);
-				info.angular_impulse = -compute_angular_momentum(rb);
-			} else {
-				info.com_pos = pose.p;
-			}
+			info.com_pos = pose.transform(actor->getCMassLocalPose().p);
+			info.linear_velocity = actor->getLinearVelocity();
+			info.angular_velocity = actor->getAngularVelocity();
+			// Pre-fill impulses with negative momentum
+			info.linear_impulse = -compute_linear_momentum(actor);
+			info.angular_impulse = -compute_angular_momentum(actor);
 			part_rigid_info_map_.emplace(pid, info);
 		});
 	}
@@ -950,30 +937,18 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			PartId pid =
 			    std::get<TopologyGraph::PartKeys::template index_of<PartId>>(
 			        keys);
-			physx::PxRigidActor *actor =
+			physx::PxRigidDynamic *actor =
 			    std::get<TopologyGraph::PartKeys::template index_of<
-			        physx::PxRigidActor *>>(keys);
+			        physx::PxRigidDynamic *>>(keys);
 			PartRigidInfo &info = part_rigid_info_map_.at(pid);
 			physx::PxTransform pose = actor->getGlobalPose();
 			info.body_rot = pose.q;
-			if (physx::PxRigidBody *rb = actor->is<physx::PxRigidBody>()) {
-				physx::PxTransform com_local = rb->getCMassLocalPose();
-				info.com_pos = pose.transform(com_local.p);
-				info.linear_velocity = rb->getLinearVelocity();
-				info.angular_velocity = rb->getAngularVelocity();
-				info.linear_impulse += compute_linear_momentum(rb);
-				info.angular_impulse += compute_angular_momentum(rb);
-			} else {
-				info.com_pos = pose.p;
-			}
+			info.com_pos = pose.transform(actor->getCMassLocalPose().p);
+			info.linear_velocity = actor->getLinearVelocity();
+			info.angular_velocity = actor->getAngularVelocity();
+			info.linear_impulse += compute_linear_momentum(actor);
+			info.angular_impulse += compute_angular_momentum(actor);
 		});
-		auto comFrameToWorld = [](physx::PxRigidActor *a) {
-			if (auto *rb = a->is<physx::PxRigidBody>()) {
-				return a->getGlobalPose() * rb->getCMassLocalPose();
-			} else {
-				return a->getGlobalPose();
-			}
-		};
 		for (const auto &[edge, constraint] :
 		     constraint_scheduler_.constraints()) {
 			physx::PxU32 typeID = physx::PxConstraintExtIDs::eINVALID_ID;
@@ -981,17 +956,33 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			    reinterpret_cast<const WeldConstraintData *>(
 			        constraint->getExternalReference(typeID));
 			if (!weld_data || typeID != kWeldConstraintExtID) {
+				log_error("PhysicsLegoGraph::populate_rigid_info_map: "
+				          "unexpected constraint external reference");
+				continue;
+			}
+			physx::PxRigidActor *actor_a = nullptr;
+			physx::PxRigidActor *actor_b = nullptr;
+			constraint->getActors(actor_a, actor_b);
+			if (!actor_a || !actor_b) {
+				log_error("PhysicsLegoGraph::populate_rigid_info_map: "
+				          "constraint has null actors");
+				continue;
+			}
+			physx::PxRigidDynamic *rb_a = actor_a->is<physx::PxRigidDynamic>();
+			physx::PxRigidDynamic *rb_b = actor_b->is<physx::PxRigidDynamic>();
+			if (!rb_a || !rb_b) {
+				log_error("PhysicsLegoGraph::populate_rigid_info_map: "
+				          "constraint actors are not RigidDynamic");
 				continue;
 			}
 			auto [pid_a, pid_b] = edge;
 			PartRigidInfo &info_a = part_rigid_info_map_.at(pid_a);
 			PartRigidInfo &info_b = part_rigid_info_map_.at(pid_b);
 			physx::PxReal dt = getPxSceneElapsedTime(constraint->getScene());
-			physx::PxRigidActor *actor_a = nullptr;
-			physx::PxRigidActor *actor_b = nullptr;
-			constraint->getActors(actor_a, actor_b);
-			physx::PxTransform bA2w = comFrameToWorld(actor_a);
-			physx::PxTransform bB2w = comFrameToWorld(actor_b);
+			physx::PxTransform bA2w =
+			    rb_a->getGlobalPose() * rb_a->getCMassLocalPose();
+			physx::PxTransform bB2w =
+			    rb_b->getGlobalPose() * rb_b->getCMassLocalPose();
 			physx::PxVec3 F0_W, tau0_W_atP;
 			constraint->getForce(F0_W, tau0_W_atP);
 			physx::PxVec3 P_W = bB2w.transform(weld_data->childLocal).p;

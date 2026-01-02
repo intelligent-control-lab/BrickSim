@@ -51,7 +51,7 @@ static_assert(TestGraph::HasOnDisassembledHook);
 
 // Ensure PhysX actor key is integrated into the part key set
 static_assert(
-    TopologyGraph::PartKeys::template contains<physx::PxRigidActor *>);
+    TopologyGraph::PartKeys::template contains<physx::PxRigidDynamic *>);
 
 namespace {
 

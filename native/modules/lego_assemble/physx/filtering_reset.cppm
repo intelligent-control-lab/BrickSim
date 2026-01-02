@@ -7,9 +7,9 @@ import lego_assemble.vendor;
 namespace lego_assemble {
 
 export template <class G> class FilteringResetAggregator {
-	static_assert(G::PartKeys::template contains<physx::PxRigidActor *>,
-	              "FilteringResetAggregator: G must have physx::PxRigidActor * "
-	              "as part key");
+	static_assert(G::PartKeys::template contains<physx::PxRigidDynamic *>,
+	              "FilteringResetAggregator: G must have physx::PxRigidDynamic "
+	              "* as part key");
 
   private:
 	const G &topology_;
@@ -41,7 +41,8 @@ export template <class G> class FilteringResetAggregator {
 			for (PartId v : topology_.component_view(u).vertices()) {
 				q.erase(v);
 				auto actor =
-				    topology_.parts().template key_of<physx::PxRigidActor *>(v);
+				    topology_.parts().template key_of<physx::PxRigidDynamic *>(
+				        v);
 				actor->getScene()->resetFiltering(*actor);
 			}
 		}

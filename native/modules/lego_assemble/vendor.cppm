@@ -210,6 +210,7 @@ using physx::PxQuatT;
 using physx::PxReal;
 using physx::PxRigidActor;
 using physx::PxRigidBody;
+using physx::PxRigidDynamic;
 using physx::PxRigidStatic;
 using physx::PxScene;
 using physx::PxShape;

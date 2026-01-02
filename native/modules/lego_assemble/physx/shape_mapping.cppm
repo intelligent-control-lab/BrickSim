@@ -14,10 +14,10 @@ namespace lego_assemble {
 export using InterfaceShapePair = std::pair<InterfaceId, physx::PxShape *>;
 
 export using ActorShapePair =
-    std::pair<physx::PxRigidActor *, physx::PxShape *>;
+    std::pair<physx::PxRigidDynamic *, physx::PxShape *>;
 
 export using ActorShapePairHash =
-    PairHash<physx::PxRigidActor *, std::hash<physx::PxRigidActor *>,
+    PairHash<physx::PxRigidDynamic *, std::hash<physx::PxRigidDynamic *>,
              physx::PxShape *, std::hash<physx::PxShape *>>;
 
 export constexpr ActorShapePair NullActorShapePair{nullptr, nullptr};
@@ -33,8 +33,8 @@ export using ShapeMap =
 
 export template <class G> class ShapeMapping {
 	static_assert(
-	    G::PartKeys::template contains<physx::PxRigidActor *>,
-	    "ShapeMapping: G must have physx::PxRigidActor * as part key");
+	    G::PartKeys::template contains<physx::PxRigidDynamic *>,
+	    "ShapeMapping: G must have physx::PxRigidDynamic * as part key");
 
   public:
 	using TopologyGraph = G;
@@ -66,7 +66,7 @@ export template <class G> class ShapeMapping {
 
 	void add_part(typename G::PartEntry entry) {
 		auto pid = entry.template key<PartId>();
-		auto actor = entry.template key<physx::PxRigidActor *>();
+		auto actor = entry.template key<physx::PxRigidDynamic *>();
 		entry.visit([&](PartWrapperWithShape auto &pw) {
 			for (const auto &[ifid, shape] : pw.interface_shapes()) {
 				if (shape == nullptr) {

@@ -178,8 +178,8 @@ class WeldConstraintConnector : public PxConstraintConnector {
 	}
 };
 
-export PxConstraint *createWeldConstraint(PxPhysics &physics, PxRigidActor *a,
-                                          PxRigidActor *b,
+export PxConstraint *createWeldConstraint(PxPhysics &physics, PxRigidDynamic *a,
+                                          PxRigidDynamic *b,
                                           WeldConstraintData data) {
 	// TODO: allocate in PhysX's memory pool
 	auto *conn = new WeldConstraintConnector();

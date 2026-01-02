@@ -297,14 +297,29 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		return shapes;
 	}
 
-	physx::PxRigidActor *resolve_rigid_actor(const pxr::SdfPath &part_path) {
-		return static_cast<physx::PxRigidActor *>(
+	physx::PxRigidDynamic *
+	resolve_rigid_dynamic(const pxr::SdfPath &part_path) {
+		physx::PxBase *base = static_cast<physx::PxBase *>(
 		    omni_px_->getPhysXPtr(part_path, omni::physx::ePTActor));
+		if (base == nullptr) {
+			return nullptr;
+		}
+		return base->is<physx::PxRigidDynamic>();
+	}
+
+	physx::PxRigidDynamic *
+	resolve_rigid_dynamic(omni::physx::usdparser::ObjectId object_id) {
+		physx::PxBase *base =
+		    static_cast<physx::PxBase *>(omni_px_->getPhysXPtrFast(object_id));
+		if (base == nullptr) {
+			return nullptr;
+		}
+		return base->is<physx::PxRigidDynamic>();
 	}
 
 	template <PartLike P>
 	bool bind_part(PartId usd_pid, const UsdPartWrapper<P> &usd_pw,
-	               physx::PxRigidActor *px_actor) {
+	               physx::PxRigidDynamic *px_actor) {
 		// Bind a USD part to PhysicsGraph. The corresponding actor must already exist.
 		UsdPartId t_usd_pid{usd_pid};
 		if (pid_mapping_.contains(t_usd_pid)) [[unlikely]] {
@@ -489,7 +504,7 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 			const pxr::SdfPath &part_path =
 			    std::get<UsdGraph::TopologyGraph::PartKeys::template index_of<
 			        pxr::SdfPath>>(keys);
-			physx::PxRigidActor *px_actor = resolve_rigid_actor(part_path);
+			physx::PxRigidDynamic *px_actor = resolve_rigid_dynamic(part_path);
 			if (px_actor == nullptr) {
 				// Omni PhysX hasn't created the actor yet
 				return;
@@ -502,7 +517,7 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	                               omni::physx::usdparser::ObjectId object_id,
 	                               omni::physx::PhysXType type,
 	                               [[maybe_unused]] void *user_data) {
-		// If this is a rigid actor for a part, we can bind it.
+		// If this is a rigid dynamic for a part, we can bind it.
 		if (type != omni::physx::ePTActor) {
 			return;
 		}
@@ -510,8 +525,10 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		if (!usd_part) {
 			return;
 		}
-		physx::PxRigidActor *px_actor = static_cast<physx::PxRigidActor *>(
-		    omni_px_->getPhysXPtrFast(object_id));
+		physx::PxRigidDynamic *px_actor = resolve_rigid_dynamic(object_id);
+		if (px_actor == nullptr) {
+			return;
+		}
 		PartId usd_pid = usd_part->template key<PartId>();
 		usd_part->visit([&]<PartLike P>(const UsdPartWrapper<P> &pw) {
 			bind_part(usd_pid, pw, px_actor);
@@ -527,8 +544,10 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		if (type != omni::physx::ePTActor) {
 			return;
 		}
-		physx::PxRigidActor *px_actor = static_cast<physx::PxRigidActor *>(
-		    omni_px_->getPhysXPtrFast(object_id));
+		physx::PxRigidDynamic *px_actor = resolve_rigid_dynamic(object_id);
+		if (px_actor == nullptr) {
+			return;
+		}
 		const PartId *physics_pid_ptr =
 		    physics_graph_->topology().parts().template find_key<PartId>(
 		        px_actor);
