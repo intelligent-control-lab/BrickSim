@@ -974,8 +974,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			info.linear_impulse += compute_linear_momentum(actor);
 			info.angular_impulse += compute_angular_momentum(actor);
 		});
-		for (const auto &[edge, constraint] :
-		     constraint_scheduler_.constraints()) {
+		for (const auto &[edge, handle] : constraint_scheduler_.constraints()) {
+			const auto &[constraint, T] = handle;
 			physx::PxU32 typeID = physx::PxConstraintExtIDs::eINVALID_ID;
 			const WeldConstraintData *weld_data =
 			    reinterpret_cast<const WeldConstraintData *>(

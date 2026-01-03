@@ -53,7 +53,8 @@ class ConstraintScheduler {
 	ConstraintScheduler &operator=(ConstraintScheduler &&) = delete;
 
 	void clear() {
-		for (auto &[_, h] : handles_) {
+		for (auto &[_, val] : handles_) {
+			auto &[h, _] = val;
 			destroy_(std::move(h));
 		}
 		handles_.clear();
@@ -78,7 +79,7 @@ class ConstraintScheduler {
 				// 1. Remove from neighbor's adjacency
 				auto it_neighbor_adj = skeleton_adj_.find(neighbor_id);
 				if (it_neighbor_adj != skeleton_adj_.end()) {
-					auto &[__, neighbor_adj] = *it_neighbor_adj;
+					auto &[_, neighbor_adj] = *it_neighbor_adj;
 					neighbor_adj.erase(id);
 					if (neighbor_adj.empty()) {
 						skeleton_adj_.erase(it_neighbor_adj);
@@ -87,7 +88,8 @@ class ConstraintScheduler {
 				// 2. Remove the handle
 				auto it_handle = handles_.find(ek);
 				if (it_handle != handles_.end()) {
-					auto &[_, h] = *it_handle;
+					auto &[_, val] = *it_handle;
+					auto &[h, _] = val;
 					destroy_(std::move(h));
 					handles_.erase(it_handle);
 				}
@@ -130,15 +132,23 @@ class ConstraintScheduler {
 				}
 			}
 			// 2. Compute desired constraint edges
-			for (auto desired_ek : strategy_.compute(cc)) {
-				if (existing_edges.erase(desired_ek) == 0) {
+			for (EdgeKey desired_ek : strategy_.compute(cc)) {
+				const auto &[a, b] = desired_ek;
+				const Transformd &T_root_a = transforms.at(a);
+				const Transformd &T_root_b = transforms.at(b);
+				Transformd T_a_b = inverse(T_root_a) * T_root_b;
+				auto it = handles_.find(desired_ek);
+				if (it == handles_.end()) {
 					// New edge, create it
-					const auto &[a, b] = desired_ek;
-					const Transformd &T_root_a = transforms.at(a);
-					const Transformd &T_root_b = transforms.at(b);
-					Transformd T_a_b = inverse(T_root_a) * T_root_b;
-					Handle h = create_(a, b, T_a_b);
-					add_constraint_edge_(desired_ek, std::move(h));
+					add_constraint_edge_(desired_ek, T_a_b);
+				} else {
+					existing_edges.erase(desired_ek);
+					auto &[_, existing_T] = it->second;
+					if (!SE3d{}.almost_equal(existing_T, T_a_b)) {
+						// Transform changed, recreate it
+						remove_constraint_edge_(desired_ek);
+						add_constraint_edge_(desired_ek, T_a_b);
+					}
 				}
 			}
 			// 3. Remove obsolete constraint edges
@@ -148,7 +158,8 @@ class ConstraintScheduler {
 		}
 	}
 
-	const std::unordered_map<EdgeKey, Handle> &constraints() const {
+	const std::unordered_map<EdgeKey, std::tuple<Handle, Transformd>> &
+	constraints() const {
 		return handles_;
 	}
 
@@ -157,13 +168,13 @@ class ConstraintScheduler {
 	Strategy strategy_;
 	CreateEdge create_;
 	DestroyEdge destroy_;
-	std::unordered_map<EdgeKey, Handle> handles_;
+	std::unordered_map<EdgeKey, std::tuple<Handle, Transformd>> handles_;
 	std::unordered_map<PartId, std::unordered_set<PartId>> skeleton_adj_;
 	std::unordered_set<PartId> dirty_vertices_;
 
-	void add_constraint_edge_(const EdgeKey &ek, Handle &&h) {
+	void add_constraint_edge_(const EdgeKey &ek, const Transformd &T) {
 		const auto &[a, b] = ek;
-		handles_.emplace(ek, std::move(h));
+		handles_.emplace(ek, std::make_tuple(create_(a, b, T), T));
 
 		auto [it_a, _] = skeleton_adj_.try_emplace(a);
 		auto &[_, adj_a] = *it_a;
@@ -197,7 +208,8 @@ class ConstraintScheduler {
 
 		auto it = handles_.find(ek);
 		if (it != handles_.end()) {
-			auto &[_, h] = *it;
+			auto &[_, val] = *it;
+			auto &[h, _] = val;
 			destroy_(std::move(h));
 			handles_.erase(it);
 		}
