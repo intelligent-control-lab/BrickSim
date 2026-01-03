@@ -24,6 +24,19 @@ def compute_connection_transform(
     yaw: int,
 ) -> tuple[tuple[float, float, float, float], tuple[float, float, float]]: ...
 
+def compute_connection_local_transform(
+    stud_path: str,
+    stud_if: int,
+    hole_path: str,
+    hole_if: int,
+    offset: tuple[int, int],
+    yaw: int,
+) -> tuple[
+    tuple[tuple[float, float, float, float], tuple[float, float, float]],
+    tuple[tuple[float, float, float, float], tuple[float, float, float]],
+    tuple[int, int],
+]: ...
+
 def create_connection(
     stud_path: str,
     stud_if: int,
@@ -64,6 +77,8 @@ def does_connection_exist(
     hole_path: str,
     hole_if: int,
 ) -> bool: ...
+
+def get_connection_utilization(connection_path: str) -> float: ...
 
 def arrange_parts_on_table(
     parts_to_arrange: list[str],

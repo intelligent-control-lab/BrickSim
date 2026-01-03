@@ -416,12 +416,31 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 		return parts_;
 	}
 
+	decltype(auto) part_at(this auto &&self, const auto &key)
+	    requires(
+	        PartKeys::template contains<std::remove_cvref_t<decltype(key)>>)
+	{
+		return self.parts_.value_of(key);
+	}
+
 	const ConnSegStore &connection_segments() const noexcept {
 		return conn_segs_;
 	}
 
+	decltype(auto) connection_segment_at(this auto &&self, const auto &key)
+	    requires(
+	        ConnSegKeys::template contains<std::remove_cvref_t<decltype(key)>>)
+	{
+		return self.conn_segs_.value_of(key);
+	}
+
 	const ConnBundleStore &connection_bundles() const noexcept {
 		return conn_bundles_;
+	}
+
+	decltype(auto) connection_bundle_at(this auto &&self,
+	                                    const ConnectionEndpoint &ep) {
+		return self.conn_bundles_.at(ep);
 	}
 
 	const DynamicGraph &dynamic_graph() const noexcept {

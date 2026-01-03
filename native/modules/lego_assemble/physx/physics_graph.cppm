@@ -49,7 +49,22 @@ export template <PartLike P> struct PhysicsPartWrapper : SimplePartWrapper<P> {
 	std::vector<InterfaceShapePair> interface_shapes_;
 };
 
-export using PhysicsConnectionSegmentWrapper = SimpleWrapper<ConnectionSegment>;
+export struct PhysicsConnectionSegmentWrapper
+    : SimpleWrapper<ConnectionSegment> {
+	template <class... Args>
+	explicit PhysicsConnectionSegmentWrapper(Args &&...args)
+	    : SimpleWrapper<ConnectionSegment>(std::forward<Args>(args)...) {}
+
+	double utilization() const {
+		return utilization_;
+	}
+
+  private:
+	template <class, class> friend class PhysicsLegoGraph;
+
+	double utilization_{-1.0};
+};
+
 export using PhysicsConnectionBundleWrapper = SimpleWrapper<ConnectionBundle>;
 
 using ContactExclusionPair = UnorderedPair<ActorShapePair>;
@@ -854,8 +869,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 	std::vector<PendingDisassembly> compute_breakages() {
 		std::vector<PendingDisassembly> pending_disassemblies;
-		for (const auto &[cc_id, cc_data_const] : cc_index_.data()) {
-			ComponentData &cc_data = const_cast<ComponentData &>(cc_data_const);
+		for (const auto &[cc_id, _] : cc_index_.data()) {
+			ComponentData &cc_data = cc_index_.data_at(cc_id);
 			if (!cc_data.breakage_system || !cc_data.breakage_state) {
 				continue;
 			}
@@ -863,13 +878,16 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			BreakageState &state = *cc_data.breakage_state;
 			BreakageInput in = prepare_breakage_input<BreakageInput>(cc_data);
 			BreakageSolution sol = breakage_checker_.solve(sys, in, state);
-			if (sol.info.converged) {
-				for (int idx_k = 0; idx_k < sys.num_clutches(); ++idx_k) {
-					if (sol.utilization(idx_k) > 1.0) {
-						ConnSegId csid = sys.clutch_ids().at(idx_k);
-						pending_disassemblies.emplace_back(csid);
-					}
+			for (int idx_k = 0; idx_k < sys.num_clutches(); ++idx_k) {
+				ConnSegId csid = sys.clutch_ids().at(idx_k);
+				double utilization = sol.utilization(idx_k);
+				// Note: <0 means no solution found
+				if (utilization > 1.0) {
+					pending_disassemblies.emplace_back(csid);
 				}
+				PhysicsConnectionSegmentWrapper &csw =
+				    topology_.connection_segment_at(csid);
+				csw.utilization_ = utilization;
 			}
 		}
 		return pending_disassemblies;

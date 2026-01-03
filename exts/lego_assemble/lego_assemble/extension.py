@@ -7,6 +7,9 @@ class LegoExtension(omni.ext.IExt):
         self._init_ui()
 
     def on_shutdown(self):
+        if getattr(self, "_connection_overlay", None) is not None:
+            self._connection_overlay.destroy()
+            self._connection_overlay = None
         if getattr(self, "_assembly_selection", None) is not None:
             self._assembly_selection.destroy()
             self._assembly_selection = None
@@ -37,6 +40,9 @@ class LegoExtension(omni.ext.IExt):
         from lego_assemble.ui.selection_sync import AssemblySelectionSync
         install_toolbar_patches()
         self._assembly_selection = AssemblySelectionSync()
+
+        from lego_assemble.ui.connection_overlay import ConnectionOverlayController
+        self._connection_overlay = ConnectionOverlayController()
 
         from lego_assemble.ui.main_ui import LegoUI
         self._ui = LegoUI()

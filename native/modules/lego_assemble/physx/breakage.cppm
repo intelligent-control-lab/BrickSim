@@ -846,7 +846,7 @@ export class BreakageChecker {
 			// Note we still update the state above even if breakage is disabled
 			// So the state is always up-to-date, and ready for when breakage is enabled again
 			sol.x = VectorXd::Zero(sys.num_vars_);
-			sol.utilization = VectorXd::Zero(sys.num_clutches_);
+			sol.utilization = VectorXd::Constant(sys.num_clutches_, -1.0);
 			// sol.info is default-initialized
 			return sol;
 		}
@@ -861,7 +861,7 @@ export class BreakageChecker {
 			          "r_eq_norm={:.4e}, r_ineq_norm={:.4e}, s_norm={:.4e}",
 			          sol.info.r_eq_norm, sol.info.r_ineq_norm,
 			          sol.info.s_norm);
-			sol.utilization = VectorXd::Zero(sys.num_clutches_);
+			sol.utilization = VectorXd::Constant(sys.num_clutches_, -1.0);
 			dump_debug_data(sys, in, state, sol, b);
 			return sol;
 		}

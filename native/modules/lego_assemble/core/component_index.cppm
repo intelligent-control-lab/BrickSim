@@ -89,6 +89,12 @@ class ComponentIndex<G, type_list<PKs...>, Data> {
 		return data_;
 	}
 
+	decltype(auto) data_at(this auto &&self, ComponentId cid)
+	    requires(HasData)
+	{
+		return self.data_.at(cid);
+	}
+
   private:
 	using DirtyDataSet =
 	    std::conditional_t<HasData, std::unordered_set<ComponentId>,

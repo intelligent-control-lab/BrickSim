@@ -20,11 +20,16 @@ import lego_assemble.vendor;
 namespace lego_assemble::api {
 
 using World = LegoRuntime::World;
+using UsdPartId = World::Bridge::UsdPartId;
+using PhysicsPartId = World::Bridge::PhysicsPartId;
+using UsdConnSegId = World::Bridge::UsdConnSegId;
+using PhysicsConnSegId = World::Bridge::PhysicsConnSegId;
 
 using QuatArray = std::array<double, 4>; // w, x, y, z
 using PosArray = std::array<double, 3>;  // x, y, z
 using PathStr = std::string;
 using BBox2dArray = std::array<double, 4>; // min_x, min_y, max_x, max_y
+using TransformTuple = std::tuple<QuatArray, PosArray>;
 
 World &lego_world() {
 	World *world = LegoRuntime::instance().world();
@@ -96,7 +101,7 @@ Transformd transform_from_arrays(const std::optional<QuatArray> &rot,
 	};
 }
 
-std::tuple<QuatArray, PosArray> transform_to_arrays(const Transformd &T) {
+TransformTuple transform_to_arrays(const Transformd &T) {
 	const auto &[q, t] = T;
 	return {as_array<double>(q), as_array<double, 3>(t)};
 }
@@ -125,8 +130,8 @@ export bool deallocate_part(const PathStr &part_path) {
 	return usd_graph().remove_part(pxr::SdfPath{part_path});
 }
 
-export std::tuple<QuatArray, PosArray>
-compute_graph_transform(const PathStr &a_path, const PathStr &b_path) {
+export TransformTuple compute_graph_transform(const PathStr &a_path,
+                                              const PathStr &b_path) {
 	if (auto result = usd_topology().lookup_transform(pxr::SdfPath{a_path},
 	                                                  pxr::SdfPath{b_path})) {
 		return transform_to_arrays(*result);
@@ -135,7 +140,7 @@ compute_graph_transform(const PathStr &a_path, const PathStr &b_path) {
 	    "No connection path found between parts {} and {}", a_path, b_path));
 }
 
-export std::tuple<QuatArray, PosArray>
+export TransformTuple
 compute_connection_transform(const PathStr &stud_path, InterfaceId stud_if,
                              const PathStr &hole_path, InterfaceId hole_if,
                              const std::array<BrickUnit, 2> &offset, int yaw) {
@@ -149,6 +154,27 @@ compute_connection_transform(const PathStr &stud_path, InterfaceId stud_if,
 	InterfaceSpec hole_spec = usd_topology().interface_spec_at(hole_ref);
 	Transformd T = seg.compute_transform(stud_spec, hole_spec);
 	return transform_to_arrays(T);
+}
+
+export std::tuple<TransformTuple, TransformTuple, std::array<BrickUnit, 2>>
+compute_connection_local_transform(
+    const PathStr &stud_path, InterfaceId stud_if, const PathStr &hole_path,
+    InterfaceId hole_if, const std::array<BrickUnit, 2> &offset, int yaw) {
+	InterfaceRef stud_ref{usd_part_id(stud_path), stud_if};
+	InterfaceRef hole_ref{usd_part_id(hole_path), hole_if};
+	ConnectionSegment seg{
+	    .offset = as<Eigen::Vector2i>(offset),
+	    .yaw = to_c4(yaw),
+	};
+	InterfaceSpec stud_spec = usd_topology().interface_spec_at(stud_ref);
+	InterfaceSpec hole_spec = usd_topology().interface_spec_at(hole_ref);
+	ConnectionLocalTransform T =
+	    seg.compute_local_transform(stud_spec, hole_spec);
+	return {
+	    transform_to_arrays(T.T_stud_local),
+	    transform_to_arrays(T.T_hole_local),
+	    as_array<BrickUnit, 2>(T.overlap),
+	};
 }
 
 export PathStr create_connection(const PathStr &stud_path, InterfaceId stud_if,
@@ -203,7 +229,7 @@ import_lego(const nlohmann::ordered_json &json, std::int64_t env_id,
 	return {std::move(part_paths), std::move(conn_paths)};
 }
 
-export std::unordered_map<std::int64_t, std::tuple<QuatArray, PosArray>>
+export std::unordered_map<std::int64_t, TransformTuple>
 compute_structure_transforms(const nlohmann::ordered_json &json,
                              std::int64_t root) {
 	using Graph = LegoGraph<World::PartTypeList>;
@@ -217,7 +243,7 @@ compute_structure_transforms(const nlohmann::ordered_json &json,
 		pid2jid.emplace(pid, jid);
 	}
 	// Compute transforms
-	std::unordered_map<std::int64_t, std::tuple<QuatArray, PosArray>> result;
+	std::unordered_map<std::int64_t, TransformTuple> result;
 	for (auto [pid_u, T_root_u] :
 	     structure_transforms(g, root, topology.pose_hints, imported.parts)) {
 		std::int64_t jid_u = pid2jid.at(pid_u);
@@ -420,8 +446,6 @@ export BreakageThresholds get_breakage_thresholds() {
 }
 
 std::optional<PathStr> lookup_path_by_physx_pid(PartId physx_pid) {
-	using PhysicsPartId = World::Bridge::PhysicsPartId;
-	using UsdPartId = World::Bridge::UsdPartId;
 	auto *bridge = lego_world().bridge();
 	if (!bridge) {
 		return std::nullopt;
@@ -433,6 +457,36 @@ std::optional<PathStr> lookup_path_by_physx_pid(PartId physx_pid) {
 		return std::nullopt;
 	}
 	return usd_part_path(usd_pid_ptr->value());
+}
+
+export double get_connection_utilization(const PathStr &connection_path) {
+	World &world = lego_world();
+	auto *bridge = world.bridge();
+	if (!bridge) {
+		return -1.0;
+	}
+	auto *physics_graph = lego_world().physics_graph();
+	if (!physics_graph) {
+		// If bridge exists, physics graph should also exist
+		throw std::runtime_error("Physics graph is not available");
+	}
+	const ConnSegId *usd_csid_ptr =
+	    usd_topology().connection_segments().template find_key<ConnSegId>(
+	        pxr::SdfPath{connection_path});
+	if (!usd_csid_ptr) {
+		// No such connection
+		return -1.0;
+	}
+	const PhysicsConnSegId *physics_csid_ptr =
+	    bridge->connection_mapping().find_key<PhysicsConnSegId>(
+	        UsdConnSegId{*usd_csid_ptr});
+	if (!physics_csid_ptr) {
+		// This happens on graph divergence
+		return -1.0;
+	}
+	const auto &csw = physics_graph->topology().connection_segment_at(
+	    physics_csid_ptr->value());
+	return csw.utilization();
 }
 
 export struct AssemblyDebugInfo {

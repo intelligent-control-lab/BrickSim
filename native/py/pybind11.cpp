@@ -43,6 +43,14 @@ PYBIND11_MODULE(_native, m) {
 	      "{}^{stud}T_hole in meters, without modifying USD or the topology. "
 	      "Throws if parts or interfaces are unknown.");
 
+	m.def("compute_connection_local_transform",
+	      &compute_connection_local_transform, pybind11::arg("stud_path"),
+	      pybind11::arg("stud_if"), pybind11::arg("hole_path"),
+	      pybind11::arg("hole_if"), pybind11::arg("offset"),
+	      pybind11::arg("yaw"),
+	      "Compute connection-local frames for the specified connection "
+	      "segment. Returns [T_stud_local, T_hole_local, overlap].");
+
 	m.def("create_connection", &create_connection, pybind11::arg("stud_path"),
 	      pybind11::arg("stud_if"), pybind11::arg("hole_path"),
 	      pybind11::arg("hole_if"), pybind11::arg("offset"),
@@ -100,6 +108,11 @@ PYBIND11_MODULE(_native, m) {
 	      pybind11::arg("hole_path"), pybind11::arg("hole_if"),
 	      "Return true if a connection segment exists between the specified "
 	      "stud and hole interfaces. Throws if either part is unknown.");
+
+	m.def("get_connection_utilization", &get_connection_utilization,
+	      pybind11::arg("connection_path"),
+	      "Get the most recent clutch utilization for the specified managed "
+	      "connection (by USD prim path).");
 
 	m.def("compute_obstacle_regions", &compute_obstacle_regions,
 	      pybind11::arg("obstacle_paths"), pybind11::arg("table_xy"),
