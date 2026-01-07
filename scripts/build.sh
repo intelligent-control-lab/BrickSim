@@ -7,7 +7,7 @@ ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
 # Setup toolchain environment
 "$ROOT_DIR/scripts/setup_toolchain.sh" && source "$ROOT_DIR/_toolchain/env.sh"
 
-BUILD_PROFILE=${1:-Debug}  # or Release, RelWithDebInfo, MinSizeRel
+BUILD_PROFILE=${1:-RelWithDebInfo}  # Debug, Release, RelWithDebInfo, MinSizeRel
 
 SRC="$ROOT_DIR/native"
 BUILD="$SRC/.build/${BUILD_PROFILE}"

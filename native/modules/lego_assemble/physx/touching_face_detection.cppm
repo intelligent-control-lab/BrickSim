@@ -6,6 +6,7 @@ import lego_assemble.core.graph;
 import lego_assemble.utils.transforms;
 import lego_assemble.utils.hash;
 import lego_assemble.utils.bbox;
+import lego_assemble.utils.memory;
 import lego_assemble.vendor;
 
 namespace lego_assemble {
@@ -272,6 +273,11 @@ export void to_json(nlohmann::ordered_json &j, const FaceRef &fr) {
 	    {"face_id", fr.fid},
 	};
 }
+
+export void from_json(const nlohmann::ordered_json &j, FaceRef &fr) {
+	j.at("part_id").get_to(fr.pid);
+	j.at("face_id").get_to(fr.fid);
+}
 } // namespace lego_assemble
 
 namespace std {
@@ -363,7 +369,7 @@ double sat(std::span<const Eigen::Vector2d> poly_a,
 	return min_penetration;
 }
 
-std::generator<std::tuple<const Face &, const Face &>>
+aligned_generator<std::tuple<const Face &, const Face &>>
 coplanar_face_pairs(const LegoFaceBinMap &face_bins) {
 	double dot_threshold = -std::cos(kCoplanarAngleThreshold);
 	for (const auto &[bk_u, f_us] : face_bins) {
@@ -422,8 +428,8 @@ export struct TouchingFacePair {
 };
 
 export template <class G>
-std::generator<TouchingFacePair> detect_touching_faces(const G &g,
-                                                       PartId root) {
+aligned_generator<TouchingFacePair> detect_touching_faces(const G &g,
+                                                          PartId root) {
 	LegoFaceBinMap face_bins;
 	// Broadphase: Collect faces
 	for (auto [u, T_root_u] : g.component_view(root).transforms()) {

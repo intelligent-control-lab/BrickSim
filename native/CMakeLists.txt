@@ -22,7 +22,8 @@ set(CMAKE_CXX_MODULE_STD ON)
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
-add_compile_options("-ftemplate-backtrace-limit=0" "-Wall" "-Wextra" "-Wpedantic" "-Werror")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O3 -g -DNDEBUG" CACHE STRING "" FORCE)
+add_compile_options("-march=x86-64-v3" "-ftemplate-backtrace-limit=0" "-Wall" "-Wextra" "-Wpedantic" "-Werror")
 
 set(SAN_CFLAGS
   "-fsanitize=address,undefined,leak"
@@ -141,6 +142,11 @@ target_sources(_native PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/py/pybind11.cpp")
 target_include_directories(_native BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
 target_link_libraries(_native PRIVATE lego_assemble_modules pybind11::module)
 pybind11_extension(_native)
+
+add_executable(solve_breakage tools/solve_breakage.cpp)
+target_sources(solve_breakage PRIVATE tools/solve_breakage.cpp)
+target_include_directories(solve_breakage BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
+target_link_libraries(solve_breakage PRIVATE lego_assemble_modules)
 
 # Tests
 enable_testing()

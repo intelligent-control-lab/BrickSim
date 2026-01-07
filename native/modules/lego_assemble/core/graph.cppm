@@ -12,6 +12,7 @@ import lego_assemble.utils.unique_set;
 import lego_assemble.utils.dynamic_graph;
 import lego_assemble.utils.typed_id;
 import lego_assemble.utils.transforms;
+import lego_assemble.utils.memory;
 
 namespace lego_assemble {
 
@@ -344,7 +345,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 
 		// Calculates transforms on the fly by traversing the HLT spanning tree.
 		// Complexity: O(N) where N is component size. No cycle checks needed.
-		std::generator<std::pair<PartId, Transformd>> transforms() const {
+		aligned_generator<std::pair<PartId, Transformd>> transforms() const {
 			DgVertexId root_dgid =
 			    g_->parts_.template key_of<DgVertexId>(root_);
 

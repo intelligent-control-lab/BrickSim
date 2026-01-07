@@ -6,7 +6,7 @@ import lego_assemble.core.connections;
 import lego_assemble.core.graph;
 import lego_assemble.physx.touching_face_detection;
 import lego_assemble.physx.polygon_clipping;
-import lego_assemble.physx.admm_solver;
+import lego_assemble.physx.osqp;
 import lego_assemble.utils.transforms;
 import lego_assemble.utils.unordered_pair;
 import lego_assemble.utils.matrix_serialization;
@@ -30,6 +30,7 @@ using Eigen::SparseMatrix;
 using Eigen::Triplet;
 using Eigen::Vector2d;
 using Eigen::Vector3d;
+using Eigen::Vector4d;
 using Eigen::VectorXd;
 using Matrix3Xd = Matrix<double, 3, Dynamic>;
 using Matrix4x3d = Matrix<double, 4, 3>;
@@ -38,6 +39,11 @@ using Matrix6x3d = Matrix<double, 6, 3>;
 using Matrix6x9d = Matrix<double, 6, 9>;
 using MatrixX3d = Matrix<double, Dynamic, 3>;
 using MatrixX4d = Matrix<double, Dynamic, 4>;
+
+using QpSolver = OsqpSolver;
+using QpSolverOptions = OsqpOptions;
+using QpSolverState = OsqpState;
+using QpSolverInfo = OsqpInfo;
 
 struct AreaMoments {
 	Vector2d centroid{Vector2d::Zero()};
@@ -259,14 +265,13 @@ Matrix3d compute_Pi(const Quaterniond &qm, const Quaterniond &qp) {
 	       qm.toRotationMatrix().transpose();
 }
 
-MatrixX3d compute_L(const std::vector<Matrix3d> &I_CC,
-                    const Quaterniond &q_W_CC, const Vector3d &w0) {
-	Map<const Matrix<double, Dynamic, 9, RowMajor>> Iflat{
-	    reinterpret_cast<const double *>(I_CC.data()),
-	    static_cast<Index>(I_CC.size()), 9};
+template <class Derived>
+MatrixX3d compute_L(const MatrixBase<Derived> &Iflat, const Quaterniond &q_W_CC,
+                    const Vector3d &w0) {
 	Vector3d w_CC = q_W_CC.conjugate() * w0;
-	return (Iflat.leftCols<3>() * w_CC.x() + Iflat.middleCols<3>(3) * w_CC.y() +
-	        Iflat.rightCols<3>() * w_CC.z()) *
+	return (Iflat.template leftCols<3>() * w_CC.x() +
+	        Iflat.template middleCols<3>(3) * w_CC.y() +
+	        Iflat.template rightCols<3>() * w_CC.z()) *
 	       q_W_CC.toRotationMatrix().transpose();
 }
 
@@ -297,9 +302,8 @@ export struct BreakageThresholds {
 	double ClutchNormalCompliance{1.0};
 	double ClutchShearCompliance{2.0};
 	double MaxClutchForcePerStud{0.702}; // in N
-	AdmmQpOptions SolverOptions{
-	    .eq_slack_weight = 1e6,
-	};
+	double SlackFractionWarn{0.1};
+	double SlackFractionBFloor{1e-9};
 };
 
 export void to_json(nlohmann::ordered_json &j,
@@ -310,8 +314,21 @@ export void to_json(nlohmann::ordered_json &j,
 	    {"clutch_normal_compliance", thresholds.ClutchNormalCompliance},
 	    {"clutch_shear_compliance", thresholds.ClutchShearCompliance},
 	    {"max_clutch_force_per_stud", thresholds.MaxClutchForcePerStud},
-	    {"solver_options", thresholds.SolverOptions},
+	    {"slack_fraction_warn", thresholds.SlackFractionWarn},
+	    {"slack_fraction_b_floor", thresholds.SlackFractionBFloor},
 	};
+}
+
+export void from_json(const nlohmann::ordered_json &j,
+                      BreakageThresholds &thresholds) {
+	j.at("enabled").get_to(thresholds.Enabled);
+	j.at("contact_normal_compliance")
+	    .get_to(thresholds.ContactNormalCompliance);
+	j.at("clutch_normal_compliance").get_to(thresholds.ClutchNormalCompliance);
+	j.at("clutch_shear_compliance").get_to(thresholds.ClutchShearCompliance);
+	j.at("max_clutch_force_per_stud").get_to(thresholds.MaxClutchForcePerStud);
+	j.at("slack_fraction_warn").get_to(thresholds.SlackFractionWarn);
+	j.at("slack_fraction_b_floor").get_to(thresholds.SlackFractionBFloor);
 }
 
 // FaceRef compares pid then fid,
@@ -380,17 +397,21 @@ export class BreakageSystem {
 		       (q_CC_.rows() == num_parts_) && (q_CC_.cols() == 4) &&
 		       (c_CC_.rows() == num_parts_) && (c_CC_.cols() == 3) &&
 		       (I_CC_.size() == static_cast<std::size_t>(num_parts_)) &&
-		       (characteristic_radius_ > 0.0) &&
+		       (characteristic_radius_sq_ > 0.0) &&
 		       (clutch_half_extents_.size() ==
 		        static_cast<std::size_t>(num_clutches_)) &&
-		       solver_.has_value() && (solver_->num_vars() == num_vars_) &&
-		       (solver_->num_eq() == num_eq_) &&
-		       (solver_->num_ineq() == num_ineq_);
+		       solver_.has_value() && (solver_->A().rows() == num_eq_) &&
+		       (solver_->A().cols() == num_vars_) &&
+		       (solver_->Q().rows() == num_vars_) &&
+		       (solver_->Q().cols() == num_vars_) &&
+		       (solver_->G().rows() == num_ineq_) &&
+		       (solver_->G().cols() == num_vars_);
 	}
 
   private:
 	friend class BreakageChecker;
 	friend void to_json(nlohmann::ordered_json &j, const BreakageSystem &sys);
+	friend void from_json(const nlohmann::ordered_json &j, BreakageSystem &sys);
 
 	int num_parts_{};
 	int num_contacts_{};
@@ -416,12 +437,36 @@ export class BreakageSystem {
 	MatrixX3d c_CC_{};
 	// Inertia tensors in the CC frame, num_parts_ x 3 x 3
 	std::vector<Matrix3d> I_CC_{};
-	// Mass-weighted RMS distance of COMs from c_CC_bar_, in m^2
-	double characteristic_radius_;
+	// Squared characteristic length for regularization, in m^2
+	double characteristic_radius_sq_;
 	// Half extents of the clutch rectangles, in m, num_clutches_ x 2
 	std::vector<Vector2d> clutch_half_extents_{};
 
-	std::optional<AdmmQpSolver> solver_;
+	std::optional<QpSolver> solver_;
+
+	auto I_CC_matrix() const {
+		return Map<const Matrix<double, Dynamic, 9, RowMajor>>{
+		    reinterpret_cast<const double *>(I_CC_.data()),
+		    static_cast<Index>(I_CC_.size()), 9};
+	}
+
+	auto I_CC_matrix() {
+		return Map<Matrix<double, Dynamic, 9, RowMajor>>{
+		    reinterpret_cast<double *>(I_CC_.data()),
+		    static_cast<Index>(I_CC_.size()), 9};
+	}
+
+	auto clutch_half_extents_matrix() const {
+		return Map<const Matrix<double, Dynamic, 2, RowMajor>>{
+		    reinterpret_cast<const double *>(clutch_half_extents_.data()),
+		    static_cast<Index>(clutch_half_extents_.size()), 2};
+	}
+
+	auto clutch_half_extents_matrix() {
+		return Map<Matrix<double, Dynamic, 2, RowMajor>>{
+		    reinterpret_cast<double *>(clutch_half_extents_.data()),
+		    static_cast<Index>(clutch_half_extents_.size()), 2};
+	}
 };
 
 export void to_json(nlohmann::ordered_json &j, const BreakageSystem &sys) {
@@ -442,15 +487,53 @@ export void to_json(nlohmann::ordered_json &j, const BreakageSystem &sys) {
 	    {"mass", matrix_to_json(sys.mass_)},
 	    {"q_CC", matrix_to_json(sys.q_CC_)},
 	    {"c_CC", matrix_to_json(sys.c_CC_)},
-	    {"I_CC", matrix_to_json(Map<const Matrix<double, Dynamic, 9, RowMajor>>{
-	                 reinterpret_cast<const double *>(sys.I_CC_.data()),
-	                 static_cast<Index>(sys.I_CC_.size()), 9})},
-	    {"characteristic_radius", sys.characteristic_radius_},
+	    {"I_CC", matrix_to_json(sys.I_CC_matrix())},
+	    {"characteristic_radius_sq", sys.characteristic_radius_sq_},
 	    {"clutch_half_extents",
-	     matrix_to_json(Map<const Matrix<double, Dynamic, 2, RowMajor>>{
-	         reinterpret_cast<const double *>(sys.clutch_half_extents_.data()),
-	         static_cast<Index>(sys.clutch_half_extents_.size()), 2})},
+	     matrix_to_json(sys.clutch_half_extents_matrix())},
 	};
+}
+
+export void from_json(const nlohmann::ordered_json &j, BreakageSystem &sys) {
+	j.at("num_parts").get_to(sys.num_parts_);
+	j.at("num_contacts").get_to(sys.num_contacts_);
+	j.at("num_clutches").get_to(sys.num_clutches_);
+	j.at("num_vars").get_to(sys.num_vars_);
+	j.at("num_eq").get_to(sys.num_eq_);
+	j.at("num_ineq").get_to(sys.num_ineq_);
+	sys.solver_.emplace(json_to_matrix<SparseMatrix<double>>(j.at("A")),
+	                    json_to_matrix<SparseMatrix<double>>(j.at("Q")),
+	                    json_to_matrix<SparseMatrix<double>>(j.at("G")));
+	j.at("part_ids").get_to(sys.pids_);
+	j.at("contact_pairs").get_to(sys.contact_pairs_);
+	j.at("clutch_ids").get_to(sys.clutches_);
+	j.at("total_mass").get_to(sys.total_mass_);
+	sys.mass_ = json_to_matrix<VectorXd>(j.at("mass"));
+	sys.q_CC_ = json_to_matrix<MatrixX4d>(j.at("q_CC"));
+	sys.c_CC_ = json_to_matrix<MatrixX3d>(j.at("c_CC"));
+	sys.I_CC_.resize(static_cast<std::size_t>(sys.num_parts_));
+	sys.I_CC_matrix() =
+	    json_to_matrix<Matrix<double, Dynamic, 9, RowMajor>>(j.at("I_CC"));
+	j.at("characteristic_radius_sq").get_to(sys.characteristic_radius_sq_);
+	sys.clutch_half_extents_.resize(
+	    static_cast<std::size_t>(sys.num_clutches_));
+	sys.clutch_half_extents_matrix() =
+	    json_to_matrix<Matrix<double, Dynamic, 2, RowMajor>>(
+	        j.at("clutch_half_extents"));
+
+	// Rebuild index maps
+	sys.pid_to_index_.clear();
+	for (int i = 0; i < sys.num_parts_; ++i) {
+		sys.pid_to_index_.emplace(sys.pids_[i], i);
+	}
+	sys.contact_pair_to_index_.clear();
+	for (int i = 0; i < sys.num_contacts_; ++i) {
+		sys.contact_pair_to_index_.emplace(sys.contact_pairs_[i], i);
+	}
+	sys.clutch_to_index_.clear();
+	for (int i = 0; i < sys.num_clutches_; ++i) {
+		sys.clutch_to_index_.emplace(sys.clutches_[i], i);
+	}
 }
 
 export struct BreakageInitialInput {
@@ -481,6 +564,14 @@ export void to_json(nlohmann::ordered_json &j,
 	};
 }
 
+export void from_json(const nlohmann::ordered_json &j,
+                      BreakageInitialInput &input) {
+	input.w = json_to_matrix<MatrixX3d>(j.at("w"));
+	input.v = json_to_matrix<MatrixX3d>(j.at("v"));
+	input.q = json_to_matrix<MatrixX4d>(j.at("q"));
+	input.c = json_to_matrix<MatrixX3d>(j.at("c"));
+}
+
 export struct BreakageInput : public BreakageInitialInput {
 	// Duration of the simulation step, in seconds
 	double dt{};
@@ -502,6 +593,13 @@ export void to_json(nlohmann::ordered_json &j, const BreakageInput &input) {
 	j["H"] = matrix_to_json(input.H);
 }
 
+export void from_json(const nlohmann::ordered_json &j, BreakageInput &input) {
+	from_json(j, static_cast<BreakageInitialInput &>(input));
+	j.at("dt").get_to(input.dt);
+	input.J = json_to_matrix<MatrixX3d>(j.at("J"));
+	input.H = json_to_matrix<MatrixX3d>(j.at("H"));
+}
+
 export class BreakageState {
   public:
 	bool check_shape(const BreakageSystem &sys) const {
@@ -512,31 +610,38 @@ export class BreakageState {
   private:
 	friend class BreakageChecker;
 	friend void to_json(nlohmann::ordered_json &j, const BreakageState &state);
+	friend void from_json(const nlohmann::ordered_json &j,
+	                      BreakageState &state);
 
 	Quaterniond q_W_CC_prev;
 	MatrixX3d v_W_prev;
 	MatrixX3d L_prev;
-	AdmmQpState solver_state;
+	QpSolverState solver_state;
 };
 
 export void to_json(nlohmann::ordered_json &j, const BreakageState &state) {
 	j = nlohmann::ordered_json{
-	    {"q_W_CC_prev", matrix_to_json(state.q_W_CC_prev.coeffs().transpose())},
+	    {"q_W_CC_prev", matrix_to_json(state.q_W_CC_prev.coeffs())},
 	    {"v_W_prev", matrix_to_json(state.v_W_prev)},
 	    {"L_prev", matrix_to_json(state.L_prev)},
 	    {"solver_state", state.solver_state},
 	};
 }
 
+export void from_json(const nlohmann::ordered_json &j, BreakageState &state) {
+	state.q_W_CC_prev.coeffs() = json_to_matrix<Vector4d>(j.at("q_W_CC_prev"));
+	state.v_W_prev = json_to_matrix<MatrixX3d>(j.at("v_W_prev"));
+	state.L_prev = json_to_matrix<MatrixX3d>(j.at("L_prev"));
+	j.at("solver_state").get_to(state.solver_state);
+}
+
 export struct BreakageSolution {
-	// num_vars_ x 1
 	VectorXd x;
-
-	// num_clutches_ x 1, in [0, 1]
 	VectorXd utilization;
+	QpSolverInfo info;
 
-	// QP Solver info
-	AdmmQpInfo info;
+	// ||A*x - b|| / max(||b||, floor)
+	double slack_fraction = 0.0;
 };
 
 export void to_json(nlohmann::ordered_json &j,
@@ -545,7 +650,43 @@ export void to_json(nlohmann::ordered_json &j,
 	    {"x", matrix_to_json(solution.x)},
 	    {"utilization", matrix_to_json(solution.utilization)},
 	    {"info", solution.info},
+	    {"slack_fraction", solution.slack_fraction},
 	};
+}
+
+export void from_json(const nlohmann::ordered_json &j,
+                      BreakageSolution &solution) {
+	solution.x = json_to_matrix<VectorXd>(j.at("x"));
+	solution.utilization = json_to_matrix<VectorXd>(j.at("utilization"));
+	j.at("info").get_to(solution.info);
+	j.at("slack_fraction").get_to(solution.slack_fraction);
+}
+
+export struct BreakageDebugDump {
+	BreakageThresholds thresholds;
+	BreakageSystem system;
+	BreakageInput input;
+	BreakageState state;
+	BreakageSolution solution;
+	VectorXd b;
+};
+
+export void to_json(nlohmann::ordered_json &j, const BreakageDebugDump &dump) {
+	j = nlohmann::ordered_json{
+	    {"thresholds", dump.thresholds}, {"system", dump.system},
+	    {"input", dump.input},           {"state", dump.state},
+	    {"solution", dump.solution},     {"b", matrix_to_json(dump.b)},
+	};
+}
+
+export void from_json(const nlohmann::ordered_json &j,
+                      BreakageDebugDump &dump) {
+	j.at("thresholds").get_to(dump.thresholds);
+	j.at("system").get_to(dump.system);
+	j.at("input").get_to(dump.input);
+	j.at("state").get_to(dump.state);
+	j.at("solution").get_to(dump.solution);
+	dump.b = json_to_matrix<VectorXd>(j.at("b"));
 }
 
 export class BreakageChecker {
@@ -654,7 +795,6 @@ export class BreakageChecker {
 			G.col(0) = VectorXd::Ones(intersection.size());
 			G.block(0, 1, intersection.size(), 2) =
 			    V.rowwise() - m.centroid.transpose();
-			G *= m.area;
 
 			int var_idx = 3 * index_c;
 			add_block_triplets(A_triplets, 6 * index_i, var_idx, A_i);
@@ -730,8 +870,6 @@ export class BreakageChecker {
 			    {1.0, -p.x(), -p.y()},
 			    {1.0, p.x(), -p.y()},
 			};
-			G_block *= m.area * std::sqrt(thresholds.ClutchNormalCompliance /
-			                              thresholds.ContactNormalCompliance);
 			int ineq_idx = sys.num_ineq_;
 			sys.num_ineq_ += 4;
 			add_block_triplets(G_triplets, ineq_idx, var_idx, G_block);
@@ -748,18 +886,17 @@ export class BreakageChecker {
 		A.setFromTriplets(A_triplets.begin(), A_triplets.end());
 		Q.setFromTriplets(Q_triplets.begin(), Q_triplets.end());
 		G.setFromTriplets(G_triplets.begin(), G_triplets.end());
-		sys.solver_ = AdmmQpSolver{std::move(A), std::move(Q), std::move(G),
-		                           thresholds.SolverOptions};
+		sys.solver_.emplace(std::move(A), std::move(Q), std::move(G));
 
 		Vector3d weighted_sum_pos = sys.c_CC_.transpose() * sys.mass_;
 		double weighted_sum_sq_norm =
 		    sys.c_CC_.rowwise().squaredNorm().dot(sys.mass_);
-		sys.characteristic_radius_ =
+		sys.characteristic_radius_sq_ =
 		    (weighted_sum_sq_norm -
 		     weighted_sum_pos.squaredNorm() / sys.total_mass_) /
 		    sys.total_mass_;
-		if (sys.characteristic_radius_ < 1e-6) {
-			sys.characteristic_radius_ = 1e-6;
+		if (sys.characteristic_radius_sq_ < 1e-6) {
+			sys.characteristic_radius_sq_ = 1e-6;
 		}
 
 		if (!sys.check_shape()) {
@@ -779,13 +916,14 @@ export class BreakageChecker {
 		}
 		Transformd T_W_CC_curr =
 		    fit_se3(sys.q_CC_, sys.c_CC_, in.q, in.c, sys.mass_,
-		            sys.total_mass_, sys.characteristic_radius_ / 2.0);
+		            sys.total_mass_, sys.characteristic_radius_sq_ / 2.0);
 		auto &[q_W_CC_curr, t_W_CC_curr] = T_W_CC_curr;
 		TwistFitResult twist_curr =
 		    fit_twist(in.w, in.v, sys.c_CC_, T_W_CC_curr, sys.mass_,
-		              sys.total_mass_, sys.characteristic_radius_);
+		              sys.total_mass_, sys.characteristic_radius_sq_);
 		auto &[w0_curr, v0_curr, v_W_curr] = twist_curr;
-		MatrixX3d L_curr = compute_L(sys.I_CC_, q_W_CC_curr, twist_curr.w0);
+		MatrixX3d L_curr =
+		    compute_L(sys.I_CC_matrix(), q_W_CC_curr, twist_curr.w0);
 		BreakageState state;
 		state.q_W_CC_prev = q_W_CC_curr;
 		state.v_W_prev = std::move(v_W_curr);
@@ -810,13 +948,14 @@ export class BreakageChecker {
 		}
 		Transformd T_W_CC_curr =
 		    fit_se3(sys.q_CC_, sys.c_CC_, in.q, in.c, sys.mass_,
-		            sys.total_mass_, sys.characteristic_radius_ / 2.0);
+		            sys.total_mass_, sys.characteristic_radius_sq_ / 2.0);
 		auto &[q_W_CC_curr, t_W_CC_curr] = T_W_CC_curr;
 		TwistFitResult twist_curr =
 		    fit_twist(in.w, in.v, sys.c_CC_, T_W_CC_curr, sys.mass_,
-		              sys.total_mass_, sys.characteristic_radius_);
+		              sys.total_mass_, sys.characteristic_radius_sq_);
 		auto &[w0_curr, v0_curr, v_W_curr] = twist_curr;
-		MatrixX3d L_curr = compute_L(sys.I_CC_, q_W_CC_curr, twist_curr.w0);
+		MatrixX3d L_curr =
+		    compute_L(sys.I_CC_matrix(), q_W_CC_curr, twist_curr.w0);
 		Index N = sys.num_parts_;
 		VectorXd b;
 		b.resize(6 * N);
@@ -851,24 +990,31 @@ export class BreakageChecker {
 			return sol;
 		}
 
-		// Do not warm start to avoid pollute from previous steps
-		// TODO: consider warm start in the future
-		state.solver_state.clear();
+		sol.info = sys.solver_->solve(b, state.solver_state);
+		sol.x = state.solver_state.x;
+		VectorXd slack = sys.solver_->A() * sol.x - b;
+		sol.slack_fraction =
+		    slack.norm() / std::max(b.norm(), thresholds.SlackFractionBFloor);
 
-		sol.x = sys.solver_->solve(b, state.solver_state, nullptr, &sol.info);
 		if (!sol.info.converged) {
-			log_error("BreakageChecker: ADMM solver did not converge, "
-			          "r_eq_norm={:.4e}, r_ineq_norm={:.4e}, s_norm={:.4e}",
-			          sol.info.r_eq_norm, sol.info.r_ineq_norm,
-			          sol.info.s_norm);
+			log_error(
+			    "BreakageChecker: solver failed to converge, "
+			    "r_eq_norm={:.3e}, r_ineq_norm={:.3e}, r_kkt_norm={:.3e}, "
+			    "eps_eq={:.3e}, eps_ineq={:.3e}, eps_kkt={:.3e}",
+			    sol.info.r_eq_norm, sol.info.r_ineq_norm, sol.info.r_kkt_norm,
+			    sol.info.eps_eq, sol.info.eps_ineq, sol.info.eps_kkt);
 			sol.utilization = VectorXd::Constant(sys.num_clutches_, -1.0);
 			dump_debug_data(sys, in, state, sol, b);
 			return sol;
 		}
 
-		Map<const Matrix<double, Dynamic, 2, RowMajor>> extents{
-		    reinterpret_cast<const double *>(sys.clutch_half_extents_.data()),
-		    sys.num_clutches_, 2};
+		if (sol.slack_fraction > thresholds.SlackFractionWarn) {
+			log_warn("BreakageChecker: abnormally high slack fraction {:.3e}",
+			         sol.slack_fraction);
+			dump_debug_data(sys, in, state, sol, b);
+		}
+
+		auto extents = sys.clutch_half_extents_matrix();
 		Map<const Matrix<double, Dynamic, 9, RowMajor>> Xk{
 		    sol.x.data() + 3 * sys.num_contacts_, sys.num_clutches_, 9};
 		double scale = BrickUnitLength * BrickUnitLength /
@@ -877,6 +1023,7 @@ export class BreakageChecker {
 		    scale *
 		    (Xk.col(0) + Xk.col(1).cwiseAbs().cwiseProduct(extents.col(0)) +
 		     Xk.col(2).cwiseAbs().cwiseProduct(extents.col(1)));
+		sol.utilization = sol.utilization.cwiseMax(0.0);
 
 		return sol;
 	}
@@ -897,13 +1044,8 @@ export class BreakageChecker {
 			return;
 		}
 		debug_data_dumped_ = true;
-		nlohmann::ordered_json j;
-		j["thresholds"] = thresholds;
-		j["system"] = sys;
-		j["input"] = in;
-		j["state"] = state;
-		j["solution"] = sol;
-		j["b"] = matrix_to_json(b);
+		nlohmann::ordered_json j =
+		    BreakageDebugDump{thresholds, sys, in, state, sol, b};
 
 		std::time_t t = std::chrono::system_clock::to_time_t(
 		    std::chrono::system_clock::now());

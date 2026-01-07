@@ -2,32 +2,12 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build Extension (Debug)",
+            "label": "Build Extension (RelWithDebInfo)",
             "type": "shell",
             "command": "bash",
             "args": [
                 "-lc",
-                "${workspaceFolder}/scripts/build.sh"
-            ],
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "problemMatcher": [],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "presentation": {
-                "clear": true
-            }
-        },
-        {
-            "label": "Build Extension (Release)",
-            "type": "shell",
-            "command": "bash",
-            "args": [
-                "-lc",
-                "${workspaceFolder}/scripts/build.sh Release"
+                "${workspaceFolder}/scripts/build.sh RelWithDebInfo"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"
@@ -82,7 +62,7 @@
                     }
                 }
             ],
-            "dependsOn": "Build Extension (Debug)"
+            "dependsOn": "Build Extension (RelWithDebInfo)"
         },
         {
             "label": "Launch IsaacSim & Execute Current File",
@@ -125,7 +105,7 @@
                     }
                 }
             ],
-            "dependsOn": "Build Extension (Debug)"
+            "dependsOn": "Build Extension (RelWithDebInfo)"
         }
     ]
 }

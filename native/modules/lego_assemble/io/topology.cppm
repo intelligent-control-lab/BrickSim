@@ -12,6 +12,7 @@ import lego_assemble.utils.conversions;
 import lego_assemble.utils.transforms;
 import lego_assemble.utils.c4_rotation;
 import lego_assemble.utils.logging;
+import lego_assemble.utils.memory;
 import lego_assemble.vendor;
 
 namespace lego_assemble {
@@ -476,7 +477,7 @@ export template <PartSerializer... Serializers> class TopologySerializer {
 // Watch out: root_id is JSON part id, not PartId
 // Return values are PartId, not JSON part id
 export template <class Graph>
-std::generator<std::pair<PartId, Transformd>> structure_transforms(
+aligned_generator<std::pair<PartId, Transformd>> structure_transforms(
     const Graph &g, std::int64_t root_id,
     std::span<const JsonPoseHint> pose_hints,
     const std::unordered_map<std::int64_t, PartId> &pid_mapping) {
