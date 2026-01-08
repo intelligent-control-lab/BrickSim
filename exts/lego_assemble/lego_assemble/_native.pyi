@@ -128,7 +128,10 @@ class BreakageThresholds:
     contact_normal_compliance: float
     clutch_normal_compliance: float
     clutch_shear_compliance: float
-    max_clutch_force_per_stud: float
+    max_clutch_normal_force: float
+    max_clutch_shear_force: float
+    slack_fraction_warn: float
+    slack_fraction_b_floor: float
 
 def set_breakage_thresholds(thresholds: BreakageThresholds) -> None: ...
 

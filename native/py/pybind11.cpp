@@ -197,8 +197,14 @@ PYBIND11_MODULE(_native, m) {
 	                   &BreakageThresholds::ClutchNormalCompliance)
 	    .def_readwrite("clutch_shear_compliance",
 	                   &BreakageThresholds::ClutchShearCompliance)
-	    .def_readwrite("max_clutch_force_per_stud",
-	                   &BreakageThresholds::MaxClutchForcePerStud)
+	    .def_readwrite("max_clutch_normal_force",
+	                   &BreakageThresholds::MaxClutchNormalForce)
+	    .def_readwrite("max_clutch_shear_force",
+	                   &BreakageThresholds::MaxClutchShearForce)
+	    .def_readwrite("slack_fraction_warn",
+	                   &BreakageThresholds::SlackFractionWarn)
+	    .def_readwrite("slack_fraction_b_floor",
+	                   &BreakageThresholds::SlackFractionBFloor)
 	    .def("__repr__", &repr_breakage_thresholds);
 
 	m.def("set_breakage_thresholds", &set_breakage_thresholds,

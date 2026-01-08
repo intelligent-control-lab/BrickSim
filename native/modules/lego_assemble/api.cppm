@@ -432,9 +432,11 @@ export std::string repr_breakage_thresholds(const BreakageThresholds &t) {
 	return std::format(
 	    "BreakageThresholds(enabled={}, contact_normal_compliance={}, "
 	    "clutch_normal_compliance={}, clutch_shear_compliance={}, "
-	    "max_clutch_force_per_stud={})",
+	    "max_clutch_normal_force={}, max_clutch_shear_force={}, "
+	    "slack_fraction_warn={}, slack_fraction_b_floor={})",
 	    t.Enabled, t.ContactNormalCompliance, t.ClutchNormalCompliance,
-	    t.ClutchShearCompliance, t.MaxClutchForcePerStud);
+	    t.ClutchShearCompliance, t.MaxClutchNormalForce, t.MaxClutchShearForce,
+	    t.SlackFractionWarn, t.SlackFractionBFloor);
 }
 
 export void set_breakage_thresholds(const BreakageThresholds &thr) {
@@ -507,9 +509,8 @@ export struct AssemblyDebugInfo {
 		return std::format(
 		    "AssemblyDebugInfo(accepted={}, relative_distance={}, tilt={}, "
 		    "projected_force={}, yaw_error={}, position_error={}, "
-		    "grid_pos=[{}, {}], "
-		    "grid_pos_snapped=[{}, {}], stud_path='{}', stud_interface={}, "
-		    "hole_path='{}', hole_interface={})",
+		    "grid_pos=[{}, {}], grid_pos_snapped=[{}, {}], stud_path='{}', "
+		    "stud_interface={}, hole_path='{}', hole_interface={})",
 		    accepted, relative_distance, tilt, projected_force, yaw_error,
 		    position_error, grid_pos[0], grid_pos[1], grid_pos_snapped[0],
 		    grid_pos_snapped[1], stud_path, stud_interface, hole_path,

@@ -298,10 +298,11 @@ void add_block_triplets(std::vector<Triplet<double>> &out, int row0, int col0,
 
 export struct BreakageThresholds {
 	bool Enabled{true};
-	double ContactNormalCompliance{1e-3};
+	double ContactNormalCompliance{1e-2};
 	double ClutchNormalCompliance{1.0};
 	double ClutchShearCompliance{2.0};
-	double MaxClutchForcePerStud{0.702}; // in N
+	double MaxClutchNormalForce{0.7}; // in N
+	double MaxClutchShearForce{0.7};  // in N
 	double SlackFractionWarn{0.1};
 	double SlackFractionBFloor{1e-9};
 };
@@ -313,7 +314,8 @@ export void to_json(nlohmann::ordered_json &j,
 	    {"contact_normal_compliance", thresholds.ContactNormalCompliance},
 	    {"clutch_normal_compliance", thresholds.ClutchNormalCompliance},
 	    {"clutch_shear_compliance", thresholds.ClutchShearCompliance},
-	    {"max_clutch_force_per_stud", thresholds.MaxClutchForcePerStud},
+	    {"max_clutch_normal_force", thresholds.MaxClutchNormalForce},
+	    {"max_clutch_shear_force", thresholds.MaxClutchShearForce},
 	    {"slack_fraction_warn", thresholds.SlackFractionWarn},
 	    {"slack_fraction_b_floor", thresholds.SlackFractionBFloor},
 	};
@@ -326,7 +328,8 @@ export void from_json(const nlohmann::ordered_json &j,
 	    .get_to(thresholds.ContactNormalCompliance);
 	j.at("clutch_normal_compliance").get_to(thresholds.ClutchNormalCompliance);
 	j.at("clutch_shear_compliance").get_to(thresholds.ClutchShearCompliance);
-	j.at("max_clutch_force_per_stud").get_to(thresholds.MaxClutchForcePerStud);
+	j.at("max_clutch_normal_force").get_to(thresholds.MaxClutchNormalForce);
+	j.at("max_clutch_shear_force").get_to(thresholds.MaxClutchShearForce);
 	j.at("slack_fraction_warn").get_to(thresholds.SlackFractionWarn);
 	j.at("slack_fraction_b_floor").get_to(thresholds.SlackFractionBFloor);
 }
@@ -637,6 +640,8 @@ export void from_json(const nlohmann::ordered_json &j, BreakageState &state) {
 
 export struct BreakageSolution {
 	VectorXd x;
+	VectorXd u_n;
+	VectorXd u_s;
 	VectorXd utilization;
 	QpSolverInfo info;
 
@@ -648,6 +653,8 @@ export void to_json(nlohmann::ordered_json &j,
                     const BreakageSolution &solution) {
 	j = nlohmann::ordered_json{
 	    {"x", matrix_to_json(solution.x)},
+	    {"u_n", matrix_to_json(solution.u_n)},
+	    {"u_s", matrix_to_json(solution.u_s)},
 	    {"utilization", matrix_to_json(solution.utilization)},
 	    {"info", solution.info},
 	    {"slack_fraction", solution.slack_fraction},
@@ -657,6 +664,8 @@ export void to_json(nlohmann::ordered_json &j,
 export void from_json(const nlohmann::ordered_json &j,
                       BreakageSolution &solution) {
 	solution.x = json_to_matrix<VectorXd>(j.at("x"));
+	solution.u_n = json_to_matrix<VectorXd>(j.at("u_n"));
+	solution.u_s = json_to_matrix<VectorXd>(j.at("u_s"));
 	solution.utilization = json_to_matrix<VectorXd>(j.at("utilization"));
 	j.at("info").get_to(solution.info);
 	j.at("slack_fraction").get_to(solution.slack_fraction);
@@ -1017,13 +1026,26 @@ export class BreakageChecker {
 		auto extents = sys.clutch_half_extents_matrix();
 		Map<const Matrix<double, Dynamic, 9, RowMajor>> Xk{
 		    sol.x.data() + 3 * sys.num_contacts_, sys.num_clutches_, 9};
-		double scale = BrickUnitLength * BrickUnitLength /
-		               thresholds.MaxClutchForcePerStud;
-		sol.utilization =
-		    scale *
+		double normal_scale =
+		    BrickUnitLength * BrickUnitLength / thresholds.MaxClutchNormalForce;
+		sol.u_n =
+		    normal_scale *
 		    (Xk.col(0) + Xk.col(1).cwiseAbs().cwiseProduct(extents.col(0)) +
 		     Xk.col(2).cwiseAbs().cwiseProduct(extents.col(1)));
-		sol.utilization = sol.utilization.cwiseMax(0.0);
+		sol.u_n = sol.u_n.cwiseMax(0.0);
+		double shear_scale =
+		    BrickUnitLength * BrickUnitLength / thresholds.MaxClutchShearForce;
+		VectorXd tau_u = Xk.col(3) +
+		                 Xk.col(4).cwiseAbs().cwiseProduct(extents.col(0)) +
+		                 Xk.col(5).cwiseAbs().cwiseProduct(extents.col(1));
+		VectorXd tau_v = Xk.col(6) +
+		                 Xk.col(7).cwiseAbs().cwiseProduct(extents.col(0)) +
+		                 Xk.col(8).cwiseAbs().cwiseProduct(extents.col(1));
+		sol.u_s =
+		    shear_scale *
+		    (tau_u.array().square() + tau_v.array().square()).sqrt().matrix();
+		sol.u_s = sol.u_s.cwiseMax(0.0);
+		sol.utilization = sol.u_n.cwiseMax(sol.u_s);
 
 		return sol;
 	}
