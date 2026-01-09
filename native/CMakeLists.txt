@@ -48,8 +48,7 @@ find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
 
 set(PYBIND11_VERSION 2.12.0)
 set(PYBIND11_FINDPYTHON ON CACHE BOOL "Use CMake FindPython in pybind11")
-FetchContent_Declare(
-  pybind11
+FetchContent_Declare(pybind11 SYSTEM
   URL https://github.com/pybind/pybind11/archive/refs/tags/v${PYBIND11_VERSION}.tar.gz
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
@@ -59,7 +58,7 @@ set(EIGEN_VERSION 5.0.0)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
 set(EIGEN_BUILD_PKGCONFIG OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(eigen
+FetchContent_Declare(eigen SYSTEM
   GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
   GIT_TAG        ${EIGEN_VERSION}
   GIT_SHALLOW    TRUE
@@ -67,7 +66,9 @@ FetchContent_Declare(eigen
 )
 FetchContent_MakeAvailable(eigen) # defines Eigen3::Eigen
 
-FetchContent_Declare(nlohmann_json URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz)
+FetchContent_Declare(nlohmann_json SYSTEM
+  URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+)
 FetchContent_MakeAvailable(nlohmann_json)
 
 include(SdkPatches)

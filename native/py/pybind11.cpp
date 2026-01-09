@@ -6,7 +6,7 @@ import lego_assemble.api;
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "pybind11_json.hpp"
+#include "pybind11_json.hpp" // IWYU pragma: keep
 
 using namespace lego_assemble::api;
 

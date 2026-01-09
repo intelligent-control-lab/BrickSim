@@ -24,7 +24,7 @@
     "cmake.sourceDirectory": "${workspaceFolder}/native",
     "cmake.useCMakePresets": "always",
     "cmake.configureOnEdit": true,
-    "clangd.path": "${workspaceFolder}/_toolchain/llvm-22+0246f33/bin/clangd",
+    "clangd.path": "${workspaceFolder}/_toolchain/clangd-wrapper.sh",
     "clangd.arguments": [
         "--compile-commands-dir=${workspaceFolder}/native/.build/dev",
         "--header-insertion=never",

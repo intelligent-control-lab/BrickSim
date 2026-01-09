@@ -168,6 +168,16 @@ if [[ -z "\${LEGO_TC_DIR:-}" ]]; then
 fi
 EOF
 
+### Generate clangd-wrapper.sh
+CLANGD_WRAPPER_PATH="$TC_DIR/clangd-wrapper.sh"
+cat > "$CLANGD_WRAPPER_PATH" << EOF
+#!/usr/bin/env bash
+SCRIPT_DIR=\$(cd -- "\$(dirname -- "\$0")" && pwd -P)
+source "\$SCRIPT_DIR/env.sh"
+exec "\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/clangd" "\$@"
+EOF
+chmod +x "$CLANGD_WRAPPER_PATH"
+
 ### Generate CMakePresets.json
 cat > "$ROOT_DIR/native/CMakePresets.json" <<JSON
 {
