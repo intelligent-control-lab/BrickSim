@@ -445,7 +445,7 @@ export class BreakageSystem {
 	// Half extents of the clutch rectangles, in m, num_clutches_ x 2
 	std::vector<Vector2d> clutch_half_extents_{};
 
-	std::optional<QpSolver> solver_;
+	std::optional<QpSolver> solver_{};
 
 	auto I_CC_matrix() const {
 		return Map<const Matrix<double, Dynamic, 9, RowMajor>>{
@@ -541,13 +541,13 @@ export void from_json(const nlohmann::ordered_json &j, BreakageSystem &sys) {
 
 export struct BreakageInitialInput {
 	// Angular velocities of COMs, in rad/s, num_parts_ x 3
-	MatrixX3d w;
+	MatrixX3d w{};
 	// Linear velocities of COMs, in m/s, num_parts_ x 3
-	MatrixX3d v;
+	MatrixX3d v{};
 	// Orientations, as quaternions, each row is x,y,z,w, num_parts_ x 4
-	MatrixX4d q;
+	MatrixX4d q{};
 	// COM positions, in m, num_parts_ x 3
-	MatrixX3d c;
+	MatrixX3d c{};
 
 	bool check_shape(const BreakageSystem &sys) const {
 		return (w.rows() == sys.num_parts()) && (w.cols() == 3) &&
@@ -579,9 +579,9 @@ export struct BreakageInput : public BreakageInitialInput {
 	// Duration of the simulation step, in seconds
 	double dt{};
 	// External linear impulses w.r.t. COMs, in Ns, num_parts_ x 3
-	MatrixX3d J;
+	MatrixX3d J{};
 	// External angular impulses w.r.t. COMs, in Ns*m, num_parts_ x 3
-	MatrixX3d H;
+	MatrixX3d H{};
 
 	bool check_shape(const BreakageSystem &sys) const {
 		return (dt > 0.0) && (J.rows() == sys.num_parts()) && (J.cols() == 3) &&
@@ -616,10 +616,10 @@ export class BreakageState {
 	friend void from_json(const nlohmann::ordered_json &j,
 	                      BreakageState &state);
 
-	Quaterniond q_W_CC_prev;
-	MatrixX3d v_W_prev;
-	MatrixX3d L_prev;
-	QpSolverState solver_state;
+	Quaterniond q_W_CC_prev{};
+	MatrixX3d v_W_prev{};
+	MatrixX3d L_prev{};
+	QpSolverState solver_state{};
 };
 
 export void to_json(nlohmann::ordered_json &j, const BreakageState &state) {
@@ -639,14 +639,14 @@ export void from_json(const nlohmann::ordered_json &j, BreakageState &state) {
 }
 
 export struct BreakageSolution {
-	VectorXd x;
-	VectorXd u_n;
-	VectorXd u_s;
-	VectorXd utilization;
-	QpSolverInfo info;
+	VectorXd x{};
+	VectorXd u_n{};
+	VectorXd u_s{};
+	VectorXd utilization{};
+	QpSolverInfo info{};
 
 	// ||A*x - b|| / max(||b||, floor)
-	double slack_fraction = 0.0;
+	double slack_fraction{};
 };
 
 export void to_json(nlohmann::ordered_json &j,
@@ -672,12 +672,13 @@ export void from_json(const nlohmann::ordered_json &j,
 }
 
 export struct BreakageDebugDump {
-	BreakageThresholds thresholds;
-	BreakageSystem system;
-	BreakageInput input;
-	BreakageState state;
-	BreakageSolution solution;
-	VectorXd b;
+	BreakageThresholds thresholds{};
+	BreakageSystem system{};
+	BreakageInput input{};
+	BreakageState state{};
+	BreakageSolution solution{};
+	VectorXd b{};
+	std::optional<BreakageState> prev_state{};
 };
 
 export void to_json(nlohmann::ordered_json &j, const BreakageDebugDump &dump) {
@@ -686,6 +687,9 @@ export void to_json(nlohmann::ordered_json &j, const BreakageDebugDump &dump) {
 	    {"input", dump.input},           {"state", dump.state},
 	    {"solution", dump.solution},     {"b", matrix_to_json(dump.b)},
 	};
+	if (dump.prev_state.has_value()) {
+		j["prev_state"] = *dump.prev_state;
+	}
 }
 
 export void from_json(const nlohmann::ordered_json &j,
@@ -696,13 +700,17 @@ export void from_json(const nlohmann::ordered_json &j,
 	j.at("state").get_to(dump.state);
 	j.at("solution").get_to(dump.solution);
 	dump.b = json_to_matrix<VectorXd>(j.at("b"));
+	if (j.contains("prev_state")) {
+		dump.prev_state.emplace();
+		j.at("prev_state").get_to(*dump.prev_state);
+	}
 }
 
 export class BreakageChecker {
   public:
 	BreakageThresholds thresholds;
 
-	BreakageChecker(BreakageThresholds thresholds = {})
+	BreakageChecker(const BreakageThresholds &thresholds = {})
 	    : thresholds{thresholds} {}
 
 	template <class Graph>
@@ -980,12 +988,11 @@ export class BreakageChecker {
 		    Pi.transpose() / in.dt;
 		b_mat.rightCols<3>() =
 		    ((L_curr - L_prev - in.H) * Pi.transpose()) / in.dt;
-		state.q_W_CC_prev = q_W_CC_curr;
-		state.v_W_prev = std::move(v_W_curr);
-		state.L_prev = std::move(L_curr);
-		if (!state.check_shape(sys)) {
-			throw std::runtime_error(
-			    "solve_breakage: invalid state after update");
+
+		std::unique_ptr<BreakageState> prev_state;
+		if (manual_dump_) {
+			// Only snapshot previous state if manual dump is enabled
+			prev_state = std::make_unique<BreakageState>(state);
 		}
 
 		BreakageSolution sol;
@@ -1004,6 +1011,14 @@ export class BreakageChecker {
 		VectorXd slack = sys.solver_->A() * sol.x - b;
 		sol.slack_fraction =
 		    slack.norm() / std::max(b.norm(), thresholds.SlackFractionBFloor);
+
+		state.q_W_CC_prev = q_W_CC_curr;
+		state.v_W_prev = std::move(v_W_curr);
+		state.L_prev = std::move(L_curr);
+		if (!state.check_shape(sys)) {
+			throw std::runtime_error(
+			    "solve_breakage: invalid state after update");
+		}
 
 		if (sol.info.converged) {
 			auto extents = sys.clutch_half_extents_matrix();
@@ -1037,7 +1052,7 @@ export class BreakageChecker {
 			sol.utilization = VectorXd::Constant(sys.num_clutches_, -1.0);
 		}
 
-		bool dump = false;
+		bool error = false;
 		if (!sol.info.converged) {
 			log_error(
 			    "BreakageChecker: solver failed to converge, "
@@ -1045,24 +1060,22 @@ export class BreakageChecker {
 			    "eps_eq={:.3e}, eps_ineq={:.3e}, eps_kkt={:.3e}",
 			    sol.info.r_eq_norm, sol.info.r_ineq_norm, sol.info.r_kkt_norm,
 			    sol.info.eps_eq, sol.info.eps_ineq, sol.info.eps_kkt);
-			if (!dumped_on_error_) {
-				dump = true;
-				dumped_on_error_ = true;
-			}
+			error = true;
 		} else if (sol.slack_fraction > thresholds.SlackFractionWarn) {
 			log_warn("BreakageChecker: abnormally high slack fraction {:.3e}",
 			         sol.slack_fraction);
-			dump_debug_data(sys, in, state, sol, b);
-			if (!dumped_on_error_) {
-				dump = true;
-				dumped_on_error_ = true;
-			}
+			error = true;
+		}
+		bool dump = false;
+		if (error && !dumped_on_error_) {
+			dump = true;
+			dumped_on_error_ = true;
 		}
 		if (manual_dump_) {
 			dump = true;
 		}
 		if (dump) {
-			dump_debug_data(sys, in, state, sol, b);
+			dump_debug_data(sys, in, state, sol, b, std::move(prev_state));
 		}
 
 		return sol;
@@ -1083,9 +1096,20 @@ export class BreakageChecker {
 
 	void dump_debug_data(const BreakageSystem &sys, const BreakageInput &in,
 	                     const BreakageState &state,
-	                     const BreakageSolution &sol, const VectorXd &b) const {
-		nlohmann::ordered_json j =
-		    BreakageDebugDump{thresholds, sys, in, state, sol, b};
+	                     const BreakageSolution &sol, const VectorXd &b,
+	                     std::unique_ptr<BreakageState> prev_state) const {
+		BreakageDebugDump dump{
+		    .thresholds = thresholds,
+		    .system = sys,
+		    .input = in,
+		    .state = state,
+		    .solution = sol,
+		    .b = b,
+		};
+		if (prev_state) {
+			dump.prev_state.emplace(std::move(*prev_state));
+		}
+		nlohmann::ordered_json j = dump;
 
 		std::time_t t = std::chrono::system_clock::to_time_t(
 		    std::chrono::system_clock::now());
