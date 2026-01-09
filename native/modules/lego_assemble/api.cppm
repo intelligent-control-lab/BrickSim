@@ -447,6 +447,14 @@ export BreakageThresholds get_breakage_thresholds() {
 	return LegoRuntime::instance().get_breakage_thresholds();
 }
 
+export void enable_breakage_debug_dump(bool enable) {
+	auto *physics_graph = lego_world().physics_graph();
+	if (!physics_graph) {
+		throw std::runtime_error("Physics graph is not available");
+	}
+	physics_graph->breakage_checker().enable_manual_debug_dump(enable);
+}
+
 std::optional<PathStr> lookup_path_by_physx_pid(PartId physx_pid) {
 	auto *bridge = lego_world().bridge();
 	if (!bridge) {

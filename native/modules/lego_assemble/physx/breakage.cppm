@@ -1005,6 +1005,39 @@ export class BreakageChecker {
 		sol.slack_fraction =
 		    slack.norm() / std::max(b.norm(), thresholds.SlackFractionBFloor);
 
+		if (sol.info.converged) {
+			auto extents = sys.clutch_half_extents_matrix();
+			Map<const Matrix<double, Dynamic, 9, RowMajor>> Xk{
+			    sol.x.data() + 3 * sys.num_contacts_, sys.num_clutches_, 9};
+			double normal_scale = BrickUnitLength * BrickUnitLength /
+			                      thresholds.MaxClutchNormalForce;
+			sol.u_n =
+			    normal_scale *
+			    (Xk.col(0) + Xk.col(1).cwiseAbs().cwiseProduct(extents.col(0)) +
+			     Xk.col(2).cwiseAbs().cwiseProduct(extents.col(1)));
+			sol.u_n = sol.u_n.cwiseMax(0.0);
+			double shear_scale = BrickUnitLength * BrickUnitLength /
+			                     thresholds.MaxClutchShearForce;
+			VectorXd tau_u = Xk.col(3) +
+			                 Xk.col(4).cwiseAbs().cwiseProduct(extents.col(0)) +
+			                 Xk.col(5).cwiseAbs().cwiseProduct(extents.col(1));
+			VectorXd tau_v = Xk.col(6) +
+			                 Xk.col(7).cwiseAbs().cwiseProduct(extents.col(0)) +
+			                 Xk.col(8).cwiseAbs().cwiseProduct(extents.col(1));
+			sol.u_s =
+			    shear_scale * (tau_u.array().square() + tau_v.array().square())
+			                      .sqrt()
+			                      .matrix();
+			sol.u_s = sol.u_s.cwiseMax(0.0);
+			sol.utilization = sol.u_n.cwiseMax(sol.u_s);
+
+		} else {
+			sol.u_n = VectorXd::Constant(sys.num_clutches_, -1.0);
+			sol.u_s = VectorXd::Constant(sys.num_clutches_, -1.0);
+			sol.utilization = VectorXd::Constant(sys.num_clutches_, -1.0);
+		}
+
+		bool dump = false;
 		if (!sol.info.converged) {
 			log_error(
 			    "BreakageChecker: solver failed to converge, "
@@ -1012,40 +1045,25 @@ export class BreakageChecker {
 			    "eps_eq={:.3e}, eps_ineq={:.3e}, eps_kkt={:.3e}",
 			    sol.info.r_eq_norm, sol.info.r_ineq_norm, sol.info.r_kkt_norm,
 			    sol.info.eps_eq, sol.info.eps_ineq, sol.info.eps_kkt);
-			sol.utilization = VectorXd::Constant(sys.num_clutches_, -1.0);
-			dump_debug_data(sys, in, state, sol, b);
-			return sol;
-		}
-
-		if (sol.slack_fraction > thresholds.SlackFractionWarn) {
+			if (!dumped_on_error_) {
+				dump = true;
+				dumped_on_error_ = true;
+			}
+		} else if (sol.slack_fraction > thresholds.SlackFractionWarn) {
 			log_warn("BreakageChecker: abnormally high slack fraction {:.3e}",
 			         sol.slack_fraction);
 			dump_debug_data(sys, in, state, sol, b);
+			if (!dumped_on_error_) {
+				dump = true;
+				dumped_on_error_ = true;
+			}
 		}
-
-		auto extents = sys.clutch_half_extents_matrix();
-		Map<const Matrix<double, Dynamic, 9, RowMajor>> Xk{
-		    sol.x.data() + 3 * sys.num_contacts_, sys.num_clutches_, 9};
-		double normal_scale =
-		    BrickUnitLength * BrickUnitLength / thresholds.MaxClutchNormalForce;
-		sol.u_n =
-		    normal_scale *
-		    (Xk.col(0) + Xk.col(1).cwiseAbs().cwiseProduct(extents.col(0)) +
-		     Xk.col(2).cwiseAbs().cwiseProduct(extents.col(1)));
-		sol.u_n = sol.u_n.cwiseMax(0.0);
-		double shear_scale =
-		    BrickUnitLength * BrickUnitLength / thresholds.MaxClutchShearForce;
-		VectorXd tau_u = Xk.col(3) +
-		                 Xk.col(4).cwiseAbs().cwiseProduct(extents.col(0)) +
-		                 Xk.col(5).cwiseAbs().cwiseProduct(extents.col(1));
-		VectorXd tau_v = Xk.col(6) +
-		                 Xk.col(7).cwiseAbs().cwiseProduct(extents.col(0)) +
-		                 Xk.col(8).cwiseAbs().cwiseProduct(extents.col(1));
-		sol.u_s =
-		    shear_scale *
-		    (tau_u.array().square() + tau_v.array().square()).sqrt().matrix();
-		sol.u_s = sol.u_s.cwiseMax(0.0);
-		sol.utilization = sol.u_n.cwiseMax(sol.u_s);
+		if (manual_dump_) {
+			dump = true;
+		}
+		if (dump) {
+			dump_debug_data(sys, in, state, sol, b);
+		}
 
 		return sol;
 	}
@@ -1054,18 +1072,18 @@ export class BreakageChecker {
 		debug_dump_dir_ = std::move(dir);
 	}
 
+	void enable_manual_debug_dump(bool enable) {
+		manual_dump_ = enable;
+	}
+
   private:
 	std::string debug_dump_dir_;
-	mutable bool debug_data_dumped_{false};
+	bool manual_dump_{false};
+	mutable bool dumped_on_error_{false};
 
 	void dump_debug_data(const BreakageSystem &sys, const BreakageInput &in,
 	                     const BreakageState &state,
 	                     const BreakageSolution &sol, const VectorXd &b) const {
-		// Only dump once per BreakageChecker instance
-		if (debug_data_dumped_ || debug_dump_dir_.empty()) {
-			return;
-		}
-		debug_data_dumped_ = true;
 		nlohmann::ordered_json j =
 		    BreakageDebugDump{thresholds, sys, in, state, sol, b};
 
@@ -1074,10 +1092,15 @@ export class BreakageChecker {
 		std::tm tm = *std::localtime(&t);
 		char ts[32];
 		std::strftime(ts, sizeof(ts), "%Y%m%d_%H%M%S", &tm);
-		std::string filename = std::string("breakage_debug_") + ts + ".json";
 
-		std::filesystem::path filepath =
-		    std::filesystem::path(debug_dump_dir_) / filename;
+		std::filesystem::path out_dir{debug_dump_dir_};
+		std::string filename = std::format("breakage_debug_{}.json", ts);
+		std::filesystem::path filepath = out_dir / filename;
+		for (int seq = 1; std::filesystem::exists(filepath); ++seq) {
+			filename = std::format("breakage_debug_{}_{}.json", ts, seq);
+			filepath = out_dir / filename;
+		}
+
 		std::ofstream ofs(filepath);
 		if (!ofs) {
 			log_error("BreakageChecker: failed to open debug dump file {}",

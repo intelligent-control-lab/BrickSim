@@ -214,6 +214,10 @@ PYBIND11_MODULE(_native, m) {
 	m.def("get_breakage_thresholds", &get_breakage_thresholds,
 	      "Get the current breakage detection thresholds.");
 
+	m.def("enable_breakage_debug_dump", &enable_breakage_debug_dump,
+	      pybind11::arg("enable"),
+	      "Enable or disable manual breakage debug data dumping.");
+
 	pybind11::class_<AssemblyDebugInfo>(m, "AssemblyDebugInfo",
 	                                    "Debug information for assembly "
 	                                    "detection of a connection segment.")

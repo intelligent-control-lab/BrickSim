@@ -3,9 +3,8 @@ import math
 import asyncio
 import json
 import carb
-import omni.ui
+import omni.ui # type: ignore
 from lego_assemble.colors import parse_color, Colors
-from lego_assemble.ui.force_monitor import ForceMonitor
 from lego_assemble.utils import kit_runner
 from lego_assemble._native import (
     allocate_brick_part,
@@ -17,6 +16,7 @@ from lego_assemble._native import (
     get_breakage_thresholds,
     set_breakage_thresholds,
     arrange_parts_in_workspace,
+    enable_breakage_debug_dump,
 )
 from lego_assemble.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
 from lego_assemble.importers.legolization import legolization_json_to_topology_json, is_legolization_json
@@ -35,10 +35,7 @@ class LegoUI():
             _HOT_RELOAD_SETTING, self._on_hot_reload_setting_changed
         )
         with self._window.frame:
-            # Split the window into two vertical panels: left = original settings,
-            # middle = inv mass/inertia settings, right = live monitor.
             with omni.ui.HStack(height=0, spacing=15):
-                # Left: existing controls
                 with omni.ui.VStack(height=0, spacing=5):
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Length:", width=100)
@@ -73,9 +70,7 @@ class LegoUI():
                     enabled = bool(self._settings.get(_HOT_RELOAD_SETTING))
                     self._hot_reload_button.visible = enabled
 
-                # Middle: thresholds (top) + inv mass/inertia scale settings (bottom)
                 with omni.ui.VStack(height=0, spacing=8):
-                    # Read current native thresholds and use them to initialize the UI
                     _thr = get_assembly_thresholds()
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Enable assembly check", width=140)
@@ -128,6 +123,7 @@ class LegoUI():
                             lambda m: self._set_threshold("position_tolerance", float(m.as_float))
                         )
 
+                with omni.ui.VStack(height=0, spacing=8):
                     _bthr = get_breakage_thresholds()
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Enable breakage check", width=140)
@@ -174,10 +170,7 @@ class LegoUI():
                             lambda m: self._set_breakage_threshold("max_clutch_shear_force", float(m.as_float))
                         )
 
-                # TODO: currently disabled
-                # # Right: monitoring column (delegated)
-                # with omni.ui.VStack(height=0, spacing=5):
-                #     self._monitor = ForceMonitor()
+                    omni.ui.Button("Dump", clicked_fn=lambda: self._trigger_breakage_dump())
 
     def destroy(self):
         # self._monitor.destroy()
@@ -299,3 +292,23 @@ class LegoUI():
             kit_runner.rerun()
         except Exception as exc:
             carb.log_error(f"Hot reload failed: {exc}")
+
+    def _trigger_breakage_dump(self):
+        try:
+            enable_breakage_debug_dump(True)
+            carb.log_info("Breakage debug dump enabled.")
+        except Exception as exc:
+            carb.log_error(f"Failed to enable breakage debug dump: {exc}")
+            return
+        self._breakage_dump_sub = omni.kit.app.get_app().get_update_event_stream() \
+            .create_subscription_to_pop(self._breakage_dump_reset)
+
+    def _breakage_dump_reset(self, *args):
+        try:
+            enable_breakage_debug_dump(False)
+            carb.log_info("Breakage debug dump disabled.")
+        except Exception as exc:
+            carb.log_error(f"Failed to disable breakage debug dump: {exc}")
+        if self._breakage_dump_sub is not None:
+            self._breakage_dump_sub.unsubscribe()
+            self._breakage_dump_sub = None
