@@ -47,9 +47,9 @@ scripts/build.sh
 pip install -e exts/lego_assemble -v
 ```
 
-### Launch Isaac Sim
+### Launch Demo
 ```bash
-scripts/launch_isaacsim.sh
+./scripts/launch_isaacsim.sh demos/demo_assembly.py
 ```
 
 ### VS Code Setup (optional)
