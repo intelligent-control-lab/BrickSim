@@ -155,19 +155,18 @@ class LegoUI():
                             lambda m: self._set_breakage_threshold("clutch_shear_compliance", float(m.as_float))
                         )
                     with omni.ui.HStack(spacing=10):
-                        omni.ui.Label("Max clutch normal force:", width=140)
-                        self._max_clutch_force_field = omni.ui.FloatDrag(min=0.0, max=100.0)
-                        self._max_clutch_force_field.model.set_value(float(_bthr.max_clutch_normal_force))
-                        self._max_clutch_force_field.model.add_value_changed_fn(
-                            lambda m: self._set_breakage_threshold("max_clutch_normal_force", float(m.as_float))
+                        omni.ui.Label("Friction coefficient:", width=140)
+                        self._friction_coefficient_field = omni.ui.FloatDrag(min=0.0, max=100.0)
+                        self._friction_coefficient_field.model.set_value(float(_bthr.friction_coefficient))
+                        self._friction_coefficient_field.model.add_value_changed_fn(
+                            lambda m: self._set_breakage_threshold("friction_coefficient", float(m.as_float))
                         )
-
                     with omni.ui.HStack(spacing=10):
-                        omni.ui.Label("Max clutch shear force:", width=140)
-                        self._max_clutch_shear_force_field = omni.ui.FloatDrag(min=0.0, max=100.0)
-                        self._max_clutch_shear_force_field.model.set_value(float(_bthr.max_clutch_shear_force))
-                        self._max_clutch_shear_force_field.model.add_value_changed_fn(
-                            lambda m: self._set_breakage_threshold("max_clutch_shear_force", float(m.as_float))
+                        omni.ui.Label("Preloaded force:", width=140)
+                        self._preloaded_force_field = omni.ui.FloatDrag(min=0.0, max=100.0)
+                        self._preloaded_force_field.model.set_value(float(_bthr.preloaded_force))
+                        self._preloaded_force_field.model.add_value_changed_fn(
+                            lambda m: self._set_breakage_threshold("preloaded_force", float(m.as_float))
                         )
 
                     omni.ui.Button("Dump", clicked_fn=lambda: self._trigger_breakage_dump())

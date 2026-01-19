@@ -49,7 +49,7 @@ PYBIND11_MODULE(_native, m) {
 	      pybind11::arg("hole_if"), pybind11::arg("offset"),
 	      pybind11::arg("yaw"),
 	      "Compute connection-local frames for the specified connection "
-	      "segment. Returns [T_stud_local, T_hole_local, overlap].");
+	      "segment. Returns [T_stud_local, T_hole_local].");
 
 	m.def("create_connection", &create_connection, pybind11::arg("stud_path"),
 	      pybind11::arg("stud_if"), pybind11::arg("hole_path"),
@@ -197,10 +197,9 @@ PYBIND11_MODULE(_native, m) {
 	                   &BreakageThresholds::ClutchNormalCompliance)
 	    .def_readwrite("clutch_shear_compliance",
 	                   &BreakageThresholds::ClutchShearCompliance)
-	    .def_readwrite("max_clutch_normal_force",
-	                   &BreakageThresholds::MaxClutchNormalForce)
-	    .def_readwrite("max_clutch_shear_force",
-	                   &BreakageThresholds::MaxClutchShearForce)
+	    .def_readwrite("friction_coefficient",
+	                   &BreakageThresholds::FrictionCoefficient)
+	    .def_readwrite("preloaded_force", &BreakageThresholds::PreloadedForce)
 	    .def_readwrite("slack_fraction_warn",
 	                   &BreakageThresholds::SlackFractionWarn)
 	    .def_readwrite("slack_fraction_b_floor",

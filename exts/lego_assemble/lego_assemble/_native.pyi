@@ -34,7 +34,6 @@ def compute_connection_local_transform(
 ) -> tuple[
     tuple[tuple[float, float, float, float], tuple[float, float, float]],
     tuple[tuple[float, float, float, float], tuple[float, float, float]],
-    tuple[int, int],
 ]: ...
 
 def create_connection(
@@ -128,8 +127,8 @@ class BreakageThresholds:
     contact_normal_compliance: float
     clutch_normal_compliance: float
     clutch_shear_compliance: float
-    max_clutch_normal_force: float
-    max_clutch_shear_force: float
+    friction_coefficient: float
+    preloaded_force: float
     slack_fraction_warn: float
     slack_fraction_b_floor: float
 

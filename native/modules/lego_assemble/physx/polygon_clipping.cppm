@@ -1,14 +1,10 @@
 export module lego_assemble.physx.polygon_clipping;
 
 import std;
+import lego_assemble.utils.math;
 import lego_assemble.vendor;
 
 namespace lego_assemble {
-
-// 2D cross product (scalar z-component).
-double cross2(const Eigen::Vector2d &a, const Eigen::Vector2d &b) {
-	return a.x() * b.y() - a.y() * b.x();
-}
 
 bool near2(const Eigen::Vector2d &a, const Eigen::Vector2d &b, double eps) {
 	return (a - b).squaredNorm() <= eps * eps;

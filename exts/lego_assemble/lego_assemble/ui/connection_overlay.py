@@ -51,7 +51,7 @@ class _ConnectionOverlayManipulator(omni.ui.scene.Manipulator):
         if not stud_prim.IsValid():
             return None
         try:
-            (_, stud_pos_m), (_, _), _ = compute_connection_local_transform(stud_path=stud_path_str, stud_if=stud_if, hole_path=hole_path_str, hole_if=hole_if, offset=offset, yaw=yaw)
+            (_, stud_pos_m), (_, _) = compute_connection_local_transform(stud_path=stud_path_str, stud_if=stud_if, hole_path=hole_path_str, hole_if=hole_if, offset=offset, yaw=yaw)
         except Exception:
             traceback.print_exc()
             return None

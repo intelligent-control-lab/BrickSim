@@ -18,7 +18,7 @@ export struct OsqpOptions {
 	// weight on slack (equality) variables
 	double lambda_eq{1.0e6};
 	// small diagonal added to Q for SPD
-	double diag_reg{1.0e-12};
+	double diag_reg{1.0e-6};
 
 	// --- ADMM parameters
 	double rho_eq{1.0e6};
@@ -584,10 +584,11 @@ export class OsqpSolver {
 	}
 
 	// -------------------- Residuals / tolerances (original space) --------------------
-	double calc_eps_eq_(const VectorXd &x, const VectorXd &b) const {
-		VectorXd Ax = A0_ * x;
+	double calc_eps_eq_(const VectorXd &x, const VectorXd &s,
+	                    const VectorXd &b) const {
+		VectorXd Axps = A0_ * x + s;
 		return options_.abs_tol +
-		       options_.rel_tol * std::max(Ax.norm(), b.norm());
+		       options_.rel_tol * std::max(Axps.norm(), b.norm());
 	}
 
 	double calc_eps_ineq_(const VectorXd &x) const {
@@ -595,10 +596,9 @@ export class OsqpSolver {
 		return options_.abs_tol + options_.rel_tol * gx.norm();
 	}
 
-	double calc_eps_kkt_(const VectorXd &x, const VectorXd &b,
-	                     const VectorXd &y_ineq) const {
+	double calc_eps_kkt_(const VectorXd &x, const VectorXd &s,
+	                     const VectorXd &y_eq, const VectorXd &y_ineq) const {
 		VectorXd Qx = Q_reg_ * x;
-		VectorXd y_eq = options_.lambda_eq * (A0_ * x - b);
 		VectorXd ATy = A0_.transpose() * y_eq;
 		VectorXd GTy;
 		if (mi_ > 0) {
@@ -609,29 +609,41 @@ export class OsqpSolver {
 		double m1 = Qx.norm();
 		double m2 = ATy.norm();
 		double m3 = GTy.norm();
-		return options_.abs_tol + options_.rel_tol * std::max({m1, m2, m3});
+		double m4 = (options_.lambda_eq * s).norm();
+		double m5 = y_eq.norm();
+		return options_.abs_tol +
+		       options_.rel_tol * std::max({m1, m2, m3, m4, m5});
 	}
 
 	void compute_info_(const VectorXd &b, OsqpState &state,
 	                   OsqpInfo &info) const {
-		// Map scaled variables back to original x
+		// Map scaled variables back to original x,s
 		VectorXd x_scaled = state.v.head(n_x_);
+		VectorXd s_scaled = state.v.segment(n_x_, me_);
 		state.x = col_scale_.head(n_x_).cwiseProduct(x_scaled);
+		VectorXd s = col_scale_.segment(n_x_, me_).cwiseProduct(s_scaled);
 
-		// Dual for inequalities in original scaling:
+		// Duals in original scaling:
 		// y_hat = rho .* u  (scaled problem)
 		// y_orig = (E .* y_hat) / cost_scale
 		VectorXd y_hat = state.rho_vec_.cwiseProduct(state.u);
+
+		VectorXd y_eq = VectorXd::Zero(me_);
+		if (me_ > 0) {
+			y_eq = row_scale_.head(me_).cwiseProduct(y_hat.head(me_)) /
+			       cost_scale_;
+		}
+
 		VectorXd y_ineq = VectorXd::Zero(mi_);
 		if (mi_ > 0) {
 			y_ineq = row_scale_.tail(mi_).cwiseProduct(y_hat.tail(mi_)) /
 			         cost_scale_;
 		}
 
-		// r_eq
-		info.r_eq_norm = (A0_ * state.x - b).norm();
+		// r_eq: equality residual in original space (includes slack)
+		info.r_eq_norm = (A0_ * state.x + s - b).norm();
 
-		// r_ineq
+		// r_ineq: inequality violation (lower bound 0)
 		if (mi_ > 0) {
 			VectorXd gx = G0_ * state.x;
 			info.r_ineq_norm = gx.cwiseMin(0.0).norm();
@@ -639,18 +651,24 @@ export class OsqpSolver {
 			info.r_ineq_norm = 0.0;
 		}
 
-		// r_kkt: Qx + lambda A^T(Ax-b) + G^T y
-		VectorXd grad = Q_reg_ * state.x;
-		grad += options_.lambda_eq * A0_.transpose() * (A0_ * state.x - b);
-		if (mi_ > 0) {
-			grad += G0_.transpose() * y_ineq;
+		// r_kkt: stationarity for [x;s]
+		// grad_x = Qx + A^T y_eq + G^T y_ineq
+		// grad_s = lambda*s + y_eq
+		VectorXd grad_x = Q_reg_ * state.x;
+		if (me_ > 0) {
+			grad_x += A0_.transpose() * y_eq;
 		}
-		info.r_kkt_norm = grad.norm();
+		if (mi_ > 0) {
+			grad_x += G0_.transpose() * y_ineq;
+		}
+		VectorXd grad_s = options_.lambda_eq * s + y_eq;
+		info.r_kkt_norm =
+		    std::sqrt(grad_x.squaredNorm() + grad_s.squaredNorm());
 
 		// eps
-		info.eps_eq = calc_eps_eq_(state.x, b);
+		info.eps_eq = calc_eps_eq_(state.x, s, b);
 		info.eps_ineq = calc_eps_ineq_(state.x);
-		info.eps_kkt = calc_eps_kkt_(state.x, b, y_ineq);
+		info.eps_kkt = calc_eps_kkt_(state.x, s, y_eq, y_ineq);
 	}
 
 	// -------------------- Adaptive rho --------------------

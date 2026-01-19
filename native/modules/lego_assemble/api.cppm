@@ -156,7 +156,7 @@ compute_connection_transform(const PathStr &stud_path, InterfaceId stud_if,
 	return transform_to_arrays(T);
 }
 
-export std::tuple<TransformTuple, TransformTuple, std::array<BrickUnit, 2>>
+export std::tuple<TransformTuple, TransformTuple>
 compute_connection_local_transform(
     const PathStr &stud_path, InterfaceId stud_if, const PathStr &hole_path,
     InterfaceId hole_if, const std::array<BrickUnit, 2> &offset, int yaw) {
@@ -173,7 +173,6 @@ compute_connection_local_transform(
 	return {
 	    transform_to_arrays(T.T_stud_local),
 	    transform_to_arrays(T.T_hole_local),
-	    as_array<BrickUnit, 2>(T.overlap),
 	};
 }
 
@@ -432,10 +431,10 @@ export std::string repr_breakage_thresholds(const BreakageThresholds &t) {
 	return std::format(
 	    "BreakageThresholds(enabled={}, contact_normal_compliance={}, "
 	    "clutch_normal_compliance={}, clutch_shear_compliance={}, "
-	    "max_clutch_normal_force={}, max_clutch_shear_force={}, "
-	    "slack_fraction_warn={}, slack_fraction_b_floor={})",
+	    "friction_coefficient={}, preloaded_force={}, slack_fraction_warn={}, "
+	    "slack_fraction_b_floor={})",
 	    t.Enabled, t.ContactNormalCompliance, t.ClutchNormalCompliance,
-	    t.ClutchShearCompliance, t.MaxClutchNormalForce, t.MaxClutchShearForce,
+	    t.ClutchShearCompliance, t.FrictionCoefficient, t.PreloadedForce,
 	    t.SlackFractionWarn, t.SlackFractionBFloor);
 }
 
