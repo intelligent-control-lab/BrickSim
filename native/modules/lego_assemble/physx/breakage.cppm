@@ -1118,6 +1118,9 @@ export class BreakageChecker {
 	                     const BreakageState &state,
 	                     const BreakageSolution &sol, const VectorXd &b,
 	                     std::unique_ptr<BreakageState> prev_state) const {
+		if (debug_dump_dir_.empty()) {
+			return;
+		}
 		BreakageDebugDump dump{
 		    .thresholds = thresholds,
 		    .system = sys,
