@@ -119,10 +119,11 @@ export void from_json(const nlohmann::ordered_json &j, OsqpOptions &opts) {
 
 export struct OsqpState {
 	bool has_state{false};
-	VectorXd v{};
-	VectorXd z{};
-	VectorXd u{};
-	VectorXd x{};
+	VectorXd v_{};
+	VectorXd z_{};
+	VectorXd u_{};
+	VectorXd x_{};
+	VectorXd s_{};
 
 	double rho_eq_{0.0};
 	double rho_ineq_{0.0};
@@ -130,7 +131,14 @@ export struct OsqpState {
 	SparseMatrix<double> KKT_upper_{}; // (n+m) x (n+m), upper triangle CSC
 	QdldlSolver kkt_solver_{};
 
-	void clear() {
+	const VectorXd &x() const {
+		return x_;
+	}
+	const VectorXd &s() const {
+		return s_;
+	}
+
+	void reset() {
 		*this = {};
 	}
 };
@@ -138,10 +146,11 @@ export struct OsqpState {
 export void to_json(nlohmann::ordered_json &j, const OsqpState &state) {
 	j = nlohmann::ordered_json{
 	    {"has_state", state.has_state},
-	    {"v", matrix_to_json(state.v)},
-	    {"z", matrix_to_json(state.z)},
-	    {"u", matrix_to_json(state.u)},
-	    {"x", matrix_to_json(state.x)},
+	    {"v", matrix_to_json(state.v_)},
+	    {"z", matrix_to_json(state.z_)},
+	    {"u", matrix_to_json(state.u_)},
+	    {"x", matrix_to_json(state.x_)},
+	    {"s", matrix_to_json(state.s_)},
 	    {"rho_eq", state.rho_eq_},
 	    {"rho_ineq", state.rho_ineq_},
 	    {"rho_vec", matrix_to_json(state.rho_vec_)},
@@ -151,10 +160,11 @@ export void to_json(nlohmann::ordered_json &j, const OsqpState &state) {
 
 export void from_json(const nlohmann::ordered_json &j, OsqpState &state) {
 	j.at("has_state").get_to(state.has_state);
-	state.v = json_to_matrix<VectorXd>(j.at("v"));
-	state.z = json_to_matrix<VectorXd>(j.at("z"));
-	state.u = json_to_matrix<VectorXd>(j.at("u"));
-	state.x = json_to_matrix<VectorXd>(j.at("x"));
+	state.v_ = json_to_matrix<VectorXd>(j.at("v"));
+	state.z_ = json_to_matrix<VectorXd>(j.at("z"));
+	state.u_ = json_to_matrix<VectorXd>(j.at("u"));
+	state.x_ = json_to_matrix<VectorXd>(j.at("x"));
+	state.s_ = json_to_matrix<VectorXd>(j.at("s"));
 	j.at("rho_eq").get_to(state.rho_eq_);
 	j.at("rho_ineq").get_to(state.rho_ineq_);
 	state.rho_vec_ = json_to_matrix<VectorXd>(j.at("rho_vec"));
@@ -171,6 +181,14 @@ export struct OsqpInfo {
 	double eps_eq{};
 	double eps_ineq{};
 	double eps_kkt{};
+
+	std::string to_string() const {
+		return std::format(
+		    "converged={}, iter={}, r_eq_norm={:.6e}, r_ineq_norm={:.6e}, "
+		    "r_kkt_norm={:.6e}, eps_eq={:.6e}, eps_ineq={:.6e}, eps_kkt={:.6e}",
+		    converged, iter, r_eq_norm, r_ineq_norm, r_kkt_norm, eps_eq,
+		    eps_ineq, eps_kkt);
+	}
 };
 
 export void to_json(nlohmann::ordered_json &j, const OsqpInfo &info) {
@@ -195,18 +213,18 @@ export void from_json(const nlohmann::ordered_json &j, OsqpInfo &info) {
 
 export class OsqpSolver {
   public:
-	explicit OsqpSolver(SparseMatrix<double> A, SparseMatrix<double> Q,
+	explicit OsqpSolver(SparseMatrix<double> Q, SparseMatrix<double> A,
 	                    SparseMatrix<double> G, const OsqpOptions &options = {})
-	    : A0_(std::move(A)), Q0_(std::move(Q)), G0_(std::move(G)),
+	    : Q0_(std::move(Q)), A0_(std::move(A)), G0_(std::move(G)),
 	      options_(options) {
-		n_x_ = static_cast<int>(Q0_.rows());
+		nx_ = static_cast<int>(Q0_.rows());
 		me_ = static_cast<int>(A0_.rows());
 		mi_ = static_cast<int>(G0_.rows());
-		n_ = n_x_ + me_;
+		nz_ = nx_ + me_;
 		m_ = me_ + mi_;
 		Q_reg_ = Q0_;
 		if (options_.diag_reg > 0.0) {
-			SparseMatrix<double> I(n_x_, n_x_);
+			SparseMatrix<double> I(nx_, nx_);
 			I.setIdentity();
 			Q_reg_ += options_.diag_reg * I;
 		}
@@ -234,15 +252,15 @@ export class OsqpSolver {
 			throw std::invalid_argument("b dimension mismatch");
 		}
 		if (state.has_state) {
-			if (state.v.size() != n_ || state.z.size() != m_ ||
-			    state.u.size() != m_) {
+			if (state.v_.size() != nz_ || state.z_.size() != m_ ||
+			    state.u_.size() != m_) {
 				throw std::invalid_argument("state dimension mismatch");
 			}
 		} else {
 			state.has_state = true;
-			state.v.setZero(n_);
-			state.z.setZero(m_);
-			state.u.setZero(m_);
+			state.v_.setZero(nz_);
+			state.z_.setZero(m_);
+			state.u_.setZero(m_);
 			state.rho_eq_ = options_.rho_eq;
 			state.rho_ineq_ = options_.rho_ineq;
 			build_kkt_(state);
@@ -263,20 +281,20 @@ export class OsqpSolver {
 		VectorXd u_s = row_scale_.cwiseProduct(u);
 
 		// Initialize z to projection of C*v
-		VectorXd Cv_init = C_scaled_ * state.v;
-		state.z = Cv_init.cwiseMax(l_s).cwiseMin(u_s);
+		VectorXd Cv_init = C_scaled_ * state.v_;
+		state.z_ = Cv_init.cwiseMax(l_s).cwiseMin(u_s);
 
 		OsqpInfo info;
 
-		VectorXd rhs(n_ + m_);
-		VectorXd sol(n_ + m_);
+		VectorXd rhs(nz_ + m_);
+		VectorXd sol(nz_ + m_);
 
 		bool polished_once = false;
 
 		for (int it = 1; it <= options_.max_iter; ++it) {
 			// x-update: solve KKT
-			rhs.head(n_) = options_.sigma * state.v;
-			rhs.tail(m_) = state.z - state.u;
+			rhs.head(nz_) = options_.sigma * state.v_;
+			rhs.tail(m_) = state.z_ - state.u_;
 
 			sol = rhs;
 			if (!state.kkt_solver_.solve_in_place(sol)) {
@@ -285,21 +303,21 @@ export class OsqpSolver {
 				return info;
 			}
 
-			state.v = sol.head(n_);
+			state.v_ = sol.head(nz_);
 
 			// Compute C*v
-			VectorXd Cv = C_scaled_ * state.v;
+			VectorXd Cv = C_scaled_ * state.v_;
 
 			// Over-relax
 			VectorXd Cv_hat =
-			    options_.alpha * Cv + (1.0 - options_.alpha) * state.z;
+			    options_.alpha * Cv + (1.0 - options_.alpha) * state.z_;
 
 			// z-update: projection onto [l_s, u_s]
-			VectorXd z_tilde = Cv_hat + state.u;
-			state.z = z_tilde.cwiseMax(l_s).cwiseMin(u_s);
+			VectorXd z_tilde = Cv_hat + state.u_;
+			state.z_ = z_tilde.cwiseMax(l_s).cwiseMin(u_s);
 
 			// u-update
-			state.u += (Cv_hat - state.z);
+			state.u_ += (Cv_hat - state.z_);
 
 			// Convergence / diagnostics
 			if (it % options_.check_every == 0) {
@@ -348,8 +366,8 @@ export class OsqpSolver {
 
   private:
 	// Problem data (original)
-	SparseMatrix<double> A0_;
 	SparseMatrix<double> Q0_;
+	SparseMatrix<double> A0_;
 	SparseMatrix<double> G0_;
 
 	// Regularized Q
@@ -365,10 +383,10 @@ export class OsqpSolver {
 	double cost_scale_ = 1.0;
 
 	// Sizes
-	int n_x_ = 0;
+	int nx_ = 0;
 	int me_ = 0;
 	int mi_ = 0;
-	int n_ = 0;
+	int nz_ = 0;
 	int m_ = 0;
 
 	OsqpOptions options_;
@@ -388,10 +406,10 @@ export class OsqpSolver {
 
 		// Slack block
 		for (int i = 0; i < me_; ++i) {
-			triplets.emplace_back(n_x_ + i, n_x_ + i, options_.lambda_eq);
+			triplets.emplace_back(nx_ + i, nx_ + i, options_.lambda_eq);
 		}
 
-		P_.resize(n_, n_);
+		P_.resize(nz_, nz_);
 		P_.setFromTriplets(triplets.begin(), triplets.end());
 		P_.makeCompressed();
 	}
@@ -411,7 +429,7 @@ export class OsqpSolver {
 
 		// I block for slack
 		for (int i = 0; i < me_; ++i) {
-			triplets.emplace_back(i, n_x_ + i, 1.0);
+			triplets.emplace_back(i, nx_ + i, 1.0);
 		}
 
 		// G block
@@ -421,13 +439,13 @@ export class OsqpSolver {
 			}
 		}
 
-		C_scaled_.resize(m_, n_);
+		C_scaled_.resize(m_, nz_);
 		C_scaled_.setFromTriplets(triplets.begin(), triplets.end());
 		C_scaled_.makeCompressed();
 
 		// Initialize scaling to identity
 		row_scale_ = VectorXd::Ones(m_);
-		col_scale_ = VectorXd::Ones(n_);
+		col_scale_ = VectorXd::Ones(nz_);
 		cost_scale_ = 1.0;
 	}
 
@@ -440,7 +458,7 @@ export class OsqpSolver {
 		const double smin = std::max(options_.ruiz_scale_min, 1e-18);
 		const double smax = std::max(options_.ruiz_scale_max, smin);
 
-		VectorXd col_norm = VectorXd::Zero(n_);
+		VectorXd col_norm = VectorXd::Zero(nz_);
 		VectorXd row_norm = VectorXd::Zero(m_);
 
 		for (int it = 0; it < options_.ruiz_iterations; ++it) {
@@ -465,7 +483,7 @@ export class OsqpSolver {
 
 			// d = 1/sqrt(col_norm)
 			VectorXd d = (col_norm.array().max(eps)).sqrt().inverse().matrix();
-			for (int j = 0; j < n_; ++j) {
+			for (int j = 0; j < nz_; ++j) {
 				d[j] = std::clamp(d[j], smin, smax);
 			}
 
@@ -540,7 +558,7 @@ export class OsqpSolver {
 		// [ C,          -R^{-1} ]
 		// where R = diag(rho_vec)
 		std::vector<Triplet<double>> triplets;
-		triplets.reserve(P_.nonZeros() + C_scaled_.nonZeros() + (n_ + m_));
+		triplets.reserve(P_.nonZeros() + C_scaled_.nonZeros() + (nz_ + m_));
 
 		// Upper triangle of (P + sigma I)
 		for (int j = 0; j < P_.outerSize(); ++j) {
@@ -550,7 +568,7 @@ export class OsqpSolver {
 				}
 			}
 		}
-		for (int i = 0; i < n_; ++i) {
+		for (int i = 0; i < nz_; ++i) {
 			triplets.emplace_back(i, i, options_.sigma);
 		}
 
@@ -561,7 +579,7 @@ export class OsqpSolver {
 				int r = it.row();
 				int c = it.col();
 				// place at (c, n_ + r)
-				triplets.emplace_back(c, n_ + r, it.value());
+				triplets.emplace_back(c, nz_ + r, it.value());
 			}
 		}
 
@@ -572,10 +590,10 @@ export class OsqpSolver {
 			state.rho_vec_.tail(mi_).setConstant(state.rho_ineq_);
 		}
 		for (int i = 0; i < m_; ++i) {
-			triplets.emplace_back(n_ + i, n_ + i, -1.0 / state.rho_vec_[i]);
+			triplets.emplace_back(nz_ + i, nz_ + i, -1.0 / state.rho_vec_[i]);
 		}
 
-		state.KKT_upper_.resize(n_ + m_, n_ + m_);
+		state.KKT_upper_.resize(nz_ + m_, nz_ + m_);
 		state.KKT_upper_.setFromTriplets(triplets.begin(), triplets.end());
 		state.KKT_upper_.makeCompressed();
 		if (!state.kkt_solver_.factorize(state.KKT_upper_)) {
@@ -604,7 +622,7 @@ export class OsqpSolver {
 		if (mi_ > 0) {
 			GTy = G0_.transpose() * y_ineq;
 		} else {
-			GTy = VectorXd::Zero(n_x_);
+			GTy = VectorXd::Zero(nx_);
 		}
 		double m1 = Qx.norm();
 		double m2 = ATy.norm();
@@ -618,15 +636,15 @@ export class OsqpSolver {
 	void compute_info_(const VectorXd &b, OsqpState &state,
 	                   OsqpInfo &info) const {
 		// Map scaled variables back to original x,s
-		VectorXd x_scaled = state.v.head(n_x_);
-		VectorXd s_scaled = state.v.segment(n_x_, me_);
-		state.x = col_scale_.head(n_x_).cwiseProduct(x_scaled);
-		VectorXd s = col_scale_.segment(n_x_, me_).cwiseProduct(s_scaled);
+		VectorXd x_scaled = state.v_.head(nx_);
+		VectorXd s_scaled = state.v_.segment(nx_, me_);
+		state.x_ = col_scale_.head(nx_).cwiseProduct(x_scaled);
+		state.s_ = col_scale_.segment(nx_, me_).cwiseProduct(s_scaled);
 
 		// Duals in original scaling:
 		// y_hat = rho .* u  (scaled problem)
 		// y_orig = (E .* y_hat) / cost_scale
-		VectorXd y_hat = state.rho_vec_.cwiseProduct(state.u);
+		VectorXd y_hat = state.rho_vec_.cwiseProduct(state.u_);
 
 		VectorXd y_eq = VectorXd::Zero(me_);
 		if (me_ > 0) {
@@ -641,11 +659,11 @@ export class OsqpSolver {
 		}
 
 		// r_eq: equality residual in original space (includes slack)
-		info.r_eq_norm = (A0_ * state.x + s - b).norm();
+		info.r_eq_norm = (A0_ * state.x_ + state.s_ - b).norm();
 
 		// r_ineq: inequality violation (lower bound 0)
 		if (mi_ > 0) {
-			VectorXd gx = G0_ * state.x;
+			VectorXd gx = G0_ * state.x_;
 			info.r_ineq_norm = gx.cwiseMin(0.0).norm();
 		} else {
 			info.r_ineq_norm = 0.0;
@@ -654,32 +672,32 @@ export class OsqpSolver {
 		// r_kkt: stationarity for [x;s]
 		// grad_x = Qx + A^T y_eq + G^T y_ineq
 		// grad_s = lambda*s + y_eq
-		VectorXd grad_x = Q_reg_ * state.x;
+		VectorXd grad_x = Q_reg_ * state.x_;
 		if (me_ > 0) {
 			grad_x += A0_.transpose() * y_eq;
 		}
 		if (mi_ > 0) {
 			grad_x += G0_.transpose() * y_ineq;
 		}
-		VectorXd grad_s = options_.lambda_eq * s + y_eq;
+		VectorXd grad_s = options_.lambda_eq * state.s_ + y_eq;
 		info.r_kkt_norm =
 		    std::sqrt(grad_x.squaredNorm() + grad_s.squaredNorm());
 
 		// eps
-		info.eps_eq = calc_eps_eq_(state.x, s, b);
-		info.eps_ineq = calc_eps_ineq_(state.x);
-		info.eps_kkt = calc_eps_kkt_(state.x, s, y_eq, y_ineq);
+		info.eps_eq = calc_eps_eq_(state.x_, state.s_, b);
+		info.eps_ineq = calc_eps_ineq_(state.x_);
+		info.eps_kkt = calc_eps_kkt_(state.x_, state.s_, y_eq, y_ineq);
 	}
 
 	// -------------------- Adaptive rho --------------------
 	bool adaptive_rho_update_(OsqpState &state) const {
 		// Residuals in scaled space (infinity norms)
-		VectorXd Cv = C_scaled_ * state.v;
-		VectorXd r_prim = Cv - state.z;
+		VectorXd Cv = C_scaled_ * state.v_;
+		VectorXd r_prim = Cv - state.z_;
 		double r_prim_inf = r_prim.cwiseAbs().maxCoeff();
 
-		VectorXd y_hat = state.rho_vec_.cwiseProduct(state.u);
-		VectorXd r_dual = P_ * state.v + C_scaled_.transpose() * y_hat;
+		VectorXd y_hat = state.rho_vec_.cwiseProduct(state.u_);
+		VectorXd r_dual = P_ * state.v_ + C_scaled_.transpose() * y_hat;
 		double r_dual_inf = r_dual.cwiseAbs().maxCoeff();
 
 		if (r_dual_inf < 1e-12) {
@@ -712,9 +730,9 @@ export class OsqpSolver {
 		}
 
 		// Rescale u to keep y = rho*u constant
-		state.u.head(me_) *= (state.rho_eq_ / new_rho_eq);
+		state.u_.head(me_) *= (state.rho_eq_ / new_rho_eq);
 		if (mi_ > 0) {
-			state.u.tail(mi_) *= (state.rho_ineq_ / new_rho_in);
+			state.u_.tail(mi_) *= (state.rho_ineq_ / new_rho_in);
 		}
 
 		state.rho_eq_ = new_rho_eq;
@@ -737,7 +755,7 @@ export class OsqpSolver {
 		std::vector<int> active;
 		active.reserve(static_cast<std::size_t>(mi_));
 		for (int i = 0; i < mi_; ++i) {
-			if (state.z[me_ + i] <= options_.polish_viol_tol) {
+			if (state.z_[me_ + i] <= options_.polish_viol_tol) {
 				active.push_back(i);
 			}
 		}
@@ -757,7 +775,7 @@ export class OsqpSolver {
 
 		// Choose delta: keep user value but cap to make delta*||v|| not dominate abs_tol
 		double delta = std::max(options_.polish_delta, 1e-16);
-		double v_inf = state.v.cwiseAbs().maxCoeff();
+		double v_inf = state.v_.cwiseAbs().maxCoeff();
 		double cap = options_.abs_tol / (10.0 * std::max(1.0, v_inf));
 		if (cap > 0.0) {
 			delta = std::min(delta, cap);
@@ -784,8 +802,8 @@ export class OsqpSolver {
 
 			// Slack identity in equality rows
 			for (int i = 0; i < me_; ++i) {
-				double val = row_scale_[i] * 1.0 * col_scale_[n_x_ + i];
-				C_trip.emplace_back(i, n_x_ + i, val);
+				double val = row_scale_[i] * 1.0 * col_scale_[nx_ + i];
+				C_trip.emplace_back(i, nx_ + i, val);
 			}
 
 			// Active inequality rows (G0 block)
@@ -806,14 +824,14 @@ export class OsqpSolver {
 				}
 			}
 
-			SparseMatrix<double> C_pol(m_pol, n_);
+			SparseMatrix<double> C_pol(m_pol, nz_);
 			C_pol.setFromTriplets(C_trip.begin(), C_trip.end());
 			C_pol.makeCompressed();
 
 			// Build KKT (upper) for polish:
 			// [ P + delta I, C_pol^T ]
 			// [ C_pol,      -delta I ]
-			int N = n_ + m_pol;
+			int N = nz_ + m_pol;
 			std::vector<Triplet<double>> K_trip;
 			K_trip.reserve(P_.nonZeros() + C_pol.nonZeros() + N);
 
@@ -826,7 +844,7 @@ export class OsqpSolver {
 					}
 				}
 			}
-			for (int i = 0; i < n_; ++i) {
+			for (int i = 0; i < nz_; ++i) {
 				K_trip.emplace_back(i, i, delta);
 			}
 
@@ -836,13 +854,13 @@ export class OsqpSolver {
 				     ++itC) {
 					int r = itC.row();
 					int c = itC.col();
-					K_trip.emplace_back(c, n_ + r, itC.value());
+					K_trip.emplace_back(c, nz_ + r, itC.value());
 				}
 			}
 
 			// Bottom-right diag: -delta I
 			for (int i = 0; i < m_pol; ++i) {
-				K_trip.emplace_back(n_ + i, n_ + i, -delta);
+				K_trip.emplace_back(nz_ + i, nz_ + i, -delta);
 			}
 
 			SparseMatrix<double> K_pol(N, N);
@@ -856,19 +874,18 @@ export class OsqpSolver {
 
 			// RHS = [0; d]
 			VectorXd rhs = VectorXd::Zero(N);
-			rhs.segment(n_, me_) = b_s;
+			rhs.segment(nz_, me_) = b_s;
 			// active inequality rhs is zero
 
 			if (!pol_solver.solve_in_place(rhs)) {
 				return false;
 			}
 
-			VectorXd v_pol = rhs.head(n_);
+			VectorXd v_pol = rhs.head(nz_);
 			VectorXd y_pol = rhs.tail(m_pol);
 
 			// Check violated inequalities in original space
-			VectorXd x_pol =
-			    col_scale_.head(n_x_).cwiseProduct(v_pol.head(n_x_));
+			VectorXd x_pol = col_scale_.head(nx_).cwiseProduct(v_pol.head(nx_));
 			VectorXd g = G0_ * x_pol;
 
 			bool added = false;
@@ -913,7 +930,7 @@ export class OsqpSolver {
 			}
 
 			// Accept polish result: update state.v, state.u (so y matches polish), and state.z.
-			state.v = v_pol;
+			state.v_ = v_pol;
 
 			VectorXd y_hat_full = VectorXd::Zero(m_);
 			y_hat_full.head(me_) = y_pol.head(me_);
@@ -922,13 +939,13 @@ export class OsqpSolver {
 			}
 
 			// u = y / rho
-			state.u = y_hat_full.cwiseQuotient(state.rho_vec_);
+			state.u_ = y_hat_full.cwiseQuotient(state.rho_vec_);
 
 			// z = projection of C*v
-			VectorXd Cv = C_scaled_ * state.v;
-			state.z.head(me_) = b_s;
+			VectorXd Cv = C_scaled_ * state.v_;
+			state.z_.head(me_) = b_s;
 			if (mi_ > 0) {
-				state.z.tail(mi_) = Cv.tail(mi_).cwiseMax(0.0);
+				state.z_.tail(mi_) = Cv.tail(mi_).cwiseMax(0.0);
 			}
 
 			return true;

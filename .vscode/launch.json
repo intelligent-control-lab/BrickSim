@@ -34,6 +34,18 @@
             "justMyCode": false,
             "cwd": "${workspaceFolder}",
         },
+        {
+            "name": "C++: CMake Debug",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${command:cmake.launchTargetPath}",
+            "args": [],
+            "stopOnEntry": false,
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PATH": "${env:PATH}:${command:cmake.getLaunchTargetDirectory}",
+            },
+        }
     ],
     "compounds": [
         {

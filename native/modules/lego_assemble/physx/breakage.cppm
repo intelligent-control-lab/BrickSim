@@ -402,13 +402,10 @@ export class BreakageSystem {
 		       (q_CC_.rows() == num_parts_) && (q_CC_.cols() == 4) &&
 		       (c_CC_.rows() == num_parts_) && (c_CC_.cols() == 3) &&
 		       (I_CC_.size() == static_cast<std::size_t>(num_parts_)) &&
-		       (characteristic_radius_sq_ > 0.0) && solver_.has_value() &&
-		       (solver_->A().rows() == num_eq_) &&
-		       (solver_->A().cols() == num_vars_) &&
-		       (solver_->Q().rows() == num_vars_) &&
-		       (solver_->Q().cols() == num_vars_) &&
-		       (solver_->G().rows() == num_ineq_) &&
-		       (solver_->G().cols() == num_vars_) &&
+		       (characteristic_radius_sq_ > 0.0) && (Q_.rows() == num_vars_) &&
+		       (Q_.cols() == num_vars_) && (A_.rows() == num_eq_) &&
+		       (A_.cols() == num_vars_) && (G_.rows() == num_ineq_) &&
+		       (G_.cols() == num_vars_) && (solver_.has_value()) &&
 		       (capacity_clutch_indices_.size() == capacities_.size());
 	}
 
@@ -444,6 +441,9 @@ export class BreakageSystem {
 	// Squared characteristic length for regularization, in m^2
 	double characteristic_radius_sq_;
 
+	SparseMatrix<double> Q_{};
+	SparseMatrix<double> A_{};
+	SparseMatrix<double> G_{};
 	std::optional<QpSolver> solver_{};
 
 	std::vector<int> capacity_clutch_indices_;
@@ -482,9 +482,9 @@ export void to_json(nlohmann::ordered_json &j, const BreakageSystem &sys) {
 	    {"num_vars", sys.num_vars_},
 	    {"num_eq", sys.num_eq_},
 	    {"num_ineq", sys.num_ineq_},
-	    {"A", matrix_to_json(sys.solver_->A())},
-	    {"Q", matrix_to_json(sys.solver_->Q())},
-	    {"G", matrix_to_json(sys.solver_->G())},
+	    {"Q", matrix_to_json(sys.Q_)},
+	    {"A", matrix_to_json(sys.A_)},
+	    {"G", matrix_to_json(sys.G_)},
 	    {"part_ids", sys.pids_},
 	    {"contact_pairs", sys.contact_pairs_},
 	    {"clutch_ids", sys.clutches_},
@@ -506,9 +506,10 @@ export void from_json(const nlohmann::ordered_json &j, BreakageSystem &sys) {
 	j.at("num_vars").get_to(sys.num_vars_);
 	j.at("num_eq").get_to(sys.num_eq_);
 	j.at("num_ineq").get_to(sys.num_ineq_);
-	sys.solver_.emplace(json_to_matrix<SparseMatrix<double>>(j.at("A")),
-	                    json_to_matrix<SparseMatrix<double>>(j.at("Q")),
-	                    json_to_matrix<SparseMatrix<double>>(j.at("G")));
+	sys.Q_ = json_to_matrix<SparseMatrix<double>>(j.at("Q"));
+	sys.A_ = json_to_matrix<SparseMatrix<double>>(j.at("A"));
+	sys.G_ = json_to_matrix<SparseMatrix<double>>(j.at("G"));
+	sys.solver_.emplace(sys.Q_, sys.A_, sys.G_);
 	j.at("part_ids").get_to(sys.pids_);
 	j.at("contact_pairs").get_to(sys.contact_pairs_);
 	j.at("clutch_ids").get_to(sys.clutches_);
@@ -610,6 +611,12 @@ export class BreakageState {
 	bool check_shape(const BreakageSystem &sys) const {
 		return (v_W_prev.rows() == sys.num_parts()) && (v_W_prev.cols() == 3) &&
 		       (L_prev.rows() == sys.num_parts()) && (L_prev.cols() == 3);
+	}
+	bool has_solver_state() const {
+		return solver_state.has_state;
+	}
+	void clear_solver_state() {
+		solver_state.reset();
 	}
 
   private:
@@ -749,8 +756,8 @@ export class BreakageChecker {
 			});
 		}
 
-		std::vector<Triplet<double>> A_triplets;
 		std::vector<Triplet<double>> Q_triplets;
+		std::vector<Triplet<double>> A_triplets;
 		std::vector<Triplet<double>> G_triplets;
 
 		for (TouchingFacePair p : detect_touching_faces(g, rep)) {
@@ -932,14 +939,13 @@ export class BreakageChecker {
 
 		sys.num_vars_ = 3 * sys.num_contacts_ + 9 * sys.num_clutches_;
 		sys.num_eq_ = 6 * sys.num_parts_;
-		SparseMatrix<double> A, Q, G;
-		A.resize(sys.num_eq_, sys.num_vars_);
-		Q.resize(sys.num_vars_, sys.num_vars_);
-		G.resize(sys.num_ineq_, sys.num_vars_);
-		A.setFromTriplets(A_triplets.begin(), A_triplets.end());
-		Q.setFromTriplets(Q_triplets.begin(), Q_triplets.end());
-		G.setFromTriplets(G_triplets.begin(), G_triplets.end());
-		sys.solver_.emplace(std::move(A), std::move(Q), std::move(G));
+		sys.Q_.resize(sys.num_vars_, sys.num_vars_);
+		sys.A_.resize(sys.num_eq_, sys.num_vars_);
+		sys.G_.resize(sys.num_ineq_, sys.num_vars_);
+		sys.Q_.setFromTriplets(Q_triplets.begin(), Q_triplets.end());
+		sys.A_.setFromTriplets(A_triplets.begin(), A_triplets.end());
+		sys.G_.setFromTriplets(G_triplets.begin(), G_triplets.end());
+		sys.solver_.emplace(sys.Q_, sys.A_, sys.G_);
 
 		Vector3d weighted_sum_pos = sys.c_CC_.transpose() * sys.mass_;
 		double weighted_sum_sq_norm =
@@ -1026,7 +1032,7 @@ export class BreakageChecker {
 		    ((L_curr - L_prev - in.H) * Pi.transpose()) / in.dt;
 
 		std::unique_ptr<BreakageState> prev_state;
-		if (manual_dump_) {
+		if (manual_dump_ || always_dump_prev_state_) {
 			// Only snapshot previous state if manual dump is enabled
 			prev_state = std::make_unique<BreakageState>(state);
 		}
@@ -1043,10 +1049,9 @@ export class BreakageChecker {
 		}
 
 		sol.info = sys.solver_->solve(b, state.solver_state);
-		sol.x = state.solver_state.x;
-		VectorXd slack = sys.solver_->A() * sol.x - b;
-		sol.slack_fraction =
-		    slack.norm() / std::max(b.norm(), thresholds.SlackFractionBFloor);
+		sol.x = state.solver_state.x();
+		sol.slack_fraction = state.solver_state.s().norm() /
+		                     std::max(b.norm(), thresholds.SlackFractionBFloor);
 
 		state.q_W_CC_prev = q_W_CC_curr;
 		state.v_W_prev = std::move(v_W_curr);
@@ -1074,12 +1079,8 @@ export class BreakageChecker {
 
 		bool error = false;
 		if (!sol.info.converged) {
-			log_error(
-			    "BreakageChecker: solver failed to converge, "
-			    "r_eq_norm={:.3e}, r_ineq_norm={:.3e}, r_kkt_norm={:.3e}, "
-			    "eps_eq={:.3e}, eps_ineq={:.3e}, eps_kkt={:.3e}",
-			    sol.info.r_eq_norm, sol.info.r_ineq_norm, sol.info.r_kkt_norm,
-			    sol.info.eps_eq, sol.info.eps_ineq, sol.info.eps_kkt);
+			log_error("BreakageChecker: solver failed to converge, {}",
+			          sol.info.to_string());
 			error = true;
 		} else if (sol.slack_fraction > thresholds.SlackFractionWarn) {
 			log_warn("BreakageChecker: abnormally high slack fraction {:.3e}",
@@ -1109,8 +1110,13 @@ export class BreakageChecker {
 		manual_dump_ = enable;
 	}
 
+	void set_always_dump_prev_state(bool enable) {
+		always_dump_prev_state_ = enable;
+	}
+
   private:
 	std::string debug_dump_dir_;
+	bool always_dump_prev_state_{true};
 	bool manual_dump_{false};
 	mutable bool dumped_on_error_{false};
 

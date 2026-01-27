@@ -149,6 +149,7 @@ using Eigen::Vector3i;
 using Eigen::Vector4d;
 using Eigen::Vector4f;
 using Eigen::Vector4i;
+using Eigen::VectorX;
 using Eigen::VectorXd;
 using Eigen::VectorXf;
 using Eigen::VectorXi;
