@@ -28,7 +28,7 @@ class LegoStructuresBrowser:
     NUM_BRICKS_LIMIT = 50
 
     def __init__(self, main_ui: LegoUI) -> None:
-        self._window = ui.Window("Lego Structures", width=500, height=600)
+        self._window = ui.Window("StableText2Brick Structures", width=500, height=600)
         self._window.deferred_dock_in("Console")
 
         # Dataset and UI state

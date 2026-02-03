@@ -27,7 +27,7 @@ _HOT_RELOAD_SETTING = "/app/lego_assemble/kit_runner/has_target"
 
 class LegoUI():
     def __init__(self):
-        self._window = omni.ui.Window("LEGO Assemble", width=300, height=300)
+        self._window = omni.ui.Window("BrickSim Settings", width=300, height=300)
         self._window.deferred_dock_in("Console")
         self._hot_reload_button = None
         self._settings = carb.settings.get_settings()
