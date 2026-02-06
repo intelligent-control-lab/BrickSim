@@ -15,6 +15,11 @@ import lego_assemble.vendor;
 
 namespace lego_assemble {
 
+constexpr bool EnableTorqueScaling = true;
+constexpr bool EnableContactWhitening = true;
+constexpr bool EnableClutchWhitening = true;
+constexpr bool EnableContactAreaScaling = true;
+
 using Eigen::ComputeFullU;
 using Eigen::ComputeFullV;
 using Eigen::Dynamic;
@@ -22,10 +27,12 @@ using Eigen::Index;
 using Eigen::JacobiSVD;
 using Eigen::Map;
 using Eigen::Matrix;
+using Eigen::Matrix2d;
 using Eigen::Matrix3d;
 using Eigen::MatrixBase;
 using Eigen::Quaterniond;
 using Eigen::RowMajor;
+using Eigen::SelfAdjointEigenSolver;
 using Eigen::SparseMatrix;
 using Eigen::Triplet;
 using Eigen::Vector2d;
@@ -43,7 +50,6 @@ using Vector6d = Matrix<double, 6, 1>;
 using Vector9d = Matrix<double, 9, 1>;
 
 using QpSolver = OsqpSolver;
-using QpSolverOptions = OsqpOptions;
 using QpSolverState = OsqpState;
 using QpSolverInfo = OsqpInfo;
 
@@ -285,9 +291,22 @@ Matrix6d transport_matrix(const Vector3d &x) {
 	return T;
 }
 
+constexpr double TripletRelTol = 1e-14;
+constexpr double TripletAbsTol = 1e-18;
+
+template <class Derived>
+double triplet_tol(const MatrixBase<Derived> &M, double rel = TripletRelTol,
+                   double abs = TripletAbsTol) {
+	double max_abs = M.cwiseAbs().maxCoeff();
+	return std::max(abs, rel * max_abs);
+}
+
 template <class Derived>
 void add_block_triplets(std::vector<Triplet<double>> &out, int row0, int col0,
-                        const MatrixBase<Derived> &M, double tol = 0.0) {
+                        const MatrixBase<Derived> &M, double tol = -1.0) {
+	if (tol < 0.0) {
+		tol = triplet_tol(M);
+	}
 	for (int r = 0; r < M.rows(); ++r) {
 		for (int c = 0; c < M.cols(); ++c) {
 			double v = M(r, c);
@@ -298,9 +317,30 @@ void add_block_triplets(std::vector<Triplet<double>> &out, int row0, int col0,
 	}
 }
 
+Matrix2d inv_sqrt_spd(const Matrix2d &C) {
+	SelfAdjointEigenSolver<Matrix2d> eig{C};
+	if (eig.info() != Eigen::Success) {
+		throw std::invalid_argument("inv_sqrt_spd: eigen decomposition failed");
+	}
+	Vector2d lambda = eig.eigenvalues();
+	Matrix2d U = eig.eigenvectors();
+	double lambda_max = lambda.maxCoeff();
+	if (!(lambda_max > 0.0)) {
+		throw std::invalid_argument("inv_sqrt_spd: non-positive matrix");
+	}
+	// Clamp to avoid extreme scaling if the contact patch is nearly degenerate.
+	double eps = 1e-12 * lambda_max;
+	lambda = lambda.cwiseMax(eps);
+	Matrix2d D = Matrix2d::Zero();
+	D(0, 0) = 1.0 / std::sqrt(lambda(0));
+	D(1, 1) = 1.0 / std::sqrt(lambda(1));
+	return U * D * U.transpose();
+}
+
 export struct BreakageThresholds {
 	bool Enabled{true};
-	double ContactNormalCompliance{1e-2};
+	double ContactNormalCompliance{0.0};
+	double ContactRegularization{0.0};
 	double ClutchNormalCompliance{1.0};
 	double ClutchShearCompliance{1.0};
 	double FrictionCoefficient{0.5};
@@ -314,6 +354,7 @@ export void to_json(nlohmann::ordered_json &j,
 	j = {
 	    {"enabled", thresholds.Enabled},
 	    {"contact_normal_compliance", thresholds.ContactNormalCompliance},
+	    {"contact_regularization", thresholds.ContactRegularization},
 	    {"clutch_normal_compliance", thresholds.ClutchNormalCompliance},
 	    {"clutch_shear_compliance", thresholds.ClutchShearCompliance},
 	    {"friction_coefficient", thresholds.FrictionCoefficient},
@@ -328,6 +369,7 @@ export void from_json(const nlohmann::ordered_json &j,
 	j.at("enabled").get_to(thresholds.Enabled);
 	j.at("contact_normal_compliance")
 	    .get_to(thresholds.ContactNormalCompliance);
+	j.at("contact_regularization").get_to(thresholds.ContactRegularization);
 	j.at("clutch_normal_compliance").get_to(thresholds.ClutchNormalCompliance);
 	j.at("clutch_shear_compliance").get_to(thresholds.ClutchShearCompliance);
 	j.at("friction_coefficient").get_to(thresholds.FrictionCoefficient);
@@ -402,11 +444,17 @@ export class BreakageSystem {
 		       (q_CC_.rows() == num_parts_) && (q_CC_.cols() == 4) &&
 		       (c_CC_.rows() == num_parts_) && (c_CC_.cols() == 3) &&
 		       (I_CC_.size() == static_cast<std::size_t>(num_parts_)) &&
-		       (characteristic_radius_sq_ > 0.0) && (Q_.rows() == num_vars_) &&
+		       (L0_ > 0.0) && (Q_.rows() == num_vars_) &&
 		       (Q_.cols() == num_vars_) && (A_.rows() == num_eq_) &&
 		       (A_.cols() == num_vars_) && (G_.rows() == num_ineq_) &&
 		       (G_.cols() == num_vars_) && (solver_.has_value()) &&
-		       (capacity_clutch_indices_.size() == capacities_.size());
+		       (capacity_clutch_indices_.size() == capacities_.size()) &&
+		       (contact_whiten_.size() ==
+		        static_cast<std::size_t>(num_contacts_)) &&
+		       (clutch_whiten_.size() ==
+		        static_cast<std::size_t>(num_clutches_)) &&
+		       (contact_area_.size() ==
+		        static_cast<std::size_t>(num_contacts_));
 	}
 
   private:
@@ -438,8 +486,8 @@ export class BreakageSystem {
 	MatrixX3d c_CC_{};
 	// Inertia tensors in the CC frame, num_parts_ x 3 x 3
 	std::vector<Matrix3d> I_CC_{};
-	// Squared characteristic length for regularization, in m^2
-	double characteristic_radius_sq_;
+	// Characteristic length for regularization, in m
+	double L0_;
 
 	SparseMatrix<double> Q_{};
 	SparseMatrix<double> A_{};
@@ -448,6 +496,9 @@ export class BreakageSystem {
 
 	std::vector<int> capacity_clutch_indices_;
 	std::vector<Vector9d> capacities_;
+	std::vector<Matrix2d> contact_whiten_{};
+	std::vector<Matrix2d> clutch_whiten_{};
+	std::vector<double> contact_area_{};
 
 	auto I_CC_matrix() const {
 		return Map<const Matrix<double, Dynamic, 9, RowMajor>>{
@@ -472,6 +523,41 @@ export class BreakageSystem {
 		    reinterpret_cast<double *>(capacities_.data()),
 		    static_cast<Index>(capacities_.size()), 9};
 	}
+
+	auto contact_whiten_matrix() const {
+		return Map<const Matrix<double, Dynamic, 4, RowMajor>>{
+		    reinterpret_cast<const double *>(contact_whiten_.data()),
+		    static_cast<Index>(contact_whiten_.size()), 4};
+	}
+
+	auto contact_whiten_matrix() {
+		return Map<Matrix<double, Dynamic, 4, RowMajor>>{
+		    reinterpret_cast<double *>(contact_whiten_.data()),
+		    static_cast<Index>(contact_whiten_.size()), 4};
+	}
+
+	auto clutch_whiten_matrix() const {
+		return Map<const Matrix<double, Dynamic, 4, RowMajor>>{
+		    reinterpret_cast<const double *>(clutch_whiten_.data()),
+		    static_cast<Index>(clutch_whiten_.size()), 4};
+	}
+
+	auto clutch_whiten_matrix() {
+		return Map<Matrix<double, Dynamic, 4, RowMajor>>{
+		    reinterpret_cast<double *>(clutch_whiten_.data()),
+		    static_cast<Index>(clutch_whiten_.size()), 4};
+	}
+
+	auto contact_area_vector() const {
+		return Map<const VectorXd>{
+		    reinterpret_cast<const double *>(contact_area_.data()),
+		    static_cast<Index>(contact_area_.size())};
+	}
+
+	auto contact_area_vector() {
+		return Map<VectorXd>{reinterpret_cast<double *>(contact_area_.data()),
+		                     static_cast<Index>(contact_area_.size())};
+	}
 };
 
 export void to_json(nlohmann::ordered_json &j, const BreakageSystem &sys) {
@@ -493,9 +579,12 @@ export void to_json(nlohmann::ordered_json &j, const BreakageSystem &sys) {
 	    {"q_CC", matrix_to_json(sys.q_CC_)},
 	    {"c_CC", matrix_to_json(sys.c_CC_)},
 	    {"I_CC", matrix_to_json(sys.I_CC_matrix())},
-	    {"characteristic_radius_sq", sys.characteristic_radius_sq_},
+	    {"L0", sys.L0_},
 	    {"capacity_clutch_indices", sys.capacity_clutch_indices_},
 	    {"capacities", matrix_to_json(sys.capacities_matrix())},
+	    {"contact_whiten", matrix_to_json(sys.contact_whiten_matrix())},
+	    {"clutch_whiten", matrix_to_json(sys.clutch_whiten_matrix())},
+	    {"contact_area", matrix_to_json(sys.contact_area_vector())},
 	};
 }
 
@@ -520,12 +609,22 @@ export void from_json(const nlohmann::ordered_json &j, BreakageSystem &sys) {
 	sys.I_CC_.resize(static_cast<std::size_t>(sys.num_parts_));
 	sys.I_CC_matrix() =
 	    json_to_matrix<Matrix<double, Dynamic, 9, RowMajor>>(j.at("I_CC"));
-	j.at("characteristic_radius_sq").get_to(sys.characteristic_radius_sq_);
+	j.at("L0").get_to(sys.L0_);
 	j.at("capacity_clutch_indices").get_to(sys.capacity_clutch_indices_);
 	sys.capacities_.resize(sys.capacity_clutch_indices_.size());
 	sys.capacities_matrix() =
 	    json_to_matrix<Matrix<double, Dynamic, 9, RowMajor>>(
 	        j.at("capacities"));
+	sys.contact_whiten_.resize(static_cast<std::size_t>(sys.num_contacts_));
+	sys.contact_whiten_matrix() =
+	    json_to_matrix<Matrix<double, Dynamic, 4, RowMajor>>(
+	        j.at("contact_whiten"));
+	sys.clutch_whiten_.resize(static_cast<std::size_t>(sys.num_clutches_));
+	sys.clutch_whiten_matrix() =
+	    json_to_matrix<Matrix<double, Dynamic, 4, RowMajor>>(
+	        j.at("clutch_whiten"));
+	sys.contact_area_.resize(static_cast<std::size_t>(sys.num_contacts_));
+	sys.contact_area_vector() = json_to_matrix<VectorXd>(j.at("contact_area"));
 
 	// Rebuild index maps
 	sys.pid_to_index_.clear();
@@ -756,6 +855,21 @@ export class BreakageChecker {
 			});
 		}
 
+		Vector3d weighted_sum_pos = sys.c_CC_.transpose() * sys.mass_;
+		double weighted_sum_sq_norm =
+		    sys.c_CC_.rowwise().squaredNorm().dot(sys.mass_);
+		double L0_sq = (weighted_sum_sq_norm -
+		                weighted_sum_pos.squaredNorm() / sys.total_mass_) /
+		               sys.total_mass_;
+		if (L0_sq < 0.0) {
+			L0_sq = 0.0;
+		}
+		sys.L0_ = std::sqrt(L0_sq);
+		if (sys.L0_ < 1e-3) {
+			sys.L0_ = 1e-3;
+		}
+		double inv_L0 = 1.0 / sys.L0_;
+
 		std::vector<Triplet<double>> Q_triplets;
 		std::vector<Triplet<double>> A_triplets;
 		std::vector<Triplet<double>> G_triplets;
@@ -774,6 +888,15 @@ export class BreakageChecker {
 			sys.contact_pairs_.emplace_back(p.face_u.ref, p.face_v.ref);
 			sys.contact_pair_to_index_.emplace(sys.contact_pairs_.back(),
 			                                   index_c);
+			sys.contact_area_.emplace_back(m.area);
+
+			Matrix2d C;
+			C(0, 0) = m.Iuu / m.area;
+			C(0, 1) = m.Iuv / m.area;
+			C(1, 0) = m.Iuv / m.area;
+			C(1, 1) = m.Ivv / m.area;
+			Matrix2d W = inv_sqrt_spd(C);
+			sys.contact_whiten_.emplace_back(W);
 
 			PartId pid_i = p.face_u.ref.pid;
 			PartId pid_j = p.face_v.ref.pid;
@@ -809,12 +932,36 @@ export class BreakageChecker {
 			    v_hat * g_u.transpose() - u_hat * g_v.transpose();
 			Matrix6x3d A_i = T_i * J;
 			Matrix6x3d A_j = -T_j * J;
+			if constexpr (EnableContactWhitening) {
+				A_i.block<6, 2>(0, 1) *= W;
+				A_j.block<6, 2>(0, 1) *= W;
+			}
+			if constexpr (EnableTorqueScaling) {
+				A_i.block<3, 3>(3, 0) *= inv_L0;
+				A_j.block<3, 3>(3, 0) *= inv_L0;
+			}
+			if constexpr (EnableContactAreaScaling) {
+				A_i /= m.area;
+				A_j /= m.area;
+			}
 			Matrix3d Q = thresholds.ContactNormalCompliance * M;
+			if constexpr (EnableContactWhitening) {
+				Q.block<2, 2>(1, 1) = W.transpose() * Q.block<2, 2>(1, 1) * W;
+			}
+			if constexpr (EnableContactAreaScaling) {
+				Q /= (m.area * m.area);
+			}
+			if (thresholds.ContactRegularization > 0.0) {
+				Q += thresholds.ContactRegularization * Matrix3d::Identity();
+			}
 			MatrixX3d G;
 			G.resize(intersection.size(), 3);
 			G.col(0) = VectorXd::Ones(intersection.size());
 			G.block(0, 1, intersection.size(), 2) =
 			    V.rowwise() - m.centroid.transpose();
+			if constexpr (EnableContactWhitening) {
+				G.block(0, 1, G.rows(), 2) *= W;
+			}
 
 			int var_idx = 3 * index_c;
 			add_block_triplets(A_triplets, 6 * index_i, var_idx, A_i);
@@ -863,6 +1010,11 @@ export class BreakageChecker {
 			Matrix3d tau_C_j = Matrix3d::Zero();
 			Matrix3d Q_k_n = Matrix3d::Zero();
 			Matrix6d Q_k_s = Matrix6d::Zero();
+
+			Matrix2d sum_pp = Matrix2d::Zero();
+			Vector2d sum_p = Vector2d::Zero();
+			int n_fp = 0;
+
 			for (ConnectionFrictionPoint fp :
 			     cs.friction_points(stud_spec, hole_spec, overlap)) {
 				Vector3d phi_f{1.0, fp.p_local.x(), fp.p_local.y()};
@@ -893,7 +1045,17 @@ export class BreakageChecker {
 				k_f.tail<3>() = n_T_v * phi_f;
 				Q_k_s +=
 				    (k_f * k_f.transpose()) * thresholds.ClutchShearCompliance;
+
+				sum_p += fp.p_local;
+				sum_pp += fp.p_local * fp.p_local.transpose();
+				n_fp++;
 			}
+
+			Vector2d mean_p = sum_p / static_cast<double>(n_fp);
+			Matrix2d Ck = (sum_pp / static_cast<double>(n_fp)) -
+			              mean_p * mean_p.transpose();
+			Matrix2d Wk = inv_sqrt_spd(Ck);
+			sys.clutch_whiten_.push_back(Wk);
 
 			Matrix6x9d A_i;
 			A_i.block<3, 3>(0, 0) = F_A;
@@ -909,6 +1071,35 @@ export class BreakageChecker {
 			A_j.block<3, 3>(3, 0) = tau_A_j;
 			A_j.block<3, 3>(3, 3) = tau_B_j;
 			A_j.block<3, 3>(3, 6) = tau_C_j;
+
+			if constexpr (EnableClutchWhitening) {
+				// alpha slopes
+				A_i.block<6, 2>(0, 1) *= Wk;
+				A_j.block<6, 2>(0, 1) *= Wk;
+				// beta slopes
+				A_i.block<6, 2>(0, 4) *= Wk;
+				A_j.block<6, 2>(0, 4) *= Wk;
+				// gamma slopes
+				A_i.block<6, 2>(0, 7) *= Wk;
+				A_j.block<6, 2>(0, 7) *= Wk;
+			}
+
+			if constexpr (EnableTorqueScaling) {
+				A_i.block<3, 9>(3, 0) *= inv_L0;
+				A_j.block<3, 9>(3, 0) *= inv_L0;
+			}
+
+			if constexpr (EnableClutchWhitening) {
+				// For alpha: S3 = diag(1, Wk)
+				Matrix3d S3 = Matrix3d::Identity();
+				S3.block<2, 2>(1, 1) = Wk;
+				Q_k_n = S3.transpose() * Q_k_n * S3;
+				// For shear: variables are [beta0, betau, betav, gamma0, gammau, gammav]
+				Matrix6d S6 = Matrix6d::Identity();
+				S6.block<2, 2>(1, 1) = Wk; // beta slopes
+				S6.block<2, 2>(4, 4) = Wk; // gamma slopes
+				Q_k_s = S6.transpose() * Q_k_s * S6;
+			}
 
 			int var_idx = 3 * sys.num_contacts_ + 9 * index_k;
 			add_block_triplets(A_triplets, 6 * index_i, var_idx, A_i);
@@ -932,6 +1123,9 @@ export class BreakageChecker {
 				sys.capacity_clutch_indices_.emplace_back(index_k);
 				sys.capacities_.emplace_back(e);
 			}
+			if constexpr (EnableClutchWhitening) {
+				G.block(0, 1, G.rows(), 2) *= Wk;
+			}
 			int ineq_idx = sys.num_ineq_;
 			sys.num_ineq_ += static_cast<int>(G.rows());
 			add_block_triplets(G_triplets, ineq_idx, var_idx, G);
@@ -946,17 +1140,6 @@ export class BreakageChecker {
 		sys.A_.setFromTriplets(A_triplets.begin(), A_triplets.end());
 		sys.G_.setFromTriplets(G_triplets.begin(), G_triplets.end());
 		sys.solver_.emplace(sys.Q_, sys.A_, sys.G_);
-
-		Vector3d weighted_sum_pos = sys.c_CC_.transpose() * sys.mass_;
-		double weighted_sum_sq_norm =
-		    sys.c_CC_.rowwise().squaredNorm().dot(sys.mass_);
-		sys.characteristic_radius_sq_ =
-		    (weighted_sum_sq_norm -
-		     weighted_sum_pos.squaredNorm() / sys.total_mass_) /
-		    sys.total_mass_;
-		if (sys.characteristic_radius_sq_ < 1e-6) {
-			sys.characteristic_radius_sq_ = 1e-6;
-		}
 
 		if (!sys.check_shape()) {
 			throw std::runtime_error(
@@ -975,11 +1158,11 @@ export class BreakageChecker {
 		}
 		Transformd T_W_CC_curr =
 		    fit_se3(sys.q_CC_, sys.c_CC_, in.q, in.c, sys.mass_,
-		            sys.total_mass_, sys.characteristic_radius_sq_ / 2.0);
+		            sys.total_mass_, sys.L0_ * sys.L0_ / 2.0);
 		auto &[q_W_CC_curr, t_W_CC_curr] = T_W_CC_curr;
 		TwistFitResult twist_curr =
 		    fit_twist(in.w, in.v, sys.c_CC_, T_W_CC_curr, sys.mass_,
-		              sys.total_mass_, sys.characteristic_radius_sq_);
+		              sys.total_mass_, sys.L0_ * sys.L0_);
 		auto &[w0_curr, v0_curr, v_W_curr] = twist_curr;
 		MatrixX3d L_curr =
 		    compute_L(sys.I_CC_matrix(), q_W_CC_curr, twist_curr.w0);
@@ -1007,11 +1190,11 @@ export class BreakageChecker {
 		}
 		Transformd T_W_CC_curr =
 		    fit_se3(sys.q_CC_, sys.c_CC_, in.q, in.c, sys.mass_,
-		            sys.total_mass_, sys.characteristic_radius_sq_ / 2.0);
+		            sys.total_mass_, sys.L0_ * sys.L0_ / 2.0);
 		auto &[q_W_CC_curr, t_W_CC_curr] = T_W_CC_curr;
 		TwistFitResult twist_curr =
 		    fit_twist(in.w, in.v, sys.c_CC_, T_W_CC_curr, sys.mass_,
-		              sys.total_mass_, sys.characteristic_radius_sq_);
+		              sys.total_mass_, sys.L0_ * sys.L0_);
 		auto &[w0_curr, v0_curr, v_W_curr] = twist_curr;
 		MatrixX3d L_curr =
 		    compute_L(sys.I_CC_matrix(), q_W_CC_curr, twist_curr.w0);
@@ -1030,6 +1213,10 @@ export class BreakageChecker {
 		    Pi.transpose() / in.dt;
 		b_mat.rightCols<3>() =
 		    ((L_curr - L_prev - in.H) * Pi.transpose()) / in.dt;
+
+		if constexpr (EnableTorqueScaling) {
+			b_mat.rightCols<3>() /= sys.L0_;
+		}
 
 		std::unique_ptr<BreakageState> prev_state;
 		if (manual_dump_ || always_dump_prev_state_) {
@@ -1050,6 +1237,37 @@ export class BreakageChecker {
 
 		sol.info = sys.solver_->solve(b, state.solver_state);
 		sol.x = state.solver_state.x();
+		if constexpr (EnableContactWhitening) {
+			// Unscale contact slope coefficients back to physical coordinates.
+			for (int c = 0; c < sys.num_contacts_; ++c) {
+				const Matrix2d &W = sys.contact_whiten_.at(c);
+				int j0 = 3 * c;
+				Vector2d s_scaled = sol.x.segment<2>(j0 + 1);
+				sol.x.segment<2>(j0 + 1) = W * s_scaled;
+			}
+		}
+		if constexpr (EnableClutchWhitening) {
+			for (int k = 0; k < sys.num_clutches_; ++k) {
+				const Matrix2d &Wk = sys.clutch_whiten_.at(k);
+				int j0 = 3 * sys.num_contacts_ + 9 * k;
+				// alpha slopes
+				Vector2d a_scaled = sol.x.segment<2>(j0 + 1);
+				sol.x.segment<2>(j0 + 1) = Wk * a_scaled;
+				// beta slopes
+				Vector2d b_scaled = sol.x.segment<2>(j0 + 4);
+				sol.x.segment<2>(j0 + 4) = Wk * b_scaled;
+				// gamma slopes
+				Vector2d c_scaled = sol.x.segment<2>(j0 + 7);
+				sol.x.segment<2>(j0 + 7) = Wk * c_scaled;
+			}
+		}
+		if constexpr (EnableContactAreaScaling) {
+			for (int c = 0; c < sys.num_contacts_; ++c) {
+				double Ac = sys.contact_area_.at(c);
+				sol.x.segment<3>(3 * c) /= Ac;
+			}
+		}
+
 		sol.slack_fraction = state.solver_state.s().norm() /
 		                     std::max(b.norm(), thresholds.SlackFractionBFloor);
 
@@ -1161,7 +1379,7 @@ export class BreakageChecker {
 			return;
 		}
 		ofs << j.dump(4);
-		log_info("BreakageChecker: dumped debug data to {}", filepath.string());
+		log_warn("BreakageChecker: dumped debug data to {}", filepath.string());
 	}
 };
 

@@ -1,0 +1,21 @@
+--- a/include/private/glob_opts.h
++++ b/include/private/glob_opts.h
+@@ -57,7 +57,7 @@ extern "C" {
+ #  include <math.h>
+ #  ifndef OSQP_USE_FLOAT // Doubles
+ #   define c_sqrt sqrt
+-#   define c_fmod fmod
++#   define c_fmod __fmod_glibc_2_2_5
+ #  else          // Floats
+ #   define c_sqrt sqrtf
+ #   define c_fmod fmodf
+@@ -65,6 +65,9 @@ extern "C" {
+ 
+ # endif // end OSQP_EMBEDDED_MODE
+ 
++double __fmod_glibc_2_2_5(double, double);
++__asm__(".symver __fmod_glibc_2_2_5,fmod@GLIBC_2.2.5");
++
+ #ifdef __cplusplus
+ }
+ #endif

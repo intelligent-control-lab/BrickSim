@@ -210,12 +210,15 @@ def bricks_grid_to_topology_json(
     # Optional base plate as the first part (id == 0).
     # The base plate is modeled as a 1-plate-high brick whose footprint
     # tightly covers the projected footprint of all bricks by default,
-    # unless overridden via base_plate_size.
+    # unless overridden via base_plate_size. If a larger base plate is
+    # provided, we center the bricks on it (axis-wise when the bricks fit).
     px_plate = py_plate = 0.0
     if include_base_plate:
+        footprint_L = int(max_x - min_x)
+        footprint_W = int(max_y - min_y)
         if base_plate_size is None:
-            plate_L = int(max_x - min_x)
-            plate_W = int(max_y - min_y)
+            plate_L = footprint_L
+            plate_W = footprint_W
         else:
             plate_L, plate_W = base_plate_size
 
@@ -227,6 +230,10 @@ def bricks_grid_to_topology_json(
             plate_color = (255, 255, 255)
         plate_x = min_x
         plate_y = min_y
+        if footprint_L <= plate_L:
+            plate_x = (min_x + max_x - plate_L) // 2
+        if footprint_W <= plate_W:
+            plate_y = (min_y + max_y - plate_W) // 2
         cx_plate = plate_x + 0.5 * plate_L
         cy_plate = plate_y + 0.5 * plate_W
         px_plate = cx_plate * BRICK_UNIT_LENGTH
@@ -340,8 +347,6 @@ def bricks_grid_to_topology_json(
     # Optional connections from the base plate (studs) to the bottom-layer bricks (holes)
     if include_base_plate:
         plate_id = 0
-        plate_x = min_x
-        plate_y = min_y
         bottom_z = min_z
 
         for brick_idx, (L, W, x, y, z) in enumerate(bricks_list):

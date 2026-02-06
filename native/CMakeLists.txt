@@ -71,11 +71,36 @@ FetchContent_Declare(nlohmann_json SYSTEM
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+set(OSQP_VERSION 1.0.0)
+set(OSQP_BUILD_STATIC_LIB ON CACHE BOOL "" FORCE)
+set(OSQP_BUILD_SHARED_LIB OFF CACHE BOOL "" FORCE)
+set(OSQP_BUILD_DEMO_EXE   OFF CACHE BOOL "" FORCE)
+set(OSQP_ENABLE_PRINTING  ON CACHE BOOL "" FORCE)
+set(OSQP_ENABLE_PROFILING ON CACHE BOOL "" FORCE)
+set(OSQP_ENABLE_INTERRUPT OFF CACHE BOOL "" FORCE)
+set(OSQP_USE_FLOAT        OFF CACHE BOOL "" FORCE)
+set(OSQP_USE_LONG         OFF CACHE BOOL "" FORCE)
+set(OSQP_DEBUG            OFF CACHE BOOL "" FORCE)
+set(OSQP_CODEGEN          OFF CACHE BOOL "" FORCE)
+set(OSQP_ALGEBRA_BACKEND  "builtin" CACHE STRING "" FORCE)
+FetchContent_Declare(osqp SYSTEM
+  GIT_REPOSITORY https://github.com/osqp/osqp.git
+  GIT_TAG        v${OSQP_VERSION}
+  GIT_SHALLOW    TRUE
+  GIT_PROGRESS   TRUE
+)
+FetchContent_MakeAvailable(osqp)
+target_compile_options(OSQPLIB PRIVATE -Wno-everything)
+target_compile_options(osqpstatic PRIVATE -Wno-everything)
+
 include(SdkPatches)
 set(SDK_PATCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/sdk_patches")
 apply_sdk_patch_once(patch_eigen "${eigen_SOURCE_DIR}" "${SDK_PATCH_DIR}/eigen.patch" 1)
 apply_sdk_patch_once(patch_usd "${ISAACSIM_USD_INCLUDE}" "${SDK_PATCH_DIR}/usd_include.patch" 1)
 apply_sdk_patch_once(patch_kit "${ISAACSIM_KIT_INCLUDE}" "${SDK_PATCH_DIR}/kit_include.patch" 1)
+apply_sdk_patch_once(patch_osqp "${osqp_SOURCE_DIR}" "${SDK_PATCH_DIR}/osqp.patch" 1)
+
+add_dependencies(OSQPLIB patch_osqp)
 
 file(GLOB_RECURSE CXX_MODULE_IFACES "${CMAKE_CURRENT_SOURCE_DIR}/modules/*.cppm")
 add_library(lego_assemble_modules STATIC)
@@ -107,6 +132,7 @@ target_link_directories(lego_assemble_modules PUBLIC
   "${ISAACSIM_USD_LIBDIR}"
 )
 target_link_libraries(lego_assemble_modules PUBLIC
+  osqpstatic
   Eigen3::Eigen
   nlohmann_json::nlohmann_json
   python3.11
@@ -144,10 +170,15 @@ target_include_directories(_native BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/s
 target_link_libraries(_native PRIVATE lego_assemble_modules pybind11::module)
 pybind11_extension(_native)
 
-add_executable(solve_breakage tools/solve_breakage.cpp)
-target_sources(solve_breakage PRIVATE tools/solve_breakage.cpp)
-target_include_directories(solve_breakage BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
-target_link_libraries(solve_breakage PRIVATE lego_assemble_modules)
+function(add_lego_tool TOOL_NAME)
+  add_executable(${TOOL_NAME} tools/${TOOL_NAME}.cpp)
+  target_sources(${TOOL_NAME} PRIVATE tools/${TOOL_NAME}.cpp)
+  target_include_directories(${TOOL_NAME} BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
+  target_link_libraries(${TOOL_NAME} PRIVATE lego_assemble_modules)
+endfunction()
+
+add_lego_tool(solve_breakage)
+add_lego_tool(static_solve)
 
 # Tests
 enable_testing()

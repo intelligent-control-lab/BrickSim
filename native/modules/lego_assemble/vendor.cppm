@@ -6,6 +6,9 @@ module;
 // ==== nlohmann_json ====
 #include <nlohmann/json.hpp>
 
+// ==== osqp ====
+#include <osqp.h>
+
 // ==== PhysX ====
 #include <PxPhysicsAPI.h>
 #include <foundation/PxMat34.h>
@@ -90,6 +93,7 @@ using Eigen::aligned_allocator;
 using Eigen::AngleAxis;
 using Eigen::AngleAxisd;
 using Eigen::AngleAxisf;
+using Eigen::COLAMDOrdering;
 using Eigen::ColMajor;
 using Eigen::ComputeFullU;
 using Eigen::ComputeFullV;
@@ -132,6 +136,7 @@ using Eigen::SimplicialLDLT;
 using Eigen::SparseLU;
 using Eigen::SparseMatrix;
 using Eigen::SparseMatrixBase;
+using Eigen::SparseQR;
 using Eigen::StrictlyLower;
 using Eigen::StrictlyUpper;
 using Eigen::Success;
@@ -161,6 +166,95 @@ using nlohmann::adl_serializer;
 using nlohmann::json;
 using nlohmann::ordered_json;
 } // namespace nlohmann
+
+// ==== osqp ====
+export namespace lego_assemble::vendor::osqp {
+using ::osqp_adjoint_derivative_compute;
+using ::osqp_adjoint_derivative_get_mat;
+using ::osqp_adjoint_derivative_get_vec;
+using ::OSQP_ALGEBRA_LOAD_ERROR;
+using ::osqp_capabilities;
+using ::osqp_capabilities_type;
+using ::OSQP_CAPABILITY_CODEGEN;
+using ::OSQP_CAPABILITY_DERIVATIVES;
+using ::OSQP_CAPABILITY_DIRECT_SOLVER;
+using ::OSQP_CAPABILITY_INDIRECT_SOLVER;
+using ::OSQP_CAPABILITY_UPDATE_MATRICES;
+using ::osqp_cleanup;
+using ::osqp_codegen;
+using ::OSQP_CODEGEN_DEFINES_ERROR;
+using ::osqp_cold_start;
+using ::OSQP_DATA_NOT_INITIALIZED;
+using ::OSQP_DATA_VALIDATION_ERROR;
+using ::OSQP_DIAGONAL_PRECONDITIONER;
+using ::OSQP_DIRECT_SOLVER;
+using ::OSQP_DUAL_INFEASIBLE;
+using ::OSQP_DUAL_INFEASIBLE_INACCURATE;
+using ::osqp_error_message;
+using ::osqp_error_type;
+using ::OSQP_FOPEN_ERROR;
+using ::OSQP_FUNC_NOT_IMPLEMENTED;
+using ::osqp_get_dimensions;
+using ::osqp_get_solution;
+using ::OSQP_INDIRECT_SOLVER;
+using ::OSQP_LAST_ERROR_PLACE;
+using ::OSQP_LINSYS_SOLVER_INIT_ERROR;
+using ::osqp_linsys_solver_type;
+using ::OSQP_MAX_ITER_REACHED;
+using ::OSQP_MEM_ALLOC_ERROR;
+using ::OSQP_NO_ERROR;
+using ::OSQP_NO_PRECONDITIONER;
+using ::OSQP_NON_CVX;
+using ::OSQP_NONCVX_ERROR;
+using ::OSQP_POLISH_FAILED;
+using ::OSQP_POLISH_LINSYS_ERROR;
+using ::OSQP_POLISH_NO_ACTIVE_SET_FOUND;
+using ::OSQP_POLISH_NOT_PERFORMED;
+using ::osqp_polish_status_type;
+using ::OSQP_POLISH_SUCCESS;
+using ::osqp_precond_type;
+using ::OSQP_PRIMAL_INFEASIBLE;
+using ::OSQP_PRIMAL_INFEASIBLE_INACCURATE;
+using ::osqp_set_default_codegen_defines;
+using ::osqp_set_default_settings;
+using ::OSQP_SETTINGS_VALIDATION_ERROR;
+using ::osqp_setup;
+using ::OSQP_SIGINT;
+using ::osqp_solve;
+using ::OSQP_SOLVED;
+using ::OSQP_SOLVED_INACCURATE;
+using ::osqp_status_type;
+using ::OSQP_TIME_LIMIT_REACHED;
+using ::OSQP_UNKNOWN_SOLVER;
+using ::OSQP_UNSOLVED;
+using ::osqp_update_data_mat;
+using ::osqp_update_data_vec;
+using ::osqp_update_rho;
+using ::osqp_update_settings;
+using ::osqp_version;
+using ::osqp_warm_start;
+using ::OSQP_WORKSPACE_NOT_INIT_ERROR;
+using ::OSQPCodegenDefines;
+using ::OSQPCodegenDefines_free;
+using ::OSQPCodegenDefines_new;
+using ::OSQPCscMatrix;
+using ::OSQPCscMatrix_diag_scalar;
+using ::OSQPCscMatrix_diag_vec;
+using ::OSQPCscMatrix_free;
+using ::OSQPCscMatrix_identity;
+using ::OSQPCscMatrix_new;
+using ::OSQPCscMatrix_set_data;
+using ::OSQPCscMatrix_zeros;
+using ::OSQPFloat;
+using ::OSQPInfo;
+using ::OSQPInt;
+using ::OSQPSettings;
+using ::OSQPSettings_free;
+using ::OSQPSettings_new;
+using ::OSQPSolution;
+using ::OSQPSolver;
+using ::OSQPWorkspace;
+}; // namespace lego_assemble::vendor::osqp
 
 // ==== PhysX ====
 export namespace physx {
@@ -400,3 +494,10 @@ export auto &g_carbClientName() {
 	return ::g_carbClientName;
 }
 } // namespace lego_assemble::vendor::carb
+
+namespace lego_assemble::vendor::osqp {
+export constexpr ::OSQPFloat infinity = OSQP_INFTY;
+export auto &get_status_message(osqp_status_type status) {
+	return ::OSQP_STATUS_MESSAGE[status];
+}
+} // namespace lego_assemble::vendor::osqp
