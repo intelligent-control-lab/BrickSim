@@ -159,10 +159,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	    };
 
 	static constexpr bool HasOnDisassembledHook =
-	    requires(Hooks &hooks, ConnSegId csid) {
-		    {
-			    // Called after a connection segment is disassembled
-			    hooks.on_disassembled(csid)
+	    requires(Hooks &hooks, ConnSegId csid, const ConnSegRef &csref,
+	             const ConnectionSegment &conn_seg) {
+		    { // Called after a connection segment is disassembled
+			    hooks.on_disassembled(csid, csref, conn_seg)
 		    } -> std::same_as<void>;
 	    };
 
@@ -703,12 +703,15 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		auto pending_disassemblies = compute_breakages();
 
 		for (const auto &[csid] : pending_disassemblies) {
+			const auto *cs_entry = topology_.connection_segments().find(csid);
+			ConnSegRef csref = cs_entry->template key<ConnSegRef>();
+			ConnectionSegment conn_seg = cs_entry->value().wrapped();
 			bool disconnected = topology_.disconnect(csid).has_value();
 			if (disconnected) {
 				log_info("Connection {} breaks", csid);
 				if constexpr (HasOnDisassembledHook) {
 					if (hooks_) {
-						hooks_->on_disassembled(csid);
+						hooks_->on_disassembled(csid, csref, conn_seg);
 					}
 				}
 			}

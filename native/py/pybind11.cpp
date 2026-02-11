@@ -217,6 +217,31 @@ PYBIND11_MODULE(_native, m) {
 	      pybind11::arg("enable"),
 	      "Enable or disable manual breakage debug data dumping.");
 
+	pybind11::class_<ConnectionInfo>(
+	    m, "ConnectionInfo",
+	    "Information about an assembled or disassembled connection.")
+	    .def_readonly("physics_csid", &ConnectionInfo::physics_csid)
+	    .def_readonly("physics_stud_pid", &ConnectionInfo::physics_stud_pid)
+	    .def_readonly("physics_hole_pid", &ConnectionInfo::physics_hole_pid)
+	    .def_readonly("stud_ifid", &ConnectionInfo::stud_ifid)
+	    .def_readonly("hole_ifid", &ConnectionInfo::hole_ifid)
+	    .def_readonly("offset", &ConnectionInfo::offset)
+	    .def_readonly("yaw", &ConnectionInfo::yaw)
+	    .def_readonly("usd_stud_pid", &ConnectionInfo::usd_stud_pid)
+	    .def_readonly("usd_hole_pid", &ConnectionInfo::usd_hole_pid)
+	    .def_readonly("stud_path", &ConnectionInfo::stud_path)
+	    .def_readonly("hole_path", &ConnectionInfo::hole_path)
+	    .def_readonly("usd_csid", &ConnectionInfo::usd_csid)
+	    .def_readonly("conn_path", &ConnectionInfo::conn_path)
+	    .def("__repr__", &ConnectionInfo::repr);
+
+	m.def("get_assembled_connections", &get_assembled_connections,
+	      "Get the list of connections assembled since the last simulation "
+	      "step.");
+	m.def("get_disassembled_connections", &get_disassembled_connections,
+	      "Get the list of connections disassembled since the last simulation "
+	      "step.");
+
 	pybind11::class_<AssemblyDebugInfo>(m, "AssemblyDebugInfo",
 	                                    "Debug information for assembly "
 	                                    "detection of a connection segment.")

@@ -64,23 +64,14 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		});
 		physx_prestep_sub_ = omni_px_->subscribePhysicsOnStepEvents(
 		    true, 0,
-		    []([[maybe_unused]] float elapsedTime, void *userData) {
-			    if (auto *self = static_cast<Self *>(userData)) {
-				    if (self->physics_graph_) {
-					    self->physics_graph_->do_pre_step();
-				    }
-			    }
+		    [](float elapsedTime, void *userData) {
+			    static_cast<Self *>(userData)->on_physics_prestep(elapsedTime);
 		    },
 		    this);
 		physx_events_sub_ = omni_px_->subscribePhysicsSimulationEvents(
 		    [](omni::physx::SimulationStatusEvent eventStatus, void *userData) {
-			    if (auto *self = static_cast<Self *>(userData)) {
-				    if (eventStatus == omni::physx::eSimulationComplete) {
-					    if (self->physics_graph_) {
-						    self->physics_graph_->do_post_step();
-					    }
-				    }
-			    }
+			    static_cast<Self *>(userData)->on_physics_simulation_event(
+			        eventStatus);
 		    },
 		    this);
 
@@ -289,6 +280,25 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 
 	void on_all_objects_destruction_notify([[maybe_unused]] void *user_data) {
 		stop_simulation();
+	}
+
+	void on_physics_prestep([[maybe_unused]] float elapsedTime) {
+		if (physics_graph_) {
+			physics_graph_->do_pre_step();
+		}
+	}
+
+	void on_physics_simulation_event(
+	    omni::physx::SimulationStatusEvent eventStatus) {
+		if (eventStatus != omni::physx::eSimulationComplete) {
+			return;
+		}
+		if (bridge_) {
+			bridge_->clear_connection_logs();
+		}
+		if (physics_graph_) {
+			physics_graph_->do_post_step();
+		}
 	}
 };
 

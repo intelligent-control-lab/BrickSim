@@ -498,6 +498,76 @@ export double get_connection_utilization(const PathStr &connection_path) {
 	return csw.utilization();
 }
 
+export struct ConnectionInfo {
+	ConnSegId physics_csid;
+	PartId physics_stud_pid;
+	PartId physics_hole_pid;
+	InterfaceId stud_ifid;
+	InterfaceId hole_ifid;
+	std::array<int, 2> offset;
+	int yaw;
+	PartId usd_stud_pid;
+	PartId usd_hole_pid;
+	PathStr stud_path;
+	PathStr hole_path;
+	std::optional<ConnSegId> usd_csid;
+	std::optional<PathStr> conn_path;
+
+	ConnectionInfo() = default;
+	ConnectionInfo(const lego_assemble::ConnectionInfo &info)
+	    : physics_csid(info.physics_csid),
+	      physics_stud_pid(info.physics_stud_pid),
+	      physics_hole_pid(info.physics_hole_pid), stud_ifid(info.stud_ifid),
+	      hole_ifid(info.hole_ifid),
+	      offset({info.conn_seg.offset.x(), info.conn_seg.offset.y()}),
+	      yaw(static_cast<int>(info.conn_seg.yaw)),
+	      usd_stud_pid(info.usd_stud_pid), usd_hole_pid(info.usd_hole_pid),
+	      stud_path(info.stud_path.GetAsString()),
+	      hole_path(info.hole_path.GetAsString()), usd_csid(info.usd_csid),
+	      conn_path(info.conn_path.transform(
+	          [](const pxr::SdfPath &p) { return p.GetAsString(); })) {}
+
+	std::string repr() const {
+		return std::format(
+		    "ConnectionInfo(physics_csid={}, physics_stud_pid={}, "
+		    "physics_hole_pid={}, stud_ifid={}, hole_ifid={}, offset=[{}, {}], "
+		    "yaw={}, usd_stud_pid={}, usd_hole_pid={}, stud_path='{}', "
+		    "hole_path='{}', usd_csid={}, conn_path={})",
+		    physics_csid, physics_stud_pid, physics_hole_pid, stud_ifid,
+		    hole_ifid, offset[0], offset[1], yaw, usd_stud_pid, usd_hole_pid,
+		    stud_path, hole_path, usd_csid ? std::to_string(*usd_csid) : "None",
+		    conn_path ? std::format("'{}'", *conn_path) : "None");
+	}
+};
+
+export std::vector<ConnectionInfo> get_assembled_connections() {
+	auto *bridge = lego_world().bridge();
+	if (!bridge) {
+		return {};
+	}
+	auto conns = bridge->get_assembled_connections();
+	std::vector<ConnectionInfo> result;
+	result.reserve(conns.size());
+	for (const auto &conn : conns) {
+		result.emplace_back(conn);
+	}
+	return result;
+}
+
+export std::vector<ConnectionInfo> get_disassembled_connections() {
+	auto *bridge = lego_world().bridge();
+	if (!bridge) {
+		return {};
+	}
+	auto conns = bridge->get_disassembled_connections();
+	std::vector<ConnectionInfo> result;
+	result.reserve(conns.size());
+	for (const auto &conn : conns) {
+		result.emplace_back(conn);
+	}
+	return result;
+}
+
 export struct AssemblyDebugInfo {
 	bool accepted;
 	double relative_distance;

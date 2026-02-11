@@ -138,6 +138,26 @@ def get_breakage_thresholds() -> BreakageThresholds: ...
 
 def enable_breakage_debug_dump(enable: bool) -> None: ...
 
+class ConnectionInfo:
+    def __repr__(self) -> str: ...
+    physics_csid: int
+    physics_stud_pid: int
+    physics_hole_pid: int
+    stud_ifid: int
+    hole_ifid: int
+    offset: tuple[int, int]
+    yaw: int
+    usd_stud_pid: int
+    usd_hole_pid: int
+    stud_path: str
+    hole_path: str
+    usd_csid: int
+    conn_path: str
+
+def get_assembled_connections() -> list[ConnectionInfo]: ...
+
+def get_disassembled_connections() -> list[ConnectionInfo]: ...
+
 class AssemblyDebugInfo:
     def __repr__(self) -> str: ...
     accepted: bool

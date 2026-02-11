@@ -20,6 +20,22 @@ import lego_assemble.vendor;
 
 namespace lego_assemble {
 
+export struct ConnectionInfo {
+	ConnSegId physics_csid{};
+	PartId physics_stud_pid{};
+	PartId physics_hole_pid{};
+	InterfaceId stud_ifid{};
+	InterfaceId hole_ifid{};
+	ConnectionSegment conn_seg{};
+
+	PartId usd_stud_pid{};
+	PartId usd_hole_pid{};
+	pxr::SdfPath stud_path{};
+	pxr::SdfPath hole_path{};
+	std::optional<ConnSegId> usd_csid{};
+	std::optional<pxr::SdfPath> conn_path{};
+};
+
 export template <class Parts, class PartAuthors, class PartParsers>
 class UsdPhysicsBridge;
 
@@ -59,9 +75,14 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 			if (owner_->sync_conns_to_usd_) {
 				owner_->writeback_conn_creation(csid, csref, conn_seg);
 			}
+			owner_->assembled_conns_.emplace_back(
+			    owner_->make_connection_info(csid, csref, conn_seg));
 		}
 
-		void on_disassembled(ConnSegId csid) {
+		void on_disassembled(ConnSegId csid, const ConnSegRef &csref,
+		                     const ConnectionSegment &conn_seg) {
+			owner_->disassembled_conns_.emplace_back(
+			    owner_->make_connection_info(csid, csref, conn_seg));
 			if (owner_->sync_conns_to_usd_) {
 				owner_->writeback_conn_removal(csid);
 			}
@@ -162,6 +183,19 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		return active_;
 	}
 
+	std::span<const ConnectionInfo> get_assembled_connections() const {
+		return assembled_conns_;
+	}
+
+	std::span<const ConnectionInfo> get_disassembled_connections() const {
+		return disassembled_conns_;
+	}
+
+	void clear_connection_logs() {
+		assembled_conns_.clear();
+		disassembled_conns_.clear();
+	}
+
   private:
 	Hooks hooks_;
 	PhysicsGraph *physics_graph_;
@@ -194,6 +228,48 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	  private:
 		std::size_t &counter_;
 	};
+
+	std::vector<ConnectionInfo> assembled_conns_;
+	std::vector<ConnectionInfo> disassembled_conns_;
+
+	ConnectionInfo make_connection_info(ConnSegId physics_csid,
+	                                    const ConnSegRef &physics_csref,
+	                                    const ConnectionSegment &conn_seg) {
+		ConnectionInfo info;
+		info.physics_csid = physics_csid;
+		const auto &[physics_stud_ref, physics_hole_ref] = physics_csref;
+		const auto &[physics_stud_pid, stud_ifid] = physics_stud_ref;
+		const auto &[physics_hole_pid, hole_ifid] = physics_hole_ref;
+		info.physics_stud_pid = physics_stud_pid;
+		info.physics_hole_pid = physics_hole_pid;
+		info.stud_ifid = stud_ifid;
+		info.hole_ifid = hole_ifid;
+		info.conn_seg = conn_seg;
+
+		info.usd_stud_pid =
+		    pid_mapping_.key_of<UsdPartId>(PhysicsPartId{info.physics_stud_pid})
+		        .value();
+		info.usd_hole_pid =
+		    pid_mapping_.key_of<UsdPartId>(PhysicsPartId{info.physics_hole_pid})
+		        .value();
+		info.stud_path =
+		    usd_graph_->topology().parts().template key_of<pxr::SdfPath>(
+		        info.usd_stud_pid);
+		info.hole_path =
+		    usd_graph_->topology().parts().template key_of<pxr::SdfPath>(
+		        info.usd_hole_pid);
+		const auto *usd_csid_ptr =
+		    csid_mapping_.template find_key<UsdConnSegId>(
+		        PhysicsConnSegId{info.physics_csid});
+		if (usd_csid_ptr) {
+			info.usd_csid = usd_csid_ptr->value();
+			info.conn_path =
+			    usd_graph_->topology()
+			        .connection_segments()
+			        .template key_of<pxr::SdfPath>(info.usd_csid.value());
+		}
+		return info;
+	}
 
 	bool writeback_conn_creation(ConnSegId physics_csid,
 	                             const ConnSegRef &physics_csref,

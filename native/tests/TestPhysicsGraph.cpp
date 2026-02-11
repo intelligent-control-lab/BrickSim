@@ -38,7 +38,9 @@ struct TestHooks {
 		});
 	}
 
-	void on_disassembled(ConnSegId csid) {
+	void on_disassembled(ConnSegId csid,
+	                     [[maybe_unused]] const ConnSegRef &csref,
+	                     [[maybe_unused]] const ConnectionSegment &conn_seg) {
 		disassembled_events.push_back(csid);
 	}
 };
