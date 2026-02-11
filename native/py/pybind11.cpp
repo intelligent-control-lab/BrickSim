@@ -236,11 +236,13 @@ PYBIND11_MODULE(_native, m) {
 	    .def("__repr__", &ConnectionInfo::repr);
 
 	m.def("get_assembled_connections", &get_assembled_connections,
-	      "Get the list of connections assembled since the last simulation "
-	      "step.");
+	      pybind11::arg("clear") = false,
+	      "Get the list of assembled connections. If clear is true, the buffer "
+	      "will be cleared.");
 	m.def("get_disassembled_connections", &get_disassembled_connections,
-	      "Get the list of connections disassembled since the last simulation "
-	      "step.");
+	      pybind11::arg("clear") = false,
+	      "Get the list of disassembled connections. If clear is true, the "
+	      "buffer will be cleared.");
 
 	pybind11::class_<AssemblyDebugInfo>(m, "AssemblyDebugInfo",
 	                                    "Debug information for assembly "

@@ -540,7 +540,7 @@ export struct ConnectionInfo {
 	}
 };
 
-export std::vector<ConnectionInfo> get_assembled_connections() {
+export std::vector<ConnectionInfo> get_assembled_connections(bool clear) {
 	auto *bridge = lego_world().bridge();
 	if (!bridge) {
 		return {};
@@ -551,10 +551,13 @@ export std::vector<ConnectionInfo> get_assembled_connections() {
 	for (const auto &conn : conns) {
 		result.emplace_back(conn);
 	}
+	if (clear) {
+		bridge->clear_assembled_connections();
+	}
 	return result;
 }
 
-export std::vector<ConnectionInfo> get_disassembled_connections() {
+export std::vector<ConnectionInfo> get_disassembled_connections(bool clear) {
 	auto *bridge = lego_world().bridge();
 	if (!bridge) {
 		return {};
@@ -564,6 +567,9 @@ export std::vector<ConnectionInfo> get_disassembled_connections() {
 	result.reserve(conns.size());
 	for (const auto &conn : conns) {
 		result.emplace_back(conn);
+	}
+	if (clear) {
+		bridge->clear_disassembled_connections();
 	}
 	return result;
 }

@@ -293,9 +293,6 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		if (eventStatus != omni::physx::eSimulationComplete) {
 			return;
 		}
-		if (bridge_) {
-			bridge_->clear_connection_logs();
-		}
 		if (physics_graph_) {
 			physics_graph_->do_post_step();
 		}

@@ -186,13 +186,13 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	std::span<const ConnectionInfo> get_assembled_connections() const {
 		return assembled_conns_;
 	}
-
+	void clear_assembled_connections() {
+		assembled_conns_.clear();
+	}
 	std::span<const ConnectionInfo> get_disassembled_connections() const {
 		return disassembled_conns_;
 	}
-
-	void clear_connection_logs() {
-		assembled_conns_.clear();
+	void clear_disassembled_connections() {
 		disassembled_conns_.clear();
 	}
 
