@@ -151,8 +151,8 @@ class ConnectionInfo:
     usd_hole_pid: int
     stud_path: str
     hole_path: str
-    usd_csid: int
-    conn_path: str
+    usd_csid: Optional[int]
+    conn_path: Optional[str]
 
 def get_assembled_connections() -> list[ConnectionInfo]: ...
 
