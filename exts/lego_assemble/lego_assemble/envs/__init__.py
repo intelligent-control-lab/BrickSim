@@ -1,1 +1,1 @@
-from .lift_brick import *
+from .assemble_brick import *

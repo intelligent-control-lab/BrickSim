@@ -26,6 +26,17 @@
             ],
         },
         {
+            "name": "C++: Attach IsaacSim (Select process)",
+            "type": "lldb",
+            "request": "attach",
+            "program": "${workspaceRoot}/.venv/bin/python",
+            "pid": "${command:pickProcess}",
+            "stopOnEntry": false,
+            "initCommands": [
+                "process handle --stop false --notify false SIGWINCH"
+            ],
+        },
+        {
             "name": "Python: Current File",
             "type": "debugpy",
             "request": "launch",
