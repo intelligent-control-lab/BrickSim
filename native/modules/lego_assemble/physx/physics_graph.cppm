@@ -684,10 +684,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		constraint_scheduler_.commit();
 		filtering_reset_.commit();
 
-		if (in_simulation_step_) {
-			throw std::runtime_error(
-			    "do_pre_step called while already in simulation step");
-		}
+		// Do not check in_simulation_step_ here because sometimes do_post_step is not called,
+		// e.g. when Isaaclab is resumed from pause
 		in_simulation_step_ = true;
 	}
 
