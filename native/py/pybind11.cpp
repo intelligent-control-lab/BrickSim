@@ -233,6 +233,7 @@ PYBIND11_MODULE(_native, m) {
 	    .def_readonly("hole_ifid", &ConnectionInfo::hole_ifid)
 	    .def_readonly("offset", &ConnectionInfo::offset)
 	    .def_readonly("yaw", &ConnectionInfo::yaw)
+	    .def_readonly("env_id", &ConnectionInfo::env_id)
 	    .def_readonly("usd_stud_pid", &ConnectionInfo::usd_stud_pid)
 	    .def_readonly("usd_hole_pid", &ConnectionInfo::usd_hole_pid)
 	    .def_readonly("stud_path", &ConnectionInfo::stud_path)

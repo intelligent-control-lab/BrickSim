@@ -517,6 +517,7 @@ export struct ConnectionInfo {
 	InterfaceId hole_ifid;
 	std::array<int, 2> offset;
 	int yaw;
+	std::int64_t env_id;
 	PartId usd_stud_pid;
 	PartId usd_hole_pid;
 	PathStr stud_path;
@@ -531,7 +532,7 @@ export struct ConnectionInfo {
 	      physics_hole_pid(info.physics_hole_pid), stud_ifid(info.stud_ifid),
 	      hole_ifid(info.hole_ifid),
 	      offset({info.conn_seg.offset.x(), info.conn_seg.offset.y()}),
-	      yaw(static_cast<int>(info.conn_seg.yaw)),
+	      yaw(static_cast<int>(info.conn_seg.yaw)), env_id(info.env_id),
 	      usd_stud_pid(info.usd_stud_pid), usd_hole_pid(info.usd_hole_pid),
 	      stud_path(info.stud_path.GetAsString()),
 	      hole_path(info.hole_path.GetAsString()), usd_csid(info.usd_csid),
@@ -542,11 +543,12 @@ export struct ConnectionInfo {
 		return std::format(
 		    "ConnectionInfo(physics_csid={}, physics_stud_pid={}, "
 		    "physics_hole_pid={}, stud_ifid={}, hole_ifid={}, offset=[{}, {}], "
-		    "yaw={}, usd_stud_pid={}, usd_hole_pid={}, stud_path='{}', "
-		    "hole_path='{}', usd_csid={}, conn_path={})",
+		    "yaw={}, env_id={}, usd_stud_pid={}, usd_hole_pid={}, "
+		    "stud_path='{}', hole_path='{}', usd_csid={}, conn_path={})",
 		    physics_csid, physics_stud_pid, physics_hole_pid, stud_ifid,
-		    hole_ifid, offset[0], offset[1], yaw, usd_stud_pid, usd_hole_pid,
-		    stud_path, hole_path, usd_csid ? std::to_string(*usd_csid) : "None",
+		    hole_ifid, offset[0], offset[1], yaw, env_id, usd_stud_pid,
+		    usd_hole_pid, stud_path, hole_path,
+		    usd_csid ? std::to_string(*usd_csid) : "None",
 		    conn_path ? std::format("'{}'", *conn_path) : "None");
 	}
 };

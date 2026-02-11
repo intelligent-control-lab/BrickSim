@@ -153,6 +153,7 @@ class ConnectionInfo:
     hole_ifid: int
     offset: tuple[int, int]
     yaw: int
+    env_id: int
     usd_stud_pid: int
     usd_hole_pid: int
     stud_path: str

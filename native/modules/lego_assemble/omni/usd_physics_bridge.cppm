@@ -16,6 +16,7 @@ import lego_assemble.utils.multi_key_set;
 import lego_assemble.utils.typed_id;
 import lego_assemble.utils.poly_store;
 import lego_assemble.utils.logging;
+import lego_assemble.utils.usd_envs;
 import lego_assemble.vendor;
 
 namespace lego_assemble {
@@ -28,6 +29,7 @@ export struct ConnectionInfo {
 	InterfaceId hole_ifid{};
 	ConnectionSegment conn_seg{};
 
+	std::int64_t env_id{};
 	PartId usd_stud_pid{};
 	PartId usd_hole_pid{};
 	pxr::SdfPath stud_path{};
@@ -258,6 +260,7 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		info.hole_path =
 		    usd_graph_->topology().parts().template key_of<pxr::SdfPath>(
 		        info.usd_hole_pid);
+		info.env_id = env_id_from_path(info.stud_path).value_or(kNoEnv);
 		const auto *usd_csid_ptr =
 		    csid_mapping_.template find_key<UsdConnSegId>(
 		        PhysicsConnSegId{info.physics_csid});
