@@ -24,6 +24,7 @@ using UsdPartId = World::Bridge::UsdPartId;
 using PhysicsPartId = World::Bridge::PhysicsPartId;
 using UsdConnSegId = World::Bridge::UsdConnSegId;
 using PhysicsConnSegId = World::Bridge::PhysicsConnSegId;
+using UsdGraph = World::UsdGraph;
 
 using QuatArray = std::array<double, 4>; // w, x, y, z
 using PosArray = std::array<double, 3>;  // x, y, z
@@ -124,6 +125,16 @@ export PathStr allocate_brick_part(const std::array<BrickUnit, 3> &dimensions,
 		usd_graph().set_component_transform(pid, T_env_part);
 	}
 	return path.GetAsString();
+}
+
+export void
+allocate_unmanaged_brick_part(const std::array<BrickUnit, 3> &dimensions,
+                              const BrickColor &color, const PathStr &path) {
+	BrickPart part{dimensions[0], dimensions[1], dimensions[2], color};
+	usd_graph()
+	    .allocator()
+	    .allocate_part_unmanaged<UsdGraph::PartAuthorFor<BrickPart>>(
+	        pxr::SdfPath{path}, part);
 }
 
 export bool deallocate_part(const PathStr &part_path) {

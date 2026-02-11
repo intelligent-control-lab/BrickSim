@@ -8,6 +8,12 @@ def allocate_brick_part(
     pos: Optional[tuple[float, float, float]] = None,
 ) -> str: ...
 
+def allocate_unmanaged_brick_part(
+    dimensions: tuple[int, int, int],
+    color: tuple[int, int, int],
+    path: str,
+) -> None: ...
+
 def deallocate_part(part_path: str) -> bool: ...
 
 def compute_graph_transform(

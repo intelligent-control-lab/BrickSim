@@ -23,6 +23,12 @@ PYBIND11_MODULE(_native, m) {
 	    "dimensions, color and pose (in meters, wxyz quaternion). Returns the "
 	    "allocated brick path.");
 
+	m.def("allocate_unmanaged_brick_part", &allocate_unmanaged_brick_part,
+	      pybind11::arg("dimensions"), pybind11::arg("color"),
+	      pybind11::arg("path"),
+	      "Allocate a new unmanaged brick part at the specified path with "
+	      "given dimensions and color.");
+
 	m.def("deallocate_part", &deallocate_part, pybind11::arg("part_path"),
 	      "Deallocate the specified managed part. Returns true if successful.");
 
