@@ -343,8 +343,8 @@ export struct BreakageThresholds {
 	double ContactRegularization{0.0};
 	double ClutchNormalCompliance{1.0};
 	double ClutchShearCompliance{1.0};
-	double FrictionCoefficient{0.5};
-	double PreloadedForce{1.4};
+	double FrictionCoefficient{0.2};
+	double PreloadedForce{3.5};
 	double SlackFractionWarn{0.1};
 	double SlackFractionBFloor{1e-9};
 };
