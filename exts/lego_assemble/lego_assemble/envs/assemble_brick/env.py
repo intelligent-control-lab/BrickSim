@@ -1,9 +1,10 @@
+import math
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.envs.mdp import (BinaryJointPositionActionCfg,
                                JointPositionActionCfg, joint_pos_rel,
-                               joint_vel_rel, last_action, time_out)
-from isaaclab.managers import (ObservationGroupCfg, ObservationTermCfg,
+                               joint_vel_rel, last_action, reset_root_state_uniform, time_out)
+from isaaclab.managers import (EventTermCfg, ObservationGroupCfg, ObservationTermCfg, RewardTermCfg, SceneEntityCfg,
                                TerminationTermCfg)
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import FrameTransformerCfg, OffsetCfg
@@ -13,7 +14,9 @@ from isaaclab.utils import configclass
 from isaaclab_assets import FRANKA_PANDA_CFG, ISAAC_NUCLEUS_DIR
 from isaaclab_tasks.manager_based.manipulation.stack.mdp import (ee_frame_pos,
                                                                  ee_frame_quat)
-from lego_assemble.mdp.spawn import BrickPartCfg
+from isaaclab_tasks.manager_based.manipulation.lift.mdp import object_ee_distance
+from lego_assemble.mdp.spawn import BrickPartCfg, MarkerBrickPartCfg
+from lego_assemble.mdp.events import reset_managed_lego, reset_to_assembled_pose
 
 
 @configclass
@@ -56,19 +59,19 @@ class SceneCfg(InteractiveSceneCfg):
 
     table = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Table",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5, 0, 0], rot=[0.707, 0, 0, 0.707]),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5, 0, 0.003], rot=[0.707, 0, 0, 0.707]),
         spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"),
     )
 
     ground_plane = AssetBaseCfg(
         prim_path="/World/GroundPlane",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=[0, 0, -1.05]),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=[0, 0, -1.037]),
         spawn=GroundPlaneCfg(),
     )
 
     light = AssetBaseCfg(
         prim_path="/World/light",
-        spawn=DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=3000.0),
+        spawn=DomeLightCfg(color=(1.0, 1.0, 1.0), intensity=3000.0),
     )
 
     lego_baseplate: RigidObjectCfg = RigidObjectCfg(
@@ -81,13 +84,20 @@ class SceneCfg(InteractiveSceneCfg):
         ),
     )
 
-    brick: RigidObjectCfg = RigidObjectCfg(
+    lego_brick: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Brick",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.08), rot=(1.0, 0.0, 0.0, 0.0)),
         spawn=BrickPartCfg(
             dimensions=[2, 4, 3],
             color="Pink",
             rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=False, disable_gravity=False),
+        ),
+    )
+
+    marker_brick: AssetBaseCfg = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/MarkerBrick",
+        spawn=MarkerBrickPartCfg(
+            dimensions=[2, 4, 3],
+            color="Red",
         ),
     )
 
@@ -140,11 +150,47 @@ class ObservationsCfg:
 
 @configclass
 class EventCfg:
-    pass
+
+    reset_brick_pose = EventTermCfg(
+        func=reset_root_state_uniform,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("lego_brick"),
+            "pose_range": {
+                "x": (0.36, 0.56),
+                "y": (0.16, 0.32),
+                "yaw": (0.0, math.tau),
+            },
+            "velocity_range": {},
+          },
+      )
+
+    reset_marker_brick_pose = EventTermCfg(
+        func=reset_to_assembled_pose,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("marker_brick"),
+            "stud": SceneEntityCfg("lego_baseplate"),
+            "offset": (5, 5),
+            "yaw": 1,
+        },
+    )
+
+    reset_managed_lego = EventTermCfg(
+        func=reset_managed_lego,
+        mode="reset",
+    )
 
 @configclass
 class RewardsCfg:
-    pass
+    reaching_brick = RewardTermCfg(
+        func=object_ee_distance,
+        params={
+            "std": 0.1,
+            "object_cfg": SceneEntityCfg("lego_brick"),
+        },
+        weight=1.0,
+    )
 
 @configclass
 class TerminationsCfg:
@@ -171,7 +217,7 @@ class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         self.sim.device = "cpu"
         self.decimation = 2
-        self.episode_length_s = 5.0
+        self.episode_length_s = 30.0
         self.sim.dt = 0.01
         self.sim.render_interval = self.decimation
         self.sim.physx.bounce_threshold_velocity = 0.2
