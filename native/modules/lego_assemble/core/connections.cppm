@@ -131,7 +131,7 @@ export struct ConnectionSegment {
 					    .n_local = Vector2d{x, y}.normalized(),
 					};
 				};
-				if (hole.L == 1 && hole.W == 1) {
+				if (hole.L == 1 || hole.W == 1) {
 					// Single stud hole
 					co_yield friction_point(R, 0);
 					co_yield friction_point(0, R);
@@ -201,7 +201,7 @@ export struct ConnectionSegment {
 				    .n_local = Vector2d{x, y}.normalized(),
 				});
 			};
-			if (hole.L == 1 && hole.W == 1) {
+			if (hole.L == 1 || hole.W == 1) {
 				// Single stud hole
 				push_point(R, 0);
 				push_point(0, R);
