@@ -1,6 +1,7 @@
 export module lego_assemble.core.specs;
 
 import std;
+import lego_assemble.core.mass;
 import lego_assemble.utils.type_list;
 import lego_assemble.utils.transforms;
 import lego_assemble.utils.concepts;
@@ -157,15 +158,6 @@ using PartList = type_list<Ps...>;
 
 // ==== Definition of Brick ====
 
-export constexpr double brickMassInKg(BrickUnit L, BrickUnit W, PlateUnit H) {
-	// Experimental formula to fit mass of arbitrary bricks
-	int bricks = H / 3;
-	int rem = H % 3;
-	double m_brick = 0.1523 * (L * W) + 0.2498 * (L + W) - 0.2485;
-	double m_plate = 0.10937 * (L * W) + 0.05671 * (L + W) - 0.02207;
-	return (bricks * m_brick + rem * m_plate) / 1000;
-}
-
 export class BrickPart {
   public:
 	static constexpr InterfaceId HoleId = 0;
@@ -191,7 +183,7 @@ export class BrickPart {
 		return H_;
 	}
 	double mass() const {
-		return brickMassInKg(L_, W_, H_);
+		return brick_mass_in_kg(L_, W_, H_);
 	}
 	BrickColor color() const {
 		return color_;
