@@ -177,17 +177,41 @@ int main(int argc, char **argv) {
 	auto t0 = std::chrono::high_resolution_clock::now();
 	BreakageSolution sol2 = checker.solve(sys, in, state2);
 	auto t1 = std::chrono::high_resolution_clock::now();
-	double elapsed_ms =
-	    std::chrono::duration<double, std::milli>(t1 - t0).count();
-	eprintln("Solve time: {:.3f} ms.", elapsed_ms);
+	double elapsed_s = std::chrono::duration<double>(t1 - t0).count();
+	eprintln("Solve time: {:.3f} ms.", elapsed_s * 1000);
+
+	bool stable;
+	bool solved;
+	if (total_cc_count == 1) {
+		if (sol.info.converged) {
+			stable = true;
+			for (double u : sol.utilization) {
+				if (u > 1.0) {
+					stable = false;
+					break;
+				}
+			}
+			solved = true;
+		} else {
+			stable = false;
+			solved = false;
+		}
+	} else {
+		stable = false;
+		solved = true;
+	}
 
 	nlohmann::ordered_json result;
-	result["slack_fraction"] = sol2.slack_fraction;
-	result["solution_info"] = sol2.info;
+	result["stable"] = stable;
+	result["solved"] = solved;
+	result["time_s"] = elapsed_s;
+	result["cc_count"] = total_cc_count;
+	result["slack_fraction"] = sol.slack_fraction;
+	result["solution_info"] = sol.info;
 	nlohmann::ordered_json utilizations;
 	for (int k = 0; k < sys.num_clutches(); ++k) {
 		ConnSegId csid = sys.clutch_ids().at(k);
-		double utilization = sol2.utilization(k);
+		double utilization = sol.utilization(k);
 		utilizations[std::to_string(csid)] = utilization;
 	}
 	result["clutch_utilizations"] = utilizations;

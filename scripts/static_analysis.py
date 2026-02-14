@@ -21,6 +21,21 @@ from lego_assemble.importers.stabletext2brick import (
     is_bricks_text,
 )
 
+def set_axes_equal_3d(ax, world_dim):
+    x_dim, y_dim, z_dim = world_dim
+    x_center = x_dim / 2
+    y_center = y_dim / 2
+    z_center = z_dim / 2
+    half_range = max(x_dim, y_dim, z_dim) / 2
+
+    ax.set_xlim(x_center - half_range, x_center + half_range)
+    ax.set_ylim(y_center - half_range, y_center + half_range)
+    ax.set_zlim(z_center - half_range, z_center + half_range)
+
+    if hasattr(ax, "set_box_aspect"):
+        ax.set_box_aspect((1, 1, 1))
+
+
 
 def _parse_baseplate(s: str) -> tuple[int, int]:
     w_s, h_s = s.split("x")
@@ -138,6 +153,8 @@ def _render_heatmap(
 
     ax = plt.figure().add_subplot(projection="3d")
     ax.voxels(world_grid, facecolors=heatmap_color, edgecolor="k")
+    set_axes_equal_3d(ax, world_dim)
+    ax.view_init(elev=0, azim=-90)
     plt.savefig(output_path)
 
 
