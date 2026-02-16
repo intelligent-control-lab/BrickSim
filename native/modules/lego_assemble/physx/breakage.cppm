@@ -447,7 +447,9 @@ export class BreakageSystem {
 		       (L0_ > 0.0) && (Q_.rows() == num_vars_) &&
 		       (Q_.cols() == num_vars_) && (A_.rows() == num_eq_) &&
 		       (A_.cols() == num_vars_) && (G_.rows() == num_ineq_) &&
-		       (G_.cols() == num_vars_) && (solver_.has_value()) &&
+		       (G_.cols() == num_vars_) && (H_.rows() == num_relaxed_ineq_) &&
+		       (H_.cols() == num_vars_) && (V_.rows() == num_relaxed_ineq_) &&
+		       (V_.cols() == num_clutches_) && (solver_.has_value()) &&
 		       (capacity_clutch_indices_.size() == capacities_.size()) &&
 		       (contact_whiten_.size() ==
 		        static_cast<std::size_t>(num_contacts_)) &&
@@ -465,9 +467,10 @@ export class BreakageSystem {
 	int num_parts_{};
 	int num_contacts_{};
 	int num_clutches_{};
-	int num_vars_{}; // 3 * num_contacts_ + 9 * num_clutches_
-	int num_eq_{};   // 6 * num_parts_
-	int num_ineq_{}; // sum_e |Vtx(\Omega_e)|
+	int num_vars_{};         // 3 * num_contacts_ + 9 * num_clutches_
+	int num_eq_{};           // 6 * num_parts_
+	int num_ineq_{};         // sum_e |Vtx(\Omega_e)|
+	int num_relaxed_ineq_{}; // sum_k |Vtx(\Omega_k)|
 
 	std::vector<PartId> pids_{};
 	std::unordered_map<PartId, int> pid_to_index_{};
@@ -492,6 +495,8 @@ export class BreakageSystem {
 	SparseMatrix<double> Q_{};
 	SparseMatrix<double> A_{};
 	SparseMatrix<double> G_{};
+	SparseMatrix<double> H_{};
+	SparseMatrix<double> V_{};
 	std::optional<QpSolver> solver_{};
 
 	std::vector<int> capacity_clutch_indices_;
@@ -568,9 +573,12 @@ export void to_json(nlohmann::ordered_json &j, const BreakageSystem &sys) {
 	    {"num_vars", sys.num_vars_},
 	    {"num_eq", sys.num_eq_},
 	    {"num_ineq", sys.num_ineq_},
+	    {"num_relaxed_ineq", sys.num_relaxed_ineq_},
 	    {"Q", matrix_to_json(sys.Q_)},
 	    {"A", matrix_to_json(sys.A_)},
 	    {"G", matrix_to_json(sys.G_)},
+	    {"H", matrix_to_json(sys.H_)},
+	    {"V", matrix_to_json(sys.V_)},
 	    {"part_ids", sys.pids_},
 	    {"contact_pairs", sys.contact_pairs_},
 	    {"clutch_ids", sys.clutches_},
@@ -595,10 +603,13 @@ export void from_json(const nlohmann::ordered_json &j, BreakageSystem &sys) {
 	j.at("num_vars").get_to(sys.num_vars_);
 	j.at("num_eq").get_to(sys.num_eq_);
 	j.at("num_ineq").get_to(sys.num_ineq_);
+	j.at("num_relaxed_ineq").get_to(sys.num_relaxed_ineq_);
 	sys.Q_ = json_to_matrix<SparseMatrix<double>>(j.at("Q"));
 	sys.A_ = json_to_matrix<SparseMatrix<double>>(j.at("A"));
 	sys.G_ = json_to_matrix<SparseMatrix<double>>(j.at("G"));
-	sys.solver_.emplace(sys.Q_, sys.A_, sys.G_);
+	sys.H_ = json_to_matrix<SparseMatrix<double>>(j.at("H"));
+	sys.V_ = json_to_matrix<SparseMatrix<double>>(j.at("V"));
+	sys.solver_.emplace(sys.Q_, sys.A_, sys.G_, sys.H_, sys.V_);
 	j.at("part_ids").get_to(sys.pids_);
 	j.at("contact_pairs").get_to(sys.contact_pairs_);
 	j.at("clutch_ids").get_to(sys.clutches_);
@@ -873,6 +884,8 @@ export class BreakageChecker {
 		std::vector<Triplet<double>> Q_triplets;
 		std::vector<Triplet<double>> A_triplets;
 		std::vector<Triplet<double>> G_triplets;
+		std::vector<Triplet<double>> H_triplets;
+		std::vector<Triplet<double>> V_triplets;
 
 		for (TouchingFacePair p : detect_touching_faces(g, rep)) {
 			std::vector<Vector2d> intersection =
@@ -1122,6 +1135,16 @@ export class BreakageChecker {
 				e.tail<3>() *= fp.n_local.y() / thresholds.PreloadedForce;
 				sys.capacity_clutch_indices_.emplace_back(index_k);
 				sys.capacities_.emplace_back(e);
+				Vector9d h = e;
+				if constexpr (EnableClutchWhitening) {
+					h.segment<2>(1) = Wk.transpose() * h.segment<2>(1);
+					h.segment<2>(4) = Wk.transpose() * h.segment<2>(4);
+					h.segment<2>(7) = Wk.transpose() * h.segment<2>(7);
+				}
+				int relaxed_ineq_idx = sys.num_relaxed_ineq_++;
+				Matrix<double, 1, 9> h_T = h.transpose();
+				add_block_triplets(H_triplets, relaxed_ineq_idx, var_idx, h_T);
+				V_triplets.emplace_back(relaxed_ineq_idx, index_k, 1.0);
 			}
 			if constexpr (EnableClutchWhitening) {
 				G.block(0, 1, G.rows(), 2) *= Wk;
@@ -1136,10 +1159,14 @@ export class BreakageChecker {
 		sys.Q_.resize(sys.num_vars_, sys.num_vars_);
 		sys.A_.resize(sys.num_eq_, sys.num_vars_);
 		sys.G_.resize(sys.num_ineq_, sys.num_vars_);
+		sys.H_.resize(sys.num_relaxed_ineq_, sys.num_vars_);
+		sys.V_.resize(sys.num_relaxed_ineq_, sys.num_clutches_);
 		sys.Q_.setFromTriplets(Q_triplets.begin(), Q_triplets.end());
 		sys.A_.setFromTriplets(A_triplets.begin(), A_triplets.end());
 		sys.G_.setFromTriplets(G_triplets.begin(), G_triplets.end());
-		sys.solver_.emplace(sys.Q_, sys.A_, sys.G_);
+		sys.H_.setFromTriplets(H_triplets.begin(), H_triplets.end());
+		sys.V_.setFromTriplets(V_triplets.begin(), V_triplets.end());
+		sys.solver_.emplace(sys.Q_, sys.A_, sys.G_, sys.H_, sys.V_);
 
 		if (!sys.check_shape()) {
 			throw std::runtime_error(
@@ -1282,12 +1309,19 @@ export class BreakageChecker {
 		sol.utilization = VectorXd::Constant(sys.num_clutches_, -1.0);
 		if (sol.info.converged) {
 			for (std::size_t idx = 0; idx < sys.capacities_.size(); ++idx) {
-				const Vector9d &capacity = sys.capacities_[idx];
+				const Vector9d &c = sys.capacities_[idx];
 				int clutch_index = sys.capacity_clutch_indices_[idx];
 				const Vector9d &x =
 				    sol.x.segment<9>(3 * sys.num_contacts_ + 9 * clutch_index);
-				double u_fp = capacity.dot(x);
-				u_fp = std::max(u_fp, 0.0);
+				double frc_used = c.head<3>().dot(x.head<3>());
+				double frc_cap = 1 - c.tail<6>().dot(x.tail<6>());
+				double u_fp;
+				if (frc_cap > 0) {
+					u_fp = frc_used / frc_cap;
+					u_fp = std::max(u_fp, 0.0);
+				} else {
+					u_fp = 1e6;
+				}
 				double &u_max = sol.utilization(clutch_index);
 				if (u_fp > u_max) {
 					u_max = u_fp;
