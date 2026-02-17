@@ -388,6 +388,7 @@ export class OsqpSolver {
 	int mh_;
 
 	double epsilon = 1e-4;
+	double rel_x_reg = 1e-4;
 
 	SparseMatrix<double> A_;
 	SparseMatrix<double> V_;
@@ -452,7 +453,10 @@ export class OsqpSolver {
 	}
 	SparseMatrix<double> build_P_rlx_() const {
 		std::vector<Triplet<double>> triplets;
-		triplets.reserve(nv_);
+		triplets.reserve(nx_ + nv_);
+		for (int i = 0; i < nx_; ++i) {
+			triplets.emplace_back(i, i, rel_x_reg);
+		}
 		for (int i = 0; i < nv_; ++i) {
 			triplets.emplace_back(nx_ + i, nx_ + i, 1.0);
 		}
