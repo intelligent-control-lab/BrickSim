@@ -883,18 +883,21 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			BreakageSolution sol = breakage_checker_.solve(sys, in, state);
 			if (sol.utilization.size() > 0) {
 				// Break the most utilized connection
-				int idx_k = 0;
-				double max_u = sol.utilization(0);
-				for (int i = 1; i < sol.utilization.size(); ++i) {
+				std::optional<ConnSegId> max_csid;
+				double max_u = -1.0;
+				for (int i = 0; i < sol.utilization.size(); ++i) {
 					double u = sol.utilization(i);
-					if (u > max_u) {
+					ConnSegId csid = sys.clutch_ids().at(i);
+					auto &csw = topology_.connection_segment_at(csid)
+					;
+					csw.utilization_ = u;
+					if (!max_csid.has_value() || u > max_u) {
+						max_csid = csid;
 						max_u = u;
-						idx_k = i;
 					}
 				}
 				if (max_u > 1.0) {
-					ConnSegId csid = sys.clutch_ids().at(idx_k);
-					pending_disassemblies.emplace_back(csid);
+					pending_disassemblies.emplace_back(*max_csid);
 				}
 			}
 		}
