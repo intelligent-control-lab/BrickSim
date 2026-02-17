@@ -531,6 +531,7 @@ def main() -> None:
             print(
                 f"Note: {solved_total - solved_with_gt} solved cases have no gt_stable and are excluded from solved accuracy."
             )
+        print(f"Time avg (solved): {sum(p[2] for p in predictions if p[1]) / solved_total:.6f} s")
     else:
         print("Solved accuracy: N/A (no solved cases with gt_stable)")
 
