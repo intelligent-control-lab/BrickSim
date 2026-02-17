@@ -69,33 +69,19 @@ export struct OsqpInfo {
 	osqp::OSQPInfo prj_info{};
 	bool rlx_converged{false};
 	osqp::OSQPInfo rlx_info{};
-	bool has_violation{false};
-	bool opt_skipped{false};
 	bool opt_converged{false};
 	osqp::OSQPInfo opt_info{};
 
 	std::string to_string() const {
-		if (opt_skipped) {
-			return std::format("Overall converged: {}\n"
-			                   "Projection converged: {}\n"
-			                   "{}\n"
-			                   "Relaxation converged: {}; violation: {}\n"
-			                   "{}\n"
-			                   "Optimization converged: skipped",
-			                   converged, prj_converged, prj_info,
-			                   rlx_converged, has_violation, rlx_info);
-		} else {
-			return std::format("Overall converged: {}\n"
-			                   "Projection converged: {}\n"
-			                   "{}\n"
-			                   "Relaxation converged: {}; violation: {}\n"
-			                   "{}\n"
-			                   "Optimization converged: {}\n"
-			                   "{}",
-			                   converged, prj_converged, prj_info,
-			                   rlx_converged, has_violation, rlx_info,
-			                   opt_converged, opt_info);
-		}
+		return std::format("Overall converged: {}\n"
+		                   "Projection converged: {}\n"
+		                   "{}\n"
+		                   "Relaxation converged: {}\n"
+		                   "{}\n"
+		                   "Optimization converged: {}\n"
+		                   "{}",
+		                   converged, prj_converged, prj_info, rlx_converged,
+		                   rlx_info, opt_converged, opt_info);
 	}
 };
 
@@ -152,8 +138,6 @@ export void to_json(nlohmann::ordered_json &j, const OsqpInfo &info) {
 	osqp_info_to_json(j["prj_info"], info.prj_info);
 	j["rlx_converged"] = info.rlx_converged;
 	osqp_info_to_json(j["rlx_info"], info.rlx_info);
-	j["has_violation"] = info.has_violation;
-	j["opt_skipped"] = info.opt_skipped;
 	j["opt_converged"] = info.opt_converged;
 	osqp_info_to_json(j["opt_info"], info.opt_info);
 }
@@ -164,8 +148,6 @@ export void from_json(const nlohmann::ordered_json &j, OsqpInfo &info) {
 	osqp_info_from_json(j.at("prj_info"), info.prj_info);
 	j.at("rlx_converged").get_to(info.rlx_converged);
 	osqp_info_from_json(j.at("rlx_info"), info.rlx_info);
-	j.at("has_violation").get_to(info.has_violation);
-	j.at("opt_skipped").get_to(info.opt_skipped);
 	j.at("opt_converged").get_to(info.opt_converged);
 	osqp_info_from_json(j.at("opt_info"), info.opt_info);
 }
@@ -305,9 +287,7 @@ export class OsqpSolver {
 		V_ = std::move(V);
 	}
 
-	OsqpInfo
-	solve(const VectorXd &b, OsqpState &state,
-	      OsqpSolveType solve_type = OsqpSolveType::ALWAYS_FULL) const {
+	OsqpInfo solve(const VectorXd &b, OsqpState &state) const {
 		if (b.size() != me_) {
 			throw std::invalid_argument("b dimension mismatch");
 		}
@@ -371,19 +351,6 @@ export class OsqpSolver {
 		state.v_ = state.rlx_sol_.tail(nv_).cwiseMax(0.0);
 		info.rlx_converged = rlx_info->status_val == osqp::OSQP_SOLVED;
 		info.rlx_info = *rlx_info;
-		info.has_violation = state.v_.maxCoeff() > 0.0;
-
-		if (solve_type == OsqpSolveType::RELAX_ONLY ||
-		    (solve_type == OsqpSolveType::FULL_IF_VIOLATION &&
-		     !info.has_violation)) {
-			info.opt_skipped = true;
-			info.opt_converged = false;
-			info.opt_info = {};
-			info.converged = info.prj_converged && info.rlx_converged;
-			state.has_state = true;
-			return info;
-		}
-		info.opt_skipped = false;
 
 		// 3. Solve optimization
 		OsqpSolverPtr &opt_solver = state.data_.opt_solver;

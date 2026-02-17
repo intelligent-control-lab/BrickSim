@@ -53,7 +53,6 @@ using Vector9d = Matrix<double, 9, 1>;
 using QpSolver = OsqpSolver;
 using QpSolverState = OsqpState;
 using QpSolverInfo = OsqpInfo;
-using QpSolverSolveType = OsqpSolveType;
 
 struct AreaMoments {
 	Vector2d centroid{Vector2d::Zero()};
@@ -821,12 +820,6 @@ export void from_json(const nlohmann::ordered_json &j,
 	}
 }
 
-export enum class BreakageUtilizationSolveMode {
-	ONLY_WHEN_BREAK,
-	NEVER,
-	ALWAYS,
-};
-
 export class BreakageChecker {
   public:
 	BreakageThresholds thresholds;
@@ -1271,25 +1264,19 @@ export class BreakageChecker {
 			return sol;
 		}
 
-		QpSolverSolveType solve_type;
-		switch (utilization_solve_mode_) {
-		case BreakageUtilizationSolveMode::ONLY_WHEN_BREAK:
-			solve_type = QpSolverSolveType::FULL_IF_VIOLATION;
-			break;
-		case BreakageUtilizationSolveMode::NEVER:
-			solve_type = QpSolverSolveType::RELAX_ONLY;
-			break;
-		case BreakageUtilizationSolveMode::ALWAYS:
-			solve_type = QpSolverSolveType::ALWAYS_FULL;
-			break;
-		default:
+		sol.info = sys.solver_->solve(b, state.solver_state);
+		sol.slack_fraction = state.solver_state.s().norm() /
+		                     std::max(b.norm(), thresholds.SlackFractionBFloor);
+
+		state.q_W_CC_prev = q_W_CC_curr;
+		state.v_W_prev = std::move(v_W_curr);
+		state.L_prev = std::move(L_curr);
+		if (!state.check_shape(sys)) {
 			throw std::runtime_error(
-			    "solve_breakage: invalid utilization solve mode");
+			    "solve_breakage: invalid state after update");
 		}
 
-		sol.info = sys.solver_->solve(b, state.solver_state, solve_type);
-
-		if (!sol.info.opt_skipped) {
+		if (sol.info.converged) {
 			sol.x = state.solver_state.x();
 			if constexpr (EnableContactWhitening) {
 				// Unscale contact slope coefficients back to physical coordinates.
@@ -1321,20 +1308,7 @@ export class BreakageChecker {
 					sol.x.segment<3>(3 * c) /= Ac;
 				}
 			}
-		}
 
-		sol.slack_fraction = state.solver_state.s().norm() /
-		                     std::max(b.norm(), thresholds.SlackFractionBFloor);
-
-		state.q_W_CC_prev = q_W_CC_curr;
-		state.v_W_prev = std::move(v_W_curr);
-		state.L_prev = std::move(L_curr);
-		if (!state.check_shape(sys)) {
-			throw std::runtime_error(
-			    "solve_breakage: invalid state after update");
-		}
-
-		if (sol.info.converged && !sol.info.opt_skipped) {
 			sol.utilization.setConstant(sys.num_clutches_, -1.0);
 			for (std::size_t idx = 0; idx < sys.capacities_.size(); ++idx) {
 				const Vector9d &c = sys.capacities_[idx];
@@ -1382,10 +1356,6 @@ export class BreakageChecker {
 		return sol;
 	}
 
-	void set_utilization_solve_mode(BreakageUtilizationSolveMode mode) {
-		utilization_solve_mode_ = mode;
-	}
-
 	void set_debug_dump_dir(std::string dir) {
 		debug_dump_dir_ = std::move(dir);
 	}
@@ -1399,8 +1369,6 @@ export class BreakageChecker {
 	}
 
   private:
-	BreakageUtilizationSolveMode utilization_solve_mode_{
-	    BreakageUtilizationSolveMode::ONLY_WHEN_BREAK};
 	std::string debug_dump_dir_;
 	bool always_dump_prev_state_{true};
 	bool manual_dump_{false};
