@@ -91,6 +91,26 @@ int main(int argc, char **argv) {
 	thr_env("BREAKAGE_SLACK_FRACTION_WARN", thr.SlackFractionWarn);
 	thr_env("BREAKAGE_SLACK_FRACTION_B_FLOOR", thr.SlackFractionBFloor);
 
+	if (auto *env_solve_mode = std::getenv("BREAKAGE_SOLVE_MODE")) {
+		std::string mode(env_solve_mode);
+		if (mode == "always") {
+			checker.set_utilization_solve_mode(
+			    BreakageUtilizationSolveMode::ALWAYS);
+			eprintln("Set solve mode to ALWAYS.");
+		} else if (mode == "only_when_break") {
+			checker.set_utilization_solve_mode(
+			    BreakageUtilizationSolveMode::ONLY_WHEN_BREAK);
+			eprintln("Set solve mode to ONLY_WHEN_BREAK.");
+		} else if (mode == "never") {
+			checker.set_utilization_solve_mode(
+			    BreakageUtilizationSolveMode::NEVER);
+			eprintln("Set solve mode to NEVER.");
+		} else {
+			eprintln("Unknown BREAKAGE_SOLVE_MODE '{}'.", mode);
+			return 1;
+		}
+	}
+
 	BreakageSystem sys = checker.build_system(graph, rep_part);
 	eprintln("System has {} contacts and {} clutches.", sys.num_contacts(),
 	         sys.num_clutches());
@@ -184,12 +204,10 @@ int main(int argc, char **argv) {
 	bool solved;
 	if (total_cc_count == 1) {
 		if (sol.info.converged) {
-			stable = true;
-			for (double u : sol.utilization) {
-				if (u > 1.0) {
-					stable = false;
-					break;
-				}
+			if (sol.utilization.size() > 0) {
+				stable = (sol.utilization.array() <= 1.0).all();
+			} else {
+				stable = sol.info.has_violation;
 			}
 			solved = true;
 		} else {
@@ -209,10 +227,12 @@ int main(int argc, char **argv) {
 	result["slack_fraction"] = sol.slack_fraction;
 	result["solution_info"] = sol.info;
 	nlohmann::ordered_json utilizations;
-	for (int k = 0; k < sys.num_clutches(); ++k) {
-		ConnSegId csid = sys.clutch_ids().at(k);
-		double utilization = sol.utilization(k);
-		utilizations[std::to_string(csid)] = utilization;
+	if (sol.utilization.size() > 0) {
+		for (int k = 0; k < sys.num_clutches(); ++k) {
+			ConnSegId csid = sys.clutch_ids().at(k);
+			double utilization = sol.utilization(k);
+			utilizations[std::to_string(csid)] = utilization;
+		}
 	}
 	result["clutch_utilizations"] = utilizations;
 	std::cout << result.dump(2) << std::endl;

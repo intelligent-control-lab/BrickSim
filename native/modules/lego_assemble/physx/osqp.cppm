@@ -69,19 +69,33 @@ export struct OsqpInfo {
 	osqp::OSQPInfo prj_info{};
 	bool rlx_converged{false};
 	osqp::OSQPInfo rlx_info{};
+	bool has_violation{false};
+	bool opt_skipped{false};
 	bool opt_converged{false};
 	osqp::OSQPInfo opt_info{};
 
 	std::string to_string() const {
-		return std::format("Overall converged: {}\n"
-		                   "Projection converged: {}\n"
-		                   "{}\n"
-		                   "Relaxation converged: {}\n"
-		                   "{}\n"
-		                   "Optimization converged: {}\n"
-		                   "{}",
-		                   converged, prj_converged, prj_info, rlx_converged,
-		                   rlx_info, opt_converged, opt_info);
+		if (opt_skipped) {
+			return std::format("Overall converged: {}\n"
+			                   "Projection converged: {}\n"
+			                   "{}\n"
+			                   "Relaxation converged: {}; violation: {}\n"
+			                   "{}\n"
+			                   "Optimization converged: skipped",
+			                   converged, prj_converged, prj_info,
+			                   rlx_converged, has_violation, rlx_info);
+		} else {
+			return std::format("Overall converged: {}\n"
+			                   "Projection converged: {}\n"
+			                   "{}\n"
+			                   "Relaxation converged: {}; violation: {}\n"
+			                   "{}\n"
+			                   "Optimization converged: {}\n"
+			                   "{}",
+			                   converged, prj_converged, prj_info,
+			                   rlx_converged, has_violation, rlx_info,
+			                   opt_converged, opt_info);
+		}
 	}
 };
 
@@ -138,6 +152,8 @@ export void to_json(nlohmann::ordered_json &j, const OsqpInfo &info) {
 	osqp_info_to_json(j["prj_info"], info.prj_info);
 	j["rlx_converged"] = info.rlx_converged;
 	osqp_info_to_json(j["rlx_info"], info.rlx_info);
+	j["has_violation"] = info.has_violation;
+	j["opt_skipped"] = info.opt_skipped;
 	j["opt_converged"] = info.opt_converged;
 	osqp_info_to_json(j["opt_info"], info.opt_info);
 }
@@ -148,6 +164,8 @@ export void from_json(const nlohmann::ordered_json &j, OsqpInfo &info) {
 	osqp_info_from_json(j.at("prj_info"), info.prj_info);
 	j.at("rlx_converged").get_to(info.rlx_converged);
 	osqp_info_from_json(j.at("rlx_info"), info.rlx_info);
+	j.at("has_violation").get_to(info.has_violation);
+	j.at("opt_skipped").get_to(info.opt_skipped);
 	j.at("opt_converged").get_to(info.opt_converged);
 	osqp_info_from_json(j.at("opt_info"), info.opt_info);
 }
@@ -248,6 +266,12 @@ export void from_json(const nlohmann::ordered_json &j, OsqpState &s) {
 	s.slack_ = json_to_matrix<VectorXd>(j.at("slack"));
 }
 
+export enum class OsqpSolveType {
+	ALWAYS_FULL,
+	FULL_IF_VIOLATION,
+	RELAX_ONLY,
+};
+
 export class OsqpSolver {
   public:
 	explicit OsqpSolver(const SparseMatrix<double> &Q, SparseMatrix<double> A,
@@ -256,6 +280,9 @@ export class OsqpSolver {
 	    : nx_(static_cast<int>(Q.rows())), nv_(static_cast<int>(V.cols())),
 	      me_(static_cast<int>(A.rows())), mi_(static_cast<int>(G.rows())),
 	      mh_(static_cast<int>(H.rows())) {
+		if (auto *env_eps = std::getenv("OSQP_EPSILON")) {
+			epsilon = std::stod(env_eps);
+		}
 		if (!Q.isCompressed() || !A.isCompressed() || !G.isCompressed() ||
 		    !H.isCompressed() || !V.isCompressed()) {
 			throw std::invalid_argument("Input matrices must be compressed");
@@ -278,7 +305,9 @@ export class OsqpSolver {
 		V_ = std::move(V);
 	}
 
-	OsqpInfo solve(const VectorXd &b, OsqpState &state) const {
+	OsqpInfo
+	solve(const VectorXd &b, OsqpState &state,
+	      OsqpSolveType solve_type = OsqpSolveType::ALWAYS_FULL) const {
 		if (b.size() != me_) {
 			throw std::invalid_argument("b dimension mismatch");
 		}
@@ -342,6 +371,19 @@ export class OsqpSolver {
 		state.v_ = state.rlx_sol_.tail(nv_).cwiseMax(0.0);
 		info.rlx_converged = rlx_info->status_val == osqp::OSQP_SOLVED;
 		info.rlx_info = *rlx_info;
+		info.has_violation = state.v_.maxCoeff() > 0.0;
+
+		if (solve_type == OsqpSolveType::RELAX_ONLY ||
+		    (solve_type == OsqpSolveType::FULL_IF_VIOLATION &&
+		     !info.has_violation)) {
+			info.opt_skipped = true;
+			info.opt_converged = false;
+			info.opt_info = {};
+			info.converged = info.prj_converged && info.rlx_converged;
+			state.has_state = true;
+			return info;
+		}
+		info.opt_skipped = false;
 
 		// 3. Solve optimization
 		OsqpSolverPtr &opt_solver = state.data_.opt_solver;
@@ -372,13 +414,13 @@ export class OsqpSolver {
 	}
 
   private:
-	static constexpr double Epsilon = 1e-4;
-
 	int nx_;
 	int nv_;
 	int me_;
 	int mi_;
 	int mh_;
+
+	double epsilon = 1e-4;
 
 	SparseMatrix<double> A_;
 	SparseMatrix<double> V_;
@@ -495,7 +537,7 @@ export class OsqpSolver {
 	VectorXd build_l_rlx_(const VectorXd &b) const {
 		VectorXd l(me_ + mi_ + mh_ + nv_);
 		l.head(me_) = b;
-		l.segment(me_, mi_).setConstant(-Epsilon);
+		l.segment(me_, mi_).setConstant(-epsilon);
 		l.segment(me_ + mi_, mh_).setConstant(-osqp::infinity);
 		l.tail(nv_).setZero();
 		return l;
@@ -504,7 +546,7 @@ export class OsqpSolver {
 		VectorXd u(me_ + mi_ + mh_ + nv_);
 		u.head(me_) = b;
 		u.segment(me_, mi_).setConstant(osqp::infinity);
-		u.segment(me_ + mi_, mh_).setConstant(1.0 - Epsilon);
+		u.segment(me_ + mi_, mh_).setConstant(1.0 - epsilon);
 		u.tail(nv_).setConstant(osqp::infinity);
 		return u;
 	}
@@ -555,7 +597,7 @@ export class OsqpSolver {
 	VectorXd build_l_opt_(const VectorXd &b) const {
 		VectorXd l(me_ + mi_ + mh_);
 		l.head(me_) = b;
-		l.segment(me_, mi_).setConstant(-Epsilon);
+		l.segment(me_, mi_).setConstant(-epsilon);
 		l.tail(mh_).setConstant(-osqp::infinity);
 		return l;
 	}
@@ -567,83 +609,17 @@ export class OsqpSolver {
 		u.tail(mh_) += V_ * v;
 		return u;
 	}
-	osqp::OSQPSettings build_settings_prj_() const {
+	osqp::OSQPSettings build_settings_() const {
 		osqp::OSQPSettings settings;
 		osqp::osqp_set_default_settings(&settings);
 		settings.verbose = 0;
-		settings.eps_abs = 1e-4;
-		settings.eps_rel = 1e-4;
 		settings.max_iter = 100000;
-		if (auto max_iter_env = std::getenv("LEGO_OSQP_PRJ_MAX_ITER")) {
-			settings.max_iter = std::stoi(max_iter_env);
-		}
-		if (auto polishing_env = std::getenv("LEGO_OSQP_PRJ_POLISHING")) {
-			settings.polishing = std::stoi(polishing_env);
-		}
-		if (auto polish_refine_iter_env =
-		        std::getenv("LEGO_OSQP_PRJ_POLISH_REFINE_ITER")) {
-			settings.polish_refine_iter = std::stoi(polish_refine_iter_env);
-		}
-		if (auto eps_abs_env = std::getenv("LEGO_OSQP_PRJ_EPS_ABS")) {
-			settings.eps_abs = std::stod(eps_abs_env);
-		}
-		if (auto eps_rel_env = std::getenv("LEGO_OSQP_PRJ_EPS_REL")) {
-			settings.eps_rel = std::stod(eps_rel_env);
-		}
-		return settings;
-	}
-	osqp::OSQPSettings build_settings_rlx_() const {
-		osqp::OSQPSettings settings;
-		osqp::osqp_set_default_settings(&settings);
-		settings.verbose = 0;
-		settings.eps_abs = 1e-4;
-		settings.eps_rel = 1e-4;
-		settings.max_iter = 1000000;
-		if (auto max_iter_env = std::getenv("LEGO_OSQP_RLX_MAX_ITER")) {
-			settings.max_iter = std::stoi(max_iter_env);
-		}
-		if (auto polishing_env = std::getenv("LEGO_OSQP_RLX_POLISHING")) {
-			settings.polishing = std::stoi(polishing_env);
-		}
-		if (auto polish_refine_iter_env =
-		        std::getenv("LEGO_OSQP_RLX_POLISH_REFINE_ITER")) {
-			settings.polish_refine_iter = std::stoi(polish_refine_iter_env);
-		}
-		if (auto eps_abs_env = std::getenv("LEGO_OSQP_RLX_EPS_ABS")) {
-			settings.eps_abs = std::stod(eps_abs_env);
-		}
-		if (auto eps_rel_env = std::getenv("LEGO_OSQP_RLX_EPS_REL")) {
-			settings.eps_rel = std::stod(eps_rel_env);
-		}
-		return settings;
-	}
-	osqp::OSQPSettings build_settings_opt_() const {
-		osqp::OSQPSettings settings;
-		osqp::osqp_set_default_settings(&settings);
-		settings.verbose = 0;
-		settings.eps_abs = 1e-4;
-		settings.eps_rel = 1e-4;
-		settings.max_iter = 1000000;
-		if (auto max_iter_env = std::getenv("LEGO_OSQP_OPT_MAX_ITER")) {
-			settings.max_iter = std::stoi(max_iter_env);
-		}
-		if (auto polishing_env = std::getenv("LEGO_OSQP_OPT_POLISHING")) {
-			settings.polishing = std::stoi(polishing_env);
-		}
-		if (auto polish_refine_iter_env =
-		        std::getenv("LEGO_OSQP_OPT_POLISH_REFINE_ITER")) {
-			settings.polish_refine_iter = std::stoi(polish_refine_iter_env);
-		}
-		if (auto eps_abs_env = std::getenv("LEGO_OSQP_OPT_EPS_ABS")) {
-			settings.eps_abs = std::stod(eps_abs_env);
-		}
-		if (auto eps_rel_env = std::getenv("LEGO_OSQP_OPT_EPS_REL")) {
-			settings.eps_rel = std::stod(eps_rel_env);
-		}
+		settings.eps_abs = epsilon;
+		settings.eps_rel = epsilon;
 		return settings;
 	}
 	OsqpSolverPtr build_solver_prj_(const VectorXd &b) const {
-		osqp::OSQPSettings settings = build_settings_prj_();
+		osqp::OSQPSettings settings = build_settings_();
 		osqp::OSQPCscMatrix P_csc = osqp_csc_from_eigen(P_prj_);
 		osqp::OSQPCscMatrix C_csc = osqp_csc_from_eigen(C_prj_);
 		VectorXd l = build_l_prj_();
@@ -656,7 +632,7 @@ export class OsqpSolver {
 		return OsqpSolverPtr(solver);
 	}
 	OsqpSolverPtr build_solver_rlx_(const VectorXd &b) const {
-		osqp::OSQPSettings settings = build_settings_rlx_();
+		osqp::OSQPSettings settings = build_settings_();
 		osqp::OSQPCscMatrix P_csc = osqp_csc_from_eigen(P_rlx_);
 		osqp::OSQPCscMatrix C_csc = osqp_csc_from_eigen(C_rlx_);
 		VectorXd l = build_l_rlx_(b);
@@ -670,7 +646,7 @@ export class OsqpSolver {
 	}
 	OsqpSolverPtr build_solver_opt_(const VectorXd &b,
 	                                const VectorXd &v) const {
-		osqp::OSQPSettings settings = build_settings_opt_();
+		osqp::OSQPSettings settings = build_settings_();
 		osqp::OSQPCscMatrix P_csc = osqp_csc_from_eigen(P_opt_);
 		osqp::OSQPCscMatrix C_csc = osqp_csc_from_eigen(C_opt_);
 		VectorXd l = build_l_opt_(b);

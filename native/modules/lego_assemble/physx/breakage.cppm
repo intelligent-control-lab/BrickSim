@@ -19,6 +19,7 @@ constexpr bool EnableTorqueScaling = true;
 constexpr bool EnableContactWhitening = true;
 constexpr bool EnableClutchWhitening = true;
 constexpr bool EnableContactAreaScaling = true;
+constexpr bool EnableRealisticClutchFriction = true;
 
 using Eigen::ComputeFullU;
 using Eigen::ComputeFullV;
@@ -52,6 +53,7 @@ using Vector9d = Matrix<double, 9, 1>;
 using QpSolver = OsqpSolver;
 using QpSolverState = OsqpState;
 using QpSolverInfo = OsqpInfo;
+using QpSolverSolveType = OsqpSolveType;
 
 struct AreaMoments {
 	Vector2d centroid{Vector2d::Zero()};
@@ -344,7 +346,7 @@ export struct BreakageThresholds {
 	double ClutchNormalCompliance{1.0};
 	double ClutchShearCompliance{1.0};
 	double FrictionCoefficient{0.2};
-	double PreloadedForce{3.5};
+	double PreloadedForce{12.5};
 	double SlackFractionWarn{0.1};
 	double SlackFractionBFloor{1e-9};
 };
@@ -819,6 +821,12 @@ export void from_json(const nlohmann::ordered_json &j,
 	}
 }
 
+export enum class BreakageUtilizationSolveMode {
+	ONLY_WHEN_BREAK,
+	NEVER,
+	ALWAYS,
+};
+
 export class BreakageChecker {
   public:
 	BreakageThresholds thresholds;
@@ -1131,8 +1139,14 @@ export class BreakageChecker {
 				Vector9d e = phi_f.replicate<3, 1>();
 				e.head<3>() /=
 				    thresholds.FrictionCoefficient * thresholds.PreloadedForce;
-				e.segment<3>(3) *= fp.n_local.x() / thresholds.PreloadedForce;
-				e.tail<3>() *= fp.n_local.y() / thresholds.PreloadedForce;
+				if constexpr (EnableRealisticClutchFriction) {
+					e.segment<3>(3) *=
+					    fp.n_local.x() / thresholds.PreloadedForce;
+					e.tail<3>() *= fp.n_local.y() / thresholds.PreloadedForce;
+				} else {
+					e.segment<3>(3).setZero();
+					e.tail<3>().setZero();
+				}
 				sys.capacity_clutch_indices_.emplace_back(index_k);
 				sys.capacities_.emplace_back(e);
 				Vector9d h = e;
@@ -1254,44 +1268,58 @@ export class BreakageChecker {
 		BreakageSolution sol;
 
 		if (!thresholds.Enabled) {
-			// Note we still update the state above even if breakage is disabled
-			// So the state is always up-to-date, and ready for when breakage is enabled again
-			sol.x = VectorXd::Zero(sys.num_vars_);
-			sol.utilization = VectorXd::Constant(sys.num_clutches_, -1.0);
-			// sol.info is default-initialized
 			return sol;
 		}
 
-		sol.info = sys.solver_->solve(b, state.solver_state);
-		sol.x = state.solver_state.x();
-		if constexpr (EnableContactWhitening) {
-			// Unscale contact slope coefficients back to physical coordinates.
-			for (int c = 0; c < sys.num_contacts_; ++c) {
-				const Matrix2d &W = sys.contact_whiten_.at(c);
-				int j0 = 3 * c;
-				Vector2d s_scaled = sol.x.segment<2>(j0 + 1);
-				sol.x.segment<2>(j0 + 1) = W * s_scaled;
-			}
+		QpSolverSolveType solve_type;
+		switch (utilization_solve_mode_) {
+		case BreakageUtilizationSolveMode::ONLY_WHEN_BREAK:
+			solve_type = QpSolverSolveType::FULL_IF_VIOLATION;
+			break;
+		case BreakageUtilizationSolveMode::NEVER:
+			solve_type = QpSolverSolveType::RELAX_ONLY;
+			break;
+		case BreakageUtilizationSolveMode::ALWAYS:
+			solve_type = QpSolverSolveType::ALWAYS_FULL;
+			break;
+		default:
+			throw std::runtime_error(
+			    "solve_breakage: invalid utilization solve mode");
 		}
-		if constexpr (EnableClutchWhitening) {
-			for (int k = 0; k < sys.num_clutches_; ++k) {
-				const Matrix2d &Wk = sys.clutch_whiten_.at(k);
-				int j0 = 3 * sys.num_contacts_ + 9 * k;
-				// alpha slopes
-				Vector2d a_scaled = sol.x.segment<2>(j0 + 1);
-				sol.x.segment<2>(j0 + 1) = Wk * a_scaled;
-				// beta slopes
-				Vector2d b_scaled = sol.x.segment<2>(j0 + 4);
-				sol.x.segment<2>(j0 + 4) = Wk * b_scaled;
-				// gamma slopes
-				Vector2d c_scaled = sol.x.segment<2>(j0 + 7);
-				sol.x.segment<2>(j0 + 7) = Wk * c_scaled;
+
+		sol.info = sys.solver_->solve(b, state.solver_state, solve_type);
+
+		if (!sol.info.opt_skipped) {
+			sol.x = state.solver_state.x();
+			if constexpr (EnableContactWhitening) {
+				// Unscale contact slope coefficients back to physical coordinates.
+				for (int c = 0; c < sys.num_contacts_; ++c) {
+					const Matrix2d &W = sys.contact_whiten_.at(c);
+					int j0 = 3 * c;
+					Vector2d s_scaled = sol.x.segment<2>(j0 + 1);
+					sol.x.segment<2>(j0 + 1) = W * s_scaled;
+				}
 			}
-		}
-		if constexpr (EnableContactAreaScaling) {
-			for (int c = 0; c < sys.num_contacts_; ++c) {
-				double Ac = sys.contact_area_.at(c);
-				sol.x.segment<3>(3 * c) /= Ac;
+			if constexpr (EnableClutchWhitening) {
+				for (int k = 0; k < sys.num_clutches_; ++k) {
+					const Matrix2d &Wk = sys.clutch_whiten_.at(k);
+					int j0 = 3 * sys.num_contacts_ + 9 * k;
+					// alpha slopes
+					Vector2d a_scaled = sol.x.segment<2>(j0 + 1);
+					sol.x.segment<2>(j0 + 1) = Wk * a_scaled;
+					// beta slopes
+					Vector2d b_scaled = sol.x.segment<2>(j0 + 4);
+					sol.x.segment<2>(j0 + 4) = Wk * b_scaled;
+					// gamma slopes
+					Vector2d c_scaled = sol.x.segment<2>(j0 + 7);
+					sol.x.segment<2>(j0 + 7) = Wk * c_scaled;
+				}
+			}
+			if constexpr (EnableContactAreaScaling) {
+				for (int c = 0; c < sys.num_contacts_; ++c) {
+					double Ac = sys.contact_area_.at(c);
+					sol.x.segment<3>(3 * c) /= Ac;
+				}
 			}
 		}
 
@@ -1306,8 +1334,8 @@ export class BreakageChecker {
 			    "solve_breakage: invalid state after update");
 		}
 
-		sol.utilization = VectorXd::Constant(sys.num_clutches_, -1.0);
-		if (sol.info.converged) {
+		if (sol.info.converged && !sol.info.opt_skipped) {
+			sol.utilization.setConstant(sys.num_clutches_, -1.0);
 			for (std::size_t idx = 0; idx < sys.capacities_.size(); ++idx) {
 				const Vector9d &c = sys.capacities_[idx];
 				int clutch_index = sys.capacity_clutch_indices_[idx];
@@ -1354,6 +1382,10 @@ export class BreakageChecker {
 		return sol;
 	}
 
+	void set_utilization_solve_mode(BreakageUtilizationSolveMode mode) {
+		utilization_solve_mode_ = mode;
+	}
+
 	void set_debug_dump_dir(std::string dir) {
 		debug_dump_dir_ = std::move(dir);
 	}
@@ -1367,6 +1399,8 @@ export class BreakageChecker {
 	}
 
   private:
+	BreakageUtilizationSolveMode utilization_solve_mode_{
+	    BreakageUtilizationSolveMode::ONLY_WHEN_BREAK};
 	std::string debug_dump_dir_;
 	bool always_dump_prev_state_{true};
 	bool manual_dump_{false};
