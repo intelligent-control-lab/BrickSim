@@ -51,8 +51,10 @@ int main(int argc, char **argv) {
 		BreakageSolution sol = checker.solve(dump.system, dump.input, state);
 		auto t1 = now();
 		std::println("Time: {:.3f} ms.", elapsed_ms(t0, t1));
-		std::println("Max diff from dumped solution: {:.6e}",
-		             (sol.x - dump.solution.x).cwiseAbs().maxCoeff());
+		if (sol.x.size() > 0 && sol.x.size() == dump.solution.x.size()) {
+			std::println("Max diff from dumped solution: {:.6e}",
+			             (sol.x - dump.solution.x).cwiseAbs().maxCoeff());
+		}
 		print_solution_info(sol);
 	};
 
