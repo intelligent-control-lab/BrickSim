@@ -167,7 +167,7 @@ def main() -> None:
         default="auto",
         help="Input format (default: auto).",
     )
-    parser.add_argument("--baseplate", type=str, default=None, help="Optional baseplate type (e.g., '16x16', '32x32').")
+    parser.add_argument("--baseplate", type=str, default='32x32', help="Optional baseplate type (e.g., '16x16', '32x32').")
     parser.add_argument("--output", type=Path, default=Path("stability_analysis.png"), help="Output PNG path.")
     parser.add_argument(
         "--draw-overutilized",
