@@ -441,11 +441,11 @@ export using BreakageThresholds = lego_assemble::BreakageThresholds;
 export std::string repr_breakage_thresholds(const BreakageThresholds &t) {
 	return std::format(
 	    "BreakageThresholds(enabled={}, contact_normal_compliance={}, "
-	    "clutch_normal_compliance={}, clutch_shear_compliance={}, "
+	    "clutch_axial_compliance={}, clutch_radial_compliance={}, "
 	    "friction_coefficient={}, preloaded_force={}, slack_fraction_warn={}, "
 	    "slack_fraction_b_floor={})",
-	    t.Enabled, t.ContactNormalCompliance, t.ClutchNormalCompliance,
-	    t.ClutchShearCompliance, t.FrictionCoefficient, t.PreloadedForce,
+	    t.Enabled, t.ContactNormalCompliance, t.ClutchAxialCompliance,
+	    t.ClutchRadialCompliance, t.FrictionCoefficient, t.PreloadedForce,
 	    t.SlackFractionWarn, t.SlackFractionBFloor);
 }
 

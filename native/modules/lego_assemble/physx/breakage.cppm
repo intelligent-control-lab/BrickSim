@@ -344,8 +344,8 @@ export struct BreakageThresholds {
 	bool Enabled{true};
 	double ContactNormalCompliance{0.0};
 	double ContactRegularization{0.0};
-	double ClutchNormalCompliance{1.0};
-	double ClutchShearCompliance{1.0};
+	double ClutchAxialCompliance{1.0};
+	double ClutchRadialCompliance{1.0};
 	double FrictionCoefficient{0.2};
 	double PreloadedForce{12.5};
 	double SlackFractionWarn{0.1};
@@ -358,8 +358,8 @@ export void to_json(nlohmann::ordered_json &j,
 	    {"enabled", thresholds.Enabled},
 	    {"contact_normal_compliance", thresholds.ContactNormalCompliance},
 	    {"contact_regularization", thresholds.ContactRegularization},
-	    {"clutch_normal_compliance", thresholds.ClutchNormalCompliance},
-	    {"clutch_shear_compliance", thresholds.ClutchShearCompliance},
+	    {"clutch_axial_compliance", thresholds.ClutchAxialCompliance},
+	    {"clutch_radial_compliance", thresholds.ClutchRadialCompliance},
 	    {"friction_coefficient", thresholds.FrictionCoefficient},
 	    {"preloaded_force", thresholds.PreloadedForce},
 	    {"slack_fraction_warn", thresholds.SlackFractionWarn},
@@ -373,8 +373,8 @@ export void from_json(const nlohmann::ordered_json &j,
 	j.at("contact_normal_compliance")
 	    .get_to(thresholds.ContactNormalCompliance);
 	j.at("contact_regularization").get_to(thresholds.ContactRegularization);
-	j.at("clutch_normal_compliance").get_to(thresholds.ClutchNormalCompliance);
-	j.at("clutch_shear_compliance").get_to(thresholds.ClutchShearCompliance);
+	j.at("clutch_axial_compliance").get_to(thresholds.ClutchAxialCompliance);
+	j.at("clutch_radial_compliance").get_to(thresholds.ClutchRadialCompliance);
 	j.at("friction_coefficient").get_to(thresholds.FrictionCoefficient);
 	j.at("preloaded_force").get_to(thresholds.PreloadedForce);
 	j.at("slack_fraction_warn").get_to(thresholds.SlackFractionWarn);
@@ -1047,9 +1047,9 @@ export class BreakageChecker {
 				k_f.head<3>() = n_T_u * phi_f;
 				k_f.tail<3>() = n_T_v * phi_f;
 				Q_k.block<3, 3>(0, 0) += (phi_f * phi_f.transpose()) *
-				                         thresholds.ClutchNormalCompliance;
+				                         thresholds.ClutchAxialCompliance;
 				Q_k.block<6, 6>(3, 3) +=
-				    (k_f * k_f.transpose()) * thresholds.ClutchShearCompliance;
+				    (k_f * k_f.transpose()) * thresholds.ClutchRadialCompliance;
 
 				sum_p += fp.p_local;
 				sum_pp += fp.p_local * fp.p_local.transpose();

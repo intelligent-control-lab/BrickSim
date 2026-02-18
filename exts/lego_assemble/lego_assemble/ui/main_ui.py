@@ -134,25 +134,25 @@ class LegoUI():
                             lambda m: self._set_breakage_threshold("enabled", bool(m.get_value_as_bool()))
                         )
                     with omni.ui.HStack(spacing=10):
-                        omni.ui.Label("Contact normal comp:", width=140)
+                        omni.ui.Label("Contact axial comp:", width=140)
                         self._contact_norm_comp_field = omni.ui.FloatDrag(min=0.0, max=1e6)
                         self._contact_norm_comp_field.model.set_value(float(_bthr.contact_normal_compliance))
                         self._contact_norm_comp_field.model.add_value_changed_fn(
                             lambda m: self._set_breakage_threshold("contact_normal_compliance", float(m.as_float))
                         )
                     with omni.ui.HStack(spacing=10):
-                        omni.ui.Label("Clutch normal comp:", width=140)
-                        self._clutch_norm_comp_field = omni.ui.FloatDrag(min=0.0, max=1e6)
-                        self._clutch_norm_comp_field.model.set_value(float(_bthr.clutch_normal_compliance))
-                        self._clutch_norm_comp_field.model.add_value_changed_fn(
-                            lambda m: self._set_breakage_threshold("clutch_normal_compliance", float(m.as_float))
+                        omni.ui.Label("Clutch axial comp:", width=140)
+                        self._clutch_axial_comp_field = omni.ui.FloatDrag(min=0.0, max=1e6)
+                        self._clutch_axial_comp_field.model.set_value(float(_bthr.clutch_axial_compliance))
+                        self._clutch_axial_comp_field.model.add_value_changed_fn(
+                            lambda m: self._set_breakage_threshold("clutch_axial_compliance", float(m.as_float))
                         )
                     with omni.ui.HStack(spacing=10):
-                        omni.ui.Label("Clutch shear comp:", width=140)
-                        self._clutch_shear_comp_field = omni.ui.FloatDrag(min=0.0, max=1e6)
-                        self._clutch_shear_comp_field.model.set_value(float(_bthr.clutch_shear_compliance))
-                        self._clutch_shear_comp_field.model.add_value_changed_fn(
-                            lambda m: self._set_breakage_threshold("clutch_shear_compliance", float(m.as_float))
+                        omni.ui.Label("Clutch radial comp:", width=140)
+                        self._clutch_radial_comp_field = omni.ui.FloatDrag(min=0.0, max=1e6)
+                        self._clutch_radial_comp_field.model.set_value(float(_bthr.clutch_radial_compliance))
+                        self._clutch_radial_comp_field.model.add_value_changed_fn(
+                            lambda m: self._set_breakage_threshold("clutch_radial_compliance", float(m.as_float))
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Friction coefficient:", width=140)

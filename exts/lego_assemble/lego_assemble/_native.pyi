@@ -131,8 +131,8 @@ class BreakageThresholds:
     def __repr__(self) -> str: ...
     enabled: bool
     contact_normal_compliance: float
-    clutch_normal_compliance: float
-    clutch_shear_compliance: float
+    clutch_axial_compliance: float
+    clutch_radial_compliance: float
     friction_coefficient: float
     preloaded_force: float
     slack_fraction_warn: float
