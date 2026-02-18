@@ -41,10 +41,12 @@ using Eigen::Vector3d;
 using Eigen::Vector4d;
 using Eigen::VectorXd;
 using Matrix3Xd = Matrix<double, 3, Dynamic>;
+using Matrix3x9d = Matrix<double, 3, 9>;
 using Matrix4x3d = Matrix<double, 4, 3>;
 using Matrix6d = Matrix<double, 6, 6>;
 using Matrix6x3d = Matrix<double, 6, 3>;
 using Matrix6x9d = Matrix<double, 6, 9>;
+using Matrix9d = Matrix<double, 9, 9>;
 using MatrixX3d = Matrix<double, Dynamic, 3>;
 using MatrixX4d = Matrix<double, Dynamic, 4>;
 using Vector6d = Matrix<double, 6, 1>;
@@ -1013,17 +1015,9 @@ export class BreakageChecker {
 			const Vector3d &t_CC_com_i = sys.c_CC_.row(index_i);
 			const Vector3d &t_CC_com_j = sys.c_CC_.row(index_j);
 
-			Matrix3d F_A = Matrix3d::Zero();
-			Matrix3d F_B = Matrix3d::Zero();
-			Matrix3d F_C = Matrix3d::Zero();
-			Matrix3d tau_A_i = Matrix3d::Zero();
-			Matrix3d tau_B_i = Matrix3d::Zero();
-			Matrix3d tau_C_i = Matrix3d::Zero();
-			Matrix3d tau_A_j = Matrix3d::Zero();
-			Matrix3d tau_B_j = Matrix3d::Zero();
-			Matrix3d tau_C_j = Matrix3d::Zero();
-			Matrix3d Q_k_n = Matrix3d::Zero();
-			Matrix6d Q_k_s = Matrix6d::Zero();
+			Matrix6x9d A_i = Matrix6x9d::Zero();
+			Matrix6x9d A_j = Matrix6x9d::Zero();
+			Matrix9d Q_k = Matrix9d::Zero();
 
 			Matrix2d sum_pp = Matrix2d::Zero();
 			Vector2d sum_p = Vector2d::Zero();
@@ -1031,33 +1025,30 @@ export class BreakageChecker {
 
 			for (ConnectionFrictionPoint fp :
 			     cs.friction_points(stud_spec, hole_spec, overlap)) {
-				Vector3d phi_f{1.0, fp.p_local.x(), fp.p_local.y()};
-				F_A += n_hat * phi_f.transpose();
 				Vector3d n_f_local{fp.n_local.x(), fp.n_local.y(), 0.0};
 				Vector3d n_f = q_CC_centroid * n_f_local;
-				Matrix3d n_phi_T = n_f * phi_f.transpose();
-				double n_T_u = fp.n_local.x();
-				double n_T_v = fp.n_local.y();
-				F_B += n_phi_T * n_T_u;
-				F_C += n_phi_T * n_T_v;
 				Vector3d x_f_local{fp.p_local.x(), fp.p_local.y(), 0.0};
 				Vector3d x_f = q_CC_centroid * x_f_local + t_CC_centroid;
-				tau_A_i += (x_f - t_CC_com_i).cross(n_hat) * phi_f.transpose();
-				tau_A_j -= (x_f - t_CC_com_j).cross(n_hat) * phi_f.transpose();
-				Matrix3d S_i =
-				    (x_f - t_CC_com_i).cross(n_f) * phi_f.transpose();
-				Matrix3d S_j =
-				    (x_f - t_CC_com_j).cross(n_f) * phi_f.transpose();
-				tau_B_i += S_i * n_T_u;
-				tau_B_j -= S_j * n_T_u;
-				tau_C_i += S_i * n_T_v;
-				tau_C_j -= S_j * n_T_v;
-				Q_k_n += (phi_f * phi_f.transpose()) *
-				         thresholds.ClutchNormalCompliance;
+				auto r_i_skew = (x_f - t_CC_com_i).asSkewSymmetric();
+				auto r_j_skew = (x_f - t_CC_com_j).asSkewSymmetric();
+				Vector3d phi_f{1.0, fp.p_local.x(), fp.p_local.y()};
+				Matrix3d n_phi_T = n_f * phi_f.transpose();
+				double n_T_u = n_f_local.x();
+				double n_T_v = n_f_local.y();
+				Matrix3x9d F;
+				F.block<3, 3>(0, 0) = n_hat * phi_f.transpose();
+				F.block<3, 3>(0, 3) = -n_phi_T * n_T_u;
+				F.block<3, 3>(0, 6) = -n_phi_T * n_T_v;
+				A_i.block<3, 9>(0, 0) += F;
+				A_j.block<3, 9>(0, 0) -= F;
+				A_i.block<3, 9>(3, 0) += r_i_skew * F;
+				A_j.block<3, 9>(3, 0) -= r_j_skew * F;
 				Vector6d k_f;
 				k_f.head<3>() = n_T_u * phi_f;
 				k_f.tail<3>() = n_T_v * phi_f;
-				Q_k_s +=
+				Q_k.block<3, 3>(0, 0) += (phi_f * phi_f.transpose()) *
+				                         thresholds.ClutchNormalCompliance;
+				Q_k.block<6, 6>(3, 3) +=
 				    (k_f * k_f.transpose()) * thresholds.ClutchShearCompliance;
 
 				sum_p += fp.p_local;
@@ -1071,29 +1062,11 @@ export class BreakageChecker {
 			Matrix2d Wk = inv_sqrt_spd(Ck);
 			sys.clutch_whiten_.push_back(Wk);
 
-			Matrix6x9d A_i;
-			A_i.block<3, 3>(0, 0) = F_A;
-			A_i.block<3, 3>(0, 3) = F_B;
-			A_i.block<3, 3>(0, 6) = F_C;
-			A_i.block<3, 3>(3, 0) = tau_A_i;
-			A_i.block<3, 3>(3, 3) = tau_B_i;
-			A_i.block<3, 3>(3, 6) = tau_C_i;
-			Matrix6x9d A_j;
-			A_j.block<3, 3>(0, 0) = -F_A;
-			A_j.block<3, 3>(0, 3) = -F_B;
-			A_j.block<3, 3>(0, 6) = -F_C;
-			A_j.block<3, 3>(3, 0) = tau_A_j;
-			A_j.block<3, 3>(3, 3) = tau_B_j;
-			A_j.block<3, 3>(3, 6) = tau_C_j;
-
 			if constexpr (EnableClutchWhitening) {
-				// alpha slopes
 				A_i.block<6, 2>(0, 1) *= Wk;
 				A_j.block<6, 2>(0, 1) *= Wk;
-				// beta slopes
 				A_i.block<6, 2>(0, 4) *= Wk;
 				A_j.block<6, 2>(0, 4) *= Wk;
-				// gamma slopes
 				A_i.block<6, 2>(0, 7) *= Wk;
 				A_j.block<6, 2>(0, 7) *= Wk;
 			}
@@ -1104,22 +1077,17 @@ export class BreakageChecker {
 			}
 
 			if constexpr (EnableClutchWhitening) {
-				// For alpha: S3 = diag(1, Wk)
-				Matrix3d S3 = Matrix3d::Identity();
-				S3.block<2, 2>(1, 1) = Wk;
-				Q_k_n = S3.transpose() * Q_k_n * S3;
-				// For shear: variables are [beta0, betau, betav, gamma0, gammau, gammav]
-				Matrix6d S6 = Matrix6d::Identity();
-				S6.block<2, 2>(1, 1) = Wk; // beta slopes
-				S6.block<2, 2>(4, 4) = Wk; // gamma slopes
-				Q_k_s = S6.transpose() * Q_k_s * S6;
+				Matrix9d S = Matrix9d::Identity();
+				S.block<2, 2>(1, 1) = Wk;
+				S.block<2, 2>(4, 4) = Wk;
+				S.block<2, 2>(7, 7) = Wk;
+				Q_k = S.transpose() * Q_k * S;
 			}
 
 			int var_idx = 3 * sys.num_contacts_ + 9 * index_k;
 			add_block_triplets(A_triplets, 6 * index_i, var_idx, A_i);
 			add_block_triplets(A_triplets, 6 * index_j, var_idx, A_j);
-			add_block_triplets(Q_triplets, var_idx + 0, var_idx + 0, Q_k_n);
-			add_block_triplets(Q_triplets, var_idx + 3, var_idx + 3, Q_k_s);
+			add_block_triplets(Q_triplets, var_idx, var_idx, Q_k);
 
 			std::vector<ConnectionFrictionPoint> fiction_points_hull =
 			    cs.friction_points_hull(stud_spec, hole_spec, overlap);
@@ -1134,8 +1102,8 @@ export class BreakageChecker {
 				    thresholds.FrictionCoefficient * thresholds.PreloadedForce;
 				if constexpr (EnableRealisticClutchFriction) {
 					e.segment<3>(3) *=
-					    fp.n_local.x() / thresholds.PreloadedForce;
-					e.tail<3>() *= fp.n_local.y() / thresholds.PreloadedForce;
+					    -fp.n_local.x() / thresholds.PreloadedForce;
+					e.tail<3>() *= -fp.n_local.y() / thresholds.PreloadedForce;
 				} else {
 					e.segment<3>(3).setZero();
 					e.tail<3>().setZero();
