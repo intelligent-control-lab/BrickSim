@@ -19,6 +19,7 @@ constexpr bool EnableTorqueScaling = true;
 constexpr bool EnableContactWhitening = true;
 constexpr bool EnableClutchWhitening = true;
 constexpr bool EnableContactAreaScaling = true;
+constexpr bool EnableClutchTangentialFriction = true;
 constexpr bool EnableRealisticClutchFriction = true;
 
 using Eigen::ComputeFullU;
@@ -346,8 +347,9 @@ export struct BreakageThresholds {
 	double ContactRegularization{0.0};
 	double ClutchAxialCompliance{1.0};
 	double ClutchRadialCompliance{1.0};
+	double ClutchTangentialCompliance{1.0};
 	double FrictionCoefficient{0.2};
-	double PreloadedForce{12.5};
+	double PreloadedForce{12.0};
 	double SlackFractionWarn{0.1};
 	double SlackFractionBFloor{1e-9};
 };
@@ -360,6 +362,7 @@ export void to_json(nlohmann::ordered_json &j,
 	    {"contact_regularization", thresholds.ContactRegularization},
 	    {"clutch_axial_compliance", thresholds.ClutchAxialCompliance},
 	    {"clutch_radial_compliance", thresholds.ClutchRadialCompliance},
+	    {"clutch_tangential_compliance", thresholds.ClutchTangentialCompliance},
 	    {"friction_coefficient", thresholds.FrictionCoefficient},
 	    {"preloaded_force", thresholds.PreloadedForce},
 	    {"slack_fraction_warn", thresholds.SlackFractionWarn},
@@ -375,6 +378,8 @@ export void from_json(const nlohmann::ordered_json &j,
 	j.at("contact_regularization").get_to(thresholds.ContactRegularization);
 	j.at("clutch_axial_compliance").get_to(thresholds.ClutchAxialCompliance);
 	j.at("clutch_radial_compliance").get_to(thresholds.ClutchRadialCompliance);
+	j.at("clutch_tangential_compliance")
+	    .get_to(thresholds.ClutchTangentialCompliance);
 	j.at("friction_coefficient").get_to(thresholds.FrictionCoefficient);
 	j.at("preloaded_force").get_to(thresholds.PreloadedForce);
 	j.at("slack_fraction_warn").get_to(thresholds.SlackFractionWarn);
@@ -1029,16 +1034,25 @@ export class BreakageChecker {
 				Vector3d n_f = q_CC_centroid * n_f_local;
 				Vector3d x_f_local{fp.p_local.x(), fp.p_local.y(), 0.0};
 				Vector3d x_f = q_CC_centroid * x_f_local + t_CC_centroid;
+				Vector3d t_f_local{fp.n_local.y(), -fp.n_local.x(), 0.0};
+				Vector3d t_f = q_CC_centroid * t_f_local;
 				auto r_i_skew = (x_f - t_CC_com_i).asSkewSymmetric();
 				auto r_j_skew = (x_f - t_CC_com_j).asSkewSymmetric();
 				Vector3d phi_f{1.0, fp.p_local.x(), fp.p_local.y()};
 				Matrix3d n_phi_T = n_f * phi_f.transpose();
 				double n_T_u = n_f_local.x();
 				double n_T_v = n_f_local.y();
+				Matrix3d t_phi_T = t_f * phi_f.transpose();
+				double t_T_u = t_f_local.x();
+				double t_T_v = t_f_local.y();
 				Matrix3x9d F;
 				F.block<3, 3>(0, 0) = n_hat * phi_f.transpose();
 				F.block<3, 3>(0, 3) = -n_phi_T * n_T_u;
 				F.block<3, 3>(0, 6) = -n_phi_T * n_T_v;
+				if constexpr (EnableClutchTangentialFriction) {
+					F.block<3, 3>(0, 3) -= t_phi_T * t_T_u;
+					F.block<3, 3>(0, 6) -= t_phi_T * t_T_v;
+				}
 				A_i.block<3, 9>(0, 0) += F;
 				A_j.block<3, 9>(0, 0) -= F;
 				A_i.block<3, 9>(3, 0) += r_i_skew * F;
@@ -1050,6 +1064,14 @@ export class BreakageChecker {
 				                         thresholds.ClutchAxialCompliance;
 				Q_k.block<6, 6>(3, 3) +=
 				    (k_f * k_f.transpose()) * thresholds.ClutchRadialCompliance;
+				if constexpr (EnableClutchTangentialFriction) {
+					Vector6d k_t_f;
+					k_t_f.head<3>() = t_T_u * phi_f;
+					k_t_f.tail<3>() = t_T_v * phi_f;
+					Q_k.block<6, 6>(3, 3) +=
+					    (k_t_f * k_t_f.transpose()) *
+					    thresholds.ClutchTangentialCompliance;
+				}
 
 				sum_p += fp.p_local;
 				sum_pp += fp.p_local * fp.p_local.transpose();
@@ -1097,29 +1119,47 @@ export class BreakageChecker {
 				const auto &fp = fiction_points_hull[i];
 				Vector3d phi_f{1.0, fp.p_local.x(), fp.p_local.y()};
 				G.row(i) = phi_f;
-				Vector9d e = phi_f.replicate<3, 1>();
-				e.head<3>() /=
-				    thresholds.FrictionCoefficient * thresholds.PreloadedForce;
+
+				auto push_friction_limit = [&](Vector9d e) {
+					sys.capacity_clutch_indices_.emplace_back(index_k);
+					sys.capacities_.emplace_back(e);
+					Vector9d h = e;
+					if constexpr (EnableClutchWhitening) {
+						h.segment<2>(1) = Wk.transpose() * h.segment<2>(1);
+						h.segment<2>(4) = Wk.transpose() * h.segment<2>(4);
+						h.segment<2>(7) = Wk.transpose() * h.segment<2>(7);
+					}
+					int relaxed_ineq_idx = sys.num_relaxed_ineq_++;
+					Matrix<double, 1, 9> h_T = h.transpose();
+					add_block_triplets(H_triplets, relaxed_ineq_idx, var_idx,
+					                   h_T);
+					V_triplets.emplace_back(relaxed_ineq_idx, index_k, 1.0);
+				};
+
 				if constexpr (EnableRealisticClutchFriction) {
+					Vector9d e = phi_f.replicate<3, 1>();
+					e.head<3>() /= thresholds.FrictionCoefficient *
+					               thresholds.PreloadedForce;
 					e.segment<3>(3) *=
 					    -fp.n_local.x() / thresholds.PreloadedForce;
 					e.tail<3>() *= -fp.n_local.y() / thresholds.PreloadedForce;
+					if constexpr (EnableClutchTangentialFriction) {
+						Vector9d e_t = Vector9d::Zero();
+						e_t.segment<3>(3) = fp.n_local.y() * phi_f;
+						e_t.tail<3>() = -fp.n_local.x() * phi_f;
+						e_t /= thresholds.FrictionCoefficient *
+						       thresholds.PreloadedForce;
+						push_friction_limit(e + e_t);
+						push_friction_limit(e - e_t);
+					} else {
+						push_friction_limit(e);
+					}
 				} else {
-					e.segment<3>(3).setZero();
-					e.tail<3>().setZero();
+					Vector9d e = Vector9d::Zero();
+					e.head<3>() = phi_f / (thresholds.FrictionCoefficient *
+					                       thresholds.PreloadedForce);
+					push_friction_limit(e);
 				}
-				sys.capacity_clutch_indices_.emplace_back(index_k);
-				sys.capacities_.emplace_back(e);
-				Vector9d h = e;
-				if constexpr (EnableClutchWhitening) {
-					h.segment<2>(1) = Wk.transpose() * h.segment<2>(1);
-					h.segment<2>(4) = Wk.transpose() * h.segment<2>(4);
-					h.segment<2>(7) = Wk.transpose() * h.segment<2>(7);
-				}
-				int relaxed_ineq_idx = sys.num_relaxed_ineq_++;
-				Matrix<double, 1, 9> h_T = h.transpose();
-				add_block_triplets(H_triplets, relaxed_ineq_idx, var_idx, h_T);
-				V_triplets.emplace_back(relaxed_ineq_idx, index_k, 1.0);
 			}
 			if constexpr (EnableClutchWhitening) {
 				G.block(0, 1, G.rows(), 2) *= Wk;

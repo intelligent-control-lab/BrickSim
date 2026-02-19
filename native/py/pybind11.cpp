@@ -203,6 +203,8 @@ PYBIND11_MODULE(_native, m) {
 	                   &BreakageThresholds::ClutchAxialCompliance)
 	    .def_readwrite("clutch_radial_compliance",
 	                   &BreakageThresholds::ClutchRadialCompliance)
+	    .def_readwrite("clutch_tangential_compliance",
+	                   &BreakageThresholds::ClutchTangentialCompliance)
 	    .def_readwrite("friction_coefficient",
 	                   &BreakageThresholds::FrictionCoefficient)
 	    .def_readwrite("preloaded_force", &BreakageThresholds::PreloadedForce)

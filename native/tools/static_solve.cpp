@@ -86,6 +86,8 @@ int main(int argc, char **argv) {
 	thr_env("BREAKAGE_CONTACT_REGULARIZATION", thr.ContactRegularization);
 	thr_env("BREAKAGE_CLUTCH_AXIAL_COMPLIANCE", thr.ClutchAxialCompliance);
 	thr_env("BREAKAGE_CLUTCH_RADIAL_COMPLIANCE", thr.ClutchRadialCompliance);
+	thr_env("BREAKAGE_CLUTCH_TANGENTIAL_COMPLIANCE",
+	        thr.ClutchTangentialCompliance);
 	thr_env("BREAKAGE_FRICTION_COEFFICIENT", thr.FrictionCoefficient);
 	thr_env("BREAKAGE_PRELOADED_FORCE", thr.PreloadedForce);
 	thr_env("BREAKAGE_SLACK_FRACTION_WARN", thr.SlackFractionWarn);

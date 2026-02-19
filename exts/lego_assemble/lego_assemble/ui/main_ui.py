@@ -155,6 +155,13 @@ class LegoUI():
                             lambda m: self._set_breakage_threshold("clutch_radial_compliance", float(m.as_float))
                         )
                     with omni.ui.HStack(spacing=10):
+                        omni.ui.Label("Clutch tangential comp:", width=140)
+                        self._clutch_tang_comp_field = omni.ui.FloatDrag(min=0.0, max=1e6)
+                        self._clutch_tang_comp_field.model.set_value(float(_bthr.clutch_tangential_compliance))
+                        self._clutch_tang_comp_field.model.add_value_changed_fn(
+                            lambda m: self._set_breakage_threshold("clutch_tangential_compliance", float(m.as_float))
+                        )
+                    with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Friction coefficient:", width=140)
                         self._friction_coefficient_field = omni.ui.FloatDrag(min=0.0, max=100.0)
                         self._friction_coefficient_field.model.set_value(float(_bthr.friction_coefficient))

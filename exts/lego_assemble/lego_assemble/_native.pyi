@@ -133,6 +133,7 @@ class BreakageThresholds:
     contact_normal_compliance: float
     clutch_axial_compliance: float
     clutch_radial_compliance: float
+    clutch_tangential_compliance: float
     friction_coefficient: float
     preloaded_force: float
     slack_fraction_warn: float
