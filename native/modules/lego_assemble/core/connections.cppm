@@ -128,7 +128,7 @@ export struct ConnectionSegment {
 				auto friction_point = [&](double x, double y) {
 					return ConnectionFrictionPoint{
 					    .p_local = center + Vector2d{x, y},
-					    .n_local = Vector2d{x, y}.normalized(),
+					    .n_local = Vector2d{-x, -y}.normalized(),
 					};
 				};
 				if (hole.L == 1 || hole.W == 1) {
@@ -198,7 +198,7 @@ export struct ConnectionSegment {
 			auto push_point = [&](double x, double y) {
 				pts.push_back({
 				    .p_local = center + Vector2d{x, y},
-				    .n_local = Vector2d{x, y}.normalized(),
+				    .n_local = Vector2d{-x, -y}.normalized(),
 				});
 			};
 			if (hole.L == 1 || hole.W == 1) {

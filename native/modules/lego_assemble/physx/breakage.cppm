@@ -1034,7 +1034,7 @@ export class BreakageChecker {
 				Vector3d n_f = q_CC_centroid * n_f_local;
 				Vector3d x_f_local{fp.p_local.x(), fp.p_local.y(), 0.0};
 				Vector3d x_f = q_CC_centroid * x_f_local + t_CC_centroid;
-				Vector3d t_f_local{fp.n_local.y(), -fp.n_local.x(), 0.0};
+				Vector3d t_f_local{-fp.n_local.y(), fp.n_local.x(), 0.0};
 				Vector3d t_f = q_CC_centroid * t_f_local;
 				auto r_i_skew = (x_f - t_CC_com_i).asSkewSymmetric();
 				auto r_j_skew = (x_f - t_CC_com_j).asSkewSymmetric();
@@ -1047,11 +1047,11 @@ export class BreakageChecker {
 				double t_T_v = t_f_local.y();
 				Matrix3x9d F;
 				F.block<3, 3>(0, 0) = n_hat * phi_f.transpose();
-				F.block<3, 3>(0, 3) = -n_phi_T * n_T_u;
-				F.block<3, 3>(0, 6) = -n_phi_T * n_T_v;
+				F.block<3, 3>(0, 3) = n_phi_T * n_T_u;
+				F.block<3, 3>(0, 6) = n_phi_T * n_T_v;
 				if constexpr (EnableClutchTangentialFriction) {
-					F.block<3, 3>(0, 3) -= t_phi_T * t_T_u;
-					F.block<3, 3>(0, 6) -= t_phi_T * t_T_v;
+					F.block<3, 3>(0, 3) += t_phi_T * t_T_u;
+					F.block<3, 3>(0, 6) += t_phi_T * t_T_v;
 				}
 				A_i.block<3, 9>(0, 0) += F;
 				A_j.block<3, 9>(0, 0) -= F;
@@ -1145,8 +1145,8 @@ export class BreakageChecker {
 					e.tail<3>() *= -fp.n_local.y() / thresholds.PreloadedForce;
 					if constexpr (EnableClutchTangentialFriction) {
 						Vector9d e_t = Vector9d::Zero();
-						e_t.segment<3>(3) = fp.n_local.y() * phi_f;
-						e_t.tail<3>() = -fp.n_local.x() * phi_f;
+						e_t.segment<3>(3) = -fp.n_local.y() * phi_f;
+						e_t.tail<3>() = fp.n_local.x() * phi_f;
 						e_t /= thresholds.FrictionCoefficient *
 						       thresholds.PreloadedForce;
 						push_friction_limit(e + e_t);
