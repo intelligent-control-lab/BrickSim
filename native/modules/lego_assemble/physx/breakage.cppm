@@ -1345,8 +1345,8 @@ export class BreakageChecker {
 			          sol.info.to_string());
 			error = true;
 		} else if (sol.slack_fraction > thresholds.SlackFractionWarn) {
-			log_warn("BreakageChecker: abnormally high slack fraction {:.3e}",
-			         sol.slack_fraction);
+			log_warn("BreakageChecker: abnormally high slack fraction {:.1f}%",
+			         sol.slack_fraction * 100);
 			error = true;
 		}
 		bool dump = false;
