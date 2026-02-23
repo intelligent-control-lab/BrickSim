@@ -23,23 +23,44 @@ from bricksim.importers.stabletext2brick import (
 
 def set_axes_equal_3d(ax, world_dim):
     x_dim, y_dim, z_dim = world_dim
-    x_center = x_dim / 2
-    y_center = y_dim / 2
-    z_center = z_dim / 2
-    half_range = max(x_dim, y_dim, z_dim) / 2
-
-    ax.set_xlim(x_center - half_range, x_center + half_range)
-    ax.set_ylim(y_center - half_range, y_center + half_range)
-    ax.set_zlim(z_center - half_range, z_center + half_range)
-
-    if hasattr(ax, "set_box_aspect"):
-        ax.set_box_aspect((1, 1, 1))
+    # Tight bounds so the object fills the viewport instead of being padded
+    # by a cubic equal-range box.
+    ax.set_xlim(0.0, float(x_dim))
+    ax.set_ylim(0.0, float(y_dim))
+    ax.set_zlim(0.0, float(z_dim))
+    ax.set_proj_type("ortho")
+    ax.set_box_aspect((x_dim, y_dim, z_dim))
 
 
 
 def _parse_baseplate(s: str) -> tuple[int, int]:
     w_s, h_s = s.split("x")
     return int(w_s), int(h_s)
+
+
+def _parse_viewpoint(s: str) -> tuple[float, float, float]:
+    vals = s.split(",")
+    if len(vals) != 3:
+        raise ValueError(
+            "Invalid --viewpoint format. Expected 'elevation,azimith,roll'."
+        )
+    try:
+        elev = float(vals[0].strip())
+        azim = float(vals[1].strip())
+        roll = float(vals[2].strip())
+    except ValueError as e:
+        raise ValueError(
+            "Invalid --viewpoint values. Expected 'elevation,azimith,roll' as floats."
+        ) from e
+    return elev, azim, roll
+
+
+def _apply_viewpoint(ax, viewpoint: tuple[float, float, float]) -> None:
+    elev, azim, roll = viewpoint
+    try:
+        ax.view_init(elev=elev, azim=azim, roll=roll)
+    except TypeError:
+        ax.view_init(elev=elev, azim=azim)
 
 
 def _load_and_convert(
@@ -105,57 +126,111 @@ def _render_heatmap(
     pid_offset: int,
     per_part_score: dict[int, float],
     *,
-    output_path: Path,
+    output_path: Path | None,
     draw_overutilized: bool,
+    cmap_name: str,
+    interactive: bool,
+    ax=None,
+    title: str | None = None,
+    scale_range: tuple[float, float] | None = None,
+    viewpoint: tuple[float, float, float] = (0.0, -90.0, 0.0),
 ) -> None:
     min_x = min(x for _, _, x, _, _ in bricks)
     min_y = min(y for _, _, _, y, _ in bricks)
     min_z = min(z for _, _, _, _, z in bricks)
-    if min_x < 0 or min_y < 0 or min_z < 0:
-        raise ValueError("Negative brick coordinates are not supported for voxel plotting.")
+    max_x = max(x + L for L, _, x, _, _ in bricks)
+    max_y = max(y + W for _, W, _, y, _ in bricks)
+    max_z = max(z + 1 for _, _, _, _, z in bricks)
 
-    util_values = [
-        util for util in per_part_score.values() if draw_overutilized or util <= 1.0
-    ]
-    if util_values:
-        umin = min(util_values)
-        umax = max(util_values)
+    if scale_range is None:
+        util_values = [
+            util for util in per_part_score.values() if draw_overutilized or util < 1.0
+        ]
+        if util_values:
+            umin = min(util_values)
+            umax = max(util_values)
+        else:
+            umin = 0.0
+            umax = 1.0
     else:
-        umin = 0.0
-        umax = 1.0
+        umin, umax = scale_range
     denom = umax - umin
 
     world_dim = (
-        max(x + L for L, _, x, _, _ in bricks),
-        max(y + W for _, W, _, y, _ in bricks),
-        max(z + 1 for _, _, _, _, z in bricks),
+        max_x - min_x,
+        max_y - min_y,
+        max_z - min_z,
     )
 
     world_grid = np.zeros(world_dim, dtype=bool)
     heatmap_color = np.zeros((*world_dim, 3), dtype=float)
 
+    import matplotlib.pyplot as plt
+
+    cmap = plt.get_cmap(cmap_name)
+
     for brick_idx, (L, W, x, y, z) in enumerate(bricks):
         pid = brick_idx + pid_offset
         util = per_part_score.get(pid, 0.0)
-        if util > 1.0 and not draw_overutilized:
+        if util >= 1.0 and not draw_overutilized:
             color = (1.0, 1.0, 1.0)
         else:
             util_scaled = (util - umin) / denom if denom > 0.0 else 0.0
             util_scaled = max(0.0, min(1.0, util_scaled))
-            color = (float(util_scaled), 0.0, 0.0)
+            color = cmap(float(util_scaled))[:3]
 
-        for i in range(x, x + L):
-            for j in range(y, y + W):
-                world_grid[i, j, z] = True
-                heatmap_color[i, j, z, :] = color
+        x0 = x - min_x
+        y0 = y - min_y
+        z0 = z - min_z
+        for i in range(x0, x0 + L):
+            for j in range(y0, y0 + W):
+                world_grid[i, j, z0] = True
+                heatmap_color[i, j, z0, :] = color
 
-    import matplotlib.pyplot as plt
-
-    ax = plt.figure().add_subplot(projection="3d")
+    own_axis = ax is None
+    if own_axis:
+        ax = plt.figure().add_subplot(projection="3d")
     ax.voxels(world_grid, facecolors=heatmap_color, edgecolor="k")
     set_axes_equal_3d(ax, world_dim)
-    ax.view_init(elev=0, azim=-90)
-    plt.savefig(output_path)
+    _apply_viewpoint(ax, viewpoint)
+    ax.set_axis_off()
+    if title is not None:
+        ax.set_title(title)
+    if own_axis:
+        plt.tight_layout()
+        if output_path is not None:
+            plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        if interactive:
+            plt.show()
+
+
+def _sync_3d_view(fig, ax_a, ax_b) -> None:
+    syncing = False
+
+    def _copy_view(src, dst) -> None:
+        nonlocal syncing
+        if syncing:
+            return
+        syncing = True
+        roll = getattr(src, "roll", None)
+        if roll is None:
+            dst.view_init(elev=src.elev, azim=src.azim)
+        else:
+            dst.view_init(elev=src.elev, azim=src.azim, roll=roll)
+        dst.set_xlim3d(src.get_xlim3d())
+        dst.set_ylim3d(src.get_ylim3d())
+        dst.set_zlim3d(src.get_zlim3d())
+        fig.canvas.draw_idle()
+        syncing = False
+
+    def _on_motion(event) -> None:
+        if event.inaxes is ax_a:
+            _copy_view(ax_a, ax_b)
+        elif event.inaxes is ax_b:
+            _copy_view(ax_b, ax_a)
+
+    fig.canvas.mpl_connect("motion_notify_event", _on_motion)
+    _copy_view(ax_a, ax_b)
 
 
 def main() -> None:
@@ -168,13 +243,32 @@ def main() -> None:
         help="Input format (default: auto).",
     )
     parser.add_argument("--baseplate", type=str, default='32x32', help="Optional baseplate type (e.g., '16x16', '32x32').")
-    parser.add_argument("--output", type=Path, default=Path("stability_analysis.png"), help="Output PNG path.")
+    parser.add_argument("--output", type=Path, default=None, help="Output PNG path.")
     parser.add_argument(
         "--draw-overutilized",
         action="store_true",
         help="Draw utilization > 1 with the heatmap scale instead of white.",
     )
+    parser.add_argument(
+        "--cmap",
+        type=str,
+        default="gist_rainbow",
+        help="Matplotlib colormap name for utilization visualization (default: gist_rainbow).",
+    )
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="Run both static_solve and StableLego and render side-by-side comparison.",
+    )
+    parser.add_argument(
+        "--viewpoint",
+        type=str,
+        default="0,-90,0",
+        help="3D viewpoint as 'elevation,azimith,roll' (default: 0,-90,0).",
+    )
+    parser.add_argument("--interactive", action="store_true")
     args = parser.parse_args()
+    viewpoint = _parse_viewpoint(args.viewpoint)
 
     if args.baseplate:
         baseplate_size = _parse_baseplate(args.baseplate)
@@ -187,6 +281,12 @@ def main() -> None:
     solver_path = repo_root / "native/.build/RelWithDebInfo/static_solve"
     if not solver_path.exists():
         raise FileNotFoundError(f"Missing solver binary at {solver_path}")
+
+    compare_input_text: str | None = None
+    if args.compare:
+        compare_input_text = args.input.read_text(encoding="utf-8")
+        if args.format == "stabletext2brick" or not is_legolization_json(compare_input_text):
+            raise ValueError("--compare requires legolization JSON input.")
 
     topology, bricks, pid_offset = _load_and_convert(
         args.input,
@@ -204,13 +304,96 @@ def main() -> None:
         util = float(utilizations.get(str(cid), 0.0))
         per_part_score[hole_id] = max(per_part_score.get(hole_id, 0.0), util)
 
+    if not args.compare:
+        _render_heatmap(
+            bricks,
+            pid_offset,
+            per_part_score,
+            output_path=args.output,
+            draw_overutilized=args.draw_overutilized,
+            cmap_name=args.cmap,
+            interactive=args.interactive,
+            viewpoint=viewpoint,
+        )
+        return
+
+    assert compare_input_text is not None
+    lego_structure = json.loads(compare_input_text)
+    from bricksim.stable_lego import run_stable_lego
+
+    stable_world_dim = (
+        max(x + L for L, _, x, _, _ in bricks) + 1,
+        max(y + W for _, W, _, y, _ in bricks) + 1,
+        max(z + 1 for _, _, _, _, z in bricks) + 1,
+    )
+    stable_utilization, _, _, _, _ = run_stable_lego(
+        lego_structure,
+        world_dim=stable_world_dim,
+        brick_library=load_default_lego_library(),
+    )
+    stable_per_part_score: dict[int, float] = {}
+    for brick_idx, (L, W, x, y, z) in enumerate(bricks):
+        pid = brick_idx + pid_offset
+        stable_per_part_score[pid] = float(
+            np.max(stable_utilization[x : x + L, y : y + W, z])
+        )
+
+    import matplotlib.pyplot as plt
+
+    fig = plt.figure(figsize=(12, 6))
+    ax_left = fig.add_subplot(1, 2, 1, projection="3d")
+    ax_right = fig.add_subplot(1, 2, 2, projection="3d")
+    shared_util_values = [
+        util
+        for util in list(per_part_score.values()) + list(stable_per_part_score.values())
+        if args.draw_overutilized or util < 1.0
+    ]
+    if shared_util_values:
+        shared_scale = (min(shared_util_values), max(shared_util_values))
+    else:
+        shared_scale = (0.0, 1.0)
     _render_heatmap(
         bricks,
         pid_offset,
         per_part_score,
-        output_path=args.output,
+        output_path=None,
         draw_overutilized=args.draw_overutilized,
+        cmap_name=args.cmap,
+        interactive=False,
+        ax=ax_left,
+        title="Ours",
+        scale_range=shared_scale,
+        viewpoint=viewpoint,
     )
+    _render_heatmap(
+        bricks,
+        pid_offset,
+        stable_per_part_score,
+        output_path=None,
+        draw_overutilized=args.draw_overutilized,
+        cmap_name=args.cmap,
+        interactive=False,
+        ax=ax_right,
+        title="StableLego",
+        scale_range=shared_scale,
+        viewpoint=viewpoint,
+    )
+    import matplotlib.colors as mcolors
+    import matplotlib.cm as cm
+
+    norm = mcolors.Normalize(vmin=shared_scale[0], vmax=shared_scale[1])
+    mappable = cm.ScalarMappable(norm=norm, cmap=plt.get_cmap(args.cmap))
+    mappable.set_array([])
+    # Explicit placement keeps the two 3D panels tightly packed.
+    ax_left.set_position([0.00, 0.04, 0.45, 0.90])
+    ax_right.set_position([0.43, 0.04, 0.45, 0.90])
+    cax = fig.add_axes([0.90, 0.15, 0.02, 0.70])
+    fig.colorbar(mappable, cax=cax, orientation="vertical", label="Utilization")
+    _sync_3d_view(fig, ax_left, ax_right)
+    if args.output is not None:
+        plt.savefig(args.output, dpi=300, bbox_inches="tight", pad_inches=0.0)
+    if args.interactive:
+        plt.show()
 
 
 if __name__ == "__main__":
