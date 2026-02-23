@@ -36,7 +36,7 @@ from typing import Any
 
 from .grid_topology import bricks_grid_to_topology_json
 
-DEFAULT_LEGO_LIBRARY_PATH = os.path.join(os.path.dirname(__file__), "../../../../resources/legosim_dataset/data/lego/data/lego_library.json")
+DEFAULT_LEGO_LIBRARY_PATH = os.path.join(os.path.dirname(__file__), "lego_library.json")
 DEFAULT_LEGO_LIBRARY = None
 
 def load_default_lego_library() -> dict[str, dict[str, Any]]:

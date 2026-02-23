@@ -1,29 +1,14 @@
 import json
-from dataclasses import dataclass
-from pathlib import Path
-
 import carb
+import asyncio
 import omni.ui as ui
-
 from bricksim._native import import_lego, arrange_parts_in_workspace
 from bricksim.importers.legolization import legolization_json_to_topology_json
 from bricksim.ui.main_ui import LegoUI
 from bricksim.utils.usd_parse import get_env_path
-
-
-@dataclass
-class DatasetItem:
-    """Single entry in the LegoSim structures dataset."""
-
-    category: str
-    model_id: str
-    json_path: Path
-    caption: str
-
+from bricksim.structures import BricksimDatasetItem, load_bricksim_dataset
 
 class LegoStructuresBrowser:
-    """Browser UI for the LegoSim legolization-based structures dataset."""
-
     MAX_VISIBLE = 100
     NUM_BRICKS_LIMIT = 50
 
@@ -31,8 +16,7 @@ class LegoStructuresBrowser:
         self._window = ui.Window("StableText2Brick Structures", width=500, height=600)
         self._window.deferred_dock_in("Console")
 
-        # Dataset and UI state
-        self._dataset: list[DatasetItem] = []
+        self._dataset: list[BricksimDatasetItem] = []
         self._selected_index: int | None = None
         self._filter_text: str = ""
 
@@ -41,10 +25,8 @@ class LegoStructuresBrowser:
         self._status_label: ui.Label | None = None
         self._list_frame: ui.Frame | None = None
 
-        # Main LEGO UI for env id / color
         self._main_ui = main_ui
 
-        # Static window layout
         def _on_search_changed(model: ui.AbstractValueModel) -> None:
             self._filter_text = model.as_string or ""
             self._rebuild_list()
@@ -70,11 +52,7 @@ class LegoStructuresBrowser:
                         self._list_frame = ui.Frame()
                         self._list_frame.set_build_fn(self._build_list_contents)
 
-        # Load dataset eagerly (no async / lazy loading)
-        self._load_dataset()
-        self._rebuild_list()
-
-    # ------------------------------------------------------------------ helpers
+        asyncio.ensure_future(self._load_dataset())
 
     def destroy(self) -> None:
         if self._window:
@@ -86,85 +64,25 @@ class LegoStructuresBrowser:
         if self._status_label is not None:
             self._status_label.text = msg
 
-    def _dataset_json_path(self) -> Path:
-        """Location of simulator_testset/dataset.json relative to this file."""
-        return (
-            Path(__file__).resolve().parents[4]
-            / "resources"
-            / "legosim_dataset"
-            / "data"
-            / "lego"
-            / "data"
-            / "simulator_testset"
-            / "dataset.json"
-        )
-
-    def _dataset_root(self) -> Path:
-        """Root directory corresponding to /data in dataset.json paths."""
-        return (
-            Path(__file__).resolve().parents[4]
-            / "resources"
-            / "legosim_dataset"
-        )
-
-    def _load_dataset(self) -> None:
-        """Read and flatten simulator_testset/dataset.json into DatasetItem list."""
-        dataset_path = self._dataset_json_path()
-        if not dataset_path.is_file():
-            carb.log_error(f"[LegoStructures] dataset.json not found at {dataset_path}")
-            self._dataset = []
-            self._set_status("Dataset not found. Run scripts/download_legosim_dataset.py")
-            return
-
+    async def _load_dataset(self) -> None:
+        items: list[BricksimDatasetItem] = []
         try:
-            with dataset_path.open("r", encoding="utf-8") as f:
-                raw = json.load(f)
-        except Exception as e:
-            carb.log_error(f"[LegoStructures] failed to read dataset.json: {e}")
-            self._dataset = []
-            self._set_status("Failed to read dataset.json")
-            return
-
-        items: list[DatasetItem] = []
-        root = self._dataset_root()
-
-        # The structure is:
-        # {category: {model_id: {json_path: { ...fields... }}}}
-        for category, models in raw.items():
-            if not isinstance(models, dict):
-                continue
-            for model_id, paths in models.items():
-                if not isinstance(paths, dict):
+            for item in (await load_bricksim_dataset()).values():
+                if item.num_bricks > self.NUM_BRICKS_LIMIT:
                     continue
-                for json_key, meta in paths.items():
-                    try:
-                        num_bricks = int(meta.get("num_bricks", 0))
-                        if num_bricks > self.NUM_BRICKS_LIMIT:
-                            continue
-                        caption = str(meta.get("caption", ""))
-                        json_fname = str(meta.get("json_fname", json_key))
-                        # json_fname is an absolute-style path starting with /data/...
-                        rel = json_fname.lstrip("/")  # remove leading slash
-                        json_path = root / rel
-                        items.append(
-                            DatasetItem(
-                                category=str(category),
-                                model_id=str(model_id),
-                                json_path=json_path,
-                                caption=caption,
-                            )
-                        )
-                    except Exception:
-                        carb.log_warn(f"[LegoStructures] skipping malformed entry in category={category}, model={model_id}")
-                        continue
+                items.append(item)
+            self._dataset = items
+            total = len(self._dataset)
+            shown = min(total, self.MAX_VISIBLE)
+            self._set_status(f"{total} loaded, {total} matches, showing {shown}")
+            carb.log_info(f"[LegoStructures] dataset loaded: total {total}")
+        except Exception as e:
+            carb.log_error(f"[LegoStructures] failed to load dataset: {e}")
+            self._dataset = []
+            self._set_status(f"Failed to load dataset: {e}")
+        self._rebuild_list()
 
-        self._dataset = items
-        total = len(self._dataset)
-        shown = min(total, self.MAX_VISIBLE)
-        self._set_status(f"{total} loaded, {total} matches, showing {shown}")
-        carb.log_info(f"[LegoStructures] dataset loaded: total {total}")
-
-    def _filtered_dataset(self) -> list[DatasetItem]:
+    def _filtered_dataset(self) -> list[BricksimDatasetItem]:
         text = (self._filter_text or "").strip().lower()
         if not self._dataset:
             return []
@@ -172,7 +90,7 @@ class LegoStructuresBrowser:
         if not text:
             return self._dataset
 
-        visible: list[DatasetItem] = []
+        visible: list[BricksimDatasetItem] = []
         for item in self._dataset:
             haystack = " ".join(
                 [item.category, item.model_id, item.caption, str(item.json_path)]
@@ -189,7 +107,6 @@ class LegoStructuresBrowser:
     def _build_list_contents(self) -> None:
         with ui.VStack(spacing=2):
             if not self._dataset:
-                ui.Label("No dataset loaded.", height=0)
                 return
 
             matches = self._filtered_dataset()
@@ -232,9 +149,7 @@ class LegoStructuresBrowser:
                 row.set_mouse_pressed_fn(_on_single_click)
                 row.set_mouse_double_clicked_fn(_on_double_click)
 
-    # ----------------------------------------------------------------- actions
-
-    def _get_selected_item(self) -> DatasetItem | None:
+    def _get_selected_item(self) -> BricksimDatasetItem | None:
         if self._selected_index is None:
             return None
         matches = self._filtered_dataset()
@@ -244,7 +159,7 @@ class LegoStructuresBrowser:
             return None
         return matches[self._selected_index]
 
-    def _on_import_clicked(self, item: DatasetItem | None = None) -> None:
+    def _on_import_clicked(self, item: BricksimDatasetItem | None = None) -> None:
         if item is None:
             item = self._get_selected_item()
         if item is None:
