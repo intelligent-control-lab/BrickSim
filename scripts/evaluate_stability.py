@@ -397,7 +397,7 @@ def main() -> None:
         default=None,
         help=(
             "Root corresponding to /data in json_fname paths. "
-            "Default: <repo>/resources/legosim_dataset"
+            "Default: <repo>/resources/bricksim_dataset"
         ),
     )
     parser.add_argument(
@@ -421,7 +421,7 @@ def main() -> None:
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
-    datarootdir = args.datarootdir if args.datarootdir is not None else repo_root / "resources" / "legosim_dataset"
+    datarootdir = args.datarootdir if args.datarootdir is not None else repo_root / "resources" / "bricksim_dataset"
     solver_path = args.solver if args.solver is not None else repo_root / "native" / ".build" / "RelWithDebInfo" / "static_solve"
     if not solver_path.is_file():
         raise FileNotFoundError(f"Missing solver binary at {solver_path}")
