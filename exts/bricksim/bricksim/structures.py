@@ -14,6 +14,10 @@ class BricksimDatasetItem:
     caption: str
     num_bricks: int
     json_path: Path
+    all_connected_no_plate: bool
+    all_connected_with_plate: bool
+    stable_with_plate: bool
+    max_stability_score_with_plate: float
 
 BRICKSIM_DATASET_URL = "https://www.cs.cmu.edu/~haoweiw/bricksim_downloads/bricksim_dataset.tar.xz"
 BRICKSIM_DATASET_PATH = (
@@ -62,16 +66,18 @@ async def load_bricksim_dataset(download_if_not_available: bool = True) -> dict[
     for category, models in catalog.items():
         for model_id, paths in models.items():
             for json_key, meta in paths.items():
-                num_bricks = int(meta.get("num_bricks"))
-                caption = str(meta.get("caption"))
                 json_fname = str(meta.get("json_fname"))
                 json_path = BRICKSIM_DATASET_PATH / json_fname.lstrip("/")
                 items[model_id] = BricksimDatasetItem(
                     model_id=model_id,
                     category=category,
-                    caption=caption,
-                    num_bricks=num_bricks,
+                    caption=str(meta.get("caption")),
+                    num_bricks=int(meta.get("num_bricks")),
                     json_path=json_path,
+                    all_connected_no_plate=bool(meta.get("all_connected_no_plate")),
+                    all_connected_with_plate=bool(meta.get("all_connected_with_plate")),
+                    stable_with_plate=bool(meta.get("stable_with_plate")),
+                    max_stability_score_with_plate=float(meta.get("max_stability_score_with_plate")),
                 )
     _LOADED_BRICKSIM_DATASET = items
     return _LOADED_BRICKSIM_DATASET

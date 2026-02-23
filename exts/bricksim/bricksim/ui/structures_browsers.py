@@ -19,22 +19,21 @@ class LegoStructuresBrowser:
 
         self._dataset: list[BricksimDatasetItem] = []
         self._selected_index: int | None = None
-        self._filter_text: str = ""
 
         self._search_model = ui.SimpleStringModel("")
         self._use_baseplate_model = ui.SimpleBoolModel()
         self._use_baseplate_model.set_value(False)
+        self._show_connected_only = ui.SimpleBoolModel()
+        self._show_connected_only.set_value(False)
         self._status_model = ui.SimpleStringModel("Loading dataset...")
         self._status_label: ui.Label | None = None
         self._list_frame: ui.Frame | None = None
 
         self._main_ui = main_ui
 
-        def _on_search_changed(model: ui.AbstractValueModel) -> None:
-            self._filter_text = model.as_string or ""
-            self._rebuild_list()
-
-        self._search_model.add_value_changed_fn(_on_search_changed)
+        self._search_model.add_value_changed_fn(lambda _: self._rebuild_list())
+        self._use_baseplate_model.add_value_changed_fn(lambda _: self._rebuild_list())
+        self._show_connected_only.add_value_changed_fn(lambda _: self._rebuild_list())
 
         with self._window.frame:
             with ui.VStack(spacing=2):
@@ -44,6 +43,8 @@ class LegoStructuresBrowser:
                     ui.StringField(self._search_model, height=0)
                     ui.Label("Use Baseplate", width=100, height=0, alignment=ui.Alignment.RIGHT_CENTER)
                     ui.CheckBox(model=self._use_baseplate_model, width=20, height=0)
+                    ui.Label("Show Connected Only", width=150, height=0, alignment=ui.Alignment.RIGHT_CENTER)
+                    ui.CheckBox(model=self._show_connected_only, width=20, height=0)
 
                 # Status line
                 self._status_label = ui.Label(self._status_model.as_string, height=0)
@@ -88,20 +89,27 @@ class LegoStructuresBrowser:
         self._rebuild_list()
 
     def _filtered_dataset(self) -> list[BricksimDatasetItem]:
-        text = (self._filter_text or "").strip().lower()
         if not self._dataset:
             return []
 
-        if not text:
-            return self._dataset
+        filter_text = self._search_model.get_value_as_string().strip().lower()
+        if filter_text == "":
+            filter_text = None
+        use_baseplate = self._use_baseplate_model.get_value_as_bool()
+        show_connected_only = self._show_connected_only.get_value_as_bool()
 
         visible: list[BricksimDatasetItem] = []
         for item in self._dataset:
-            haystack = " ".join(
-                [item.category, item.model_id, item.caption, str(item.json_path)]
-            ).lower()
-            if text in haystack:
-                visible.append(item)
+            if show_connected_only:
+                if use_baseplate and not item.all_connected_with_plate:
+                    continue
+                if not use_baseplate and not item.all_connected_no_plate:
+                    continue
+            if filter_text is not None:
+                haystack = " ".join([item.category, item.model_id, item.caption, str(item.json_path)]).lower()
+                if filter_text not in haystack:
+                    continue
+            visible.append(item)
         return visible
 
     def _rebuild_list(self) -> None:
