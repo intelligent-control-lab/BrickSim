@@ -1,9 +1,9 @@
 import std;
-import lego_assemble.utils.pack2d_maxrect;
+import bricksim.utils.pack2d_maxrect;
 
 #include <cassert>
 
-using namespace lego_assemble::pack2d;
+using namespace bricksim::pack2d;
 
 namespace {
 

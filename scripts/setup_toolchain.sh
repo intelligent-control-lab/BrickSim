@@ -145,26 +145,26 @@ fi
 ### Generate env.sh
 ENV_SH_PATH="$TC_DIR/env.sh"
 cat > "$ENV_SH_PATH" << EOF
-if [[ -z "\${LEGO_TC_DIR:-}" ]]; then
-    export LEGO_TC_DIR="\$(dirname -- "\$(realpath -- "\${BASH_SOURCE[0]}")")"
-    export PATH="\$LEGO_TC_DIR/$CMAKE_DIRNAME/bin:\$LEGO_TC_DIR/$P7ZIP_DIRNAME:\$LEGO_TC_DIR/$NINJA_DIRNAME:\$LEGO_TC_DIR/$LLVM_DIRNAME/bin:\$PATH"
-    export CC="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/clang"
-    export CXX="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/clang++"
-    export AR="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-ar"
-    export RANLIB="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-ranlib"
-    export NM="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-nm"
-    export STRIP="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-strip"
-    export OBJCOPY="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-objcopy"
-    export OBJDUMP="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-objdump"
-    export READELF="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-readelf"
-    export ADDR2LINE="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-addr2line"
-    export CMAKE_CXX_COMPILER_AR="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-ar"
-    export CMAKE_CXX_COMPILER_RANLIB="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/llvm-ranlib"
-    export CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS="\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/clang-scan-deps"
-    export CCC_OVERRIDE_OPTIONS="\${CCC_OVERRIDE_OPTIONS:+\$CCC_OVERRIDE_OPTIONS }# ^--gcc-install-dir=\$LEGO_TC_DIR/$GCC_DIRNAME/usr/lib/gcc/x86_64-linux-gnu/$GCC_VER"
+if [[ -z "\${BRICKSIM_TC_DIR:-}" ]]; then
+    export BRICKSIM_TC_DIR="\$(dirname -- "\$(realpath -- "\${BASH_SOURCE[0]}")")"
+    export PATH="\$BRICKSIM_TC_DIR/$CMAKE_DIRNAME/bin:\$BRICKSIM_TC_DIR/$P7ZIP_DIRNAME:\$BRICKSIM_TC_DIR/$NINJA_DIRNAME:\$BRICKSIM_TC_DIR/$LLVM_DIRNAME/bin:\$PATH"
+    export CC="\$BRICKSIM_TC_DIR/$LLVM_DIRNAME/bin/clang"
+    export CXX="\$BRICKSIM_TC_DIR/$LLVM_DIRNAME/bin/clang++"
+    export AR="\$BRICKSIM_TC_DIR/$LLVM_DIRNAME/bin/llvm-ar"
+    export RANLIB="\$BRICKSIM_TC_DIR/$LLVM_DIRNAME/bin/llvm-ranlib"
+    export NM="\$BRICKSIM_TC_DIR/$LLVM_DIRNAME/bin/llvm-nm"
+    export STRIP="\$BRICKSIM_TC_DIR/$LLVM_DIRNAME/bin/llvm-strip"
+    export OBJCOPY="\$BRICKSIM_TC_DIR/$LLVM_DIRNAME/bin/llvm-objcopy"
+    export OBJDUMP="\$BRICKSIM_TC_DIR/$LLVM_DIRNAME/bin/llvm-objdump"
+    export READELF="\$BRICKSIM_TC_DIR/$LLVM_DIRNAME/bin/llvm-readelf"
+    export ADDR2LINE="\$BRICKSIM_TC_DIR/$LLVM_DIRNAME/bin/llvm-addr2line"
+    export CMAKE_CXX_COMPILER_AR="\$BRICKSIM_TC_DIR/$LLVM_DIRNAME/bin/llvm-ar"
+    export CMAKE_CXX_COMPILER_RANLIB="\$BRICKSIM_TC_DIR/$LLVM_DIRNAME/bin/llvm-ranlib"
+    export CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS="\$BRICKSIM_TC_DIR/$LLVM_DIRNAME/bin/clang-scan-deps"
+    export CCC_OVERRIDE_OPTIONS="\${CCC_OVERRIDE_OPTIONS:+\$CCC_OVERRIDE_OPTIONS }# ^--gcc-install-dir=\$BRICKSIM_TC_DIR/$GCC_DIRNAME/usr/lib/gcc/x86_64-linux-gnu/$GCC_VER"
     export CXXFLAGS="\${CXXFLAGS:+\$CXXFLAGS } -nostdlib++"
     export LDFLAGS="\${LDFLAGS:+\$LDFLAGS }-fuse-ld=lld -L/usr/lib/x86_64-linux-gnu -Wl,-rpath-link,/usr/lib/x86_64-linux-gnu -Wl,-Bdynamic -l:libstdc++.so.6"
-    export CPLUS_INCLUDE_PATH="\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include/c++/$GCC_VER:\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include/c++/$GCC_VER/backward:\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include/x86_64-linux-gnu/c++/$GCC_VER:\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include:\$LEGO_TC_DIR/$GCC_DIRNAME/usr/include/x86_64-linux-gnu\${CPLUS_INCLUDE_PATH:+:\$CPLUS_INCLUDE_PATH}"
+    export CPLUS_INCLUDE_PATH="\$BRICKSIM_TC_DIR/$GCC_DIRNAME/usr/include/c++/$GCC_VER:\$BRICKSIM_TC_DIR/$GCC_DIRNAME/usr/include/c++/$GCC_VER/backward:\$BRICKSIM_TC_DIR/$GCC_DIRNAME/usr/include/x86_64-linux-gnu/c++/$GCC_VER:\$BRICKSIM_TC_DIR/$GCC_DIRNAME/usr/include:\$BRICKSIM_TC_DIR/$GCC_DIRNAME/usr/include/x86_64-linux-gnu\${CPLUS_INCLUDE_PATH:+:\$CPLUS_INCLUDE_PATH}"
 fi
 EOF
 
@@ -174,7 +174,7 @@ cat > "$CLANGD_WRAPPER_PATH" << EOF
 #!/usr/bin/env bash
 SCRIPT_DIR=\$(cd -- "\$(dirname -- "\$0")" && pwd -P)
 source "\$SCRIPT_DIR/env.sh"
-exec "\$LEGO_TC_DIR/$LLVM_DIRNAME/bin/clangd" "\$@"
+exec "\$BRICKSIM_TC_DIR/$LLVM_DIRNAME/bin/clangd" "\$@"
 EOF
 chmod +x "$CLANGD_WRAPPER_PATH"
 

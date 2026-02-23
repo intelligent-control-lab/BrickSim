@@ -9,13 +9,13 @@ from pathlib import Path
 
 import numpy as np
 
-from lego_assemble.importers.legolization import (
+from bricksim.importers.legolization import (
     _extract_bricks_from_lego_json,
     is_legolization_json,
     legolization_json_to_topology_json,
     load_default_lego_library,
 )
-from lego_assemble.importers.stabletext2brick import (
+from bricksim.importers.stabletext2brick import (
     _parse_bricks_text,
     bricks_text_to_topology_json,
     is_bricks_text,

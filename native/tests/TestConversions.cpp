@@ -1,10 +1,10 @@
 import std;
-import lego_assemble.utils.conversions;
-import lego_assemble.vendor;
+import bricksim.utils.conversions;
+import bricksim.vendor;
 
 #include <cassert>
 
-using namespace lego_assemble;
+using namespace bricksim;
 
 static constexpr double EPS = 1e-6;
 

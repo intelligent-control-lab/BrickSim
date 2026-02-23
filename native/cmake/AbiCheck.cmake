@@ -1,6 +1,6 @@
-function(lego_add_abi_check TARGET_NAME)
+function(bricksim_add_abi_check TARGET_NAME)
   if(NOT TARGET ${TARGET_NAME})
-    message(FATAL_ERROR "lego_add_abi_check: target '${TARGET_NAME}' does not exist")
+    message(FATAL_ERROR "bricksim_add_abi_check: target '${TARGET_NAME}' does not exist")
   endif()
 
   # Add a post-build step that fails the build if violating symbols are found.

@@ -1,8 +1,8 @@
 import std;
-import lego_assemble.physx.breakage;
-import lego_assemble.vendor;
+import bricksim.physx.breakage;
+import bricksim.vendor;
 
-using namespace lego_assemble;
+using namespace bricksim;
 
 BreakageDebugDump load_dump(const std::string &filepath) {
 	std::ifstream ifs(filepath);

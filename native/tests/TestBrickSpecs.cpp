@@ -1,9 +1,9 @@
 import std;
-import lego_assemble.core.specs;
+import bricksim.core.specs;
 
 #include <cassert>
 
-using namespace lego_assemble;
+using namespace bricksim;
 
 void test_brick() {
 	BrickPart brick{2, 4, 3, {255, 0, 0}};

@@ -1,11 +1,11 @@
 import std;
-import lego_assemble.utils.type_list;
-import lego_assemble.utils.poly_store;
+import bricksim.utils.type_list;
+import bricksim.utils.poly_store;
 
 #include <cassert>
 
 using namespace std;
-using namespace lego_assemble;
+using namespace bricksim;
 
 namespace {
 template <class... Ts> using TL = type_list<Ts...>;

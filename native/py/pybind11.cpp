@@ -1,5 +1,5 @@
-import lego_assemble.physx.physx_maprange_patch_v107;
-import lego_assemble.api;
+import bricksim.physx.physx_maprange_patch_v107;
+import bricksim.api;
 
 #include <unistd.h>
 
@@ -8,11 +8,11 @@ import lego_assemble.api;
 
 #include "pybind11_json.hpp" // IWYU pragma: keep
 
-using namespace lego_assemble::api;
+using namespace bricksim::api;
 
 // Remember to update _native.pyi when changing the API below.
 PYBIND11_MODULE(_native, m) {
-	m.doc() = "lego_assemble: native module";
+	m.doc() = "bricksim: native module";
 
 	m.def(
 	    "allocate_brick_part", &allocate_brick_part,
@@ -77,7 +77,7 @@ PYBIND11_MODULE(_native, m) {
 
 	m.def("export_lego", &export_lego, pybind11::arg("env_id"),
 	      "Export the lego topology of the specified environment as a JSON "
-	      "object (schema 'lego_assemble/lego_topology@2').");
+	      "object (schema 'bricksim/lego_topology@2').");
 
 	m.def("import_lego", &import_lego, pybind11::arg("json"),
 	      pybind11::arg("env_id"), pybind11::arg("ref_rot") = std::nullopt,

@@ -1,5 +1,5 @@
 import argparse
-import lego_assemble.utils.kit_runner
+import bricksim.utils.kit_runner
 
 def main():
     parser = argparse.ArgumentParser()
@@ -12,7 +12,7 @@ def main():
         ),
     )
     args = parser.parse_args()
-    lego_assemble.utils.kit_runner.run(args.target)
+    bricksim.utils.kit_runner.run(args.target)
 
 if __name__ == "__main__":
     main()

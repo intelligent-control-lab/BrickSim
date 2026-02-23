@@ -1,23 +1,23 @@
 import std;
-import lego_assemble.core.specs;
-import lego_assemble.core.connections;
-import lego_assemble.core.graph;
-import lego_assemble.usd.usd_graph;
-import lego_assemble.usd.author;
-import lego_assemble.usd.allocator;
-import lego_assemble.usd.parse;
-import lego_assemble.usd.tokens;
-import lego_assemble.utils.transforms;
-import lego_assemble.utils.type_list;
-import lego_assemble.utils.usd_envs;
-import lego_assemble.utils.sdf;
-import lego_assemble.utils.conversions;
-import lego_assemble.utils.metric_system;
-import lego_assemble.vendor;
+import bricksim.core.specs;
+import bricksim.core.connections;
+import bricksim.core.graph;
+import bricksim.usd.usd_graph;
+import bricksim.usd.author;
+import bricksim.usd.allocator;
+import bricksim.usd.parse;
+import bricksim.usd.tokens;
+import bricksim.utils.transforms;
+import bricksim.utils.type_list;
+import bricksim.utils.usd_envs;
+import bricksim.utils.sdf;
+import bricksim.utils.conversions;
+import bricksim.utils.metric_system;
+import bricksim.vendor;
 
 #include <cassert>
 
-using namespace lego_assemble;
+using namespace bricksim;
 
 namespace {
 
@@ -139,7 +139,7 @@ static void test_initial_sync_prepopulated_stage() {
 	    pathA, BrickPart::StudId, pathB, BrickPart::HoleId, cs);
 	(void)connPath;
 
-		G g(stage);
+	G g(stage);
 
 	// Two physical bricks and a single realized connection between them.
 	assert(g.topology().parts().size() == 2);
@@ -170,9 +170,7 @@ static void test_initial_sync_prepopulated_stage() {
 	assert(a_dg && b_dg);
 	assert(
 	    g.topology().dynamic_graph().connected(a_dg->value(), b_dg->value()));
-
-
-	}
+}
 
 // UsdLegoGraph is constructed first on an empty stage; later authoring bricks
 // and connections via LegoAllocator should be picked up by the TfNotice sink.
@@ -180,7 +178,7 @@ static void test_incremental_alloc_via_allocator() {
 	auto stage = make_stage();
 	LegoAllocator alloc(stage);
 
-		G g(stage);
+	G g(stage);
 
 	assert(g.topology().parts().size() == 0);
 	assert(g.topology().connection_segments().size() == 0);
@@ -487,8 +485,8 @@ static void test_resync_connection_modified_segment_updates_topology() {
 	author_connection(stage, connPath, pathA, BrickPart::StudId, pathB,
 	                  BrickPart::HoleId, cs_modified);
 
-	const lego_assemble::ConnSegId *csid_after =
-	    g.topology().connection_segments().find_key<lego_assemble::ConnSegId>(
+	const bricksim::ConnSegId *csid_after =
+	    g.topology().connection_segments().find_key<bricksim::ConnSegId>(
 	        connPath);
 	assert(csid_after);
 	const SimpleWrapper<ConnectionSegment> *csw_after =
@@ -1145,7 +1143,7 @@ static void test_disconnect_nonexistent_or_unmanaged_returns_false() {
 	                  hole_path, BrickPart::HoleId, cs);
 
 	// Reconstruct G so it picks up the bricks and the unmanaged connection.
-		G g2(stage);
+	G g2(stage);
 
 	// The unmanaged connection is realized in topology/conn_path_table_, but
 	// disconnect via graph API should return false because the prim is not

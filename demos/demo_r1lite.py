@@ -4,7 +4,7 @@ import omni.kit.app # pyright: ignore
 from isaacsim.core.api.world import World
 from isaacsim.core.prims import SingleArticulation, SingleXFormPrim
 from isaacsim.core.utils.stage import open_stage_async, add_reference_to_stage
-from lego_assemble import allocate_brick_part, parse_color, create_connection
+from bricksim import allocate_brick_part, parse_color, create_connection
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))

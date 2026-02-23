@@ -11,7 +11,7 @@
 
 #pragma once
 
-import lego_assemble.vendor;
+import bricksim.vendor;
 
 #include <set>
 #include <string>

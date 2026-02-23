@@ -1,9 +1,9 @@
 import std;
-import lego_assemble.utils.type_list;
-import lego_assemble.utils.multi_key_set;
+import bricksim.utils.type_list;
+import bricksim.utils.multi_key_set;
 
-using lego_assemble::MultiKeySet;
-using lego_assemble::type_list;
+using bricksim::MultiKeySet;
+using bricksim::type_list;
 
 #include <cassert>
 

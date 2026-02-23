@@ -13,7 +13,7 @@ from isaacsim.core.utils.nucleus import get_assets_root_path
 from isaacsim.core.utils.numpy.rotations import quats_to_rot_matrices, rot_matrices_to_quats
 from isaacsim.robot_motion.motion_generation import RmpFlow, ArticulationMotionPolicy
 from isaacsim.robot_motion.motion_generation.interface_config_loader import load_supported_motion_policy_config
-from lego_assemble import allocate_brick_part, parse_color, get_brick_dimensions, compute_connection_transform, set_assembly_thresholds, AssemblyThresholds, wait_for_physics_step
+from bricksim import allocate_brick_part, parse_color, get_brick_dimensions, compute_connection_transform, set_assembly_thresholds, AssemblyThresholds, wait_for_physics_step
 # try:
     # from isaacsim.util.debug_draw import _debug_draw # pyright: ignore
     # DEBUG_DRAW = _debug_draw.acquire_debug_draw_interface()

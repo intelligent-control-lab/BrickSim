@@ -12,7 +12,7 @@ This project is written in C++26 (with modules) and Python 3.11. The project is 
 │  ├─ py/                 # C++ Modules (pybind11 bindings)
 │  ├─ tests/              # C++ unit tests
 │  └─ ...
-├─ exts/lego_assemble/    # Omniverse extension (Python)
+├─ exts/bricksim/         # Omniverse extension (Python)
 ├─ demos/                 # Demos for conducting research experiments
 ├─ IsaacLab/              # IsaacLab submodule
 ├─ resources/             # USD files and other assets
@@ -27,12 +27,6 @@ This project is written in C++26 (with modules) and Python 3.11. The project is 
 ../PhysX/                 # PhysX source checkout (optional; for dev purpose)
 ../OpenUSD/               # OpenUSD source checkout (optional; for dev purpose)
 ```
-
-## Current Status
-The project is undergoing huge rewriting for the C++ part.
-In `native/modules/lego_assemble`:
- * `core`, `physx`, `usd`, `utils`, `vendor` are the new rewritten code work in progress.
- * Everything else in this directory is old code.
 
 ## Build & Test
 1. Only if you modified the C++ code, run `RUN_TESTS=1 scripts/build.sh` to build and sanity‑check.
@@ -49,7 +43,7 @@ In `native/modules/lego_assemble`:
    - Tensor shapes: ordering and conventions
    - Quaternions: ordering (xyzw vs wxyz)
 4. Less code > more code: avoid unnecessary abstractions and boilerplate.
-5. Use the `lego_assemble.utils.*` module wherever needed.
+5. Use the `bricksim.utils.*` module wherever needed.
 6. Never delete tests because they can't pass. If you do this, you are cheating. A programmer who cheats will be fired.
 
 ## APIs & Docs
@@ -90,36 +84,6 @@ You must NOT:
 - Minimize unsolicited scope changes: keep edits surgical and aligned with the exact request; prefer proposing alternatives rather than implementing them.
 - Reflect and learn: when asked to revise behavior, summarize the lesson and how to apply it across future tasks.
 - Update this file only on request: edit AGENTS.md if and only if the user explicitly says “update agents.md”.
-
-## Designs
-IMPORTANT: Due to the refactor, the design below no longer holds! They are only for reference!
-> - Dimensions: LEGO bricks are defined by L × W × H.
->   - L and W are measured in studs.
->   - H is measured in plate heights; a plate has height 1, and a brick typically has height 3.
-> - Rigid bodies: Bricks are modeled as rigid bodies.
-> - Assembly mechanics: Assembly is detected when two bricks are aligned and sufficient force is applied; a joint is added between them after assembly.
-> 
-> - Geometry
->   - Visual: a main body cube plus L × W cylindrical studs.
->   - Colliders: a main body cube (`BodyCollider`) plus a cube approximating the bounding box of the top studs (`TopCollider`).
->     - `BodyCollider`: the solid portion of a brick, excluding the top studs.
->     - `TopCollider`: sits on top of `BodyCollider`; same length and width; height equals the stud height. This is an approximation.
->   - Holes are not modeled.
-> 
-> - Assembly behavior
->   - When two bricks assemble, their poses are adjusted to produce a “snap‑fit” effect. This removes small alignment errors within the threshold that permits assembly.
->   - After assembly, collisions between the upper brick's `BodyCollider` and the lower brick’s `TopCollider` are excluded from physics simulation.
->   - The relative distance is adjusted so the bottom of the upper brick contacts the top of the lower brick’s `BodyCollider`. In this state, the lower brick’s `TopCollider` (studs) lies completely within the upper brick (with collisions disabled), mimicking studs entering holes.
-> 
-> - Constraints & connections
->   - USD authoring: Each connection is an Xform prim `Conn_i_j` with:
->     - `lego_conn:enabled` (Bool); `lego_conn:body0`, `lego_conn:body1` (relationships to brick prims).
->     - `lego_conn:pos` (Float3) and `lego_conn:rot` (Quatf): relative transform T_parent_child from parent actor‑local origin to child actor‑local origin; positions are in stage units.
->   - Base constraint: Custom PhysX weld locking all 6 DOF. Anchors are in COM frames computed from the authored origin‑to‑origin transform:
->     - parentLocal (A_com → B_com) = (A_com → A_orig) × T_parent_child × (B_orig → B_com); childLocal = identity.
->   - Auxiliary constraints: Skip‑graph adds extra welds at graph distances 2^i (i=1..8) for stack stiffness; each aux transform is the composed transform along the path; recomputed on connect/disconnect.
->   - Contact filtering: While connected, collisions between parent `TopCollider` and child `BodyCollider` are excluded via a patched simulation filter; filtering is refreshed on affected actors.
->   - Lifecycle: Native joint manager listens to USD edits and PhysX object creation; creates/tears down constraints when both bodies exist in the same PhysX scene.
 
 ## Debugging
 - If `gdb` tool is available, you can use gdb to do interactive debugging.

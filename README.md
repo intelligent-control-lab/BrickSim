@@ -1,4 +1,4 @@
-# lego-robot
+# BrickSim
 
 ## Build
 
@@ -16,13 +16,13 @@ sudo apt install build-essential wget python3.11-full xz-utils zstd
 ### Clone
 
 ```bash
-git clone https://github.com/yushijinhun/lego-robot.git --recursive
-cd lego-robot
+git clone https://github.com/yushijinhun/BrickSim.git --recursive
+cd BrickSim
 ```
 
 ### Setup virtualenv
 ```bash
-python3.11 -m venv --symlinks --prompt lego --upgrade-deps .venv
+python3.11 -m venv --symlinks --prompt bricksim --upgrade-deps .venv
 source .venv/bin/activate
 ```
 
@@ -44,7 +44,7 @@ CMAKE_POLICY_VERSION_MINIMUM=3.5 ./IsaacLab/isaaclab.sh --install
 ### Build & Install This Extension
 ```bash
 scripts/build.sh
-pip install -e exts/lego_assemble -v
+pip install -e exts/bricksim -v
 ```
 
 ### Launch Demo
@@ -55,7 +55,7 @@ pip install -e exts/lego_assemble -v
 ### VS Code Setup (optional)
 ```bash
 source .venv/bin/activate
-python scripts/collect_isaacsim_paths.py
+python scripts/generate_pyrightconfig.py
 ```
 This creates `pyrightconfig.deps.json` for code completion.
 

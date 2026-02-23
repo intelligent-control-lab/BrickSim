@@ -20,7 +20,7 @@ cmake -S "$SRC" -B "$BUILD" \
   -G Ninja
 cmake --build "$BUILD" --parallel
 
-cp -v "$BUILD/"_native.*.so "exts/lego_assemble/lego_assemble/"
+cp -v "$BUILD/"_native.*.so "exts/bricksim/bricksim/"
 
 # Run tests only when RUN_TESTS is set
 if [ -n "${RUN_TESTS:-}" ]; then

@@ -1,10 +1,10 @@
 import std;
-import lego_assemble.utils.type_list;
-import lego_assemble.utils.multi_key_map;
+import bricksim.utils.type_list;
+import bricksim.utils.multi_key_map;
 
 #include <cassert>
 
-using namespace lego_assemble;
+using namespace bricksim;
 
 static int smoke_basic_two_keys() {
 	using Keys = type_list<int, std::string>;

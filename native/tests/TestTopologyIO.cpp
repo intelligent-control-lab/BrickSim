@@ -1,22 +1,22 @@
 import std;
-import lego_assemble.core.specs;
-import lego_assemble.core.connections;
-import lego_assemble.core.graph;
-import lego_assemble.io.topology;
-import lego_assemble.usd.usd_graph;
-import lego_assemble.usd.allocator;
-import lego_assemble.usd.author;
-import lego_assemble.usd.parse;
-import lego_assemble.utils.type_list;
-import lego_assemble.utils.transforms;
-import lego_assemble.utils.c4_rotation;
-import lego_assemble.utils.usd_envs;
-import lego_assemble.utils.conversions;
-import lego_assemble.vendor;
+import bricksim.core.specs;
+import bricksim.core.connections;
+import bricksim.core.graph;
+import bricksim.io.topology;
+import bricksim.usd.usd_graph;
+import bricksim.usd.allocator;
+import bricksim.usd.author;
+import bricksim.usd.parse;
+import bricksim.utils.type_list;
+import bricksim.utils.transforms;
+import bricksim.utils.c4_rotation;
+import bricksim.utils.usd_envs;
+import bricksim.utils.conversions;
+import bricksim.vendor;
 
 #include <cassert>
 
-using namespace lego_assemble;
+using namespace bricksim;
 
 namespace {
 
@@ -173,8 +173,7 @@ static void test_json_topology_roundtrip_and_optional_fields() {
 	ordered_json j;
 	to_json(j, topo);
 
-	assert(j.at("schema").get<std::string>() ==
-	       "lego_assemble/lego_topology@2");
+	assert(j.at("schema").get<std::string>() == "bricksim/lego_topology@2");
 	assert(j.at("parts").size() == 1);
 	assert(j.at("connections").size() == 1);
 	assert(j.at("pose_hints").size() == 1);
@@ -195,7 +194,7 @@ static void test_json_topology_roundtrip_and_optional_fields() {
 
 	// Missing fields must be treated as empty vectors.
 	ordered_json j_partial = ordered_json::object();
-	j_partial["schema"] = "lego_assemble/lego_topology@2";
+	j_partial["schema"] = "bricksim/lego_topology@2";
 	j_partial["parts"] = ordered_json::array(
 	    {ordered_json{{"id", 2}, {"type", "other"}, {"payload", {}}}});
 
@@ -207,7 +206,7 @@ static void test_json_topology_roundtrip_and_optional_fields() {
 
 	// Object with only schema: all optional vectors remain empty.
 	ordered_json j_empty = ordered_json::object();
-	j_empty["schema"] = "lego_assemble/lego_topology@2";
+	j_empty["schema"] = "bricksim/lego_topology@2";
 	JsonTopology topo4{};
 	from_json(j_empty, topo4);
 	assert(topo4.parts.empty());
@@ -552,7 +551,8 @@ static void test_structure_transforms_multiple_components_with_pose_hints() {
 	assert(SE3d{}.almost_equal(got.at(pid21), T_10_21_expected));
 }
 
-static void test_structure_transforms_without_root_hint_skips_other_components() {
+static void
+test_structure_transforms_without_root_hint_skips_other_components() {
 	TopologySerializer<BrickSerializer> ser;
 	GraphG g;
 

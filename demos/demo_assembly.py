@@ -15,10 +15,10 @@ from isaacsim.core.utils.nucleus import get_assets_root_path
 from isaacsim.core.utils.numpy.rotations import quats_to_rot_matrices, rot_matrices_to_quats
 from isaacsim.robot_motion.motion_generation import RmpFlow, ArticulationMotionPolicy
 from isaacsim.robot_motion.motion_generation.interface_config_loader import load_supported_motion_policy_config
-from lego_assemble import arrange_parts_in_workspace, import_lego, get_brick_dimensions, compute_connection_transform, set_assembly_thresholds, AssemblyThresholds, wait_for_physics_step, parse_color, Colors, are_parts_connected
-from lego_assemble.utils.topology import bfs_sort_connections
-from lego_assemble.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
-from lego_assemble.importers.legolization import legolization_json_to_topology_json, is_legolization_json
+from bricksim import arrange_parts_in_workspace, import_lego, get_brick_dimensions, compute_connection_transform, set_assembly_thresholds, AssemblyThresholds, wait_for_physics_step, parse_color, Colors, are_parts_connected
+from bricksim.utils.topology import bfs_sort_connections
+from bricksim.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
+from bricksim.importers.legolization import legolization_json_to_topology_json, is_legolization_json
 
 try:
     from isaacsim.util.debug_draw import _debug_draw # pyright: ignore

@@ -16,7 +16,7 @@ ISAAC_ARGS=(
   "$EXPERIENCE"
   --ext-folder "$ROOT_DIR/IsaacLab/source"
   --ext-folder "$ROOT_DIR/exts"
-  --enable lego_assemble
+  --enable bricksim
   --enable omni.kit.debug.python
   --/exts/omni.kit.debug.python/mode=listen
   --/exts/omni.kit.debug.python/host="$DEBUG_HOST"
@@ -27,8 +27,8 @@ ISAAC_ARGS=(
   --/crashreporter/enabled=false
   --/log/outputStreamLevel=info
   '--/log/channels/*'=warn
-  '--/log/channels/lego_assemble'=info
-  '--/log/channels/lego_assemble.*'=info
+  '--/log/channels/bricksim'=info
+  '--/log/channels/bricksim.*'=info
 )
 
 if [[ "$HEADLESS" == "true" ]]; then

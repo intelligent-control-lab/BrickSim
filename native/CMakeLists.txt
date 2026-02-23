@@ -13,7 +13,7 @@ if(DEFINED ENV{CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS})
   set(CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS "$ENV{CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS}" CACHE FILEPATH "" FORCE)
 endif()
 
-project(lego_assemble_native LANGUAGES CXX)
+project(bricksim_native LANGUAGES CXX)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 set(CMAKE_CXX_STANDARD 26)
@@ -103,15 +103,15 @@ apply_sdk_patch_once(patch_osqp "${osqp_SOURCE_DIR}" "${SDK_PATCH_DIR}/osqp.patc
 add_dependencies(OSQPLIB patch_osqp)
 
 file(GLOB_RECURSE CXX_MODULE_IFACES "${CMAKE_CURRENT_SOURCE_DIR}/modules/*.cppm")
-add_library(lego_assemble_modules STATIC)
-set_target_properties(lego_assemble_modules PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_sources(lego_assemble_modules PUBLIC
+add_library(bricksim_modules STATIC)
+set_target_properties(bricksim_modules PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_sources(bricksim_modules PUBLIC
   FILE_SET cxx_modules TYPE CXX_MODULES
   BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/modules"
   FILES ${CXX_MODULE_IFACES}
 )
-add_dependencies(lego_assemble_modules patch_eigen patch_usd patch_kit)
-target_include_directories(lego_assemble_modules SYSTEM PUBLIC
+add_dependencies(bricksim_modules patch_eigen patch_usd patch_kit)
+target_include_directories(bricksim_modules SYSTEM PUBLIC
   "${ISAACSIM_KIT_INCLUDE}"
   "${ISAACSIM_CARB_INCLUDE}"
   "${ISAACSIM_OMNI_CLIENT_INCLUDE}"
@@ -122,7 +122,7 @@ target_include_directories(lego_assemble_modules SYSTEM PUBLIC
   "${ISAACSIM_USD_INCLUDE}"
   "${ISAACSIM_USD_BOOST_INCLUDE}"
 )
-target_link_directories(lego_assemble_modules PUBLIC
+target_link_directories(bricksim_modules PUBLIC
   "${ISAACSIM_OMNI_USD_CORE_LIBDIR}"
   "${ISAACSIM_OMNI_USD_SCHEMA_AUDIO_LIBDIR}"
   "${ISAACSIM_CARB_LIBDIR}"
@@ -131,7 +131,7 @@ target_link_directories(lego_assemble_modules PUBLIC
   "${ISAACSIM_USD_EXT_PHYSICS_LIBDIR}"
   "${ISAACSIM_USD_LIBDIR}"
 )
-target_link_libraries(lego_assemble_modules PUBLIC
+target_link_libraries(bricksim_modules PUBLIC
   osqpstatic
   Eigen3::Eigen
   nlohmann_json::nlohmann_json
@@ -160,61 +160,61 @@ target_link_libraries(lego_assemble_modules PUBLIC
   physxSchema
   omniAudioSchema
 )
-target_include_directories(lego_assemble_modules BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
-# target_compile_options(lego_assemble_modules PRIVATE $<$<CONFIG:DEBUG>:${SAN_CFLAGS}>)
-# target_link_options(lego_assemble_modules PRIVATE $<$<CONFIG:DEBUG>:${SAN_LDFLAGS}>)
+target_include_directories(bricksim_modules BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
+# target_compile_options(bricksim_modules PRIVATE $<$<CONFIG:DEBUG>:${SAN_CFLAGS}>)
+# target_link_options(bricksim_modules PRIVATE $<$<CONFIG:DEBUG>:${SAN_LDFLAGS}>)
 
 add_library(_native MODULE)
 target_sources(_native PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/py/pybind11.cpp")
 target_include_directories(_native BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
-target_link_libraries(_native PRIVATE lego_assemble_modules pybind11::module)
+target_link_libraries(_native PRIVATE bricksim_modules pybind11::module)
 pybind11_extension(_native)
 
-function(add_lego_tool TOOL_NAME)
+function(bricksim_add_tool TOOL_NAME)
   add_executable(${TOOL_NAME} tools/${TOOL_NAME}.cpp)
   target_sources(${TOOL_NAME} PRIVATE tools/${TOOL_NAME}.cpp)
   target_include_directories(${TOOL_NAME} BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
-  target_link_libraries(${TOOL_NAME} PRIVATE lego_assemble_modules)
+  target_link_libraries(${TOOL_NAME} PRIVATE bricksim_modules)
 endfunction()
 
-add_lego_tool(solve_breakage)
-add_lego_tool(static_solve)
+bricksim_add_tool(solve_breakage)
+bricksim_add_tool(static_solve)
 
 # Tests
 enable_testing()
 
 include(AbiCheck)
-lego_add_abi_check(_native)
+bricksim_add_abi_check(_native)
 
-function(add_lego_test TEST_NAME)
+function(bricksim_add_test TEST_NAME)
   add_executable(${TEST_NAME} ${ARGN})
   target_include_directories(${TEST_NAME} BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
-  target_link_libraries(${TEST_NAME} PRIVATE lego_assemble_modules)
+  target_link_libraries(${TEST_NAME} PRIVATE bricksim_modules)
   target_compile_options(${TEST_NAME} PRIVATE ${SAN_CFLAGS})
   target_link_options(${TEST_NAME} PRIVATE ${SAN_LDFLAGS})
   add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
   set_tests_properties(${TEST_NAME} PROPERTIES ENVIRONMENT
     "LSAN_OPTIONS=suppressions=${LSAN_SUPPRESSIONS_FILE};ASAN_OPTIONS=fast_unwind_on_malloc=0"
   )
-  lego_add_abi_check(${TEST_NAME})
+  bricksim_add_abi_check(${TEST_NAME})
 endfunction()
 
-add_lego_test(TestConversions tests/TestConversions.cpp)
-add_lego_test(TestPolyStore tests/TestPolyStore.cpp)
-add_lego_test(TestBrickSpecs tests/TestBrickSpecs.cpp)
-add_lego_test(TestMultiKeySet tests/TestMultiKeySet.cpp)
-add_lego_test(TestMultiKeyMap tests/TestMultiKeyMap.cpp)
-add_lego_test(TestDynamicGraph tests/TestDynamicGraph.cpp)
-add_lego_test(TestLegoGraph tests/TestLegoGraph.cpp)
-add_lego_test(TestLegoGraphSelfConnect tests/TestLegoGraphSelfConnect.cpp)
-add_lego_test(TestLegoGraphMultiSegEdge tests/TestLegoGraphMultiSegEdge.cpp)
-add_lego_test(TestLegoGraphHooks tests/TestLegoGraphHooks.cpp)
-add_lego_test(TestPhysicsGraph tests/TestPhysicsGraph.cpp)
-add_lego_test(TestUsdLegoGraph tests/TestUsdLegoGraph.cpp)
-add_lego_test(TestTopologyIO tests/TestTopologyIO.cpp)
-add_lego_test(TestConstraintScheduler tests/TestConstraintScheduler.cpp)
-add_lego_test(TestRamanujanLikeSchedulingPolicy tests/TestRamanujanLikeSchedulingPolicy.cpp)
-add_lego_test(TestPack2dMaxrect tests/TestPack2dMaxrect.cpp)
+bricksim_add_test(TestConversions tests/TestConversions.cpp)
+bricksim_add_test(TestPolyStore tests/TestPolyStore.cpp)
+bricksim_add_test(TestBrickSpecs tests/TestBrickSpecs.cpp)
+bricksim_add_test(TestMultiKeySet tests/TestMultiKeySet.cpp)
+bricksim_add_test(TestMultiKeyMap tests/TestMultiKeyMap.cpp)
+bricksim_add_test(TestDynamicGraph tests/TestDynamicGraph.cpp)
+bricksim_add_test(TestLegoGraph tests/TestLegoGraph.cpp)
+bricksim_add_test(TestLegoGraphSelfConnect tests/TestLegoGraphSelfConnect.cpp)
+bricksim_add_test(TestLegoGraphMultiSegEdge tests/TestLegoGraphMultiSegEdge.cpp)
+bricksim_add_test(TestLegoGraphHooks tests/TestLegoGraphHooks.cpp)
+bricksim_add_test(TestPhysicsGraph tests/TestPhysicsGraph.cpp)
+bricksim_add_test(TestUsdLegoGraph tests/TestUsdLegoGraph.cpp)
+bricksim_add_test(TestTopologyIO tests/TestTopologyIO.cpp)
+bricksim_add_test(TestConstraintScheduler tests/TestConstraintScheduler.cpp)
+bricksim_add_test(TestRamanujanLikeSchedulingPolicy tests/TestRamanujanLikeSchedulingPolicy.cpp)
+bricksim_add_test(TestPack2dMaxrect tests/TestPack2dMaxrect.cpp)
 
 # Ensure the CMake-provided std modules provider compiles <iostream>
 # with the "no-symver" path by overriding bits/c++config.h just for

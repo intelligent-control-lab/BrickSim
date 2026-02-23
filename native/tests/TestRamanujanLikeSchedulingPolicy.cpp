@@ -1,12 +1,12 @@
 import std;
-import lego_assemble.core.specs;
-import lego_assemble.core.graph;
-import lego_assemble.utils.unordered_pair;
-import lego_assemble.physx.constraint_scheduler;
+import bricksim.core.specs;
+import bricksim.core.graph;
+import bricksim.utils.unordered_pair;
+import bricksim.physx.constraint_scheduler;
 
 #include <cassert>
 
-using namespace lego_assemble;
+using namespace bricksim;
 
 // -----------------------------------------------------------------------------
 // Minimal test graph + ComponentView, only what the policy needs
@@ -30,7 +30,7 @@ struct TestGraph {
 
 // Bring the policy into scope (adjust name/namespace if you put it elsewhere)
 template <class Graph>
-using RamanujanPolicy = lego_assemble::RamanujanLikeSchedulingPolicy<Graph>;
+using RamanujanPolicy = bricksim::RamanujanLikeSchedulingPolicy<Graph>;
 
 // Helper: build adjacency from the edge set
 static std::unordered_map<PartId, std::unordered_set<PartId>>

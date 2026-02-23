@@ -1,14 +1,14 @@
-import lego_assemble.core.specs;
-import lego_assemble.core.graph;
-import lego_assemble.core.connections;
-import lego_assemble.physx.assembly;
-import lego_assemble.physx.shape_mapping;
-import lego_assemble.physx.physics_graph;
-import lego_assemble.physx.patcher;
-import lego_assemble.utils.type_list;
-import lego_assemble.utils.metric_system;
-import lego_assemble.utils.transforms;
-import lego_assemble.vendor;
+import bricksim.core.specs;
+import bricksim.core.graph;
+import bricksim.core.connections;
+import bricksim.physx.assembly;
+import bricksim.physx.shape_mapping;
+import bricksim.physx.physics_graph;
+import bricksim.physx.patcher;
+import bricksim.utils.type_list;
+import bricksim.utils.metric_system;
+import bricksim.utils.transforms;
+import bricksim.vendor;
 
 #include <PxPhysicsAPI.h>
 #include <array>
@@ -17,7 +17,7 @@ import lego_assemble.vendor;
 #include <initializer_list>
 #include <vector>
 
-using namespace lego_assemble;
+using namespace bricksim;
 
 struct TestHooks {
 	struct AssembledEvent {
@@ -274,7 +274,7 @@ static void test_topology_and_constraints() {
 // Exercise PhysxBinding::pairFound branches via the PxScene callback.
 static void test_filter_callback_pairFound() {
 	PhysicsGraphFixture fx{false};
-	// Mirror the offsets used by lego_assemble.physx.patcher to locate
+	// Mirror the offsets used by bricksim.physx.patcher to locate
 	// the internal Sc::Scene::mFilterCallback pointer.
 	constexpr std::size_t offset_NpScene_mScene = 1440;
 	constexpr std::size_t offset_NpScene_mScene_mFilterCallback =

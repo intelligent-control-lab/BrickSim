@@ -78,7 +78,7 @@ def main() -> None:
     args = parser.parse_args()
 
     extra_paths = [
-        "exts/lego_assemble",
+        "exts/bricksim",
         "IsaacLab/source/isaaclab",
         "IsaacLab/source/isaaclab_assets",
         "IsaacLab/source/isaaclab_mimic",

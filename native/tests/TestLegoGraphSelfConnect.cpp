@@ -1,12 +1,12 @@
 import std;
-import lego_assemble.core.graph;
-import lego_assemble.core.specs;
-import lego_assemble.utils.transforms;
-import lego_assemble.core.connections;
+import bricksim.core.graph;
+import bricksim.core.specs;
+import bricksim.utils.transforms;
+import bricksim.core.connections;
 
 #include <cassert>
 
-using namespace lego_assemble;
+using namespace bricksim;
 
 static InterfaceSpec stud(InterfaceId id) {
 	return {.id = id,

@@ -2,8 +2,8 @@
 
 import argparse
 import json
-from lego_assemble.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
-from lego_assemble.importers.legolization import legolization_json_to_topology_json, is_legolization_json
+from bricksim.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
+from bricksim.importers.legolization import legolization_json_to_topology_json, is_legolization_json
 
 parser = argparse.ArgumentParser(description="Convert legolization or StableText2Brick JSON to topology JSON.")
 parser.add_argument("--input", required=True, help="Input legolization JSON file")

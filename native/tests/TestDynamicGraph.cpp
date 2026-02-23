@@ -1,9 +1,9 @@
 import std;
-import lego_assemble.utils.dynamic_graph;
+import bricksim.utils.dynamic_graph;
 
 #include <cassert>
 
-using namespace lego_assemble;
+using namespace bricksim;
 
 template <DynamicGraphLike G>
 static std::vector<std::vector<vertex_id>> collect_components(const G &g) {

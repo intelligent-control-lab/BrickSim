@@ -1,5 +1,5 @@
 {
-  "schema": "lego_assemble/lego_topology@2",
+  "schema": "bricksim/lego_topology@2",
   "parts": [
     {
       "id": 0,
