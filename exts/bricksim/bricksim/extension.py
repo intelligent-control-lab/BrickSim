@@ -29,8 +29,10 @@ class BrickSimExtension(omni.ext.IExt):
         # Patch Isaac Sim's toolbar at runtime to add a "Connected Component"
         # selection mode that shares picking semantics with kind:component.
         from bricksim.ui.toolbar_patch import install_toolbar_patches
+        from bricksim.ui.step_one_frame_patch import install_step_one_frame_patch
         from bricksim.ui.selection_sync import AssemblySelectionSync
         install_toolbar_patches()
+        install_step_one_frame_patch()
         self._assembly_selection = AssemblySelectionSync()
 
         from bricksim.ui.connection_overlay import ConnectionOverlayController
