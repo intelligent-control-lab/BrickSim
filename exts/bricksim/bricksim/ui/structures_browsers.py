@@ -7,6 +7,7 @@ from bricksim.importers.legolization import legolization_json_to_topology_json
 from bricksim.ui.main_ui import LegoUI
 from bricksim.utils.usd_parse import get_env_path
 from bricksim.structures import BricksimDatasetItem, load_bricksim_dataset
+from bricksim.colors import parse_color
 
 class LegoStructuresBrowser:
     MAX_VISIBLE = 100
@@ -21,6 +22,8 @@ class LegoStructuresBrowser:
         self._filter_text: str = ""
 
         self._search_model = ui.SimpleStringModel("")
+        self._use_baseplate_model = ui.SimpleBoolModel()
+        self._use_baseplate_model.set_value(False)
         self._status_model = ui.SimpleStringModel("Loading dataset...")
         self._status_label: ui.Label | None = None
         self._list_frame: ui.Frame | None = None
@@ -39,6 +42,8 @@ class LegoStructuresBrowser:
                 with ui.HStack(spacing=5, height=0):
                     ui.Label("Search:", width=60, height=0)
                     ui.StringField(self._search_model, height=0)
+                    ui.Label("Use Baseplate", width=100, height=0, alignment=ui.Alignment.RIGHT_CENTER)
+                    ui.CheckBox(model=self._use_baseplate_model, width=20, height=0)
 
                 # Status line
                 self._status_label = ui.Label(self._status_model.as_string, height=0)
@@ -183,9 +188,16 @@ class LegoStructuresBrowser:
         color = None
         if self._main_ui is not None:
             color = self._main_ui.get_selected_color()
+        use_baseplate = bool(self._use_baseplate_model.get_value_as_bool())
 
         try:
-            topology = legolization_json_to_topology_json(lego_structure, color=color)
+            topology = legolization_json_to_topology_json(
+                lego_structure,
+                color=color,
+                include_base_plate=use_baseplate,
+                base_plate_size=(32, 32),
+                base_plate_color=parse_color("Light Gray"),
+            )
         except Exception as e:
             carb.log_error(f"[LegoStructures] legolization_json_to_topology_json failed: {e}")
             self._set_status("Conversion to topology failed.")
