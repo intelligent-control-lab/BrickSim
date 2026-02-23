@@ -42,6 +42,9 @@ if [ "$#" -ge 1 ]; then
   TARGET="$1"
   EXEC_COMMAND="$ROOT_DIR/scripts/run_demo.py $TARGET"
   ISAAC_ARGS+=( --exec "$EXEC_COMMAND" )
+else
+  # Open demo stage
+  ISAAC_ARGS+=( --exec "open_stage.py $ROOT_DIR/resources/demo.usda" )
 fi
 
 # exec $ISAACSIM_PATH/isaac-sim.sh "${ISAAC_ARGS[@]}"
