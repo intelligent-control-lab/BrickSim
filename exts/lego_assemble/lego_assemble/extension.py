@@ -19,9 +19,6 @@ class LegoExtension(omni.ext.IExt):
         if getattr(self, "_structures_browser", None) is not None:
             self._structures_browser.destroy()
             self._structures_browser = None
-        if getattr(self, "_brickgpt_window", None) is not None:
-            self._brickgpt_window.destroy()
-            self._brickgpt_window = None
 
     def _init_ui(self):
         try:
@@ -47,12 +44,3 @@ class LegoExtension(omni.ext.IExt):
         # Lego Structures dataset browser.
         from lego_assemble.ui.structures_browsers import LegoStructuresBrowser
         self._structures_browser = LegoStructuresBrowser(self._ui)
-
-        # BrickGPT prompt window (optional; only if brickgpt.infer is available).
-        #### Disabled
-        self._brickgpt_window = None
-        # try:
-        #     from lego_assemble.ui.brickgpt_prompt import BrickGPTPromptWindow
-        #     self._brickgpt_window = BrickGPTPromptWindow(self._ui)
-        # except ImportError as e:
-        #     carb.log_warn(f"BrickGPT UI not available: {e}")
