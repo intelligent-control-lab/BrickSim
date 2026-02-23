@@ -352,6 +352,7 @@ export struct BreakageThresholds {
 	double PreloadedForce{12.0};
 	double SlackFractionWarn{0.1};
 	double SlackFractionBFloor{1e-9};
+	bool DebugDump{false};
 };
 
 export void to_json(nlohmann::ordered_json &j,
@@ -367,6 +368,7 @@ export void to_json(nlohmann::ordered_json &j,
 	    {"preloaded_force", thresholds.PreloadedForce},
 	    {"slack_fraction_warn", thresholds.SlackFractionWarn},
 	    {"slack_fraction_b_floor", thresholds.SlackFractionBFloor},
+	    {"debug_dump", thresholds.DebugDump},
 	};
 }
 
@@ -384,6 +386,7 @@ export void from_json(const nlohmann::ordered_json &j,
 	j.at("preloaded_force").get_to(thresholds.PreloadedForce);
 	j.at("slack_fraction_warn").get_to(thresholds.SlackFractionWarn);
 	j.at("slack_fraction_b_floor").get_to(thresholds.SlackFractionBFloor);
+	j.at("debug_dump").get_to(thresholds.DebugDump);
 }
 
 // FaceRef compares pid then fid,
@@ -1261,7 +1264,7 @@ export class BreakageChecker {
 		}
 
 		std::unique_ptr<BreakageState> prev_state;
-		if (manual_dump_ || always_dump_prev_state_) {
+		if (thresholds.DebugDump || always_dump_prev_state_) {
 			// Only snapshot previous state if manual dump is enabled
 			prev_state = std::make_unique<BreakageState>(state);
 		}
@@ -1354,7 +1357,7 @@ export class BreakageChecker {
 			dump = true;
 			dumped_on_error_ = true;
 		}
-		if (manual_dump_) {
+		if (thresholds.DebugDump) {
 			dump = true;
 		}
 		if (dump) {
@@ -1368,10 +1371,6 @@ export class BreakageChecker {
 		debug_dump_dir_ = std::move(dir);
 	}
 
-	void enable_manual_debug_dump(bool enable) {
-		manual_dump_ = enable;
-	}
-
 	void set_always_dump_prev_state(bool enable) {
 		always_dump_prev_state_ = enable;
 	}
@@ -1379,7 +1378,6 @@ export class BreakageChecker {
   private:
 	std::string debug_dump_dir_;
 	bool always_dump_prev_state_{true};
-	bool manual_dump_{false};
 	mutable bool dumped_on_error_{false};
 
 	void dump_debug_data(const BreakageSystem &sys, const BreakageInput &in,

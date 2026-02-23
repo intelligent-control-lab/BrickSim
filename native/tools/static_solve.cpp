@@ -168,10 +168,10 @@ int main(int argc, char **argv) {
 	in.H.row(row_root) = -unbalanced_torque * dt;
 
 	BreakageState state = checker.build_initial_state(sys, in);
-	checker.enable_manual_debug_dump(true);
+	checker.thresholds.DebugDump = true;
 	checker.set_debug_dump_dir(std::filesystem::temp_directory_path().string());
 	BreakageSolution sol = checker.solve(sys, in, state);
-	checker.enable_manual_debug_dump(false);
+	checker.thresholds.DebugDump = false;
 	eprintln("Solution info: {}", sol.info.to_string());
 	eprintln("slack_fraction: {:.6e}", sol.slack_fraction);
 

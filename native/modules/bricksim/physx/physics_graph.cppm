@@ -26,6 +26,8 @@ import bricksim.vendor;
 
 namespace bricksim {
 
+constexpr bool EnableBreakage = true;
+
 struct PendingAssembly {
 	ConnSegRef csref;
 	ConnectionSegment conn_seg;
@@ -700,16 +702,19 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		in_simulation_step_ = false;
 		auto pending_disassemblies = compute_breakages();
 
-		for (const auto &[csid] : pending_disassemblies) {
-			const auto *cs_entry = topology_.connection_segments().find(csid);
-			ConnSegRef csref = cs_entry->template key<ConnSegRef>();
-			ConnectionSegment conn_seg = cs_entry->value().wrapped();
-			bool disconnected = topology_.disconnect(csid).has_value();
-			if (disconnected) {
-				log_info("Connection {} breaks", csid);
-				if constexpr (HasOnDisassembledHook) {
-					if (hooks_) {
-						hooks_->on_disassembled(csid, csref, conn_seg);
+		if constexpr (EnableBreakage) {
+			for (const auto &[csid] : pending_disassemblies) {
+				const auto *cs_entry =
+				    topology_.connection_segments().find(csid);
+				ConnSegRef csref = cs_entry->template key<ConnSegRef>();
+				ConnectionSegment conn_seg = cs_entry->value().wrapped();
+				bool disconnected = topology_.disconnect(csid).has_value();
+				if (disconnected) {
+					log_info("Connection {} breaks", csid);
+					if constexpr (HasOnDisassembledHook) {
+						if (hooks_) {
+							hooks_->on_disassembled(csid, csref, conn_seg);
+						}
 					}
 				}
 			}

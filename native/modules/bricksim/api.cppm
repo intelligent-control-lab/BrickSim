@@ -444,11 +444,11 @@ export std::string repr_breakage_thresholds(const BreakageThresholds &t) {
 	    "clutch_axial_compliance={}, clutch_radial_compliance={}, "
 	    "clutch_tangential_compliance={}, friction_coefficient={}, "
 	    "preloaded_force={}, slack_fraction_warn={}, "
-	    "slack_fraction_b_floor={})",
+	    "slack_fraction_b_floor={}, debug_dump={})",
 	    t.Enabled, t.ContactNormalCompliance, t.ClutchAxialCompliance,
 	    t.ClutchRadialCompliance, t.ClutchTangentialCompliance,
 	    t.FrictionCoefficient, t.PreloadedForce, t.SlackFractionWarn,
-	    t.SlackFractionBFloor);
+	    t.SlackFractionBFloor, t.DebugDump);
 }
 
 export void set_breakage_thresholds(const BreakageThresholds &thr) {
@@ -457,14 +457,6 @@ export void set_breakage_thresholds(const BreakageThresholds &thr) {
 
 export BreakageThresholds get_breakage_thresholds() {
 	return LegoRuntime::instance().get_breakage_thresholds();
-}
-
-export void enable_breakage_debug_dump(bool enable) {
-	auto *physics_graph = lego_world().physics_graph();
-	if (!physics_graph) {
-		throw std::runtime_error("Physics graph is not available");
-	}
-	physics_graph->breakage_checker().enable_manual_debug_dump(enable);
 }
 
 std::optional<PathStr> lookup_path_by_physx_pid(PartId physx_pid) {
@@ -665,4 +657,45 @@ export std::vector<AssemblyDebugInfo> get_assembly_debug_infos() {
 	return result;
 }
 
+export std::tuple<std::unordered_map<PathStr, PartId>,
+                  std::unordered_map<PathStr, ConnSegId>>
+get_usd_id_mappings() {
+	std::unordered_map<PathStr, PartId> part_mapping;
+	std::unordered_map<PathStr, ConnSegId> conn_mapping;
+	usd_topology().parts().for_each([&](const auto &keys) {
+		part_mapping.emplace(std::get<pxr::SdfPath>(keys).GetAsString(),
+		                     std::get<PartId>(keys));
+	});
+	for (const auto &entry : usd_topology().connection_segments().view()) {
+		conn_mapping.emplace(entry.key<pxr::SdfPath>().GetAsString(),
+		                     entry.key<ConnSegId>());
+	}
+	return {std::move(part_mapping), std::move(conn_mapping)};
+}
+
+export std::tuple<std::unordered_map<PathStr, PartId>,
+                  std::unordered_map<PathStr, ConnSegId>>
+get_physx_id_mappings() {
+	auto *bridge = lego_world().bridge();
+	if (!bridge) {
+		throw std::runtime_error("Physics graph is not available");
+	}
+	std::unordered_map<PathStr, PartId> part_mapping;
+	std::unordered_map<PathStr, ConnSegId> conn_mapping;
+	for (const auto &[physx_id, usd_id] : bridge->part_mapping().view()) {
+		part_mapping.emplace(usd_topology()
+		                         .parts()
+		                         .key_of<pxr::SdfPath>(usd_id.value())
+		                         .GetAsString(),
+		                     physx_id.value());
+	}
+	for (const auto &[physx_id, usd_id] : bridge->connection_mapping().view()) {
+		conn_mapping.emplace(usd_topology()
+		                         .connection_segments()
+		                         .key_of<pxr::SdfPath>(usd_id.value())
+		                         .GetAsString(),
+		                     physx_id.value());
+	}
+	return {std::move(part_mapping), std::move(conn_mapping)};
+}
 } // namespace bricksim::api

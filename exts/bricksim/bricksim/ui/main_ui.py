@@ -2,6 +2,7 @@ import os
 import math
 import asyncio
 import json
+import tempfile
 import carb
 import omni.ui # type: ignore
 from bricksim.colors import parse_color, Colors
@@ -16,7 +17,8 @@ from bricksim._native import (
     get_breakage_thresholds,
     set_breakage_thresholds,
     arrange_parts_in_workspace,
-    enable_breakage_debug_dump,
+    get_usd_id_mappings,
+    get_physx_id_mappings,
 )
 from bricksim.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
 from bricksim.importers.legolization import legolization_json_to_topology_json, is_legolization_json
@@ -175,8 +177,16 @@ class LegoUI():
                         self._preloaded_force_field.model.add_value_changed_fn(
                             lambda m: self._set_breakage_threshold("preloaded_force", float(m.as_float))
                         )
+                    with omni.ui.HStack(spacing=10):
+                        omni.ui.Label("Debug dump", width=140)
+                        self._debug_dump_model = omni.ui.SimpleBoolModel()
+                        self._debug_dump_model.set_value(bool(_bthr.debug_dump))
+                        omni.ui.CheckBox(model=self._debug_dump_model)
+                        self._debug_dump_model.add_value_changed_fn(
+                            lambda m: self._set_breakage_threshold("debug_dump", bool(m.get_value_as_bool()))
+                        )
 
-                    omni.ui.Button("Dump", clicked_fn=lambda: self._trigger_breakage_dump())
+                    omni.ui.Button("Dump ID Mappings", clicked_fn=self._dump_id_mappings)
 
     def destroy(self):
         # self._monitor.destroy()
@@ -299,22 +309,23 @@ class LegoUI():
         except Exception as exc:
             carb.log_error(f"Hot reload failed: {exc}")
 
-    def _trigger_breakage_dump(self):
+    def _dump_id_mappings(self):
+        usd_part_map, usd_conn_map = get_usd_id_mappings()
         try:
-            enable_breakage_debug_dump(True)
-            carb.log_info("Breakage debug dump enabled.")
+            physx_part_map, physx_conn_map = get_physx_id_mappings()
         except Exception as exc:
-            carb.log_error(f"Failed to enable breakage debug dump: {exc}")
-            return
-        self._breakage_dump_sub = omni.kit.app.get_app().get_update_event_stream() \
-            .create_subscription_to_pop(self._breakage_dump_reset)
-
-    def _breakage_dump_reset(self, *args):
-        try:
-            enable_breakage_debug_dump(False)
-            carb.log_info("Breakage debug dump disabled.")
-        except Exception as exc:
-            carb.log_error(f"Failed to disable breakage debug dump: {exc}")
-        if self._breakage_dump_sub is not None:
-            self._breakage_dump_sub.unsubscribe()
-            self._breakage_dump_sub = None
+            carb.log_warn(f"Failed to get PhysX ID mappings: {exc}")
+            physx_part_map, physx_conn_map = {}, {}
+        print(f"USD Part ID Map: {usd_part_map}")
+        print(f"USD ConnectionSegment ID Map: {usd_conn_map}")
+        print(f"PhysX Part ID Map: {physx_part_map}")
+        print(f"PhysX ConnectionSegment ID Map: {physx_conn_map}")
+        result = {
+            "usd_part_map": usd_part_map,
+            "usd_conn_map": usd_conn_map,
+            "physx_part_map": physx_part_map,
+            "physx_conn_map": physx_conn_map,
+        }
+        with tempfile.NamedTemporaryFile(delete=False, prefix="id_mappings_", suffix=".json", mode="w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2)
+            print(f"Dumped ID mappings to {f.name}")

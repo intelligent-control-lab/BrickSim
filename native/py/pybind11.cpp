@@ -212,6 +212,7 @@ PYBIND11_MODULE(_native, m) {
 	                   &BreakageThresholds::SlackFractionWarn)
 	    .def_readwrite("slack_fraction_b_floor",
 	                   &BreakageThresholds::SlackFractionBFloor)
+	    .def_readwrite("debug_dump", &BreakageThresholds::DebugDump)
 	    .def("__repr__", &repr_breakage_thresholds);
 
 	m.def("set_breakage_thresholds", &set_breakage_thresholds,
@@ -220,10 +221,6 @@ PYBIND11_MODULE(_native, m) {
 
 	m.def("get_breakage_thresholds", &get_breakage_thresholds,
 	      "Get the current breakage detection thresholds.");
-
-	m.def("enable_breakage_debug_dump", &enable_breakage_debug_dump,
-	      pybind11::arg("enable"),
-	      "Enable or disable manual breakage debug data dumping.");
 
 	pybind11::class_<ConnectionInfo>(
 	    m, "ConnectionInfo",
@@ -274,4 +271,13 @@ PYBIND11_MODULE(_native, m) {
 	m.def("get_assembly_debug_infos", &get_assembly_debug_infos,
 	      "Get the assembly detection debug information for all detected "
 	      "connection segments since the last simulation step.");
+
+	m.def("get_usd_id_mappings", &get_usd_id_mappings,
+	      "Get the Part and ConnectionSegment ID mappings from USD Path to USD "
+	      "Graph IDs.");
+
+	m.def("get_physx_id_mappings", &get_physx_id_mappings,
+	      "Get the Part and ConnectionSegment ID mappings from USD Path to "
+	      "Physics Graph IDs. If no physics graph is available, an exception "
+	      "is thrown.");
 }
