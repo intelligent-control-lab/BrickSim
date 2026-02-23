@@ -2,30 +2,30 @@
 set -eo pipefail
 
 #### Dependencies
-CMAKE_URL="https://github.com/Kitware/CMake/releases/download/v4.2.0-rc2/cmake-4.2.0-rc2-linux-x86_64.tar.gz"
-CMAKE_SHA256="50c445ff77648556e4d1f68edf763a3d8186c8c90d3433e604a613d51bf41297"
+CMAKE_URL="https://github.com/Kitware/CMake/releases/download/v4.2.3/cmake-4.2.3-linux-x86_64.tar.gz"
+CMAKE_SHA256="5bb505d5e0cca0480a330f7f27ccf52c2b8b5214c5bba97df08899f5ef650c23"
 
-P7ZIP_URL="https://www.7-zip.org/a/7z2501-linux-x64.tar.xz"
-P7ZIP_SHA256="4ca3b7c6f2f67866b92622818b58233dc70367be2f36b498eb0bdeaaa44b53f4"
+P7ZIP_URL="https://www.7-zip.org/a/7z2600-linux-x64.tar.xz"
+P7ZIP_SHA256="c74dc4a48492cde43f5fec10d53fb2a66f520e4a62a69d630c44cb22c477edc6"
 
-NINJA_URL="https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-linux.zip"
-NINJA_FILENAME="ninja-v1.13.1-linux.zip"
-NINJA_SHA256="0830252db77884957a1a4b87b05a1e2d9b5f658b8367f82999a941884cbe0238"
+NINJA_URL="https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-linux.zip"
+NINJA_FILENAME="ninja-v1.13.2-linux.zip"
+NINJA_SHA256="5749cbc4e668273514150a80e387a957f933c6ed3f5f11e03fb30955e2bbead6"
 
-LLVM_URL="https://www.cs.cmu.edu/~haoweiw/llvm-22+0246f33.tar.xz"
-LLVM_SHA256="82cc1d93c95c544f6c7231efd9f5a0a3602082c4fb4d9dddc8ba8e425ded6e9c"
+LLVM_URL="https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.0-rc3/LLVM-22.1.0-rc3-Linux-X64.tar.xz"
+LLVM_SHA256="5360d8bef7b715c4cc2689d548d13e676d755cbf425a6bcb07c2959403da3047"
 
-GCC_DIRNAME="gcc-15.2.0-7ubuntu1_amd64"
+GCC_DIRNAME="gcc-15.2.0-12ubuntu1_amd64"
 GCC_VER="15"
 GCC_DEB_URLS=(
-    "https://snapshot.ubuntu.com/ubuntu/20251108T100000Z/pool/main/g/gcc-15/libstdc++-15-dev_15.2.0-7ubuntu1_amd64.deb"
-    "https://snapshot.ubuntu.com/ubuntu/20251108T100000Z/pool/main/g/gcc-15/libgcc-15-dev_15.2.0-7ubuntu1_amd64.deb"
-    "https://snapshot.ubuntu.com/ubuntu/20251108T100000Z/pool/main/g/glibc/libc6-dev_2.39-0ubuntu8_amd64.deb"
+    "https://www.cs.cmu.edu/~haoweiw/bricksim_downloads/libstdc++-15-dev_15.2.0-12ubuntu1_amd64.deb"
+    "https://www.cs.cmu.edu/~haoweiw/bricksim_downloads/libgcc-15-dev_15.2.0-12ubuntu1_amd64.deb"
+    "https://www.cs.cmu.edu/~haoweiw/bricksim_downloads/libc6-dev_2.42-2ubuntu5_amd64.deb"
 )
 GCC_DEB_SHA256S=(
-    "c3e207a04665c0a3be55ce44cf8a6bd2d1f77972ab7ac25683c41ae731f9ca47"
-    "75a4a840031b1d03a52a51baaef09a9ffa16c933a6a350b48e1217cd3167dd26"
-    "1f03b79223d9cf1a6ed3a648f6942619dcb97b2884dba8fd12e262b6771e247a"
+    "ab6ee3f4f3aae070cd4da95601f96c79e37d015d94968f22c3c0096c42607c25"
+    "500bd80c40374f47636d6bc5a348210c7cfca0feddd5736967067ffcd04153fc"
+    "d027e5c4f42ae23677d606b7e6969971c85104fa1dd17b49cdca54199c66829b"
 )
 
 ####
