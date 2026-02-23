@@ -584,9 +584,12 @@ export class OsqpSolver {
 		osqp::OSQPSettings settings;
 		osqp::osqp_set_default_settings(&settings);
 		settings.verbose = 0;
-		settings.max_iter = 100000;
+		settings.max_iter = 10000;
 		settings.eps_abs = epsilon;
 		settings.eps_rel = epsilon;
+		if (auto *env_max_iter = std::getenv("OSQP_MAX_ITER")) {
+			settings.max_iter = std::stoi(env_max_iter);
+		}
 		return settings;
 	}
 	OsqpSolverPtr build_solver_prj_(const VectorXd &b) const {
