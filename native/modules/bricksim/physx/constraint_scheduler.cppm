@@ -319,15 +319,15 @@ struct CombinedSchedulingPolicy {
 	StrategyB<Graph> strategy_b_;
 };
 
-export template <class Graph> struct RamanujanLikeSchedulingPolicy {
+export template <class Graph> struct RandomRegularGraphSchedulingPolicy {
 	using ComponentView = typename Graph::ComponentView;
 	using EdgeKey = UnorderedPair<PartId>;
 
 	const std::size_t degree; // target degree per vertex (even, recommended)
 	const std::uint64_t seed; // deterministic seed per-policy
 
-	RamanujanLikeSchedulingPolicy(std::size_t degree_ = 4,
-	                              std::uint64_t seed_ = 0x9e3779b97f4a7c15ull)
+	RandomRegularGraphSchedulingPolicy(
+	    std::size_t degree_ = 4, std::uint64_t seed_ = 0x9e3779b97f4a7c15ull)
 	    : degree(degree_), seed(seed_) {}
 
 	std::generator<EdgeKey> compute(const ComponentView &cc) const {

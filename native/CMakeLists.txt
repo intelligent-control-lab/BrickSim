@@ -213,7 +213,7 @@ bricksim_add_test(TestPhysicsGraph tests/TestPhysicsGraph.cpp)
 bricksim_add_test(TestUsdLegoGraph tests/TestUsdLegoGraph.cpp)
 bricksim_add_test(TestTopologyIO tests/TestTopologyIO.cpp)
 bricksim_add_test(TestConstraintScheduler tests/TestConstraintScheduler.cpp)
-bricksim_add_test(TestRamanujanLikeSchedulingPolicy tests/TestRamanujanLikeSchedulingPolicy.cpp)
+bricksim_add_test(TestRandomRegularGraphSchedulingPolicy tests/TestRandomRegularGraphSchedulingPolicy.cpp)
 bricksim_add_test(TestPack2dMaxrect tests/TestPack2dMaxrect.cpp)
 
 # Ensure the CMake-provided std modules provider compiles <iostream>

@@ -30,7 +30,7 @@ struct TestGraph {
 
 // Bring the policy into scope (adjust name/namespace if you put it elsewhere)
 template <class Graph>
-using RamanujanPolicy = bricksim::RamanujanLikeSchedulingPolicy<Graph>;
+using Policy = bricksim::RandomRegularGraphSchedulingPolicy<Graph>;
 
 // Helper: build adjacency from the edge set
 static std::unordered_map<PartId, std::unordered_set<PartId>>
@@ -52,7 +52,7 @@ static void test_empty_component() {
 	TestGraph::ComponentView cc;
 	cc.verts = {}; // empty
 
-	RamanujanPolicy<TestGraph> policy(/*degree=*/4);
+	Policy<TestGraph> policy(/*degree=*/4);
 
 	std::size_t edge_count = 0;
 	for (auto ek : policy.compute(cc)) {
@@ -70,7 +70,7 @@ static void test_single_vertex_component() {
 	TestGraph::ComponentView cc;
 	cc.verts = {PartId(1)};
 
-	RamanujanPolicy<TestGraph> policy(/*degree=*/4);
+	Policy<TestGraph> policy(/*degree=*/4);
 
 	std::size_t edge_count = 0;
 	for (auto ek : policy.compute(cc)) {
@@ -88,7 +88,7 @@ static void test_zero_degree() {
 	TestGraph::ComponentView cc;
 	cc.verts = {PartId(1), PartId(2), PartId(3)};
 
-	RamanujanPolicy<TestGraph> policy(/*degree=*/0);
+	Policy<TestGraph> policy(/*degree=*/0);
 
 	std::size_t edge_count = 0;
 	for (auto ek : policy.compute(cc)) {
@@ -107,7 +107,7 @@ static void test_small_cc_invariants() {
 	cc.verts = {PartId(10), PartId(11), PartId(12), PartId(13), PartId(14)};
 
 	const std::size_t target_degree = 3;
-	RamanujanPolicy<TestGraph> policy(target_degree);
+	Policy<TestGraph> policy(target_degree);
 
 	std::unordered_set<UnorderedPair<PartId>> edge_set;
 	std::vector<UnorderedPair<PartId>> edges;
@@ -149,7 +149,7 @@ static void test_large_cc_invariants() {
 	}
 
 	const std::size_t target_degree = 4;
-	RamanujanPolicy<TestGraph> policy(target_degree);
+	Policy<TestGraph> policy(target_degree);
 
 	std::unordered_set<UnorderedPair<PartId>> edge_set;
 	std::vector<UnorderedPair<PartId>> edges;
@@ -194,8 +194,8 @@ static void test_determinism() {
 	const std::size_t target_degree = 4;
 	const std::uint64_t seed = 0x123456789abcdef0ull;
 
-	RamanujanPolicy<TestGraph> policy1(target_degree, seed);
-	RamanujanPolicy<TestGraph> policy2(target_degree, seed);
+	Policy<TestGraph> policy1(target_degree, seed);
+	Policy<TestGraph> policy2(target_degree, seed);
 
 	std::unordered_set<UnorderedPair<PartId>> set1;
 	std::unordered_set<UnorderedPair<PartId>> set2;

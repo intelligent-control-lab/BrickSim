@@ -128,9 +128,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	              PhysicsConnectionBundleWrapper, TopologyHooks>;
 	using ConstraintSchedulingPolicy =
 	    CombinedSchedulingPolicy<TopologyGraph, TreeOnlySchedulingPolicy,
-	                             RamanujanLikeSchedulingPolicy>;
-	// using ConstraintSchedulingPolicy = CombinedSchedulingPolicy<TopologyGraph, FullGraphSchedulingPolicy, RamanujanLikeSchedulingPolicy>;
-	// using ConstraintSchedulingPolicy = RamanujanLikeSchedulingPolicy<TopologyGraph>;
+	                             RandomRegularGraphSchedulingPolicy>;
+	// using ConstraintSchedulingPolicy = CombinedSchedulingPolicy<TopologyGraph, FullGraphSchedulingPolicy, RandomRegularGraphSchedulingPolicy>;
+	// using ConstraintSchedulingPolicy = RandomRegularGraphSchedulingPolicy<TopologyGraph>;
 	// using ConstraintSchedulingPolicy = CombinedSchedulingPolicy<TopologyGraph, FullGraphSchedulingPolicy, ExponentialSkipSchedulingPolicy>;
 	// using ConstraintSchedulingPolicy = FullGraphSchedulingPolicy<TopologyGraph>;
 	// using ConstraintSchedulingPolicy = ExponentialSkipSchedulingPolicy<TopologyGraph>;
@@ -888,8 +888,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				for (int i = 0; i < sol.utilization.size(); ++i) {
 					double u = sol.utilization(i);
 					ConnSegId csid = sys.clutch_ids().at(i);
-					auto &csw = topology_.connection_segment_at(csid)
-					;
+					auto &csw = topology_.connection_segment_at(csid);
 					csw.utilization_ = u;
 					if (!max_csid.has_value() || u > max_u) {
 						max_csid = csid;
