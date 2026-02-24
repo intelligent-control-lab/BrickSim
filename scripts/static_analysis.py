@@ -121,20 +121,73 @@ def _run_static_solve(topology: dict, solver_path: Path) -> dict:
     return json.loads(out[start:])
 
 
+def _derive_heatmap_output_path(base_path: Path, *, suffix: str = "") -> Path:
+    stem = base_path.stem
+    if suffix:
+        stem = f"{stem}{suffix}"
+    return base_path.with_name(f"{stem}.npy")
+
+
+def _resolve_util_scale(
+    per_part_score: dict[int, float],
+    *,
+    scale_range: tuple[float, float] | None,
+) -> tuple[float, float]:
+    return 0.0, 1.0
+
+
+def _build_fixed_heatmap(
+    bricks: list[tuple[int, int, int, int, int]],
+    pid_offset: int,
+    per_part_score: dict[int, float],
+    *,
+    cmap_name: str,
+    scale_range: tuple[float, float] | None = None,
+    fixed_shape: tuple[int, int, int] = (20, 20, 20),
+) -> np.ndarray:
+    import matplotlib.pyplot as plt
+
+    umin, umax = _resolve_util_scale(
+        per_part_score,
+        scale_range=scale_range,
+    )
+    denom = umax - umin
+    cmap = plt.get_cmap(cmap_name)
+    out = np.zeros((*fixed_shape, 3), dtype=float)
+
+    for brick_idx, (L, W, x, y, z) in enumerate(bricks):
+        pid = brick_idx + pid_offset
+        util = per_part_score.get(pid, 0.0)
+        if util >= 1.0:
+            color = (1.0, 1.0, 1.0)
+        else:
+            util_scaled = (util - umin) / denom if denom > 0.0 else 0.0
+            util_scaled = max(0.0, min(1.0, util_scaled))
+            color = cmap(float(util_scaled))[:3]
+
+        for i in range(x, x + L):
+            for j in range(y, y + W):
+                if not (0 <= i < fixed_shape[0] and 0 <= j < fixed_shape[1] and 0 <= z < fixed_shape[2]):
+                    raise ValueError(
+                        f"Brick voxel {(i, j, z)} is outside fixed heatmap shape {fixed_shape}"
+                    )
+                out[i, j, z, :] = color
+    return out
+
+
 def _render_heatmap(
     bricks: list[tuple[int, int, int, int, int]],
     pid_offset: int,
     per_part_score: dict[int, float],
     *,
     output_path: Path | None,
-    draw_overutilized: bool,
     cmap_name: str,
     interactive: bool,
     ax=None,
     title: str | None = None,
     scale_range: tuple[float, float] | None = None,
     viewpoint: tuple[float, float, float] = (0.0, -90.0, 0.0),
-) -> None:
+) -> np.ndarray:
     min_x = min(x for _, _, x, _, _ in bricks)
     min_y = min(y for _, _, _, y, _ in bricks)
     min_z = min(z for _, _, _, _, z in bricks)
@@ -142,18 +195,10 @@ def _render_heatmap(
     max_y = max(y + W for _, W, _, y, _ in bricks)
     max_z = max(z + 1 for _, _, _, _, z in bricks)
 
-    if scale_range is None:
-        util_values = [
-            util for util in per_part_score.values() if draw_overutilized or util < 1.0
-        ]
-        if util_values:
-            umin = min(util_values)
-            umax = max(util_values)
-        else:
-            umin = 0.0
-            umax = 1.0
-    else:
-        umin, umax = scale_range
+    umin, umax = _resolve_util_scale(
+        per_part_score,
+        scale_range=scale_range,
+    )
     denom = umax - umin
 
     world_dim = (
@@ -172,7 +217,7 @@ def _render_heatmap(
     for brick_idx, (L, W, x, y, z) in enumerate(bricks):
         pid = brick_idx + pid_offset
         util = per_part_score.get(pid, 0.0)
-        if util >= 1.0 and not draw_overutilized:
+        if util >= 1.0:
             color = (1.0, 1.0, 1.0)
         else:
             util_scaled = (util - umin) / denom if denom > 0.0 else 0.0
@@ -202,6 +247,7 @@ def _render_heatmap(
             plt.savefig(output_path, dpi=300, bbox_inches="tight")
         if interactive:
             plt.show()
+    return heatmap_color
 
 
 def _sync_3d_view(fig, ax_a, ax_b) -> None:
@@ -245,15 +291,10 @@ def main() -> None:
     parser.add_argument("--baseplate", type=str, default='32x32', help="Optional baseplate type (e.g., '16x16', '32x32').")
     parser.add_argument("--output", type=Path, default=None, help="Output PNG path.")
     parser.add_argument(
-        "--draw-overutilized",
-        action="store_true",
-        help="Draw utilization > 1 with the heatmap scale instead of white.",
-    )
-    parser.add_argument(
         "--cmap",
         type=str,
-        default="gist_rainbow",
-        help="Matplotlib colormap name for utilization visualization (default: gist_rainbow).",
+        default="viridis",
+        help="Matplotlib colormap name for utilization visualization (default: viridis).",
     )
     parser.add_argument(
         "--compare",
@@ -304,16 +345,26 @@ def main() -> None:
         util = float(utilizations.get(str(cid), 0.0))
         per_part_score[hole_id] = max(per_part_score.get(hole_id, 0.0), util)
 
+    npy_base_path = args.output if args.output is not None else args.input
+
     if not args.compare:
         _render_heatmap(
             bricks,
             pid_offset,
             per_part_score,
             output_path=args.output,
-            draw_overutilized=args.draw_overutilized,
             cmap_name=args.cmap,
             interactive=args.interactive,
             viewpoint=viewpoint,
+        )
+        np.save(
+            _derive_heatmap_output_path(npy_base_path),
+            _build_fixed_heatmap(
+                bricks,
+                pid_offset,
+                per_part_score,
+                cmap_name=args.cmap,
+            ),
         )
         return
 
@@ -343,21 +394,12 @@ def main() -> None:
     fig = plt.figure(figsize=(12, 6))
     ax_left = fig.add_subplot(1, 2, 1, projection="3d")
     ax_right = fig.add_subplot(1, 2, 2, projection="3d")
-    shared_util_values = [
-        util
-        for util in list(per_part_score.values()) + list(stable_per_part_score.values())
-        if args.draw_overutilized or util < 1.0
-    ]
-    if shared_util_values:
-        shared_scale = (min(shared_util_values), max(shared_util_values))
-    else:
-        shared_scale = (0.0, 1.0)
+    shared_scale = (0.0, 1.0)
     _render_heatmap(
         bricks,
         pid_offset,
         per_part_score,
         output_path=None,
-        draw_overutilized=args.draw_overutilized,
         cmap_name=args.cmap,
         interactive=False,
         ax=ax_left,
@@ -370,13 +412,32 @@ def main() -> None:
         pid_offset,
         stable_per_part_score,
         output_path=None,
-        draw_overutilized=args.draw_overutilized,
         cmap_name=args.cmap,
         interactive=False,
         ax=ax_right,
         title="StableLego",
         scale_range=shared_scale,
         viewpoint=viewpoint,
+    )
+    np.save(
+        _derive_heatmap_output_path(npy_base_path, suffix="_ours"),
+        _build_fixed_heatmap(
+            bricks,
+            pid_offset,
+            per_part_score,
+            cmap_name=args.cmap,
+            scale_range=shared_scale,
+        ),
+    )
+    np.save(
+        _derive_heatmap_output_path(npy_base_path, suffix="_stablelego"),
+        _build_fixed_heatmap(
+            bricks,
+            pid_offset,
+            stable_per_part_score,
+            cmap_name=args.cmap,
+            scale_range=shared_scale,
+        ),
     )
     import matplotlib.colors as mcolors
     import matplotlib.cm as cm
