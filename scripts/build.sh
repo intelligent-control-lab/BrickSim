@@ -11,10 +11,15 @@ BUILD_PROFILE=${1:-RelWithDebInfo}  # Debug, Release, RelWithDebInfo, MinSizeRel
 
 SRC="$ROOT_DIR/native"
 BUILD="$SRC/.build/${BUILD_PROFILE}"
+BUILD_TESTS=OFF
+if [ -n "${RUN_TESTS:-}" ]; then
+  BUILD_TESTS=ON
+fi
 
 mkdir -p "$BUILD"
 cmake -S "$SRC" -B "$BUILD" \
   -DCMAKE_BUILD_TYPE=${BUILD_PROFILE} \
+  -DBRICKSIM_BUILD_TESTS=${BUILD_TESTS} \
   -DCMAKE_COLOR_DIAGNOSTICS=ON \
   -Wno-deprecated \
   -G Ninja
