@@ -280,4 +280,9 @@ PYBIND11_MODULE(_native, m) {
 	      "Get the Part and ConnectionSegment ID mappings from USD Path to "
 	      "Physics Graph IDs. If no physics graph is available, an exception "
 	      "is thrown.");
+
+	m.def("set_sync_to_usd", &set_sync_to_usd, pybind11::arg("sync"),
+	      "Set whether to sync connection changes to USD.");
+	m.def("get_sync_to_usd", &get_sync_to_usd,
+	      "Get whether syncing connection changes to USD is enabled.");
 }

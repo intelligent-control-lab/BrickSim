@@ -19,6 +19,8 @@ from bricksim._native import (
     arrange_parts_in_workspace,
     get_usd_id_mappings,
     get_physx_id_mappings,
+    get_sync_to_usd,
+    set_sync_to_usd,
 )
 from bricksim.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
 from bricksim.importers.legolization import legolization_json_to_topology_json, is_legolization_json
@@ -123,6 +125,14 @@ class LegoUI():
                         self._pos_tol_field.model.set_value(float(_thr.position_tolerance))
                         self._pos_tol_field.model.add_value_changed_fn(
                             lambda m: self._set_threshold("position_tolerance", float(m.as_float))
+                        )
+                    with omni.ui.HStack(spacing=10):
+                        omni.ui.Label("Sync connections to USD", width=140)
+                        self._sync_usd_model = omni.ui.SimpleBoolModel()
+                        self._sync_usd_model.set_value(bool(get_sync_to_usd()))
+                        omni.ui.CheckBox(model=self._sync_usd_model)
+                        self._sync_usd_model.add_value_changed_fn(
+                            lambda m: set_sync_to_usd(bool(m.get_value_as_bool()))
                         )
 
                 with omni.ui.VStack(height=0, spacing=8):

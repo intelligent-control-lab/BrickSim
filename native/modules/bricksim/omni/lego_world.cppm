@@ -167,6 +167,14 @@ class LegoWorld<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 		}
 	}
 
+	void set_sync_to_usd(bool sync) {
+		cfg_.sync_conns_to_usd = sync;
+	}
+
+	bool get_sync_to_usd() const {
+		return cfg_.sync_conns_to_usd;
+	}
+
   private:
 	pxr::UsdStageRefPtr stage_;
 	LegoConfig cfg_;

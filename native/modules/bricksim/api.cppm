@@ -698,4 +698,13 @@ get_physx_id_mappings() {
 	}
 	return {std::move(part_mapping), std::move(conn_mapping)};
 }
+
+export void set_sync_to_usd(bool sync) {
+	LegoRuntime::instance().set_sync_to_usd(sync);
+}
+
+export bool get_sync_to_usd() {
+	return LegoRuntime::instance().get_sync_to_usd();
+}
+
 } // namespace bricksim::api

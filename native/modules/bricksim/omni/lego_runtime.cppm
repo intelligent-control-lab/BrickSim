@@ -61,6 +61,21 @@ export class LegoRuntime {
 		}
 	}
 
+	void set_sync_to_usd(bool sync) {
+		cfg_.sync_conns_to_usd = sync;
+		if (world_) {
+			world_->set_sync_to_usd(sync);
+		}
+	}
+
+	bool get_sync_to_usd() const {
+		if (world_) {
+			return world_->get_sync_to_usd();
+		} else {
+			return cfg_.sync_conns_to_usd;
+		}
+	}
+
   private:
 	LegoConfig cfg_{
 	    .breakage_debug_dump_dir =
