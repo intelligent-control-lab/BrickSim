@@ -710,7 +710,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				ConnectionSegment conn_seg = cs_entry->value().wrapped();
 				bool disconnected = topology_.disconnect(csid).has_value();
 				if (disconnected) {
-					log_info("Connection {} breaks", csid);
 					if constexpr (HasOnDisassembledHook) {
 						if (hooks_) {
 							hooks_->on_disassembled(csid, csref, conn_seg);
@@ -724,7 +723,6 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			std::optional<ConnSegId> csid =
 			    topology_.connect(stud_if, hole_if, conn_seg);
 			if (csid.has_value()) {
-				log_info("Connection {} assembles", *csid);
 				if constexpr (HasOnAssembledHook) {
 					if (hooks_) {
 						hooks_->on_assembled(*csid, csref, conn_seg);

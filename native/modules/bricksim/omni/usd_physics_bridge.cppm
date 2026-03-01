@@ -38,6 +38,26 @@ export struct ConnectionInfo {
 	std::optional<pxr::SdfPath> conn_path{};
 };
 
+} // namespace bricksim
+
+namespace std {
+template <>
+struct formatter<bricksim::ConnectionInfo> : formatter<string_view> {
+	auto format(const bricksim::ConnectionInfo &info, auto &ctx) const {
+		return std::format_to(
+		    ctx.out(), "Connection #{} at [{}]:{} between {} #{} -> {} #{}",
+		    info.physics_csid, info.env_id,
+		    info.conn_path
+		        .transform([](const auto &p) { return p.GetString(); })
+		        .value_or("<untracked>"),
+		    info.stud_path.GetString(), info.stud_ifid,
+		    info.hole_path.GetString(), info.hole_ifid);
+	}
+};
+} // namespace std
+
+namespace bricksim {
+
 export template <class Parts, class PartAuthors, class PartParsers>
 class UsdPhysicsBridge;
 
@@ -77,17 +97,19 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 			if (owner_->sync_conns_to_usd_) {
 				owner_->writeback_conn_creation(csid, csref, conn_seg);
 			}
-			owner_->assembled_conns_.emplace_back(
+			auto &info = owner_->assembled_conns_.emplace_back(
 			    owner_->make_connection_info(csid, csref, conn_seg));
+			log_info("Assembled {}", info);
 		}
 
 		void on_disassembled(ConnSegId csid, const ConnSegRef &csref,
 		                     const ConnectionSegment &conn_seg) {
-			owner_->disassembled_conns_.emplace_back(
+			auto &info = owner_->disassembled_conns_.emplace_back(
 			    owner_->make_connection_info(csid, csref, conn_seg));
 			if (owner_->sync_conns_to_usd_) {
 				owner_->writeback_conn_removal(csid);
 			}
+			log_info("Disassembled {}", info);
 		}
 
 		// ==== Listens UsdGraph ====
