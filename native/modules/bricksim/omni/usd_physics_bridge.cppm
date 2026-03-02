@@ -99,7 +99,8 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 			}
 			auto &info = owner_->assembled_conns_.emplace_back(
 			    owner_->make_connection_info(csid, csref, conn_seg));
-			log_info("Assembled {}", info);
+			log_info("Assembled at t={} {}", owner_->physics_graph_->sim_time(),
+			         info);
 		}
 
 		void on_disassembled(ConnSegId csid, const ConnSegRef &csref,
@@ -109,7 +110,8 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 			if (owner_->sync_conns_to_usd_) {
 				owner_->writeback_conn_removal(csid);
 			}
-			log_info("Disassembled {}", info);
+			log_info("Disassembled at t={} {}",
+			         owner_->physics_graph_->sim_time(), info);
 		}
 
 		// ==== Listens UsdGraph ====

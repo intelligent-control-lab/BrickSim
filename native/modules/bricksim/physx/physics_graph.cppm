@@ -12,6 +12,7 @@ import bricksim.physx.shape_mapping;
 import bricksim.physx.weld_constraint;
 import bricksim.physx.patcher;
 import bricksim.physx.breakage;
+import bricksim.physx.breakage_selector;
 import bricksim.utils.type_list;
 import bricksim.utils.poly_store;
 import bricksim.utils.transforms;
@@ -27,6 +28,7 @@ import bricksim.vendor;
 namespace bricksim {
 
 constexpr bool EnableBreakage = true;
+constexpr std::int64_t BreakCooldownTime = 1;
 
 struct PendingAssembly {
 	ConnSegRef csref;
@@ -79,6 +81,7 @@ struct ComponentData {
 	PartId representative;
 	std::unique_ptr<BreakageSystem> breakage_system;
 	std::unique_ptr<BreakageState> breakage_state;
+	std::int64_t updated_at{};
 };
 
 export struct PhysicsAssemblyDebugInfo : AssemblyDebugInfo {
@@ -730,6 +733,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				}
 			}
 		}
+		sim_time_++;
 	}
 
 	bool bind_physx_scene(physx::PxScene *px_scene) {
@@ -756,6 +760,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		hooks_ = hooks;
 	}
 
+	std::int64_t sim_time() const noexcept {
+		return sim_time_;
+	}
+
   private:
 	MetricSystem metrics_;
 	physx::PxPhysics *px_;
@@ -777,6 +785,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	std::unique_ptr<PhysxBinding> physx_binding_;
 
 	bool in_simulation_step_{false};
+	std::int64_t sim_time_{};
 
 	void validate_part_actor(PartId pid) {
 		typename TopologyGraph::PartConstEntry entry =
@@ -871,6 +880,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		cc_data.breakage_state = std::make_unique<BreakageState>(
 		    breakage_checker_.build_initial_state(*cc_data.breakage_system,
 		                                          initial_input));
+		cc_data.updated_at = sim_time_;
 	}
 
 	std::vector<ConnSegId> compute_breakages() {
@@ -891,6 +901,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				ConnSegId csid = sys.clutch_ids()[i];
 				auto &csw = topology_.connection_segment_at(csid);
 				csw.utilization_ = sol.utilization(i);
+			}
+			if (sim_time_ < cc_data.updated_at + BreakCooldownTime) {
+				continue;
 			}
 			std::vector<ConnSegId> to_break =
 			    select_conns_to_break(topology_, *cc_data.breakage_system, sol);
