@@ -703,7 +703,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		auto pending_disassemblies = compute_breakages();
 
 		if constexpr (EnableBreakage) {
-			for (const auto &[csid] : pending_disassemblies) {
+			for (ConnSegId csid : pending_disassemblies) {
 				const auto *cs_entry =
 				    topology_.connection_segments().find(csid);
 				ConnSegRef csref = cs_entry->template key<ConnSegRef>();
@@ -873,8 +873,8 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		                                          initial_input));
 	}
 
-	std::vector<PendingDisassembly> compute_breakages() {
-		std::vector<PendingDisassembly> pending_disassemblies;
+	std::vector<ConnSegId> compute_breakages() {
+		std::vector<ConnSegId> result;
 		for (const auto &[cc_id, _] : cc_index_.data()) {
 			ComponentData &cc_data = cc_index_.data_at(cc_id);
 			if (!cc_data.breakage_system || !cc_data.breakage_state) {
@@ -884,26 +884,19 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			BreakageState &state = *cc_data.breakage_state;
 			BreakageInput in = prepare_breakage_input<BreakageInput>(cc_data);
 			BreakageSolution sol = breakage_checker_.solve(sys, in, state);
-			if (sol.utilization.size() > 0) {
-				// Break the most utilized connection
-				std::optional<ConnSegId> max_csid;
-				double max_u = -1.0;
-				for (int i = 0; i < sol.utilization.size(); ++i) {
-					double u = sol.utilization(i);
-					ConnSegId csid = sys.clutch_ids().at(i);
-					auto &csw = topology_.connection_segment_at(csid);
-					csw.utilization_ = u;
-					if (!max_csid.has_value() || u > max_u) {
-						max_csid = csid;
-						max_u = u;
-					}
-				}
-				if (max_u > 1.0) {
-					pending_disassemblies.emplace_back(*max_csid);
-				}
+			if (sol.utilization.size() == 0) {
+				continue;
 			}
+			for (int i = 0; i < sol.utilization.size(); ++i) {
+				ConnSegId csid = sys.clutch_ids()[i];
+				auto &csw = topology_.connection_segment_at(csid);
+				csw.utilization_ = sol.utilization(i);
+			}
+			std::vector<ConnSegId> to_break =
+			    select_conns_to_break(topology_, *cc_data.breakage_system, sol);
+			result.insert(result.end(), to_break.begin(), to_break.end());
 		}
-		return pending_disassemblies;
+		return result;
 	}
 
 	template <class T>
