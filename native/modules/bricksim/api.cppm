@@ -498,9 +498,12 @@ export double get_connection_utilization(const PathStr &connection_path) {
 		// This happens on graph divergence
 		return -1.0;
 	}
-	const auto &csw = physics_graph->topology().connection_segment_at(
+	auto *csw = physics_graph->topology().connection_segments().find_value(
 	    physics_csid_ptr->value());
-	return csw.utilization();
+	if (!csw) {
+		return -1.0;
+	}
+	return csw->utilization();
 }
 
 export struct ConnectionInfo {
