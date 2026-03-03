@@ -5,6 +5,8 @@ import json
 import tempfile
 import carb
 import omni.ui # type: ignore
+import omni.usd
+import omni.kit.app
 from bricksim.colors import parse_color, Colors
 from bricksim.utils import kit_runner
 from bricksim._native import (
@@ -21,6 +23,7 @@ from bricksim._native import (
     get_physx_id_mappings,
     get_sync_to_usd,
     set_sync_to_usd,
+    update_part_prototypes,
 )
 from bricksim.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
 from bricksim.importers.legolization import legolization_json_to_topology_json, is_legolization_json
@@ -65,6 +68,7 @@ class LegoUI():
                     omni.ui.Button("Reset Env", clicked_fn=self._reset_env_clicked)
                     omni.ui.Button("Import", clicked_fn=lambda: asyncio.ensure_future(self._import_async()))
                     omni.ui.Button("Export", clicked_fn=lambda: asyncio.ensure_future(self._export_async()))
+                    omni.ui.Button("Update Prototypes", clicked_fn=lambda: asyncio.ensure_future(self._update_part_prototypes()))
                     # Hot reload button for demo iteration. Visible only when a target
                     # has been run via kit_runner (driven by carb settings).
                     self._hot_reload_button = omni.ui.Button(
@@ -339,3 +343,12 @@ class LegoUI():
         with tempfile.NamedTemporaryFile(delete=False, prefix="id_mappings_", suffix=".json", mode="w", encoding="utf-8") as f:
             json.dump(result, f, indent=2)
             print(f"Dumped ID mappings to {f.name}")
+
+    async def _update_part_prototypes(self):
+        update_part_prototypes()
+        # Force full USD stage resync
+        world = omni.usd.get_context().get_stage().GetDefaultPrim()
+        world.SetActive(False)
+        app = omni.kit.app.get_app()
+        await app.next_update_async()
+        world.ClearActive()
