@@ -285,4 +285,7 @@ PYBIND11_MODULE(_native, m) {
 	      "Set whether to sync connection changes to USD.");
 	m.def("get_sync_to_usd", &get_sync_to_usd,
 	      "Get whether syncing connection changes to USD is enabled.");
+
+	m.def("update_part_prototypes", &update_part_prototypes,
+	      "Update the part prototypes prims in the current stage");
 }

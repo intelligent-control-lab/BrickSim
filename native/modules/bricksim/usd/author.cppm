@@ -8,6 +8,8 @@ import bricksim.usd.specs;
 import bricksim.utils.conversions;
 import bricksim.utils.sdf;
 import bricksim.utils.metric_system;
+import bricksim.utils.strings;
+import bricksim.utils.logging;
 import bricksim.vendor;
 
 namespace bricksim {
@@ -28,9 +30,16 @@ export template <class T, class P>
 concept PartPrototypeNaming =
     PartLike<P> && requires(T t, const P &part, const pxr::SdfPath &path) {
 	    { t.get_name(part) } -> std::convertible_to<std::string>;
+	    { t.parse_name(std::string{}) } -> std::same_as<std::optional<P>>;
 	    {
 		    t.get_colliders(part, path)
 	    } -> std::same_as<InterfaceCollidersVector>;
+    };
+
+export template <class T>
+concept PrototypePartAuthorLike =
+    PartAuthor<T> && requires(T t, const pxr::UsdStageRefPtr &stage) {
+	    { t.update_prototypes(stage) };
     };
 
 const pxr::SdfPath PrototypesPath{"/_Prototypes"};
@@ -50,6 +59,23 @@ struct PrototypePartAuthor {
 		prim->SetSpecifier(pxr::SdfSpecifierDef);
 		prim->GetInheritPathList().Add(class_path);
 		return PN{}.get_colliders(part, path);
+	}
+
+	void update_prototypes(const pxr::UsdStageRefPtr &stage) {
+		pxr::SdfChangeBlock _changes;
+		auto layer = stage->GetEditTarget().GetLayer();
+		auto prototypes =
+		    layer->GetPrimAtPath(PrototypesPath)->GetNameChildren();
+		for (const auto &prototype : prototypes) {
+			auto part = PN{}.parse_name(prototype->GetName());
+			if (!part) {
+				continue;
+			}
+			pxr::SdfPath prototype_path = prototype->GetPath();
+			prototype->SetNameChildren({});
+			PA{}(stage, prototype_path, *part);
+			log_info("Updated prototype {}", prototype_path.GetAsString());
+		}
 	}
 
   private:
@@ -309,6 +335,42 @@ export struct BrickPrototypeNaming {
 		auto H = part.H();
 		return std::format("Brick_{0}x{1}x{2}_{3:02x}{4:02x}{5:02x}", L, W, H,
 		                   color[0], color[1], color[2]);
+	}
+	std::optional<BrickPart> parse_name(const std::string &name) {
+		std::string_view sv{name};
+		if (!sv.starts_with("Brick_"))
+			return std::nullopt;
+		sv.remove_prefix(6);
+		auto x1 = sv.find('x');
+		if (x1 == std::string_view::npos)
+			return std::nullopt;
+		auto L = parse_int<BrickUnit>(sv.substr(0, x1));
+		if (!L)
+			return std::nullopt;
+		sv.remove_prefix(x1 + 1);
+		auto x2 = sv.find('x');
+		if (x2 == std::string_view::npos)
+			return std::nullopt;
+		auto W = parse_int<BrickUnit>(sv.substr(0, x2));
+		if (!W)
+			return std::nullopt;
+		sv.remove_prefix(x2 + 1);
+		auto x3 = sv.find('_');
+		if (x3 == std::string_view::npos)
+			return std::nullopt;
+		auto H = parse_int<BrickUnit>(sv.substr(0, x3));
+		if (!H)
+			return std::nullopt;
+		sv.remove_prefix(x3 + 1);
+		if (sv.size() != 6)
+			return std::nullopt;
+		auto r = parse_int<std::uint8_t>(sv.substr(0, 2), 16);
+		auto g = parse_int<std::uint8_t>(sv.substr(2, 2), 16);
+		auto b = parse_int<std::uint8_t>(sv.substr(4, 2), 16);
+		if (!r || !g || !b)
+			return std::nullopt;
+
+		return BrickPart(*L, *W, *H, {*r, *g, *b});
 	}
 	InterfaceCollidersVector
 	get_colliders([[maybe_unused]] const BrickPart &part,

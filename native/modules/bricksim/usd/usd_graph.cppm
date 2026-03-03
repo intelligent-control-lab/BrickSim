@@ -104,8 +104,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 	contains<P> using PartParserFor =
 	    PartParserList::template at<PartParserPartTypes::template index_of<P>>;
 
-	explicit UsdLegoGraph(
-	    pxr::UsdStageRefPtr stage)
+	explicit UsdLegoGraph(pxr::UsdStageRefPtr stage)
 	    : stage_(std::move(stage)), allocator_(stage_) {
 		notice_sink_ = std::make_unique<UsdNoticeSink>(this);
 		initial_sync();
@@ -623,6 +622,15 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 
 	LegoAllocator &allocator() noexcept {
 		return allocator_;
+	}
+
+	void update_part_prototypes() {
+		pxr::SdfChangeBlock _changes;
+		[this]<class PA>(PA author) {
+			if constexpr (PrototypePartAuthorLike<PA>) {
+				author.update_prototypes(stage_);
+			}
+		}(PAs{}...);
 	}
 
   private:

@@ -710,4 +710,8 @@ export bool get_sync_to_usd() {
 	return LegoRuntime::instance().get_sync_to_usd();
 }
 
+export void update_part_prototypes() {
+	usd_graph().update_part_prototypes();
+}
+
 } // namespace bricksim::api

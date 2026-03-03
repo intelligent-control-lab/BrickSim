@@ -5,11 +5,11 @@ import std;
 namespace bricksim {
 
 export template <class Int>
-constexpr std::optional<Int> parse_int(std::string_view sv) {
+constexpr std::optional<Int> parse_int(std::string_view sv, int base = 10) {
 	Int value{};
 	const char *first = sv.data();
 	const char *last = sv.data() + sv.size();
-	auto [ptr, ec] = std::from_chars(first, last, value, 10);
+	auto [ptr, ec] = std::from_chars(first, last, value, base);
 	if (ec == std::errc{} && ptr == last) {
 		return value; // parsed all characters successfully
 	}
