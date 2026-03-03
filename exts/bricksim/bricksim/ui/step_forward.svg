@@ -1,4 +1,9 @@
-<svg id="StepForward" xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26">
-  <rect id="iconBase" width="26" height="26" fill="none"/>
-  <path id="Union_3" data-name="Union 3" d="M0,179.147a1,1,0,0,1-1-1v-8.374l-16.182,9.136-.181.059-.15.032-.122-.032-.122-.031-.091-.059-.091-.122-.031-.149-.031-.185V157.578l.031-.182.031-.153.091-.121.091-.059.122-.032.122-.031.15.031.181.063L-1,166.23v-8.083a1,1,0,0,1,1-1H1a1,1,0,0,1,1,1v20a1,1,0,0,1-1,1Z" transform="translate(21 -155.147)" fill="#c2c2c2"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="33" height="33" viewBox="0 0 33 33">
+  <g id="timeline_foward_one_frame" transform="translate(-11546.3 781.5)">
+    <g id="select" transform="translate(-47.7 386.5)">
+      <rect id="Rectangle_678" data-name="Rectangle 678" width="33" height="33" transform="translate(11594 -1168)" fill="none"/>
+    </g>
+    <path id="Path_2790" data-name="Path 2790" d="M623.511,148.13l.179-.12.231-.092h.321l.047.06.09.123.047.123.043.183v21.083l-.043.186-.047.12-.09.123-.047.063h-.321l-.231-.095-.179-.12-14.977-10.175-.137-.123-.09-.152v-.736l.09-.155.137-.123,14.977-10.175Z" transform="translate(12177.469 -606.016) rotate(180)" fill="#77878a" fill-rule="evenodd"/>
+    <line id="Line_648" data-name="Line 648" y2="19" transform="translate(11571.5 -774.5)" fill="none" stroke="#77878a" stroke-linecap="round" stroke-width="3"/>
+  </g>
 </svg>
