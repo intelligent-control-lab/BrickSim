@@ -11,6 +11,7 @@ from bricksim.colors import parse_color, Colors
 from bricksim.utils import kit_runner
 from bricksim._native import (
     allocate_brick_part,
+    allocate_unmanaged_brick_part,
     deallocate_all_managed,
     export_lego,
     import_lego,
@@ -28,7 +29,7 @@ from bricksim._native import (
 from bricksim.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
 from bricksim.importers.legolization import legolization_json_to_topology_json, is_legolization_json
 from bricksim.utils.ui import show_file_picker_dialog
-from bricksim.utils.usd_parse import get_env_path
+from bricksim.utils.usd_parse import get_env_path, get_brick_dimensions
 
 _HOT_RELOAD_SETTING = "/app/bricksim/kit_runner/has_target"
 
@@ -68,6 +69,7 @@ class LegoUI():
                     omni.ui.Button("Reset Env", clicked_fn=self._reset_env_clicked)
                     omni.ui.Button("Import", clicked_fn=lambda: asyncio.ensure_future(self._import_async()))
                     omni.ui.Button("Export", clicked_fn=lambda: asyncio.ensure_future(self._export_async()))
+                    omni.ui.Button("Set Color", clicked_fn=self._set_bricks_color)
                     omni.ui.Button("Update Prototypes", clicked_fn=lambda: asyncio.ensure_future(self._update_part_prototypes()))
                     # Hot reload button for demo iteration. Visible only when a target
                     # has been run via kit_runner (driven by carb settings).
@@ -352,3 +354,12 @@ class LegoUI():
         app = omni.kit.app.get_app()
         await app.next_update_async()
         world.ClearActive()
+
+    def _set_bricks_color(self):
+        color = self.get_selected_color()
+        selected_paths = omni.usd.get_context().get_selection().get_selected_prim_paths()
+        for path in selected_paths:
+            dimensions = get_brick_dimensions(path)
+            if dimensions is None:
+                continue
+            allocate_unmanaged_brick_part(dimensions=dimensions, color=color, path=path)

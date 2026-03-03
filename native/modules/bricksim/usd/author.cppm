@@ -57,7 +57,9 @@ struct PrototypePartAuthor {
 		auto class_path = ensure_prototype(stage, part);
 		auto prim = pxr::SdfCreatePrimInLayer(layer, path);
 		prim->SetSpecifier(pxr::SdfSpecifierDef);
-		prim->GetInheritPathList().Add(class_path);
+		auto inherits_list = prim->GetInheritPathList();
+		inherits_list.ClearEditsAndMakeExplicit();
+		inherits_list.Add(class_path);
 		return PN{}.get_colliders(part, path);
 	}
 

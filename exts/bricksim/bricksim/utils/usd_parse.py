@@ -5,7 +5,7 @@ from isaacsim.core.utils.stage import get_current_stage
 def get_env_path(env_id: int) -> str:
     return "/World" if env_id == -1 else f"/World/envs/env_{env_id}"
 
-def get_brick_dimensions(brick_path: str) -> tuple[int, int, int]:
+def get_brick_dimensions(brick_path: str) -> tuple[int, int, int] | None:
     """Get the dimensions of a brick part.
 
     Args:
@@ -17,7 +17,7 @@ def get_brick_dimensions(brick_path: str) -> tuple[int, int, int]:
     stage = get_current_stage()
     prim: Usd.Prim = stage.GetPrimAtPath(brick_path)
     if not prim:
-        raise ValueError(f"Brick prim not found at path: {brick_path}")
+        return None
     dimensions_attr: Usd.Attribute = prim.GetAttribute("lego:brick_dimensions")
     if not dimensions_attr or not dimensions_attr.HasValue():
         return None
