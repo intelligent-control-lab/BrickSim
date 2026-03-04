@@ -69,7 +69,7 @@ class LegoUI():
                     omni.ui.Button("Reset Env", clicked_fn=self._reset_env_clicked)
                     omni.ui.Button("Import", clicked_fn=lambda: asyncio.ensure_future(self._import_async()))
                     omni.ui.Button("Export", clicked_fn=lambda: asyncio.ensure_future(self._export_async()))
-                    omni.ui.Button("Set Color", clicked_fn=self._set_bricks_color)
+                    omni.ui.Button("Set Color", clicked_fn=lambda: asyncio.ensure_future(self._set_bricks_color()))
                     omni.ui.Button("Update Prototypes", clicked_fn=lambda: asyncio.ensure_future(self._update_part_prototypes()))
                     # Hot reload button for demo iteration. Visible only when a target
                     # has been run via kit_runner (driven by carb settings).
@@ -355,11 +355,27 @@ class LegoUI():
         await app.next_update_async()
         world.ClearActive()
 
-    def _set_bricks_color(self):
+    async def _set_bricks_color(self):
         color = self.get_selected_color()
         selected_paths = omni.usd.get_context().get_selection().get_selected_prim_paths()
+        stage = omni.usd.get_context().get_stage()
+        paths_to_resync = []
         for path in selected_paths:
+            prim = stage.GetPrimAtPath(path)
+            if not prim.IsActive():
+                continue
             dimensions = get_brick_dimensions(path)
             if dimensions is None:
                 continue
             allocate_unmanaged_brick_part(dimensions=dimensions, color=color, path=path)
+            # Force resync
+            active_authored = prim.HasAuthoredActive()
+            prim.SetActive(False)
+            paths_to_resync.append((prim, active_authored))
+        app = omni.kit.app.get_app()
+        await app.next_update_async()
+        for prim, active_authored in paths_to_resync:
+            if active_authored:
+                prim.SetActive(True)
+            else:
+                prim.ClearActive()
