@@ -27,6 +27,10 @@ using pxr::TfToken;
     ((Body, "Body"))                                                           \
     ((Studs, "Studs"))                                                         \
     ((StudPrototype, "StudPrototype"))                                         \
+    ((Tubes, "Tubes"))                                                         \
+    ((TubePrototype, "TubePrototype"))                                         \
+    ((Pillars, "Pillars"))                                                     \
+    ((PillarPrototype, "PillarPrototype"))                                     \
     ((LegoWorkspaceObstacles, "lego:workspace_obstacles"))                     \
     ((LegoWorkspaceClearance, "lego:workspace_clearance"))                     \
     ((LegoWorkspaceGridResolution, "lego:workspace_grid_resolution"))          \

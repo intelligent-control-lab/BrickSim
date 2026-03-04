@@ -5,6 +5,7 @@ import bricksim.core.specs;
 import bricksim.core.connections;
 import bricksim.usd.tokens;
 import bricksim.usd.specs;
+import bricksim.usd.geometry;
 import bricksim.utils.conversions;
 import bricksim.utils.sdf;
 import bricksim.utils.metric_system;
@@ -249,29 +250,145 @@ export struct SimpleBrickAuthor {
 		SetAttr<float>(topCollider, pxr::UsdPhysicsTokens->physicsRestitution,
 		               0.2f);
 
-		auto body = pxr::SdfCreatePrimInLayer(
-		    layer, root_path.AppendChild(LegoTokens->Body));
-		body->SetSpecifier(pxr::SdfSpecifierDef);
-		body->SetTypeName(pxr::UsdGeomTokens->Cube);
-		SetAttr<double>(body, pxr::UsdGeomTokens->size, 1.0);
-		SetAttr<pxr::GfVec3f>(body, xformOpScale,
-		                      {
-		                          metrics.from_m(realDimensions[0]),
-		                          metrics.from_m(realDimensions[1]),
-		                          metrics.from_m(realDimensions[2]),
-		                      });
+		constexpr double TolerancePerSide = 5e-5;
+		constexpr double ToleranceUpFace = 5e-5;
+		bool is1xN = dimensions[0] == 1 || dimensions[1] == 1;
+		double body_wall_thickness = is1xN ? 1.5e-3 : 1.2e-3;
+		double body_visual_height = realDimensions[2] - ToleranceUpFace;
+		auto bodyPath = root_path.AppendChild(LegoTokens->Body);
+		make_open_box(
+		    layer, bodyPath,
+		    {
+		        metrics.from_m(realDimensions[0] - 2 * TolerancePerSide),
+		        metrics.from_m(realDimensions[1] - 2 * TolerancePerSide),
+		        metrics.from_m(body_visual_height),
+		    },
+		    metrics.from_m(body_wall_thickness), OpenFace::NegZ);
+		auto body = layer->GetPrimAtPath(bodyPath);
 		SetAttr<pxr::GfVec3d>(body, xformOpTranslate,
 		                      {
-		                          metrics.from_m(0.0),
-		                          metrics.from_m(0.0),
-		                          metrics.from_m(realDimensions[2] / 2),
+		                          0.0,
+		                          0.0,
+		                          metrics.from_m(body_visual_height / 2.0),
 		                      });
 		SetAttr<pxr::VtTokenArray>(body, pxr::UsdGeomTokens->xformOpOrder,
-		                           {xformOpTranslate, xformOpScale});
+		                           {xformOpTranslate, xformOpOrient});
 		SetAttr<pxr::VtVec3fArray>(
 		    body, pxr::UsdGeomTokens->primvarsDisplayColor,
 		    {as<pxr::GfVec3f>(fColor)}, pxr::SdfValueRoleNames->Color);
 
+		if (is1xN) {
+			if (dimensions[0] > 1 || dimensions[1] > 1) {
+				constexpr double PillarRadius = 1.5e-3;
+				constexpr double PillarHeightTolerance = 1e-4;
+				double pillar_height = body_visual_height -
+				                       body_wall_thickness -
+				                       PillarHeightTolerance;
+				auto pillarPrototypePath =
+				    root_path.AppendChild(LegoTokens->PillarPrototype);
+				auto pillarPrototype =
+				    pxr::SdfCreatePrimInLayer(layer, pillarPrototypePath);
+				pillarPrototype->SetSpecifier(pxr::SdfSpecifierClass);
+				pillarPrototype->SetTypeName(pxr::UsdGeomTokens->Cylinder);
+				SetAttr<double>(pillarPrototype, pxr::UsdGeomTokens->height,
+				                1.0);
+				SetAttr<pxr::GfVec3f>(pillarPrototype, xformOpScale,
+				                      {
+				                          metrics.from_m(PillarRadius),
+				                          metrics.from_m(PillarRadius),
+				                          metrics.from_m(pillar_height),
+				                      });
+				SetAttr<pxr::VtTokenArray>(pillarPrototype,
+				                           pxr::UsdGeomTokens->xformOpOrder,
+				                           {xformOpTranslate, xformOpScale});
+				SetAttr<pxr::VtVec3fArray>(
+				    pillarPrototype, pxr::UsdGeomTokens->primvarsDisplayColor,
+				    {as<pxr::GfVec3f>(fColor)}, pxr::SdfValueRoleNames->Color);
+				pxr::VtVec3fArray positions;
+				int pillar_count = std::max(dimensions[0], dimensions[1]) - 1;
+				positions.resize(pillar_count);
+				for (int k = 0; k < pillar_count; k++) {
+					double x_offset =
+					    dimensions[0] == 1
+					        ? 0.0
+					        : (k + 1 - dimensions[0] / 2.0) * BrickUnitLength;
+					double y_offset =
+					    dimensions[1] == 1
+					        ? 0.0
+					        : (k + 1 - dimensions[1] / 2.0) * BrickUnitLength;
+					double z_offset =
+					    pillar_height / 2.0 + PillarHeightTolerance;
+					positions[k] = {
+					    static_cast<float>(metrics.from_m(x_offset)),
+					    static_cast<float>(metrics.from_m(y_offset)),
+					    static_cast<float>(metrics.from_m(z_offset)),
+					};
+				}
+				auto pillars = pxr::SdfCreatePrimInLayer(
+				    layer, root_path.AppendChild(LegoTokens->Pillars));
+				pillars->SetSpecifier(pxr::SdfSpecifierDef);
+				pillars->SetTypeName(pxr::UsdGeomTokens->PointInstancer);
+				pxr::SdfRelationshipSpec::New(pillars,
+				                              pxr::UsdGeomTokens->prototypes)
+				    ->GetTargetPathList()
+				    .Add(pillarPrototypePath);
+				SetAttr<pxr::VtVec3fArray>(
+				    pillars, pxr::UsdGeomTokens->positions, positions,
+				    pxr::SdfValueRoleNames->Point);
+				SetAttr<pxr::VtIntArray>(pillars,
+				                         pxr::UsdGeomTokens->protoIndices,
+				                         pxr::VtIntArray(positions.size(), 0));
+			}
+		} else {
+			constexpr double TubeThickness = 8e-4;
+			constexpr double TubeOuterRadius =
+			    StudDiameter / 2.0 + TubeThickness;
+			constexpr double TubeHeightTolerance = 1e-4;
+			double tube_height =
+			    body_visual_height - body_wall_thickness - TubeHeightTolerance;
+			auto tubePrototypePath =
+			    root_path.AppendChild(LegoTokens->TubePrototype);
+			make_hollow_cylinder(layer, tubePrototypePath, TubeOuterRadius,
+			                     TubeThickness, tube_height, 64, false, true);
+			auto tubePrototype = layer->GetPrimAtPath(tubePrototypePath);
+			tubePrototype->SetSpecifier(pxr::SdfSpecifierClass);
+			SetAttr<pxr::VtTokenArray>(tubePrototype,
+			                           pxr::UsdGeomTokens->xformOpOrder,
+			                           {xformOpTranslate});
+			SetAttr<pxr::VtVec3fArray>(
+			    tubePrototype, pxr::UsdGeomTokens->primvarsDisplayColor,
+			    {as<pxr::GfVec3f>(fColor)}, pxr::SdfValueRoleNames->Color);
+			pxr::VtVec3fArray positions;
+			positions.resize((dimensions[0] - 1) * (dimensions[1] - 1));
+			for (int i = 0; i < dimensions[0] - 1; i++) {
+				for (int j = 0; j < dimensions[1] - 1; j++) {
+					double x_offset =
+					    (i + 1 - dimensions[0] / 2.0) * BrickUnitLength;
+					double y_offset =
+					    (j + 1 - dimensions[1] / 2.0) * BrickUnitLength;
+					double z_offset = tube_height / 2.0 + TubeHeightTolerance;
+					positions[i * (dimensions[1] - 1) + j] = {
+					    static_cast<float>(metrics.from_m(x_offset)),
+					    static_cast<float>(metrics.from_m(y_offset)),
+					    static_cast<float>(metrics.from_m(z_offset)),
+					};
+				}
+			}
+			auto tubes = pxr::SdfCreatePrimInLayer(
+			    layer, root_path.AppendChild(LegoTokens->Tubes));
+			tubes->SetSpecifier(pxr::SdfSpecifierDef);
+			tubes->SetTypeName(pxr::UsdGeomTokens->PointInstancer);
+			pxr::SdfRelationshipSpec::New(tubes, pxr::UsdGeomTokens->prototypes)
+			    ->GetTargetPathList()
+			    .Add(tubePrototypePath);
+			SetAttr<pxr::VtVec3fArray>(tubes, pxr::UsdGeomTokens->positions,
+			                           positions,
+			                           pxr::SdfValueRoleNames->Point);
+			SetAttr<pxr::VtIntArray>(tubes, pxr::UsdGeomTokens->protoIndices,
+			                         pxr::VtIntArray(positions.size(), 0));
+		}
+
+		constexpr double StudVisualHeight = StudHeight + ToleranceUpFace;
 		auto studPrototypePath =
 		    root_path.AppendChild(LegoTokens->StudPrototype);
 		auto studPrototype =
@@ -286,7 +403,7 @@ export struct SimpleBrickAuthor {
 		                      {
 		                          metrics.from_m(StudDiameter / 2.0),
 		                          metrics.from_m(StudDiameter / 2.0),
-		                          metrics.from_m(StudHeight),
+		                          metrics.from_m(StudVisualHeight),
 		                      });
 		SetAttr<pxr::VtTokenArray>(studPrototype,
 		                           pxr::UsdGeomTokens->xformOpOrder,
@@ -300,7 +417,7 @@ export struct SimpleBrickAuthor {
 				    (i - (dimensions[0] - 1) / 2.0) * BrickUnitLength;
 				double y_offset =
 				    (j - (dimensions[1] - 1) / 2.0) * BrickUnitLength;
-				double z_offset = realDimensions[2] + StudHeight / 2.0;
+				double z_offset = body_visual_height + StudVisualHeight / 2.0;
 				positions[i * dimensions[1] + j] = {
 				    static_cast<float>(metrics.from_m(x_offset)),
 				    static_cast<float>(metrics.from_m(y_offset)),
