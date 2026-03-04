@@ -67,8 +67,11 @@ struct PrototypePartAuthor {
 	void update_prototypes(const pxr::UsdStageRefPtr &stage) {
 		pxr::SdfChangeBlock _changes;
 		auto layer = stage->GetEditTarget().GetLayer();
-		auto prototypes =
-		    layer->GetPrimAtPath(PrototypesPath)->GetNameChildren();
+		auto prototypes_root = layer->GetPrimAtPath(PrototypesPath);
+		if (!prototypes_root) {
+			return;
+		}
+		auto prototypes = prototypes_root->GetNameChildren();
 		for (const auto &prototype : prototypes) {
 			auto part = PN{}.parse_name(prototype->GetName());
 			if (!part) {
