@@ -60,6 +60,7 @@ module;
 #include <pxr/usd/usdPhysics/metrics.h>
 #include <pxr/usd/usdPhysics/tokens.h>
 #include <pxr/usd/usdUtils/stageCache.h>
+#include <pxr/usdImaging/usdImaging/tokens.h>
 
 #include <physxSchema/tokens.h>
 
@@ -425,11 +426,13 @@ using pxr::UsdGeomTokens;
 using pxr::UsdGeomXformable;
 using pxr::UsdGeomXformCache;
 using pxr::UsdGeomXformOp;
+using pxr::UsdImagingTokens;
 using pxr::UsdNotice;
 using pxr::UsdPhysicsGetStageKilogramsPerUnit;
 using pxr::UsdPhysicsTokens;
 using pxr::UsdPrim;
 using pxr::UsdPrimRange;
+using pxr::UsdShadeTokens;
 using pxr::UsdStage;
 using pxr::UsdStageCache;
 using pxr::UsdStageRefPtr;

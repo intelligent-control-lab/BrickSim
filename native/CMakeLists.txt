@@ -152,6 +152,7 @@ target_link_libraries(bricksim_modules PUBLIC
   usd_sdf
   usd_tf
   usd_usd
+  usd_usdShade
   usd_usdGeom
   usd_usdImaging
   usd_usdPhysics

@@ -6,6 +6,7 @@ import bricksim.core.connections;
 import bricksim.usd.tokens;
 import bricksim.usd.specs;
 import bricksim.usd.geometry;
+import bricksim.usd.material;
 import bricksim.utils.conversions;
 import bricksim.utils.sdf;
 import bricksim.utils.metric_system;
@@ -152,11 +153,6 @@ export struct SimpleBrickAuthor {
 		    dimensions[2] * PlateUnitHeight,
 		};
 		BrickColor color = part.color();
-		std::array<float, 3> fColor = {
-		    color[0] / 255.0f,
-		    color[1] / 255.0f,
-		    color[2] / 255.0f,
-		};
 
 		auto layer = stage->GetEditTarget().GetLayer();
 		pxr::SdfChangeBlock _changes;
@@ -253,6 +249,9 @@ export struct SimpleBrickAuthor {
 		SetAttr<float>(topCollider, pxr::UsdPhysicsTokens->physicsRestitution,
 		               0.2f);
 
+		auto materialPath = root_path.AppendChild(LegoTokens->LegoMaterial);
+		create_lego_material(layer, materialPath, color);
+
 		constexpr double TolerancePerSide = 5e-5;
 		constexpr double ToleranceUpFace = 5e-5;
 		bool is1xN = dimensions[0] == 1 || dimensions[1] == 1;
@@ -276,9 +275,8 @@ export struct SimpleBrickAuthor {
 		                      });
 		SetAttr<pxr::VtTokenArray>(body, pxr::UsdGeomTokens->xformOpOrder,
 		                           {xformOpTranslate, xformOpOrient});
-		SetAttr<pxr::VtVec3fArray>(
-		    body, pxr::UsdGeomTokens->primvarsDisplayColor,
-		    {as<pxr::GfVec3f>(fColor)}, pxr::SdfValueRoleNames->Color);
+		SetRelationship(body, pxr::UsdShadeTokens->materialBinding,
+		                materialPath);
 
 		if (is1xN) {
 			if (dimensions[0] > 1 || dimensions[1] > 1) {
@@ -304,9 +302,9 @@ export struct SimpleBrickAuthor {
 				SetAttr<pxr::VtTokenArray>(pillarPrototype,
 				                           pxr::UsdGeomTokens->xformOpOrder,
 				                           {xformOpTranslate, xformOpScale});
-				SetAttr<pxr::VtVec3fArray>(
-				    pillarPrototype, pxr::UsdGeomTokens->primvarsDisplayColor,
-				    {as<pxr::GfVec3f>(fColor)}, pxr::SdfValueRoleNames->Color);
+				SetRelationship(pillarPrototype,
+				                pxr::UsdShadeTokens->materialBinding,
+				                materialPath);
 				pxr::VtVec3fArray positions;
 				int pillar_count = std::max(dimensions[0], dimensions[1]) - 1;
 				positions.resize(pillar_count);
@@ -358,9 +356,8 @@ export struct SimpleBrickAuthor {
 			SetAttr<pxr::VtTokenArray>(tubePrototype,
 			                           pxr::UsdGeomTokens->xformOpOrder,
 			                           {xformOpTranslate});
-			SetAttr<pxr::VtVec3fArray>(
-			    tubePrototype, pxr::UsdGeomTokens->primvarsDisplayColor,
-			    {as<pxr::GfVec3f>(fColor)}, pxr::SdfValueRoleNames->Color);
+			SetRelationship(tubePrototype, pxr::UsdShadeTokens->materialBinding,
+			                materialPath);
 			pxr::VtVec3fArray positions;
 			positions.resize((dimensions[0] - 1) * (dimensions[1] - 1));
 			for (int i = 0; i < dimensions[0] - 1; i++) {
@@ -399,9 +396,8 @@ export struct SimpleBrickAuthor {
 		studPrototype->SetSpecifier(pxr::SdfSpecifierClass);
 		studPrototype->SetTypeName(pxr::UsdGeomTokens->Cylinder);
 		SetAttr<double>(studPrototype, pxr::UsdGeomTokens->height, 1.0);
-		SetAttr<pxr::VtVec3fArray>(
-		    studPrototype, pxr::UsdGeomTokens->primvarsDisplayColor,
-		    {as<pxr::GfVec3f>(fColor)}, pxr::SdfValueRoleNames->Color);
+		SetRelationship(studPrototype, pxr::UsdShadeTokens->materialBinding,
+		                materialPath);
 		SetAttr<pxr::GfVec3f>(studPrototype, xformOpScale,
 		                      {
 		                          metrics.from_m(StudDiameter / 2.0),

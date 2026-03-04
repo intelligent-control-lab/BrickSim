@@ -31,6 +31,7 @@ using pxr::TfToken;
     ((TubePrototype, "TubePrototype"))                                         \
     ((Pillars, "Pillars"))                                                     \
     ((PillarPrototype, "PillarPrototype"))                                     \
+    ((LegoMaterial, "LegoMaterial"))                                           \
     ((LegoWorkspaceObstacles, "lego:workspace_obstacles"))                     \
     ((LegoWorkspaceClearance, "lego:workspace_clearance"))                     \
     ((LegoWorkspaceGridResolution, "lego:workspace_grid_resolution"))          \
