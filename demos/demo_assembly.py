@@ -5,7 +5,7 @@ import numpy as np
 import omni.kit.app # pyright: ignore
 from typing import Optional
 from copy import deepcopy
-from pxr import Gf
+from pxr import Gf, Usd
 from isaacsim.core.api.world import World
 from isaacsim.core.api.materials import PhysicsMaterial
 from isaacsim.core.prims import SingleArticulation, SingleXFormPrim, SingleGeometryPrim
@@ -26,12 +26,11 @@ try:
 except Exception:
     print("Warning: Unable to import debug draw interface.")
     DEBUG_DRAW = None
-# DEBUG_DRAW = None
+DEBUG_DRAW = None
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# STRUCTURE_PATH = os.path.join(SCRIPT_DIR, "../resources/demo_structure.json")
-STRUCTURE_PATH = os.path.join(SCRIPT_DIR, "../resources/demo_structure2.txt")
+STRUCTURE_PATH = os.path.join(SCRIPT_DIR, "../demos/demo_assembly_structure1.json")
 PRE_PLACED_PARTS = [0,] # Indices of parts in the structure JSON that are pre-placed in the scene
 PLACE_POSE = ([0.3, 0.0, 0.0], (1.0, 0.0, 0.0, 0.0)) # Position (x,y,z), Orientation (w,x,y,z)
 BASEPLATE_KWARGS = {
@@ -401,7 +400,7 @@ async def assemble_lego_part(
     specified connection parameters. It relies on physical interaction (pressing)
     to trigger the automatic assembly connection detection.
     """
-    press_depth = 0.000
+    press_depth = 0.0005
     press_duration = 1.0
 
     print(f"--- Attempting to assemble {hole_brick_path} onto {stud_brick_path} ---")
@@ -724,7 +723,21 @@ async def main():
 
     # Start simulation loop
     await world.reset_async()
-    await world.play_async()
+
+    # Set camera
+    with Usd.EditContext(stage, stage.GetSessionLayer()):
+        camera = stage.GetPrimAtPath("/OmniverseKit_Persp")
+        camera.GetAttribute("focalLength").Set(10.0)
+        camera.GetAttribute("xformOp:translate").Set(Gf.Vec3f(0.33666, 0.26958, 0.16248))
+        camera.GetAttribute("xformOp:rotateXYZ").Set(Gf.Vec3f(73.00646, 0.0, 162.16963))
+    # Deactivate background
+    stage.GetPrimAtPath("/World/Cube").SetActive(False)
+    stage.GetPrimAtPath("/World/scene/roomScene/colliders/floor").SetActive(False)
+    stage.GetPrimAtPath("/World/scene/roomScene/colliders/walls").SetActive(False)
+    stage.GetPrimAtPath("/World/scene/roomScene/colliders/windows").SetActive(False)
+    stage.GetPrimAtPath("/World/scene/roomScene/renderables").SetActive(False)
+
+    await world.pause_async()
 
     async def assemble(stud_path: str, hole_path: str, offset: tuple[int, int], yaw: int):
         success = await grasp_lego_part(world, robot, rmpflow, motion_policy, hole_path)
