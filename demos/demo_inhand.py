@@ -3,6 +3,7 @@ import os
 import numpy as np
 import omni.kit.app # pyright: ignore
 from typing import Optional
+from pxr import Gf, Usd
 from isaacsim.core.api.world import World
 from isaacsim.core.api.materials import PhysicsMaterial
 from isaacsim.core.api.objects.cuboid import FixedCuboid
@@ -677,9 +678,24 @@ async def main():
         pos=(0.30, -0.20, 0.0),
     )
 
+    get_current_stage().GetPrimAtPath("/World/Robot1").GetAttribute("physxArticulation:solverPositionIterationCount").Set(64)
+    get_current_stage().GetPrimAtPath("/World/Robot2").GetAttribute("physxArticulation:solverPositionIterationCount").Set(64)
+    # Set camera
+    with Usd.EditContext(stage, stage.GetSessionLayer()):
+        camera = stage.GetPrimAtPath("/OmniverseKit_Persp")
+        camera.GetAttribute("focalLength").Set(10.0)
+        camera.GetAttribute("xformOp:translate").Set(Gf.Vec3f(0.36903, 0.57685, 0.58576))
+        camera.GetAttribute("xformOp:rotateXYZ").Set(Gf.Vec3f(65.22012, 0.0, -178.88982))
+    # Deactivate background
+    stage.GetPrimAtPath("/World/Cube").SetActive(False)
+    stage.GetPrimAtPath("/World/scene/roomScene/colliders/floor").SetActive(False)
+    stage.GetPrimAtPath("/World/scene/roomScene/colliders/walls").SetActive(False)
+    stage.GetPrimAtPath("/World/scene/roomScene/colliders/windows").SetActive(False)
+    stage.GetPrimAtPath("/World/scene/roomScene/renderables").SetActive(False)
+
     # Start simulation loop
     await world.reset_async()
-    await world.play_async()
+    await world.pause_async()
 
     # ==== Task Execution: Handover and In-Hand Assembly ====
     
