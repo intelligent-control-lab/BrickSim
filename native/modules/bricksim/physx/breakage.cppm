@@ -227,6 +227,7 @@ Matrix2d inv_sqrt_spd(const Matrix2d &C) {
 
 export struct BreakageThresholds {
 	bool Enabled{true};
+	double ContactRegularization{0.1};
 	double ClutchAxialCompliance{1.0};
 	double ClutchRadialCompliance{1.0};
 	double ClutchTangentialCompliance{1.0};
@@ -235,12 +236,14 @@ export struct BreakageThresholds {
 	double SlackFractionWarn{0.1};
 	double SlackFractionBFloor{1e-9};
 	bool DebugDump{false};
+	double BreakageCooldownTime{0.05};
 };
 
 export void to_json(nlohmann::ordered_json &j,
                     const BreakageThresholds &thresholds) {
 	j = {
 	    {"enabled", thresholds.Enabled},
+	    {"contact_regularization", thresholds.ContactRegularization},
 	    {"clutch_axial_compliance", thresholds.ClutchAxialCompliance},
 	    {"clutch_radial_compliance", thresholds.ClutchRadialCompliance},
 	    {"clutch_tangential_compliance", thresholds.ClutchTangentialCompliance},
@@ -249,12 +252,14 @@ export void to_json(nlohmann::ordered_json &j,
 	    {"slack_fraction_warn", thresholds.SlackFractionWarn},
 	    {"slack_fraction_b_floor", thresholds.SlackFractionBFloor},
 	    {"debug_dump", thresholds.DebugDump},
+	    {"breakage_cooldown_time", thresholds.BreakageCooldownTime},
 	};
 }
 
 export void from_json(const nlohmann::ordered_json &j,
                       BreakageThresholds &thresholds) {
 	j.at("enabled").get_to(thresholds.Enabled);
+	j.at("contact_regularization").get_to(thresholds.ContactRegularization);
 	j.at("clutch_axial_compliance").get_to(thresholds.ClutchAxialCompliance);
 	j.at("clutch_radial_compliance").get_to(thresholds.ClutchRadialCompliance);
 	j.at("clutch_tangential_compliance")
@@ -264,6 +269,7 @@ export void from_json(const nlohmann::ordered_json &j,
 	j.at("slack_fraction_warn").get_to(thresholds.SlackFractionWarn);
 	j.at("slack_fraction_b_floor").get_to(thresholds.SlackFractionBFloor);
 	j.at("debug_dump").get_to(thresholds.DebugDump);
+	j.at("breakage_cooldown_time").get_to(thresholds.BreakageCooldownTime);
 }
 
 // FaceRef compares pid then fid,
@@ -762,6 +768,8 @@ export class BreakageChecker {
 				add_block_triplets(A_triplets, 6 * index_j, var_idx, A_j_col);
 				int ineq_idx = sys.num_ineq_++;
 				G_triplets.emplace_back(ineq_idx, var_idx, 1.0);
+				Q_triplets.emplace_back(var_idx, var_idx,
+				                        thresholds.ContactRegularization);
 			}
 		}
 

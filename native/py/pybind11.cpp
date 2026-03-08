@@ -197,6 +197,8 @@ PYBIND11_MODULE(_native, m) {
 	                                     "Breakage detection thresholds.")
 	    .def(pybind11::init<>())
 	    .def_readwrite("enabled", &BreakageThresholds::Enabled)
+	    .def_readwrite("contact_regularization",
+	                   &BreakageThresholds::ContactRegularization)
 	    .def_readwrite("clutch_axial_compliance",
 	                   &BreakageThresholds::ClutchAxialCompliance)
 	    .def_readwrite("clutch_radial_compliance",
@@ -211,6 +213,8 @@ PYBIND11_MODULE(_native, m) {
 	    .def_readwrite("slack_fraction_b_floor",
 	                   &BreakageThresholds::SlackFractionBFloor)
 	    .def_readwrite("debug_dump", &BreakageThresholds::DebugDump)
+	    .def_readwrite("breakage_cooldown_time",
+	                   &BreakageThresholds::BreakageCooldownTime)
 	    .def("__repr__", &repr_breakage_thresholds);
 
 	m.def("set_breakage_thresholds", &set_breakage_thresholds,

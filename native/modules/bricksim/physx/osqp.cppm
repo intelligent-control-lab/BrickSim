@@ -621,6 +621,7 @@ export class OsqpSolver {
 	OsqpSolverPtr build_solver_opt_(const VectorXd &b,
 	                                const VectorXd &v) const {
 		osqp::OSQPSettings settings = build_settings_();
+		settings.rho = 1.0;
 		osqp::OSQPCscMatrix P_csc = osqp_csc_from_eigen(P_opt_);
 		osqp::OSQPCscMatrix C_csc = osqp_csc_from_eigen(C_opt_);
 		VectorXd l = build_l_opt_(b);

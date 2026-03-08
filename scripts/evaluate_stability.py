@@ -12,6 +12,7 @@ from typing import Any, Iterator
 from bricksim.importers.legolization import (
     is_legolization_json,
     legolization_json_to_topology_json,
+    load_default_lego_library,
 )
 from bricksim.importers.stabletext2brick import (
     bricks_text_to_topology_json,
@@ -43,13 +44,6 @@ class JsonObjectSpan:
 def _parse_baseplate(s: str) -> tuple[int, int]:
     w_s, h_s = s.split("x")
     return int(w_s), int(h_s)
-
-
-def _load_lego_library(datarootdir: Path) -> dict[str, dict[str, Any]]:
-    lego_library_path = datarootdir / "data" / "lego" / "data" / "lego_library.json"
-    if not lego_library_path.is_file():
-        raise FileNotFoundError(f"Missing LEGO library at {lego_library_path}")
-    return json.loads(lego_library_path.read_text(encoding="utf-8"))
 
 
 def _load_and_convert(
@@ -360,10 +354,10 @@ def _annotate_json_text(
         for key, value in desired.items():
             member = member_by_key.get(key)
             if member is not None:
-                raise ValueError(
-                    f"Output JSON already contains '{key}'. "
-                    "Refuse to overwrite existing bricksim_* fields to preserve add-only diffs."
+                edits.append(
+                    (member.value_start, member.value_end, _json_scalar(value))
                 )
+                continue
             missing_keys.append(key)
 
         if missing_keys:
@@ -428,20 +422,13 @@ def main() -> None:
 
     baseplate_size = _parse_baseplate(args.baseplate)
     include_baseplate = True
-    lego_library = _load_lego_library(datarootdir)
+    lego_library = load_default_lego_library()
 
     input_text = args.input.read_text(encoding="utf-8")
     dataset = json.loads(input_text)
     entries = list(_iter_eval_entries(dataset))
     if not entries:
         raise ValueError(f"No entries with json_fname found in {args.input}")
-    for entry in entries:
-        for k in ("bricksim_stable", "bricksim_solved", "bricksim_time"):
-            if k in entry.meta:
-                raise ValueError(
-                    f"{entry.label}: '{k}' already exists. "
-                    "Refuse to overwrite existing bricksim_* fields to preserve add-only diffs."
-                )
 
     total = len(entries)
     solved_total = 0

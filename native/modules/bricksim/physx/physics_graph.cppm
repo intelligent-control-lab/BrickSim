@@ -28,7 +28,6 @@ import bricksim.vendor;
 namespace bricksim {
 
 constexpr bool EnableBreakage = true;
-constexpr std::int64_t BreakCooldownTime = 1;
 
 struct PendingAssembly {
 	ConnSegRef csref;
@@ -902,7 +901,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 				auto &csw = topology_.connection_segment_at(csid);
 				csw.utilization_ = sol.utilization(i);
 			}
-			if (sim_time_ < cc_data.updated_at + BreakCooldownTime) {
+			int break_cooldown_timesteps = std::round(
+			    breakage_checker_.thresholds.BreakageCooldownTime / in.dt);
+			if (sim_time_ < cc_data.updated_at + break_cooldown_timesteps) {
 				continue;
 			}
 			std::vector<ConnSegId> to_break =

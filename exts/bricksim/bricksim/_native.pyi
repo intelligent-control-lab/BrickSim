@@ -130,6 +130,7 @@ class BreakageThresholds:
     def __init__(self) -> None: ...
     def __repr__(self) -> str: ...
     enabled: bool
+    contact_regularization: float
     clutch_axial_compliance: float
     clutch_radial_compliance: float
     clutch_tangential_compliance: float
@@ -138,6 +139,7 @@ class BreakageThresholds:
     slack_fraction_warn: float
     slack_fraction_b_floor: float
     debug_dump: bool
+    breakage_cooldown_time: float
 
 def set_breakage_thresholds(thresholds: BreakageThresholds) -> None: ...
 

@@ -440,13 +440,15 @@ export using BreakageThresholds = bricksim::BreakageThresholds;
 
 export std::string repr_breakage_thresholds(const BreakageThresholds &t) {
 	return std::format(
-	    "BreakageThresholds(enabled={}, clutch_axial_compliance={}, "
-	    "clutch_radial_compliance={}, clutch_tangential_compliance={}, "
-	    "friction_coefficient={}, preloaded_force={}, slack_fraction_warn={}, "
-	    "slack_fraction_b_floor={}, debug_dump={})",
-	    t.Enabled, t.ClutchAxialCompliance, t.ClutchRadialCompliance,
-	    t.ClutchTangentialCompliance, t.FrictionCoefficient, t.PreloadedForce,
-	    t.SlackFractionWarn, t.SlackFractionBFloor, t.DebugDump);
+	    "BreakageThresholds(enabled={}, contact_regularization={}, "
+	    "clutch_axial_compliance={}, clutch_radial_compliance={}, "
+	    "clutch_tangential_compliance={}, friction_coefficient={}, "
+	    "preloaded_force={}, slack_fraction_warn={}, "
+	    "slack_fraction_b_floor={}, debug_dump={}, breakage_cooldown_time={})",
+	    t.Enabled, t.ContactRegularization, t.ClutchAxialCompliance,
+	    t.ClutchRadialCompliance, t.ClutchTangentialCompliance,
+	    t.FrictionCoefficient, t.PreloadedForce, t.SlackFractionWarn,
+	    t.SlackFractionBFloor, t.DebugDump, t.BreakageCooldownTime);
 }
 
 export void set_breakage_thresholds(const BreakageThresholds &thr) {

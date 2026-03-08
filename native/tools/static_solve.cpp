@@ -82,6 +82,7 @@ int main(int argc, char **argv) {
 			}
 		}
 	};
+	thr_env("BREAKAGE_CONTACT_REGULARIZATION", thr.ContactRegularization);
 	thr_env("BREAKAGE_CLUTCH_AXIAL_COMPLIANCE", thr.ClutchAxialCompliance);
 	thr_env("BREAKAGE_CLUTCH_RADIAL_COMPLIANCE", thr.ClutchRadialCompliance);
 	thr_env("BREAKAGE_CLUTCH_TANGENTIAL_COMPLIANCE",

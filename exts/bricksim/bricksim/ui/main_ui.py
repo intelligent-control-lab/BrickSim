@@ -152,6 +152,13 @@ class LegoUI():
                             lambda m: self._set_breakage_threshold("enabled", bool(m.get_value_as_bool()))
                         )
                     with omni.ui.HStack(spacing=10):
+                        omni.ui.Label("Contact regularization:", width=140)
+                        self._contact_reg_field = omni.ui.FloatDrag(min=0.0, max=10.0)
+                        self._contact_reg_field.model.set_value(float(_bthr.contact_regularization))
+                        self._contact_reg_field.model.add_value_changed_fn(
+                            lambda m: self._set_breakage_threshold("contact_regularization", float(m.as_float))
+                        )
+                    with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Clutch axial comp:", width=140)
                         self._clutch_axial_comp_field = omni.ui.FloatDrag(min=0.0, max=1e6)
                         self._clutch_axial_comp_field.model.set_value(float(_bthr.clutch_axial_compliance))
@@ -185,6 +192,13 @@ class LegoUI():
                         self._preloaded_force_field.model.set_value(float(_bthr.preloaded_force))
                         self._preloaded_force_field.model.add_value_changed_fn(
                             lambda m: self._set_breakage_threshold("preloaded_force", float(m.as_float))
+                        )
+                    with omni.ui.HStack(spacing=10):
+                        omni.ui.Label("Breakage cooldown time:", width=140)
+                        self._breakage_cooldown_field = omni.ui.FloatDrag(min=0.0, max=1.0)
+                        self._breakage_cooldown_field.model.set_value(float(_bthr.breakage_cooldown_time))
+                        self._breakage_cooldown_field.model.add_value_changed_fn(
+                            lambda m: self._set_breakage_threshold("breakage_cooldown_time", float(m.as_float))
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Debug dump", width=140)
