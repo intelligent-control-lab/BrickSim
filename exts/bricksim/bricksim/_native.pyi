@@ -130,7 +130,6 @@ class BreakageThresholds:
     def __init__(self) -> None: ...
     def __repr__(self) -> str: ...
     enabled: bool
-    contact_normal_compliance: float
     clutch_axial_compliance: float
     clutch_radial_compliance: float
     clutch_tangential_compliance: float

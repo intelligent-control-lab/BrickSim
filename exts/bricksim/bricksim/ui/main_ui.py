@@ -152,13 +152,6 @@ class LegoUI():
                             lambda m: self._set_breakage_threshold("enabled", bool(m.get_value_as_bool()))
                         )
                     with omni.ui.HStack(spacing=10):
-                        omni.ui.Label("Contact axial comp:", width=140)
-                        self._contact_norm_comp_field = omni.ui.FloatDrag(min=0.0, max=1e6)
-                        self._contact_norm_comp_field.model.set_value(float(_bthr.contact_normal_compliance))
-                        self._contact_norm_comp_field.model.add_value_changed_fn(
-                            lambda m: self._set_breakage_threshold("contact_normal_compliance", float(m.as_float))
-                        )
-                    with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Clutch axial comp:", width=140)
                         self._clutch_axial_comp_field = omni.ui.FloatDrag(min=0.0, max=1e6)
                         self._clutch_axial_comp_field.model.set_value(float(_bthr.clutch_axial_compliance))

@@ -82,8 +82,6 @@ int main(int argc, char **argv) {
 			}
 		}
 	};
-	thr_env("BREAKAGE_CONTACT_NORMAL_COMPLIANCE", thr.ContactNormalCompliance);
-	thr_env("BREAKAGE_CONTACT_REGULARIZATION", thr.ContactRegularization);
 	thr_env("BREAKAGE_CLUTCH_AXIAL_COMPLIANCE", thr.ClutchAxialCompliance);
 	thr_env("BREAKAGE_CLUTCH_RADIAL_COMPLIANCE", thr.ClutchRadialCompliance);
 	thr_env("BREAKAGE_CLUTCH_TANGENTIAL_COMPLIANCE",
@@ -94,8 +92,8 @@ int main(int argc, char **argv) {
 	thr_env("BREAKAGE_SLACK_FRACTION_B_FLOOR", thr.SlackFractionBFloor);
 
 	BreakageSystem sys = checker.build_system(graph, rep_part);
-	eprintln("System has {} contacts and {} clutches.", sys.num_contacts(),
-	         sys.num_clutches());
+	eprintln("System has {} contact vertices and {} clutches.",
+	         sys.num_contact_vertices(), sys.num_clutches());
 
 	eprintln("==== Connections ====");
 	for (typename Graph::ConnSegConstEntry cs_entry :

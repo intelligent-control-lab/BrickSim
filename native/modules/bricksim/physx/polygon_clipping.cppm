@@ -145,4 +145,17 @@ convex_polygon_intersection(std::span<const Eigen::Vector2d> subject,
 	return out;
 }
 
+export double polygon_area(std::span<const Eigen::Vector2d> poly) {
+	if (poly.size() < 3) {
+		return 0.0;
+	}
+	double area2 = 0.0;
+	for (std::size_t i = 0; i < poly.size(); ++i) {
+		const auto &a = poly[i];
+		const auto &b = poly[(i + 1) % poly.size()];
+		area2 += a.x() * b.y() - b.x() * a.y();
+	}
+	return 0.5 * std::abs(area2);
+}
+
 } // namespace bricksim

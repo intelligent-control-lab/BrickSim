@@ -197,8 +197,6 @@ PYBIND11_MODULE(_native, m) {
 	                                     "Breakage detection thresholds.")
 	    .def(pybind11::init<>())
 	    .def_readwrite("enabled", &BreakageThresholds::Enabled)
-	    .def_readwrite("contact_normal_compliance",
-	                   &BreakageThresholds::ContactNormalCompliance)
 	    .def_readwrite("clutch_axial_compliance",
 	                   &BreakageThresholds::ClutchAxialCompliance)
 	    .def_readwrite("clutch_radial_compliance",

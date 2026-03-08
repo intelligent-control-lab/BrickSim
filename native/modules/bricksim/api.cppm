@@ -440,15 +440,13 @@ export using BreakageThresholds = bricksim::BreakageThresholds;
 
 export std::string repr_breakage_thresholds(const BreakageThresholds &t) {
 	return std::format(
-	    "BreakageThresholds(enabled={}, contact_normal_compliance={}, "
-	    "clutch_axial_compliance={}, clutch_radial_compliance={}, "
-	    "clutch_tangential_compliance={}, friction_coefficient={}, "
-	    "preloaded_force={}, slack_fraction_warn={}, "
+	    "BreakageThresholds(enabled={}, clutch_axial_compliance={}, "
+	    "clutch_radial_compliance={}, clutch_tangential_compliance={}, "
+	    "friction_coefficient={}, preloaded_force={}, slack_fraction_warn={}, "
 	    "slack_fraction_b_floor={}, debug_dump={})",
-	    t.Enabled, t.ContactNormalCompliance, t.ClutchAxialCompliance,
-	    t.ClutchRadialCompliance, t.ClutchTangentialCompliance,
-	    t.FrictionCoefficient, t.PreloadedForce, t.SlackFractionWarn,
-	    t.SlackFractionBFloor, t.DebugDump);
+	    t.Enabled, t.ClutchAxialCompliance, t.ClutchRadialCompliance,
+	    t.ClutchTangentialCompliance, t.FrictionCoefficient, t.PreloadedForce,
+	    t.SlackFractionWarn, t.SlackFractionBFloor, t.DebugDump);
 }
 
 export void set_breakage_thresholds(const BreakageThresholds &thr) {
