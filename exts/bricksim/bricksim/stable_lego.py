@@ -4,8 +4,6 @@ try:
     import gurobipy as gp
 except ImportError:
     raise ImportError("Gurobi is not installed. Please install Gurobi to use the StableLego module.")
-if gp.__version__ != "12.0.3":
-    raise ImportError(f"Gurobi version 12.0.3 is required, but version {gp.__version__} is installed. Please install the correct version of Gurobi to use the StableLego module.")
 
 import numpy as np
 import time
@@ -84,21 +82,21 @@ def run_stable_lego(
     big_num = 10 * n_bricks
 
     # Define variables
-    force_sum_x_pos = model.addVars(n_bricks, lb=-big_num, vtype=gp.GRB.CONTINUOUS, name="force_sum_x_pos")
-    force_sum_x_neg = model.addVars(n_bricks, lb=-big_num, vtype=gp.GRB.CONTINUOUS, name="force_sum_x_neg")
-    force_sum_x = model.addVars(n_bricks, lb=-big_num, vtype=gp.GRB.CONTINUOUS, name="force_sum_x")
-    force_sum_y_pos = model.addVars(n_bricks, lb=-big_num, vtype=gp.GRB.CONTINUOUS, name="force_sum_y_pos")
-    force_sum_y_neg = model.addVars(n_bricks, lb=-big_num, vtype=gp.GRB.CONTINUOUS, name="force_sum_y_neg")
-    force_sum_y = model.addVars(n_bricks, lb=-big_num, vtype=gp.GRB.CONTINUOUS, name="force_sum_y")
-    force_sum_z_pos = model.addVars(n_bricks, lb=-big_num, vtype=gp.GRB.CONTINUOUS, name="force_sum_z_pos")
-    force_sum_z_neg = model.addVars(n_bricks, lb=-big_num, vtype=gp.GRB.CONTINUOUS, name="force_sum_z_neg")
+    force_sum_x_pos = model.addVars(n_bricks,  vtype=gp.GRB.CONTINUOUS, name="force_sum_x_pos")
+    force_sum_x_neg = model.addVars(n_bricks,  vtype=gp.GRB.CONTINUOUS, name="force_sum_x_neg")
+    force_sum_x = model.addVars(n_bricks,  vtype=gp.GRB.CONTINUOUS, name="force_sum_x")
+    force_sum_y_pos = model.addVars(n_bricks,  vtype=gp.GRB.CONTINUOUS, name="force_sum_y_pos")
+    force_sum_y_neg = model.addVars(n_bricks,  vtype=gp.GRB.CONTINUOUS, name="force_sum_y_neg")
+    force_sum_y = model.addVars(n_bricks,  vtype=gp.GRB.CONTINUOUS, name="force_sum_y")
+    force_sum_z_pos = model.addVars(n_bricks,  vtype=gp.GRB.CONTINUOUS, name="force_sum_z_pos")
+    force_sum_z_neg = model.addVars(n_bricks,  vtype=gp.GRB.CONTINUOUS, name="force_sum_z_neg")
     force_sum_z = model.addVars(n_bricks, lb=-big_num, vtype=gp.GRB.CONTINUOUS, name="force_sum_z")
-    torque_sum_1_pos = model.addVars(n_bricks, lb=-big_num, vtype=gp.GRB.CONTINUOUS, name="torque_sum_1_pos")
-    torque_sum_1_neg = model.addVars(n_bricks, lb=-big_num, vtype=gp.GRB.CONTINUOUS, name="torque_sum_1_neg")
-    torque_sum_1 = model.addVars(n_bricks, lb=-big_num, vtype=gp.GRB.CONTINUOUS, name="torque_sum_1")
-    torque_sum_2_pos = model.addVars(n_bricks, lb=-big_num, vtype=gp.GRB.CONTINUOUS, name="torque_sum_2_pos")
-    torque_sum_2_neg = model.addVars(n_bricks, lb=-big_num, vtype=gp.GRB.CONTINUOUS, name="torque_sum_2_neg")
-    torque_sum_2 = model.addVars(n_bricks, lb=-big_num, vtype=gp.GRB.CONTINUOUS, name="torque_sum_2")
+    torque_sum_1_pos = model.addVars(n_bricks,  vtype=gp.GRB.CONTINUOUS, name="torque_sum_1_pos")
+    torque_sum_1_neg = model.addVars(n_bricks,  vtype=gp.GRB.CONTINUOUS, name="torque_sum_1_neg")
+    torque_sum_1 = model.addVars(n_bricks,  vtype=gp.GRB.CONTINUOUS, name="torque_sum_1")
+    torque_sum_2_pos = model.addVars(n_bricks,  vtype=gp.GRB.CONTINUOUS, name="torque_sum_2_pos")
+    torque_sum_2_neg = model.addVars(n_bricks,  vtype=gp.GRB.CONTINUOUS, name="torque_sum_2_neg")
+    torque_sum_2 = model.addVars(n_bricks, vtype=gp.GRB.CONTINUOUS, name="torque_sum_2")
     force_abs_sum_x = model.addVars(n_bricks, vtype=gp.GRB.CONTINUOUS, name="force_abs_sum_x")
     force_abs_sum_y = model.addVars(n_bricks, vtype=gp.GRB.CONTINUOUS, name="force_abs_sum_y")
     force_abs_sum_z = model.addVars(n_bricks, vtype=gp.GRB.CONTINUOUS, name="force_abs_sum_z")
