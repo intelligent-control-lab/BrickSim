@@ -278,6 +278,8 @@ export struct SimpleBrickAuthor {
 		SetRelationship(body, pxr::UsdShadeTokens->materialBinding,
 		                materialPath);
 
+		constexpr int CylinderSegments = 64;
+
 		if (is1xN) {
 			if (dimensions[0] > 1 || dimensions[1] > 1) {
 				constexpr double PillarRadius = 1.5e-3;
@@ -287,21 +289,12 @@ export struct SimpleBrickAuthor {
 				                       PillarHeightTolerance;
 				auto pillarPrototypePath =
 				    root_path.AppendChild(LegoTokens->PillarPrototype);
+				make_cylinder(layer, pillarPrototypePath,
+				              metrics.from_m(PillarRadius),
+				              metrics.from_m(pillar_height), CylinderSegments);
 				auto pillarPrototype =
-				    pxr::SdfCreatePrimInLayer(layer, pillarPrototypePath);
+				    layer->GetPrimAtPath(pillarPrototypePath);
 				pillarPrototype->SetSpecifier(pxr::SdfSpecifierClass);
-				pillarPrototype->SetTypeName(pxr::UsdGeomTokens->Cylinder);
-				SetAttr<double>(pillarPrototype, pxr::UsdGeomTokens->height,
-				                1.0);
-				SetAttr<pxr::GfVec3f>(pillarPrototype, xformOpScale,
-				                      {
-				                          metrics.from_m(PillarRadius),
-				                          metrics.from_m(PillarRadius),
-				                          metrics.from_m(pillar_height),
-				                      });
-				SetAttr<pxr::VtTokenArray>(pillarPrototype,
-				                           pxr::UsdGeomTokens->xformOpOrder,
-				                           {xformOpTranslate, xformOpScale});
 				SetRelationship(pillarPrototype,
 				                pxr::UsdShadeTokens->materialBinding,
 				                materialPath);
@@ -350,7 +343,8 @@ export struct SimpleBrickAuthor {
 			auto tubePrototypePath =
 			    root_path.AppendChild(LegoTokens->TubePrototype);
 			make_hollow_cylinder(layer, tubePrototypePath, TubeOuterRadius,
-			                     TubeThickness, tube_height, 64, false, true);
+			                     TubeThickness, tube_height, CylinderSegments,
+			                     false, true);
 			auto tubePrototype = layer->GetPrimAtPath(tubePrototypePath);
 			tubePrototype->SetSpecifier(pxr::SdfSpecifierClass);
 			SetAttr<pxr::VtTokenArray>(tubePrototype,
@@ -391,22 +385,13 @@ export struct SimpleBrickAuthor {
 		constexpr double StudVisualHeight = StudHeight + ToleranceUpFace;
 		auto studPrototypePath =
 		    root_path.AppendChild(LegoTokens->StudPrototype);
-		auto studPrototype =
-		    pxr::SdfCreatePrimInLayer(layer, studPrototypePath);
+		make_cylinder(layer, studPrototypePath,
+		              metrics.from_m(StudDiameter / 2.0),
+		              metrics.from_m(StudVisualHeight), CylinderSegments);
+		auto studPrototype = layer->GetPrimAtPath(studPrototypePath);
 		studPrototype->SetSpecifier(pxr::SdfSpecifierClass);
-		studPrototype->SetTypeName(pxr::UsdGeomTokens->Cylinder);
-		SetAttr<double>(studPrototype, pxr::UsdGeomTokens->height, 1.0);
 		SetRelationship(studPrototype, pxr::UsdShadeTokens->materialBinding,
 		                materialPath);
-		SetAttr<pxr::GfVec3f>(studPrototype, xformOpScale,
-		                      {
-		                          metrics.from_m(StudDiameter / 2.0),
-		                          metrics.from_m(StudDiameter / 2.0),
-		                          metrics.from_m(StudVisualHeight),
-		                      });
-		SetAttr<pxr::VtTokenArray>(studPrototype,
-		                           pxr::UsdGeomTokens->xformOpOrder,
-		                           {xformOpTranslate, xformOpScale});
 
 		pxr::VtVec3fArray positions;
 		positions.resize(dimensions[0] * dimensions[1]);

@@ -6,6 +6,100 @@ import bricksim.vendor;
 
 namespace bricksim {
 
+export void make_cylinder(const pxr::SdfLayerHandle &layer,
+                          const pxr::SdfPath &path, double radius,
+                          double height, int segments) {
+	pxr::SdfChangeBlock _changes;
+	auto prim = pxr::SdfCreatePrimInLayer(layer, path);
+	prim->SetSpecifier(pxr::SdfSpecifierDef);
+	prim->SetTypeName(pxr::UsdGeomTokens->Mesh);
+
+	double z0 = -height / 2.0;
+	double z1 = +height / 2.0;
+
+	pxr::VtVec3fArray points;
+	points.resize(4 * segments + 2);
+	float f_radius = static_cast<float>(radius);
+	float fz0 = static_cast<float>(z0);
+	float fz1 = static_cast<float>(z1);
+
+	// [0..N-1] bottom cap ring, [N..2N-1] side bottom ring,
+	// [2N..3N-1] side top ring, [3N..4N-1] top cap ring,
+	// [4N] bottom center, [4N+1] top center
+	for (int i = 0; i < segments; ++i) {
+		double a = 2.0 * std::numbers::pi * static_cast<double>(i) /
+		           static_cast<double>(segments);
+		float c = static_cast<float>(std::cos(a));
+		float s = static_cast<float>(std::sin(a));
+		float x = f_radius * c;
+		float y = f_radius * s;
+
+		points[i] = pxr::GfVec3f(x, y, fz0);
+		points[i + segments] = pxr::GfVec3f(x, y, fz0);
+		points[i + 2 * segments] = pxr::GfVec3f(x, y, fz1);
+		points[i + 3 * segments] = pxr::GfVec3f(x, y, fz1);
+	}
+	points[4 * segments] = pxr::GfVec3f(0.0f, 0.0f, fz0);
+	points[4 * segments + 1] = pxr::GfVec3f(0.0f, 0.0f, fz1);
+
+	pxr::VtIntArray face_counts;
+	pxr::VtIntArray face_indices;
+	face_counts.reserve(3 * segments);
+	face_indices.reserve(10 * segments);
+
+	auto add_quad = [&](int a, int b, int c, int d) {
+		face_counts.push_back(4);
+		face_indices.push_back(a);
+		face_indices.push_back(b);
+		face_indices.push_back(c);
+		face_indices.push_back(d);
+	};
+	auto add_tri = [&](int a, int b, int c) {
+		face_counts.push_back(3);
+		face_indices.push_back(a);
+		face_indices.push_back(b);
+		face_indices.push_back(c);
+	};
+
+	int bottom_center = 4 * segments;
+	int top_center = bottom_center + 1;
+	for (int i = 0; i < segments; ++i) {
+		int j = (i + 1) % segments;
+
+		int cb_i = i;
+		int cb_j = j;
+		int sb_i = i + segments;
+		int sb_j = j + segments;
+		int st_i = i + 2 * segments;
+		int st_j = j + 2 * segments;
+		int ct_i = i + 3 * segments;
+		int ct_j = j + 3 * segments;
+
+		add_quad(sb_i, sb_j, st_j, st_i);
+		add_tri(bottom_center, cb_j, cb_i);
+		add_tri(top_center, ct_i, ct_j);
+	}
+
+	SetAttr<pxr::VtVec3fArray>(prim, pxr::UsdGeomTokens->points, points,
+	                           pxr::SdfValueRoleNames->Point);
+	SetAttr<pxr::VtIntArray>(prim, pxr::UsdGeomTokens->faceVertexCounts,
+	                         face_counts);
+	SetAttr<pxr::VtIntArray>(prim, pxr::UsdGeomTokens->faceVertexIndices,
+	                         face_indices);
+	SetAttr<pxr::TfToken>(prim, pxr::UsdGeomTokens->subdivisionScheme,
+	                      pxr::UsdGeomTokens->none);
+
+	SetAttr<pxr::VtVec3fArray>(
+	    prim, pxr::UsdGeomTokens->extent,
+	    {
+	        pxr::GfVec3f(static_cast<float>(-radius),
+	                     static_cast<float>(-radius), static_cast<float>(z0)),
+	        pxr::GfVec3f(static_cast<float>(radius), static_cast<float>(radius),
+	                     static_cast<float>(z1)),
+	    },
+	    pxr::SdfValueRoleNames->Point);
+}
+
 export void make_hollow_cylinder(const pxr::SdfLayerHandle &layer,
                                  const pxr::SdfPath &path, double outer_radius,
                                  double thickness, double height, int segments,
