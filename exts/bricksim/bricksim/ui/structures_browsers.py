@@ -11,7 +11,7 @@ from bricksim.colors import parse_color
 
 class LegoStructuresBrowser:
     MAX_VISIBLE = 100
-    NUM_BRICKS_LIMIT = 50
+    NUM_BRICKS_LIMIT = 100
 
     def __init__(self, main_ui: LegoUI) -> None:
         self._window = ui.Window("StableText2Brick Structures", width=500, height=600)
@@ -134,6 +134,13 @@ class LegoStructuresBrowser:
                 ui.Label("No matches.", height=0)
                 return
 
+            with ui.HStack(spacing=8, height=0):
+                ui.Spacer(width=5)
+                ui.Label("Category", width=80, height=0, ellipsize=True)
+                ui.Label("Model", width=240, height=0, ellipsize=True)
+                ui.Label("Bricks", width=50, height=0, alignment=ui.Alignment.RIGHT_CENTER)
+                ui.Label("Caption", height=0, ellipsize=True)
+
             for idx, item in enumerate(shown):
                 selected = self._selected_index == idx
                 bg_color = 0x40808080 if selected else 0x00000000
@@ -145,6 +152,7 @@ class LegoStructuresBrowser:
                         ui.Spacer(width=5)
                         ui.Label(f"[{item.category}]", width=80, height=0, ellipsize=True)
                         ui.Label(item.model_id, width=240, height=0, ellipsize=True)
+                        ui.Label(str(item.num_bricks), width=50, height=0, alignment=ui.Alignment.RIGHT_CENTER)
                         ui.Label(item.caption, height=0, ellipsize=True)
 
                 def _on_single_click(x, y, button, modifiers, idx=idx):
