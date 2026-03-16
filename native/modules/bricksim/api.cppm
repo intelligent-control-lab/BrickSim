@@ -714,4 +714,19 @@ export void update_part_prototypes() {
 	usd_graph().update_part_prototypes();
 }
 
+export using PhysicsStepProfiling = bricksim::PhysicsStepProfiling;
+
+export PhysicsStepProfiling get_last_step_profiling() {
+	auto *physics_graph = lego_world().physics_graph();
+	if (!physics_graph) {
+		throw std::runtime_error("Physics graph is not available");
+	}
+	return physics_graph->last_step_profiling();
+}
+
+export std::string repr_physics_step_profiling(const PhysicsStepProfiling &p) {
+	return std::format("PhysicsStepProfiling(sim_time={}, step_time={:.3f} ms)",
+	                   p.sim_time, p.step_time * 1000.0);
+}
+
 } // namespace bricksim::api

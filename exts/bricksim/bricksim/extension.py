@@ -5,6 +5,9 @@ class BrickSimExtension(omni.ext.IExt):
         self._init_ui()
 
     def on_shutdown(self):
+        if getattr(self, "_frame_time_hud", None) is not None:
+            self._frame_time_hud.destroy()
+            self._frame_time_hud = None
         if getattr(self, "_connection_overlay", None) is not None:
             self._connection_overlay.destroy()
             self._connection_overlay = None
@@ -37,6 +40,9 @@ class BrickSimExtension(omni.ext.IExt):
 
         from bricksim.ui.connection_overlay import ConnectionOverlayController
         self._connection_overlay = ConnectionOverlayController()
+
+        from bricksim.ui.frame_time_hud import FrameTimeHudController
+        self._frame_time_hud = FrameTimeHudController()
 
         from bricksim.ui.main_ui import LegoUI
         self._ui = LegoUI()

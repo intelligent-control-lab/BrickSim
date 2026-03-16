@@ -113,6 +113,34 @@ physx::PxVec3 compute_angular_momentum(physx::PxRigidDynamic *rb) {
 	return q_WM.rotate(rb->getMassSpaceInertiaTensor().multiply(omega_M));
 }
 
+export struct PhysicsStepProfiling {
+	std::int64_t sim_time{};
+	double step_time{};
+
+	void reset() {
+		*this = {};
+	}
+
+	class PhysicsStepProfilingCounter {
+	  private:
+		PhysicsStepProfiling *p;
+		std::chrono::time_point<std::chrono::high_resolution_clock> start_time;
+
+	  public:
+		PhysicsStepProfilingCounter(PhysicsStepProfiling *p)
+		    : p(p), start_time(std::chrono::high_resolution_clock::now()) {}
+		~PhysicsStepProfilingCounter() {
+			auto end_time = std::chrono::high_resolution_clock::now();
+			p->step_time +=
+			    std::chrono::duration<double>(end_time - start_time).count();
+		}
+	};
+
+	PhysicsStepProfilingCounter counter() {
+		return PhysicsStepProfilingCounter(this);
+	}
+};
+
 export template <class Ps, class Hooks> class PhysicsLegoGraph;
 
 export template <PartLike... Ps, class Hooks>
@@ -676,6 +704,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 	}
 
 	void do_pre_step() {
+		current_step_profiling_.reset();
+		auto _ = current_step_profiling_.counter();
+
 		for (PartId pid : parts_to_validate_) {
 			validate_part_actor(pid);
 		}
@@ -698,40 +729,45 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			throw std::runtime_error(
 			    "do_post_step called without matching do_pre_step");
 		}
-		auto pending_assemblies = sim_out_.consume_assemblies();
-		sim_out_.swap_debug_info_buffers();
-		populate_rigid_info_map();
-		in_simulation_step_ = false;
-		auto pending_disassemblies = compute_breakages();
+		{
+			auto _ = current_step_profiling_.counter();
 
-		if constexpr (EnableBreakage) {
-			for (ConnSegId csid : pending_disassemblies) {
-				const auto *cs_entry =
-				    topology_.connection_segments().find(csid);
-				ConnSegRef csref = cs_entry->template key<ConnSegRef>();
-				ConnectionSegment conn_seg = cs_entry->value().wrapped();
-				bool disconnected = topology_.disconnect(csid).has_value();
-				if (disconnected) {
-					if constexpr (HasOnDisassembledHook) {
+			auto pending_assemblies = sim_out_.consume_assemblies();
+			sim_out_.swap_debug_info_buffers();
+			populate_rigid_info_map();
+			in_simulation_step_ = false;
+			auto pending_disassemblies = compute_breakages();
+
+			if constexpr (EnableBreakage) {
+				for (ConnSegId csid : pending_disassemblies) {
+					const auto *cs_entry =
+					    topology_.connection_segments().find(csid);
+					ConnSegRef csref = cs_entry->template key<ConnSegRef>();
+					ConnectionSegment conn_seg = cs_entry->value().wrapped();
+					bool disconnected = topology_.disconnect(csid).has_value();
+					if (disconnected) {
+						if constexpr (HasOnDisassembledHook) {
+							if (hooks_) {
+								hooks_->on_disassembled(csid, csref, conn_seg);
+							}
+						}
+					}
+				}
+			}
+			for (const auto &[csref, conn_seg] : pending_assemblies) {
+				const auto &[stud_if, hole_if] = csref;
+				std::optional<ConnSegId> csid =
+				    topology_.connect(stud_if, hole_if, conn_seg);
+				if (csid.has_value()) {
+					if constexpr (HasOnAssembledHook) {
 						if (hooks_) {
-							hooks_->on_disassembled(csid, csref, conn_seg);
+							hooks_->on_assembled(*csid, csref, conn_seg);
 						}
 					}
 				}
 			}
 		}
-		for (const auto &[csref, conn_seg] : pending_assemblies) {
-			const auto &[stud_if, hole_if] = csref;
-			std::optional<ConnSegId> csid =
-			    topology_.connect(stud_if, hole_if, conn_seg);
-			if (csid.has_value()) {
-				if constexpr (HasOnAssembledHook) {
-					if (hooks_) {
-						hooks_->on_assembled(*csid, csref, conn_seg);
-					}
-				}
-			}
-		}
+		last_step_profiling_ = current_step_profiling_;
 		sim_time_++;
 	}
 
@@ -763,6 +799,10 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 		return sim_time_;
 	}
 
+	PhysicsStepProfiling last_step_profiling() const {
+		return last_step_profiling_;
+	}
+
   private:
 	MetricSystem metrics_;
 	physx::PxPhysics *px_;
@@ -785,6 +825,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 	bool in_simulation_step_{false};
 	std::int64_t sim_time_{};
+
+	PhysicsStepProfiling current_step_profiling_{};
+	PhysicsStepProfiling last_step_profiling_{};
 
 	void validate_part_actor(PartId pid) {
 		typename TopologyGraph::PartConstEntry entry =

@@ -290,4 +290,15 @@ PYBIND11_MODULE(_native, m) {
 
 	m.def("update_part_prototypes", &update_part_prototypes,
 	      "Update the part prototypes prims in the current stage");
+
+	pybind11::class_<PhysicsStepProfiling>(
+	    m, "PhysicsStepProfiling",
+	    "Profiling information for a physics simulation step.")
+	    .def_readonly("sim_time", &PhysicsStepProfiling::sim_time)
+	    .def_readonly("step_time", &PhysicsStepProfiling::step_time)
+	    .def("__repr__", &repr_physics_step_profiling);
+
+	m.def(
+	    "get_last_step_profiling", &get_last_step_profiling,
+	    "Get the profiling information for the last physics simulation step.");
 }
