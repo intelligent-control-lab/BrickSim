@@ -1,31 +1,39 @@
 import asyncio
+import json
 import os
 import traceback
+import math
 import numpy as np
 import omni.kit.app  # pyright: ignore
-from typing import Optional
+from typing import Any, Optional
+from pxr import UsdPhysics, Usd, Gf
 from isaacsim.core.api.world import World
-from isaacsim.core.prims import SingleArticulation, SingleXFormPrim
+from isaacsim.core.api.materials import PhysicsMaterial
+from isaacsim.core.prims import SingleArticulation, SingleXFormPrim, SingleGeometryPrim
 from isaacsim.core.utils.types import ArticulationAction
-from isaacsim.core.utils.stage import open_stage_async, add_reference_to_stage
-from bricksim import allocate_brick_part, parse_color, create_connection
-from lerobot.teleoperators.so101_leader import SO101LeaderConfig, SO101Leader
+from isaacsim.core.utils.stage import open_stage_async, add_reference_to_stage, get_current_stage
+from bricksim import allocate_brick_part, parse_color, create_connection, AssemblyThresholds, set_assembly_thresholds, BreakageThresholds, set_breakage_thresholds, get_breakage_thresholds
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-LEADER_PORT = "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5A7C123160-if00"
+MODE = "TELEOP"  # "TELEOP", "RECORD", "REPLAY"
+RECORD_FILEPATH = os.path.join(SCRIPT_DIR, "demo_teleop_record.jsonl")
+LEADER_PORT = "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5AAF288330-if00"
 LEADER_ID = "my_lerobot_leader"
-MAX_JOINT_STEP = 0.05  # rad per physics step (~3 degrees)
+MAX_JOINT_STEP = 0.1  # rad per physics step
+VALID_MODES = ("TELEOP", "RECORD", "REPLAY")
 
 def connect_leader():
-    leader_config = SO101LeaderConfig(port=LEADER_PORT, id=LEADER_ID)
-    leader = SO101Leader(leader_config)
+    from lerobot.teleoperators.so_leader import SOLeaderTeleopConfig, SOLeader
+
+    leader_config = SOLeaderTeleopConfig(port=LEADER_PORT, id=LEADER_ID)
+    leader = SOLeader(leader_config)
     try:
         leader.connect(calibrate=False)
         return leader
     except Exception:
         return None
 
-def disconnect_leader(leader: SO101Leader):
+def disconnect_leader(leader: Any):
     if leader.is_connected:
         try:
             leader.disconnect()
@@ -33,7 +41,7 @@ def disconnect_leader(leader: SO101Leader):
             print("Exception while disconnecting leader:")
             traceback.print_exc()
 
-def read_leader_action(leader: SO101Leader) -> Optional[np.ndarray]:
+def read_leader_action(leader: Any) -> Optional[np.ndarray]:
     try:
         action = leader.get_action()
     except Exception:
@@ -51,19 +59,56 @@ def read_leader_action(leader: SO101Leader) -> Optional[np.ndarray]:
     leader_action = np.asarray(values, dtype=np.float32) / 180.0 * np.pi
     return leader_action
 
+def open_record_writer(filepath: str):
+    os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
+    return open(filepath, "w", encoding="utf-8")
+
+def write_record_step(record_fp, leader_action: np.ndarray):
+    json.dump(leader_action.tolist(), record_fp)
+    record_fp.write("\n")
+    record_fp.flush()
+
+def open_replay_reader(filepath: str):
+    return open(filepath, "r", encoding="utf-8")
+
+def read_replay_step(replay_fp, expected_num_dof: int, filepath: str, line_no: int) -> Optional[np.ndarray]:
+    line = replay_fp.readline()
+    if line == "":
+        return None
+
+    try:
+        payload = json.loads(line)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in replay file {filepath!r} at line {line_no}") from exc
+
+    action = np.asarray(payload, dtype=np.float32)
+    if action.shape != (expected_num_dof,):
+        raise ValueError(
+            f"Replay action in {filepath!r} at line {line_no} has shape {action.shape}, "
+            f"expected {(expected_num_dof,)}"
+        )
+    return action
+
 async def main():
+    if MODE not in VALID_MODES:
+        raise ValueError(f"Invalid MODE {MODE!r}; expected one of {VALID_MODES}")
+
     # Initialize simulation
     app = omni.kit.app.get_app()
     if World._world_initialized:
         World.clear_instance()
     stage_path = os.path.join(SCRIPT_DIR, "../resources/demo.usda")
     await open_stage_async(stage_path)
+    stage = get_current_stage()
     world: World = World(
         backend="numpy",
         device="cpu",
         physics_prim_path="/physicsScene"
     ) 
     await world.initialize_simulation_context_async()
+
+    # Disable the cube
+    stage.GetPrimAtPath("/World/Cube").SetActive(False)
 
     # Spawn the robot
     robot_usd = os.path.join(SCRIPT_DIR, "../resources/robots/SO101/robot/robot.usd")
@@ -81,42 +126,82 @@ async def main():
     robot = SingleArticulation(prim_path=robot_prim_path, name="Robot")
     world.scene.add(robot)
 
+    # Set robot params
+    get_current_stage().GetPrimAtPath("/World/Robot/root_joint").GetAttribute("physxArticulation:solverPositionIterationCount").Set(64)
+    stage.GetPrimAtPath("/World/Robot/upper_arm_link/collisions").SetInstanceable(False)
+    stage.GetPrimAtPath("/World/Robot/moving_jaw_so101_v1_link/collisions").SetInstanceable(False)
+    pad_material = PhysicsMaterial(
+        prim_path="/World/PhysicsMaterials/FingerPad",
+        static_friction=1.0,
+        dynamic_friction=1.0,
+        restitution=0.5,
+    )
+    SingleGeometryPrim(prim_path="/World/Robot/upper_arm_link/collisions/upper_arm_so101_v1/node_STL_BINARY_").apply_physics_material(pad_material)
+    SingleGeometryPrim(prim_path="/World/Robot/moving_jaw_so101_v1_link/collisions/moving_jaw_so101_v1/node_STL_BINARY_").apply_physics_material(pad_material)
+    gripper_joint_prim = stage.GetPrimAtPath("/World/Robot/joints/gripper")
+    gripper_joint_prim.GetAttribute("drive:angular:physics:maxForce").Set(0.2)
+    gripper_joint_prim.GetAttribute("drive:angular:physics:stiffness").Set(1.0)
+
+    # Set assembly thresholds
+    assembly_thr = AssemblyThresholds()
+    assembly_thr.distance_tolerance = 0.001
+    assembly_thr.max_penetration = 0.005
+    assembly_thr.z_angle_tolerance = 5.0 * (math.pi / 180.0)
+    assembly_thr.required_force = 1.0
+    assembly_thr.yaw_tolerance = 5.0 * (math.pi / 180.0)
+    assembly_thr.position_tolerance = 0.002
+    set_assembly_thresholds(assembly_thr)
+
+    # Set breakage thresholds
+    breakage_thr = get_breakage_thresholds()
+    breakage_thr.enabled = False
+    set_breakage_thresholds(breakage_thr)
+
     # Spawn some lego
     base_plate = allocate_brick_part(
         dimensions=(20, 20, 1),
         color=parse_color("Light Gray"),
         env_id=-1,
         rot=(1.0, 0.0, 0.0, 0.0),
-        pos=(0.10, 0.1, 0.01),
+        pos=(0.10, 0.10, 0.0),
     )
-    brick_1 = allocate_brick_part(
-        dimensions=(2, 4, 3),
-        color=parse_color("Red"),
-        env_id=-1,
-        rot=(1.0, 0.0, 0.0, 0.0),
-        pos=(0.00, -0.05, 0.05),
-    )
+    base_plate_prim = stage.GetPrimAtPath(base_plate)
+    UsdPhysics.RigidBodyAPI(base_plate_prim).GetKinematicEnabledAttr().Set(True)
+    # brick_1 = allocate_brick_part(
+        # dimensions=(2, 4, 3),
+        # color=parse_color("Red"),
+        # env_id=-1,
+        # rot=(1.0, 0.0, 0.0, 0.0),
+        # pos=(0.00, -0.05, 0.0),
+    # )
     brick_2 = allocate_brick_part(
         dimensions=(2, 4, 3),
         color=parse_color("Blue"),
         env_id=-1,
         rot=(1.0, 0.0, 0.0, 0.0),
-        pos=(0.05, -0.05, 0.05),
+        pos=(0.05, 0.22, 0.0),
     )
     brick_3 = allocate_brick_part(
         dimensions=(2, 6, 3),
         color=parse_color("Pink"),
         env_id=-1,
         rot=(1.0, 0.0, 0.0, 0.0),
-        pos=(0.10, -0.05, 0.05),
+        pos=(0.10, 0.22, 0.0),
     )
-    brick_4 = allocate_brick_part(
-        dimensions=(2, 2, 3),
-        color=parse_color("Green"),
-        env_id=-1,
-        rot=(1.0, 0.0, 0.0, 0.0),
-        pos=(0.15, -0.05, 0.05),
-    )
+    # brick_4 = allocate_brick_part(
+    #     dimensions=(2, 2, 3),
+    #     color=parse_color("Green"),
+    #     env_id=-1,
+    #     rot=(1.0, 0.0, 0.0, 0.0),
+    #     pos=(0.15, -0.05, 0.0),
+    # )
+
+    # Set camera
+    with Usd.EditContext(stage, stage.GetSessionLayer()):
+        camera = stage.GetPrimAtPath("/OmniverseKit_Persp")
+        camera.GetAttribute("focalLength").Set(18.14756)
+        camera.GetAttribute("xformOp:translate").Set(Gf.Vec3f(-0.2166, 0.51795, 0.15479))
+        camera.GetAttribute("xformOp:rotateXYZ").Set(Gf.Vec3f(83.29281, 0.0, -139.03314))
 
     # Start simulation loop
     await world.reset_async()
@@ -124,25 +209,44 @@ async def main():
 
     # Teleoperation loop
     leader = None
+    record_fp = None
+    replay_fp = None
+    replay_line_no = 0
     leader_action = np.zeros(robot.num_dof, dtype=np.float32)
+
+    if MODE == "RECORD":
+        record_fp = open_record_writer(RECORD_FILEPATH)
+    elif MODE == "REPLAY":
+        replay_fp = open_replay_reader(RECORD_FILEPATH)
+
     try:
         while True:
+            if MODE in ("TELEOP", "RECORD"):
+                # Ensure the leader is connected; if not, try to connect once.
+                if leader is None:
+                    leader = connect_leader()
+                    if leader is not None:
+                        print("Leader connected.")
 
-            # Ensure the leader is connected; if not, try to connect once.
-            if leader is None:
-                leader = connect_leader()
+                # If connected, try to read the current leader action.
                 if leader is not None:
-                    print("Leader connected.")
+                    action = read_leader_action(leader)
+                    if action is not None:
+                        leader_action = action
+                    else:
+                        print("Lost connection to leader.")
+                        disconnect_leader(leader)
+                        leader = None
 
-            # If connected, try to read the current leader action.
-            if leader is not None:
-                action = read_leader_action(leader)
-                if action is not None:
-                    leader_action = action
-                else:
-                    print("Lost connection to leader.")
-                    disconnect_leader(leader)
-                    leader = None
+                if record_fp is not None:
+                    write_record_step(record_fp, leader_action)
+            else:
+                replay_line_no += 1
+                action = read_replay_step(replay_fp, robot.num_dof, RECORD_FILEPATH, replay_line_no)
+                if action is None:
+                    print("Replay completed.")
+                    break
+                leader_action = action
 
             # Smooth / limit joint motion before sending it to physics
             q = robot.get_joint_positions()
@@ -165,3 +269,7 @@ async def main():
         # Always try to cleanly close the serial port on exit
         if leader is not None:
             disconnect_leader(leader)
+        if record_fp is not None:
+            record_fp.close()
+        if replay_fp is not None:
+            replay_fp.close()
