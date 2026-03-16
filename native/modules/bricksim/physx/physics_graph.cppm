@@ -705,6 +705,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 
 	void do_pre_step() {
 		current_step_profiling_.reset();
+		current_step_profiling_.sim_time = sim_time_;
 		auto _ = current_step_profiling_.counter();
 
 		for (PartId pid : parts_to_validate_) {
