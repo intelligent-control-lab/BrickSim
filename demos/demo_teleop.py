@@ -5,6 +5,8 @@ import traceback
 import math
 import numpy as np
 import omni.kit.app  # pyright: ignore
+import omni.timeline  # pyright: ignore
+from omni.kit.viewport.utility import capture_viewport_to_file, get_active_viewport, get_viewport_from_window_name  # pyright: ignore
 from typing import Any, Optional
 from pxr import UsdPhysics, Usd, Gf
 from isaacsim.core.api.world import World
@@ -17,10 +19,12 @@ from bricksim import allocate_brick_part, parse_color, create_connection, Assemb
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODE = "TELEOP"  # "TELEOP", "RECORD", "REPLAY"
 RECORD_FILEPATH = os.path.join(SCRIPT_DIR, "demo_teleop_record.jsonl")
+SAVE_VIDEO = True
 LEADER_PORT = "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5AAF288330-if00"
 LEADER_ID = "my_lerobot_leader"
 MAX_JOINT_STEP = 0.1  # rad per physics step
 VALID_MODES = ("TELEOP", "RECORD", "REPLAY")
+SCREENSHOTS_DIR = os.path.join(SCRIPT_DIR, "screenshots")
 
 def connect_leader():
     from lerobot.teleoperators.so_leader import SOLeaderTeleopConfig, SOLeader
@@ -213,11 +217,19 @@ async def main():
     replay_fp = None
     replay_line_no = 0
     leader_action = np.zeros(robot.num_dof, dtype=np.float32)
+    video_viewport = None
+    video_frame_idx = 0
 
     if MODE == "RECORD":
         record_fp = open_record_writer(RECORD_FILEPATH)
     elif MODE == "REPLAY":
         replay_fp = open_replay_reader(RECORD_FILEPATH)
+
+    if SAVE_VIDEO:
+        os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
+        video_viewport = get_active_viewport() or get_viewport_from_window_name("Viewport")
+        if video_viewport is None:
+            raise RuntimeError("No viewport found. Make sure a Viewport window is open.")
 
     try:
         while True:
@@ -254,6 +266,16 @@ async def main():
             delta = desired - q
             delta = np.clip(delta, -MAX_JOINT_STEP, MAX_JOINT_STEP)
             q_target = q + delta
+            if SAVE_VIDEO:
+                video_frame_idx += 1
+                video_capture = capture_viewport_to_file(
+                    video_viewport,
+                    os.path.join(SCREENSHOTS_DIR, f"{video_frame_idx:06d}.png"),
+                )
+                timeline = omni.timeline.get_timeline_interface()
+                timeline.pause()
+                await video_capture.wait_for_result(completion_frames=0)
+                timeline.play()
             robot.apply_action(ArticulationAction(joint_positions=q_target))
             await app.next_update_async()
 
