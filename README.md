@@ -19,8 +19,6 @@
 
 ## Quickstart
 
-For the currently supported x86_64 Linux setup:
-
 ```bash
 git clone --recursive https://github.com/intelligent-control-lab/BrickSim BrickSim
 cd BrickSim
@@ -41,7 +39,10 @@ pip install -e exts/bricksim -v
 
 ## Prerequisites
 
-BrickSim currently supports Isaac Sim 5.1 on x86_64 Linux. Support for other platforms is coming.
+- BrickSim currently supports the x86-64 Linux platform. Support for other platforms is coming.
+- Ubuntu 22.04+ or another Linux distribution with `GLIBC >= 2.35`, `GLIBCXX >= 3.4.30`, and `CXXABI >= 1.3.13`
+- Python 3.11
+- A working NVIDIA driver compatible with Isaac Sim RTX requirements
 
 ## Installation
 
@@ -65,7 +66,9 @@ source .venv/bin/activate
 sudo apt install build-essential wget python3.11-full xz-utils zstd
 ```
 
-### 4. Install Isaac Sim 5.1.0
+### 4. Install Isaac Sim
+
+Only Isaac Sim 5.1 is currently supported.
 
 ```bash
 pip install "isaacsim[all,extscache]==5.1.0" --extra-index-url https://pypi.nvidia.com
