@@ -16,12 +16,13 @@ from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.core.utils.stage import open_stage_async, add_reference_to_stage, get_current_stage
 from bricksim import allocate_brick_part, parse_color, create_connection, AssemblyThresholds, set_assembly_thresholds, BreakageThresholds, set_breakage_thresholds, get_breakage_thresholds
 
+LEADER_PORT = "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5AAF288330-if00" #### ---- CHANGE THIS TO YOUR SERIAL PORT ---- ####
+LEADER_ID = "my_lerobot_leader" #### ---- CHANGE THIS TO YOUR LEADER ID ---- ####
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODE = "TELEOP"  # "TELEOP", "RECORD", "REPLAY"
 RECORD_FILEPATH = os.path.join(SCRIPT_DIR, "demo_teleop_record.jsonl")
 SAVE_VIDEO = True
-LEADER_PORT = "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5AAF288330-if00"
-LEADER_ID = "my_lerobot_leader"
 MAX_JOINT_STEP = 0.1  # rad per physics step
 VALID_MODES = ("TELEOP", "RECORD", "REPLAY")
 SCREENSHOTS_DIR = os.path.join(SCRIPT_DIR, "screenshots")

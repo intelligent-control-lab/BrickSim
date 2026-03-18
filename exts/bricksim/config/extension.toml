@@ -6,11 +6,11 @@ version = "0.1.0"
 # Description
 category = "isaaclab"
 
-title = "Bricksim"
+title = "BrickSim"
 author = "Haowei Wen"
 maintainer = "Haowei Wen"
-description="Bricksim LEGO assembly simulator"
-repository = "https://github.com/yushijinhun/lego-robot.git"
+description="BrickSim Simulator"
+repository = "https://github.com/intelligent-control-lab/BrickSim.git"
 keywords = ["lego", "isaaclab"]
 
 [dependencies]

@@ -21,7 +21,7 @@ namespace bricksim {
 // Offset: 1008 bytes
 // Size: 8 bytes, alignment 8 bytes
 //
-// /home/yushijinhun/repos/PhysX/physx/source/physx/src/NpScene.h:653
+// physx/source/physx/src/NpScene.h:653
 // field mElapsedTime
 // Type: PxReal (aka float)
 // Offset: 968 bytes
