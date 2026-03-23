@@ -301,6 +301,10 @@ export struct SimpleBrickAuthor {
 				pxr::VtVec3fArray positions;
 				int pillar_count = std::max(dimensions[0], dimensions[1]) - 1;
 				positions.resize(pillar_count);
+				pxr::VtQuathArray instance_orientations(
+				    pillar_count, pxr::GfQuath::GetIdentity());
+				pxr::VtVec3fArray instance_scales(
+				    pillar_count, pxr::GfVec3f{1.0f, 1.0f, 1.0f});
 				for (int k = 0; k < pillar_count; k++) {
 					double x_offset =
 					    dimensions[0] == 1
@@ -329,6 +333,11 @@ export struct SimpleBrickAuthor {
 				SetAttr<pxr::VtVec3fArray>(
 				    pillars, pxr::UsdGeomTokens->positions, positions,
 				    pxr::SdfValueRoleNames->Point);
+				SetAttr<pxr::VtQuathArray>(pillars,
+				                           pxr::UsdGeomTokens->orientations,
+				                           instance_orientations);
+				SetAttr<pxr::VtVec3fArray>(pillars, pxr::UsdGeomTokens->scales,
+				                           instance_scales);
 				SetAttr<pxr::VtIntArray>(pillars,
 				                         pxr::UsdGeomTokens->protoIndices,
 				                         pxr::VtIntArray(positions.size(), 0));
@@ -354,6 +363,10 @@ export struct SimpleBrickAuthor {
 			                materialPath);
 			pxr::VtVec3fArray positions;
 			positions.resize((dimensions[0] - 1) * (dimensions[1] - 1));
+			pxr::VtQuathArray instance_orientations(
+			    positions.size(), pxr::GfQuath::GetIdentity());
+			pxr::VtVec3fArray instance_scales(positions.size(),
+			                                  pxr::GfVec3f{1.0f, 1.0f, 1.0f});
 			for (int i = 0; i < dimensions[0] - 1; i++) {
 				for (int j = 0; j < dimensions[1] - 1; j++) {
 					double x_offset =
@@ -378,6 +391,10 @@ export struct SimpleBrickAuthor {
 			SetAttr<pxr::VtVec3fArray>(tubes, pxr::UsdGeomTokens->positions,
 			                           positions,
 			                           pxr::SdfValueRoleNames->Point);
+			SetAttr<pxr::VtQuathArray>(tubes, pxr::UsdGeomTokens->orientations,
+			                           instance_orientations);
+			SetAttr<pxr::VtVec3fArray>(tubes, pxr::UsdGeomTokens->scales,
+			                           instance_scales);
 			SetAttr<pxr::VtIntArray>(tubes, pxr::UsdGeomTokens->protoIndices,
 			                         pxr::VtIntArray(positions.size(), 0));
 		}
@@ -395,6 +412,10 @@ export struct SimpleBrickAuthor {
 
 		pxr::VtVec3fArray positions;
 		positions.resize(dimensions[0] * dimensions[1]);
+		pxr::VtQuathArray instance_orientations(positions.size(),
+		                                        pxr::GfQuath::GetIdentity());
+		pxr::VtVec3fArray instance_scales(positions.size(),
+		                                  pxr::GfVec3f{1.0f, 1.0f, 1.0f});
 		for (int i = 0; i < dimensions[0]; i++) {
 			for (int j = 0; j < dimensions[1]; j++) {
 				double x_offset =
@@ -419,6 +440,10 @@ export struct SimpleBrickAuthor {
 		    .Add(studPrototypePath);
 		SetAttr<pxr::VtVec3fArray>(studs, pxr::UsdGeomTokens->positions,
 		                           positions, pxr::SdfValueRoleNames->Point);
+		SetAttr<pxr::VtQuathArray>(studs, pxr::UsdGeomTokens->orientations,
+		                           instance_orientations);
+		SetAttr<pxr::VtVec3fArray>(studs, pxr::UsdGeomTokens->scales,
+		                           instance_scales);
 		SetAttr<pxr::VtIntArray>(studs, pxr::UsdGeomTokens->protoIndices,
 		                         pxr::VtIntArray(positions.size(), 0));
 
