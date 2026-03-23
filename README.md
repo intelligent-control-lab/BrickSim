@@ -6,8 +6,8 @@
 <p>
   <a href="https://arxiv.org/abs/2603.16853"><img src="https://img.shields.io/badge/arXiv-2603.16853-b31b1b.svg?logo=arxiv" alt="arXiv 2603.16853"></a>
   <a href="https://docs.isaacsim.omniverse.nvidia.com/5.1.0/index.html"><img src="https://img.shields.io/badge/Isaac%20Sim-5.1-76B900?logo=nvidia&amp;logoColor=white" alt="Isaac Sim 5.1"></a>
-  <img src="https://img.shields.io/badge/C%2B%2B-26-00599C?logo=cplusplus&amp;logoColor=white" alt="C++26">
-  <img src="https://img.shields.io/badge/python-3.11-3776AB?logo=python&amp;logoColor=white" alt="Python 3.11">
+  <a href="https://en.cppreference.com/w/cpp/26"><img src="https://img.shields.io/badge/C%2B%2B-26-00599C?logo=cplusplus&amp;logoColor=white" alt="C++26"></a>
+  <a href="https://docs.python.org/3.11/"><img src="https://img.shields.io/badge/python-3.11-3776AB?logo=python&amp;logoColor=white" alt="Python 3.11"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="MIT License"></a>
 </p>
 
