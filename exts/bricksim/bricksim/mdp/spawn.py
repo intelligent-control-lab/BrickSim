@@ -1,14 +1,32 @@
 from dataclasses import MISSING
 from typing import Callable
 
-from isaaclab.sim import (PreviewSurfaceCfg, RigidBodyPropertiesCfg, SpawnerCfg, bind_visual_material, clone,
-                          get_current_stage, modify_rigid_body_properties,
-                          standardize_xform_ops)
-from isaaclab.utils import configclass
 from bricksim._native import allocate_unmanaged_brick_part
 from bricksim.colors import parse_color
-from pxr import Usd, UsdPhysics
+from isaaclab.sim import (PreviewSurfaceCfg, RigidBodyPropertiesCfg,
+                          SpawnerCfg, bind_visual_material, clone,
+                          get_current_stage, modify_rigid_body_properties)
+from isaaclab.utils import configclass
+from isaacsim.core.utils.xforms import reset_and_set_xform_ops
+from pxr import Gf, Usd, UsdGeom, UsdPhysics
 
+
+def _reset_brick_xform_ops(
+    prim: Usd.Prim,
+    translation: tuple[float, float, float] | None = None,
+    orientation: tuple[float, float, float, float] | None = None,
+) -> None:
+    xformable = UsdGeom.Xformable(prim)
+    local_transform = Gf.Transform(xformable.GetLocalTransformation())
+    resolved_translation = (
+        Gf.Vec3d(local_transform.GetTranslation()) if translation is None else Gf.Vec3d(*translation)
+    )
+    resolved_orientation = (
+        # BrickSim spawn inputs use WXYZ quaternions here.
+        Gf.Quatd(local_transform.GetRotation().GetQuat()) if orientation is None else Gf.Quatd(*orientation)
+    )
+    resolved_scale = Gf.Vec3d(local_transform.GetScale())
+    reset_and_set_xform_ops(prim, resolved_translation, resolved_orientation, resolved_scale)
 
 @clone
 def spawn_brick_part(
@@ -29,7 +47,7 @@ def spawn_brick_part(
         prim = stage.GetPrimAtPath(prim_path)
         if not prim.IsValid():
             raise RuntimeError(f"Failed to spawn BrickPart at '{prim_path}'.")
-    standardize_xform_ops(prim, translation=translation, orientation=orientation)
+    _reset_brick_xform_ops(prim, translation=translation, orientation=orientation)
     if cfg.rigid_props is not None:
         modify_rigid_body_properties(prim_path, cfg.rigid_props)
     return prim
@@ -82,7 +100,7 @@ def spawn_marker_brick_part(
         prim = stage.GetPrimAtPath(prim_path)
         if not prim.IsValid():
             raise RuntimeError(f"Failed to spawn BrickPart at '{prim_path}'.")
-    standardize_xform_ops(prim, translation=translation, orientation=orientation)
+    _reset_brick_xform_ops(prim, translation=translation, orientation=orientation)
     prim.SetInstanceable(False)
     prim.RemoveAPI(UsdPhysics.RigidBodyAPI)
     stage.OverridePrim(prim.GetPath().AppendChild("BodyCollider")).SetActive(False)
