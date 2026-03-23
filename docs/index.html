@@ -2,10 +2,10 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <meta name="description" content="APEX-MR">
+    <meta name="description" content="BrickSim">
     <meta name="keywords" content="Bimanual Manipulation, Multi-Robot Asynchronous Coordination, Cooperative Assembly">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>APEX-MR</title>
+    <title>BrickSim</title>
 
     <link
       href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
@@ -29,13 +29,13 @@
     <link rel="icon" href="./apex.ico">
 
     <!-- facebook -->
-    <meta property="og:site_name" content="APEX-MR" />
+    <meta property="og:site_name" content="BrickSim" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="APEX-MR: Multi-Robot Asynchronous Planning and Execution for Cooperative Assembly" />
+    <meta property="og:title" content="BrickSim: Multi-Robot Asynchronous Planning and Execution for Cooperative Assembly" />
     <meta property="og:description" content="Bimanual manipulation for cooperative assembly." />
-    <meta property="og:url" content="https://intelligent-control-lab.github.io/APEX-MR/" />
-    <meta property="og:image"content="https://intelligent-control-lab.github.io/APEX-MR/static/images/preview.jpg" />
-    <meta property="og:image:secure"content="https://intelligent-control-lab.github.io/APEX-MR/static/images/preview.jpg" />
+    <meta property="og:url" content="https://intelligent-control-lab.github.io/BrickSim/" />
+    <meta property="og:image"content="https://intelligent-control-lab.github.io/BrickSim/static/images/preview.jpg" />
+    <meta property="og:image:secure"content="https://intelligent-control-lab.github.io/BrickSim/static/images/preview.jpg" />
     <!-- <meta property="og:image:width" content="1600" /> -->
     <!-- <meta property="og:image:height" content="900" /> -->
 
@@ -44,10 +44,10 @@
 
     <script src="https://www.youtube.com/iframe_api"></script>
     <meta name="twitter:card" content="player" />
-    <meta name="twitter:title" content="APEX-MR: Multi-Robot Asynchronous Planning and Execution for Cooperative Assembly" />
+    <meta name="twitter:title" content="BrickSim: Multi-Robot Asynchronous Planning and Execution for Cooperative Assembly" />
     <meta name="twitter:description" content="Bimanual manipulation for cooperative assembly." />
-    <meta name="twitter:url" content="https://intelligent-control-lab.github.io/APEX-MR/" />
-    <meta name="twitter:image" content="https://intelligent-control-lab.github.io/APEX-MR/static/images/preview.jpg" />
+    <meta name="twitter:url" content="https://intelligent-control-lab.github.io/BrickSim/" />
+    <meta name="twitter:image" content="https://intelligent-control-lab.github.io/BrickSim/static/images/preview.jpg" />
 
     <style>
       .video-container {
@@ -129,7 +129,7 @@
         <div class="container">
           <div class="columns is-centered">
             <div class="column has-text-centered">
-              <h1 class="title is-1 publication-title">APEX-MR: Multi-Robot Asynchronous Planning </br> and Execution for Cooperative Assembly</h1>
+              <h1 class="title is-1 publication-title">BrickSim: Multi-Robot Asynchronous Planning </br> and Execution for Cooperative Assembly</h1>
               <div class="is-size-5 publication-authors">
                 <span class="author-block">
                   <a href="https://philip-huang.github.io/">Philip Huang </a><sup>*, 1</sup>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
@@ -178,7 +178,7 @@
 
                   <!-- code (github) link-->
                   <span class="link-block">
-                    <a href="https://github.com/intelligent-control-lab/APEX-MR"
+                    <a href="https://github.com/intelligent-control-lab/BrickSim"
                       class="external-link button is-normal is-rounded is-dark">
                       <span class="icon">
                         <i class="fab fa-github" aria-hidden="true"></i>
@@ -238,12 +238,12 @@
               <p>
                 Compared to a single-robot workstation, a multi-robot system offers several advantages: 1) it expands the system’s workspace, 2) improves task efficiency, and more importantly, 3) enables robots to achieve significantly more complex and dexterous tasks, such as cooperative assembly. 
                 However, coordinating the tasks and motions of multiple robots is challenging due to issues, e.g., system uncertainty, task efficiency, algorithm scalability, and safety concerns. 
-                To address these challenges, this paper studies multi-robot coordination and proposes APEX-MR, <b>an asynchronous planning and execution framework</b> designed to safely and efficiently coordinate multiple robots to achieve cooperative assembly, e.g., LEGO assembly. 
-                In particular, APEX-MR provides a systematic approach to post-process multi-robot tasks and motion plans to enable robust asynchronous execution under uncertainty. 
-                Experimental results demonstrate that APEX-MR can significantly speed up the execution time of many long-horizon LEGO assembly tasks by <b>48%</b> compared to sequential planning and <b>36%</b> compared to synchronous planning on average. 
-                To further demonstrate the performance, we deploy APEX-MR to a dual-arm system to perform physical LEGO assembly.
+                To address these challenges, this paper studies multi-robot coordination and proposes BrickSim, <b>an asynchronous planning and execution framework</b> designed to safely and efficiently coordinate multiple robots to achieve cooperative assembly, e.g., LEGO assembly. 
+                In particular, BrickSim provides a systematic approach to post-process multi-robot tasks and motion plans to enable robust asynchronous execution under uncertainty. 
+                Experimental results demonstrate that BrickSim can significantly speed up the execution time of many long-horizon LEGO assembly tasks by <b>48%</b> compared to sequential planning and <b>36%</b> compared to synchronous planning on average. 
+                To further demonstrate the performance, we deploy BrickSim to a dual-arm system to perform physical LEGO assembly.
                 To our knowledge, this is the <i>first</i> robotic system capable of performing customized LEGO assembly using commercial LEGO bricks. 
-                The experiment results demonstrate that the dual-arm system, with APEX-MR, can safely coordinate robot motions, efficiently collaborate, and construct complex LEGO structures.
+                The experiment results demonstrate that the dual-arm system, with BrickSim, can safely coordinate robot motions, efficiently collaborate, and construct complex LEGO structures.
               </p>
             </div>
           </div>
@@ -304,21 +304,21 @@
         <div id="method_video" class="columns is-centered has-text-centered">
                 <div class="column is-two-thirds">
                   <h2 class="title is-2" style="text-align: center;">
-                    APEX-MR:
+                    BrickSim:
                   </h2>
                   <h3 class="title is-3" style="text-align: center;">
                     An <b>Asynchronous</b> Planning and Execution Framework
                   </h3><div class="content has-text-justified">
                     <p>
-                      Given an assembly plan and the robot skill library (detailed below), APEX-MR distributes the tasks to different robots and generates a sequential task plan. 
+                      Given an assembly plan and the robot skill library (detailed below), BrickSim distributes the tasks to different robots and generates a sequential task plan. 
                       In particular, it formulates the task distribution as an integer-linear programming (ILP) to maximize efficiency.
-                      To enable seamless collaboration, APEX-MR extends the Temporal Plan Graph (TPG) to multiple robots.
+                      To enable seamless collaboration, BrickSim extends the Temporal Plan Graph (TPG) to multiple robots.
                       It post-processes the sequential task plan and generates an asynchronous execution plan.
                       More importantly, the asynchronous execution plan accommodates execution delays and contingencies to ensure robust and safe bimanual manipulation under uncertainty.
-                      APEX-MR significantly improves task efficiency, scales to large-scale/long-horizon tasks, is robust against uncertainty, and ensures collaboration safety.
+                      BrickSim significantly improves task efficiency, scales to large-scale/long-horizon tasks, is robust against uncertainty, and ensures collaboration safety.
                     </p>
                     </div>
-                  <img src="./resources/apex-mr_system.png" alt="Overview" style="width:100%"/>
+                  <img src="./resources/BrickSim_system.png" alt="Overview" style="width:100%"/>
                 </div>
           </div>
       </div>
@@ -334,7 +334,7 @@
                   <div class="content has-text-justified">
                   <p>Robots need different skills to perform different tasks, and we assume the required skills are pre-learned. 
                   A skill can be a learned policy, a parameterized motion, or even a simple trajectory.
-                  APEX-MR selects appropriate skills from the library and coordinates the robots to accomplish the task as shown above.
+                  BrickSim selects appropriate skills from the library and coordinates the robots to accomplish the task as shown above.
                   Specifically in Lego assembly, we learn the following robot skills.
                   </p>
                 </div>
@@ -354,10 +354,10 @@
                       Efficient and Seamless Bimanual Manipulation
                     </h3><div class="content has-text-justified">
                       <p>
-                        The TPG post-processing and shortcutting in APEX-MR significantly reduces makespan by 48% and wait time by 85% on average 
+                        The TPG post-processing and shortcutting in BrickSim significantly reduces makespan by 48% and wait time by 85% on average 
                         compared to the initial sequential motion plan at the horizontal dashed line. 
-                        Compared to the synchronized motion plan, our asynchronous plans from APEX-MR are still consistently shorter and have less wait time.
-                        We show a comparison of the sequential, synchronous, and APEX-MR motion (with shortcut) plan in simulation below.
+                        Compared to the synchronized motion plan, our asynchronous plans from BrickSim are still consistently shorter and have less wait time.
+                        We show a comparison of the sequential, synchronous, and BrickSim motion (with shortcut) plan in simulation below.
                       </p>
                       </div>
                     <div>
@@ -382,7 +382,7 @@
                   </h3>
                   <div class="content has-text-justified">
                     <p>
-                      We deploy APEX-MR to a dual-industrial-arm system and demonstrate the <i>first</i> robotic system that can accomplish <b>customized</b>, <b>delicate</b> assemblies using <b>commercial</b> LEGO in REAL. All demo videos are 16x.
+                      We deploy BrickSim to a dual-industrial-arm system and demonstrate the <i>first</i> robotic system that can accomplish <b>customized</b>, <b>delicate</b> assemblies using <b>commercial</b> LEGO in REAL. All demo videos are 16x.
                     </p>
                   </div>
                   <div class="image-grid">
@@ -427,10 +427,10 @@
         <pre>
           <code>
             @inproceedings{huang2025apexmr,
-              title = {APEX-MR: Multi-Robot Asynchronous Planning and Execution for Cooperative Assembly},
+              title = {BrickSim: Multi-Robot Asynchronous Planning and Execution for Cooperative Assembly},
               author = {Huang, Philip and Liu, Ruixuan and Aggarwal, Shobhit and Liu, Changliu and Li, Jiaoyang},
               year = {2025},
-              info = {https://intelligent-control-lab.github.io/APEX-MR/},
+              info = {https://intelligent-control-lab.github.io/BrickSim/},
               booktitle = {Robotics: Science and Systems},
               url = {https://arxiv.org/abs/2503.15836}
             }
