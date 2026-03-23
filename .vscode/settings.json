@@ -1,0 +1,32 @@
+{
+    "files.exclude": {
+        "_toolchain": true,
+        "**/.thumbs": true,
+        "**/*.egg-info": true,
+        "logs": true,
+        "native/_deps": true,
+        "native/.build": true,
+        "outputs": true,
+    },
+    "files.watcherExclude": {
+        "logs": true,
+        "outputs": true,
+    },
+    "files.associations": {
+        "*.kit": "ini",
+    },
+    "python.analysis.languageServerMode": "full",
+    "python.analysis.indexing": false,
+    "python.analysis.autoImportCompletions": false,
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "debug.onTaskErrors": "debugAnyway",
+    "cmake.cmakePath": "${workspaceFolder}/_toolchain/cmake-4.2.3-linux-x86_64/bin/cmake",
+    "cmake.sourceDirectory": "${workspaceFolder}/native",
+    "cmake.useCMakePresets": "always",
+    "cmake.configureOnEdit": true,
+    "clangd.path": "${workspaceFolder}/_toolchain/clangd-wrapper.sh",
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}/native/.build/dev",
+        "--header-insertion=never",
+    ],
+}

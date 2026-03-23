@@ -1,0 +1,61 @@
+name: Build and Test 
+on:
+  push:
+  pull_request:
+jobs:
+  build:
+    name: ${{ matrix.build_type }}_amd64_linux
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
+    steps:
+      - name: Free disk space
+        run: |
+          df -h
+          echo "Removing hostedtoolcache..."
+          sudo rm -rf /opt/hostedtoolcache || true
+          echo "Removing Android SDK..."
+          sudo rm -rf /usr/local/lib/android || true
+          echo "Removing .NET SDKs..."
+          sudo rm -rf /usr/share/dotnet /etc/skel/.dotnet || true
+          echo "Removing Miniconda..."
+          sudo rm -rf /usr/share/miniconda /usr/bin/conda || true
+          echo "Removing Haskell toolchain..."
+          sudo rm -rf /usr/local/.ghcup /etc/skel/.ghcup || true
+          echo "Removing browsers (Chrome/Chromium) and drivers..."
+          sudo rm -rf /usr/local/share/chromium /usr/local/share/chromedriver-linux64 || true
+          sudo rm -rf /opt/google/chrome || true
+          sudo rm -f /usr/bin/google-chrome /usr/bin/google-chrome-stable /usr/bin/chromium /usr/bin/chromium-browser || true
+          df -h
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Cache toolchain downloads
+        uses: actions/cache@v4
+        with:
+          path: _toolchain/downloads
+          key: toolchain-downloads-${{ runner.os }}-${{ hashFiles('scripts/setup_toolchain.sh') }}
+          restore-keys: |
+            toolchain-downloads-${{ runner.os }}-
+      - name: Cache Isaac Sim deps
+        uses: actions/cache@v4
+        with:
+          path: native/_deps
+          key: isaac-deps-${{ runner.os }}-${{ hashFiles('native/cmake/FetchIsaacDeps.cmake') }}
+          restore-keys: |
+            isaac-deps-${{ runner.os }}-
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential wget xz-utils zstd
+      - name: Build and test (${{ matrix.build_type }})
+        run: |
+          RUN_TESTS=1 scripts/build.sh "${{ matrix.build_type }}"
+      - name: Upload native extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.build_type }}
+          path: exts/bricksim/bricksim/_native.*.so

@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="description" content="APEX-MR">
+    <meta name="keywords" content="Bimanual Manipulation, Multi-Robot Asynchronous Coordination, Cooperative Assembly">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>APEX-MR</title>
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
+      rel="stylesheet">
+
+    <link rel="stylesheet" href="./static/css/bulma.min.css">
+    <link rel="stylesheet" href="./static/css/bulma-carousel.min.css">
+    <link rel="stylesheet" href="./static/css/bulma-slider.min.css">
+    <link rel="stylesheet" href="./static/css/fontawesome.all.min.css">
+    <link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+    <link rel="stylesheet" href="./static/css/index.css">
+
+    <script
+      src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script defer src="./static/js/fontawesome.all.min.js"></script>
+    <script src="./static/js/bulma-carousel.min.js"></script>
+    <script src="./static/js/bulma-slider.min.js"></script>
+    <script src="./static/js/index.js"></script>
+
+    <link rel="icon" href="./apex.ico">
+
+    <!-- facebook -->
+    <meta property="og:site_name" content="APEX-MR" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="APEX-MR: Multi-Robot Asynchronous Planning and Execution for Cooperative Assembly" />
+    <meta property="og:description" content="Bimanual manipulation for cooperative assembly." />
+    <meta property="og:url" content="https://intelligent-control-lab.github.io/APEX-MR/" />
+    <meta property="og:image"content="https://intelligent-control-lab.github.io/APEX-MR/static/images/preview.jpg" />
+    <meta property="og:image:secure"content="https://intelligent-control-lab.github.io/APEX-MR/static/images/preview.jpg" />
+    <!-- <meta property="og:image:width" content="1600" /> -->
+    <!-- <meta property="og:image:height" content="900" /> -->
+
+    <meta property="article:publisher" content="https://waynekyrie.github.io/" />
+
+
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <meta name="twitter:card" content="player" />
+    <meta name="twitter:title" content="APEX-MR: Multi-Robot Asynchronous Planning and Execution for Cooperative Assembly" />
+    <meta name="twitter:description" content="Bimanual manipulation for cooperative assembly." />
+    <meta name="twitter:url" content="https://intelligent-control-lab.github.io/APEX-MR/" />
+    <meta name="twitter:image" content="https://intelligent-control-lab.github.io/APEX-MR/static/images/preview.jpg" />
+
+    <style>
+      .video-container {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        border: none;
+      }
+    
+      .video-container iframe {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        border: none;
+        border: 1px
+        solid #bbb;
+        border-radius: 10px;
+        width: 100%;
+      }
+
+      .image-grid2 {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr); /* Two columns */
+        gap: 5px; /* Space between rows and columns */
+        justify-content: center;
+        align-items: center;
+      }
+      
+      .image-grid2 img {
+          width: 100%;
+          height: auto; /* Maintain aspect ratio */
+          border-radius: 10px; /* Optional: Add rounded corners */
+          object-fit: contain;
+          aspect-ratio: 16 / 9;
+      }
+
+      .image-grid2 iframe {
+        width: 100%;
+        height: 100%;
+        aspect-ratio: 16 / 9;
+        border: 1px
+        solid #bbb;
+        border-radius: 5px;
+        object-fit: contain;
+      }
+
+      .image-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr); /* Two columns */
+        gap: 5px; /* Space between rows and columns */
+        justify-content: center;
+        align-items: center;
+      }
+      
+      .image-grid img {
+          max-width: 100%;
+          height: 100%; /* Maintain aspect ratio */
+          border-radius: 5px; /* Optional: Add rounded corners */
+      }
+
+      .image-grid iframe {
+        width: 100%;
+        height: 100%;
+        aspect-ratio: 16 / 9;
+        border: 1px
+        solid #bbb;
+        border-radius: 5px;
+        object-fit: contain;
+      }
+
+    </style>
+
+  </head>
+
+
+  <body>
+
+    <section class="hero">
+      <div class="hero-body">
+        <div class="container">
+          <div class="columns is-centered">
+            <div class="column has-text-centered">
+              <h1 class="title is-1 publication-title">APEX-MR: Multi-Robot Asynchronous Planning </br> and Execution for Cooperative Assembly</h1>
+              <div class="is-size-5 publication-authors">
+                <span class="author-block">
+                  <a href="https://philip-huang.github.io/">Philip Huang </a><sup>*, 1</sup>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                  <a href="https://waynekyrie.github.io/">Ruixuan Liu </a><sup>*, 1</sup>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                  <a href="https://engineering.cmu.edu/mfi/directory/bios/aggarwal-shobhit.html">Shobhit Aggarwal</a><sup>1</sup>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                  <a href="http://icontrol.ri.cmu.edu/people/changliu.html">Changliu Liu</a><sup>1</sup>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                  <a href="https://jiaoyangli.me/">Jiaoyang Li</a><sup>1</sup>
+                  <br /><sup>*</sup>Equal contributions &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <sup>1</sup>Carnegie Mellon University
+                </span>
+              </div>
+
+              <div class="column has-text-centered">
+
+                <div class="publication-links">
+
+                  <!-- arXiv Link. -->
+                  <span class="link-block">
+                    <a href="https://arxiv.org/abs/2503.15836"
+                      class="external-link button is-normal is-rounded is-dark">
+                      <span class="icon">
+                        <i class="ai ai-arxiv"></i>
+                      </span>
+                      <span>Paper</span>
+                    </a>
+                  </span>
+
+                  <span class="link-block">
+                    <a href="https://drive.google.com/file/d/15iYndy__BhI_r0uGmHVpnUeX8OPo3lT_/preview"
+                      class="external-link button is-normal is-rounded is-dark">
+                      <span class="icon">
+                        <i class="fab fa-youtube" aria-hidden="true"></i>
+                      </span>
+                      <span>Video</span>
+                    </a>
+                  </span>
+
+                  <span class="link-block">
+                    <a href="https://x.com/RuixuanLiu_/status/1918076448352424201"
+                      class="external-link button is-normal is-rounded is-dark">
+                      <span class="icon">
+                        <i class="fab fa-twitter" aria-hidden="true"></i>
+                      </span>
+                      <span>X</span>
+                    </a>
+                  </span>
+
+                  <!-- code (github) link-->
+                  <span class="link-block">
+                    <a href="https://github.com/intelligent-control-lab/APEX-MR"
+                      class="external-link button is-normal is-rounded is-dark">
+                      <span class="icon">
+                        <i class="fab fa-github" aria-hidden="true"></i>
+                      </span>
+                      <span>Code</span>
+                    </a>
+                  </span>
+
+                  <!-- code (github) link-->
+                  <span class="link-block">
+                    <a href="https://github.com/vamp-mr/vamp-mr"
+                      class="external-link button is-normal is-rounded is-dark">
+                      <span class="icon">
+                        <i class="fab fa-github" aria-hidden="true"></i>
+                      </span>
+                      <span>VAMP-MR</span>
+                    </a>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <div class="container">
+      <!-- Paper video. -->
+      <div id="method_video" class="columns is-centered has-text-centered">
+        <div class="column is-two-thirds">
+          <div class="video-container">
+            <iframe
+              src="https://drive.google.com/file/d/1SmA5nLjoJxbhoJsbI8TaXxLSKXDoCC0K/preview"
+              frameborder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowfullscreen></iframe>
+          </div>
+        </div>
+      </div>
+    </div>
+  
+
+    <section class="section">
+      <div class="container">
+        <!-- Abstract. -->
+        <div class="columns is-centered has-text-centered">
+          <div class="column is-two-thirds">
+            <div class="notification is-warning" style="margin-bottom: 1.75rem;">
+              <p class="is-size-5">
+                <span class="icon"><i class="fas fa-bullhorn" aria-hidden="true"></i></span>
+                <b>New:</b> Check out our new implementation, <a href="https://github.com/vamp-mr/vamp-mr"><b>VAMP-MR</b></a> (<a href="https://vamp-mr.github.io/vamp-mr/"><b>website</b></a>) — vectorized motion validation, <b>6×</b> faster bimanual LEGO assembly planning on average, and <b>1.37×</b> better overall makespan on average.
+              </p>
+            </div>
+            <h2 class="title is-2">Abstract</h2>
+            <div class="content has-text-justified">
+              <p>
+                Compared to a single-robot workstation, a multi-robot system offers several advantages: 1) it expands the system’s workspace, 2) improves task efficiency, and more importantly, 3) enables robots to achieve significantly more complex and dexterous tasks, such as cooperative assembly. 
+                However, coordinating the tasks and motions of multiple robots is challenging due to issues, e.g., system uncertainty, task efficiency, algorithm scalability, and safety concerns. 
+                To address these challenges, this paper studies multi-robot coordination and proposes APEX-MR, <b>an asynchronous planning and execution framework</b> designed to safely and efficiently coordinate multiple robots to achieve cooperative assembly, e.g., LEGO assembly. 
+                In particular, APEX-MR provides a systematic approach to post-process multi-robot tasks and motion plans to enable robust asynchronous execution under uncertainty. 
+                Experimental results demonstrate that APEX-MR can significantly speed up the execution time of many long-horizon LEGO assembly tasks by <b>48%</b> compared to sequential planning and <b>36%</b> compared to synchronous planning on average. 
+                To further demonstrate the performance, we deploy APEX-MR to a dual-arm system to perform physical LEGO assembly.
+                To our knowledge, this is the <i>first</i> robotic system capable of performing customized LEGO assembly using commercial LEGO bricks. 
+                The experiment results demonstrate that the dual-arm system, with APEX-MR, can safely coordinate robot motions, efficiently collaborate, and construct complex LEGO structures.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <section class="section">
+      <div class="container">
+        <div class="columns is-centered">
+          <div class="column is-full-width">
+            <h2 class="title is-2" style="text-align: center;">
+              Challenges
+            </h2>
+            
+            <tr>
+              <td>
+                <div class="container">
+                  <!-- Paper video. -->
+                  <div id="method_video" class="columns is-centered has-text-centered">
+                    <div class="column is-two-thirds">
+                      <div class="image-grid2">
+                        <figure>
+                          <img src="./resources/safety.gif" />
+                          <figcaption> (a) How to ensure <b>safety</b> during collaboration?</figcaption>
+                        </figure>
+                        <figure>
+                          <img src="./resources/scalability.gif" />
+                          <figcaption>(b) How to <b>scale</b> to large-scale/long-horizon tasks? </figcaption>
+                        </figure>
+                        <figure>
+                          <img src="./resources/uncertainty.png" />
+                          <figcaption>(c) How to tolerate <b>uncertainty</b> from delays/contingencies?</figcaption>
+                        </figure>
+                        <figure>
+                          <img src="./resources/efficiency.gif"/>
+                          <figcaption>(d) How to improve <b>efficiency</b>?</figcaption>
+                        </figure>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </td>
+            </tr>
+            
+            <!--  -->
+
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <section class="section">
+      <div class="container">
+        <div id="method_video" class="columns is-centered has-text-centered">
+                <div class="column is-two-thirds">
+                  <h2 class="title is-2" style="text-align: center;">
+                    APEX-MR:
+                  </h2>
+                  <h3 class="title is-3" style="text-align: center;">
+                    An <b>Asynchronous</b> Planning and Execution Framework
+                  </h3><div class="content has-text-justified">
+                    <p>
+                      Given an assembly plan and the robot skill library (detailed below), APEX-MR distributes the tasks to different robots and generates a sequential task plan. 
+                      In particular, it formulates the task distribution as an integer-linear programming (ILP) to maximize efficiency.
+                      To enable seamless collaboration, APEX-MR extends the Temporal Plan Graph (TPG) to multiple robots.
+                      It post-processes the sequential task plan and generates an asynchronous execution plan.
+                      More importantly, the asynchronous execution plan accommodates execution delays and contingencies to ensure robust and safe bimanual manipulation under uncertainty.
+                      APEX-MR significantly improves task efficiency, scales to large-scale/long-horizon tasks, is robust against uncertainty, and ensures collaboration safety.
+                    </p>
+                    </div>
+                  <img src="./resources/apex-mr_system.png" alt="Overview" style="width:100%"/>
+                </div>
+          </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div id="method_video" class="columns is-centered has-text-centered">
+                <div class="column is-two-thirds">
+                  <h2 class="title is-2" style="text-align: center;">
+                    Robot Skill Learning
+                  </h2>
+                  <div class="content has-text-justified">
+                  <p>Robots need different skills to perform different tasks, and we assume the required skills are pre-learned. 
+                  A skill can be a learned policy, a parameterized motion, or even a simple trajectory.
+                  APEX-MR selects appropriate skills from the library and coordinates the robots to accomplish the task as shown above.
+                  Specifically in Lego assembly, we learn the following robot skills.
+                  </p>
+                </div>
+                  <img src="./resources/skills.gif" alt="Overview" style="width:100%"/>
+                </div>
+          </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div id="method_video" class="columns is-centered has-text-centered">
+                <div class="column is-two-thirds">
+                  <h2 class="title is-2" style="text-align: center;">
+                    Comparisons:</h2> 
+                    <h3 class="title is-3" style="text-align: center;">
+                      Efficient and Seamless Bimanual Manipulation
+                    </h3><div class="content has-text-justified">
+                      <p>
+                        The TPG post-processing and shortcutting in APEX-MR significantly reduces makespan by 48% and wait time by 85% on average 
+                        compared to the initial sequential motion plan at the horizontal dashed line. 
+                        Compared to the synchronized motion plan, our asynchronous plans from APEX-MR are still consistently shorter and have less wait time.
+                        We show a comparison of the sequential, synchronous, and APEX-MR motion (with shortcut) plan in simulation below.
+                      </p>
+                      </div>
+                    <div>
+                      <img src="./resources/seq-v-sync-v-tpg.gif" alt="Overview" style="width:100%" />
+                  </div>
+                </div>
+          </div>
+      </div>
+    </section>
+
+
+
+    <section class="section">
+      <div class="container">
+        <div id="method_video" class="columns is-centered has-text-centered">
+                <div class="column is-two-thirds">
+                  <h2 class="title is-2" style="text-align: center;">
+                    Robot Demos: 
+                  </h2>
+                  <h3 class="title is-3" style="text-align: center;">
+                      Cooperative Assembly of Customized Lego Structures
+                  </h3>
+                  <div class="content has-text-justified">
+                    <p>
+                      We deploy APEX-MR to a dual-industrial-arm system and demonstrate the <i>first</i> robotic system that can accomplish <b>customized</b>, <b>delicate</b> assemblies using <b>commercial</b> LEGO in REAL. All demo videos are 16x.
+                    </p>
+                  </div>
+                  <div class="image-grid">
+                    <figure>
+                      <iframe src="https://drive.google.com/file/d/1BHoayBhxJrL3KWEyR05LS12DC3l9hWvL/preview" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+                      <figcaption> (a) Faucet</figcaption>
+                    </figure>
+
+                    <figure>
+                      <iframe src="https://drive.google.com/file/d/1XYp5jVe3B8ch4s2jBWBhoAZ_vdNv-2e7/preview" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+                      <figcaption> (b) Vessel</figcaption>
+                    </figure>
+
+                    <figure>
+                      <iframe src="https://drive.google.com/file/d/11yynXeIC8CmXJl5dVsknAR6IUrRLyApP/preview" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+                      <figcaption> (c) Guitar</figcaption>
+                    </figure>
+
+                    <figure>
+                      <iframe src="https://drive.google.com/file/d/1GktOl9cVa-bJWMYEt5C8Rs7ZKJ0gKY89/preview" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+                      <figcaption> (d) R</figcaption>
+                    </figure>
+
+                    <figure>
+                      <iframe src="https://drive.google.com/file/d/1LEho5B2yNA3Zk37o4-D2iNdPARIqHOnv/preview" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+                      <figcaption> (d) S</figcaption>
+                    </figure>
+
+                    <figure>
+                      <iframe src="https://drive.google.com/file/d/1P3QFMQiHtntTBmq7iXF43ruf7HqULmyX/preview" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+                      <figcaption> (d) S</figcaption>
+                    </figure>
+                </div>
+                </div>      
+          </div>
+      </div>
+    </section>
+
+    <section class="section" id="BibTeX">
+      <div class="container content">
+        <h2 class="titile">BibTeX</h2>
+        <pre>
+          <code>
+            @inproceedings{huang2025apexmr,
+              title = {APEX-MR: Multi-Robot Asynchronous Planning and Execution for Cooperative Assembly},
+              author = {Huang, Philip and Liu, Ruixuan and Aggarwal, Shobhit and Liu, Changliu and Li, Jiaoyang},
+              year = {2025},
+              info = {https://intelligent-control-lab.github.io/APEX-MR/},
+              booktitle = {Robotics: Science and Systems},
+              url = {https://arxiv.org/abs/2503.15836}
+            }
+          </code>
+        </pre>
+      </div>
+    </section>
+
+
+    <section class="section">
+      <div class="columns is-centered">
+        <div class="column is-full-width">
+          <div class="is-vcentered interpolation-panel">
+            <h2 class="title is-2" style="text-align: center;">Related Works</h2>
+            <div class="content is-centered has-text-centered">
+              This work is part of our research on <a href="http://icontrol.ri.cmu.edu/research/lego.html">Generative Assembly via Bimanual Manipulation </a> and <strong>Multi-Robot Task and Motion Planning</strong>.
+              Please explore our other works below.
+            </div>
+            <div class="container">
+              <div class="columns is-vcentered">
+                <!-- Image Column -->
+                <div class="column is-4">
+                  <figure class="image">
+                    <img src="./resources/legogpt.gif" alt="RMA Image">
+                  </figure>
+                </div>
+
+                <!-- Text Column -->
+                <div class="column is-8">
+                  <h2 class="title is-4"> LegoGPT: Generating Physically Stable and Buildable LEGO Designs from Text</h2>
+                  <p>
+                    Ava Pun*, Kangle Deng*, Ruixuan Liu*, Deva Ramanan, Changliu Liu, Jun-Yan Zhu
+                    <br />
+                    Arxiv, 2025
+                  </p>
+                  <p>
+                    <a href="https://www.arxiv.org/abs/2505.05469"
+                      class="button is-link">Paper</a>
+                    <a href="https://avalovelace1.github.io/LegoGPT/" class="button is-link">Project Page</a>
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div class="container">
+              <div class="columns is-vcentered">
+                <!-- Image Column -->
+                <div class="column is-4">
+                  <figure class="image">
+                    <img src="./resources/PAasp.gif" alt="RMA Image">
+                  </figure>
+                </div>
+
+                <!-- Text Column -->
+                <div class="column is-8">
+                  <h2 class="title is-4"> Physics-Aware Combinatorial Assembly Sequence Planning using Data-free Action Masking</h2>
+                  <p>
+                    Ruixuan Liu, Alan Chen, Weiye Zhao, Changliu Liu
+                    <br />
+                    IEEE RA-L, 2025
+                  </p>
+                  <p>
+                    <a href="https://arxiv.org/abs/2408.10162"
+                      class="button is-link">Paper</a>
+                    <!--                <a href="https://www.youtube.com/watch?v=nBy1piJrq1A" class="button is-link">Video</a>-->
+                    <!--                <a href="https://ashish-kmr.github.io/rma-legged-robots/" class="button is-link">Project Page</a>-->
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="container">
+              <div class="columns is-vcentered">
+                <!-- Image Column -->
+                <div class="column is-4">
+                  <figure class="image">
+                    <img src="./resources/stablelego.png" alt="RMA Image">
+                  </figure>
+                </div>
+
+                <!-- Text Column -->
+                <div class="column is-8">
+                  <h2 class="title is-4"> StableLego: Stability Analysis of Block Stacking Assembly</h2>
+                  <p>
+                    Ruixuan Liu, Kangle Deng, Ziwei Wang, Changliu Liu
+                    <br />
+                    IEEE RA-L, 2024
+                  </p>
+                  <p>
+                    <a href="https://ieeexplore.ieee.org/document/10556686"
+                      class="button is-link">Paper</a>
+                    <!--                <a href="https://www.youtube.com/watch?v=nBy1piJrq1A" class="button is-link">Video</a>-->
+                    <!--                <a href="https://ashish-kmr.github.io/rma-legged-robots/" class="button is-link">Project Page</a>-->
+                  </p>
+                </div>
+              </div>
+            </div>
+
+
+            <div class="container">
+              <div class="columns is-vcentered">
+                <!-- Image Column -->
+                <div class="column is-4">
+                  <figure class="image">
+                    <img src="./resources/lego_manipulation.gif" alt="RMA Image">
+                  </figure>
+                </div>
+
+                <!-- Text Column -->
+                <div class="column is-8">
+                  <h2 class="title is-4"> A Lightweight and Transferable Design for Robust LEGO Manipulation</h2>
+                  <p>
+                    Ruixuan Liu, Yifan Sun, Changliu Liu
+                    <br />
+                    International Symposium on Flexible Automation (ISFA), 2024
+                  </p>
+                  <p>
+                    <a href="https://arxiv.org/abs/2309.02354"
+                      class="button is-link">Paper</a>
+                    <!--                <a href="https://www.youtube.com/watch?v=nBy1piJrq1A" class="button is-link">Video</a>-->
+                    <!--                <a href="https://ashish-kmr.github.io/rma-legged-robots/" class="button is-link">Project Page</a>-->
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="container">
+              <div class="columns is-vcentered">
+                <!-- Image Column -->
+                <div class="column is-4">
+                  <figure class="image">
+                    <img src="./resources/lego-jiaoyang-old.gif" alt="RMA Image">
+                  </figure>
+                </div>
+
+                <!-- Text Column -->
+                <div class="column is-8">
+                  <h2 class="title is-4"> Cooperative Task and Motion Planning for Multi-Arm Assembly Systems                  </h2>
+                  <p>
+                    Jingkai Chen, Jiaoyang Li, Yijiang Huang, Caelan Garrett, Dawei Sun, Chuchu Fan, Andreas Hofmann, Caitlin Mueller, Sven Koenig, Brian C. Williams
+                    <br />
+                    arXiv, 2022
+                  </p>
+                  <p>
+                    <a href="https://arxiv.org/abs/2203.02475"
+                      class="button is-link">Paper</a>
+                                   <a href="https://www.youtube.com/watch?v=jiVuZS1lo1M" class="button is-link">Video</a>
+                    <!--                <a href="https://ashish-kmr.github.io/rma-legged-robots/" class="button is-link">Project Page</a>-->
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="container">
+              <div class="columns is-vcentered">
+                <!-- Image Column -->
+                <div class="column is-4">
+                  <figure class="image">
+                    <img src="./resources/mramp-icaps2024.gif" alt="RMA Image">
+                  </figure>
+                </div>
+
+                <!-- Text Column -->
+                <div class="column is-8">
+                  <h2 class="title is-4"> Accelerating Search-Based Planning for Multi-Robot Manipulation by Leveraging Online-Generated Experiences   </h2>
+                  <p>
+                    Yorai Shaoul*, Itamar Mishani*, Maxim Likhachev,  Jiaoyang Li
+                    <br />
+                    International Conference on Automated Planning and Scheduling (ICAPS), 2024
+                  </p>
+                  <p>
+                    <a href="https://arxiv.org/abs/2404.00143"
+                      class="button is-link">Paper</a>
+                      <a href="https://x-cbs.github.io/" class="button is-link">website</a>
+                    <!--                <a href="https://ashish-kmr.github.io/rma-legged-robots/" class="button is-link">Project Page</a>-->
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="container">
+              <div class="columns is-vcentered">
+                <!-- Image Column -->
+                <div class="column is-4">
+                  <figure class="image">
+                    <img src="./resources/gencbs.gif" alt="RMA Image">
+                  </figure>
+                </div>
+
+                <!-- Text Column -->
+                <div class="column is-8">
+                  <h2 class="title is-4"> Unconstraining Multi-Robot Manipulation: Enabling Arbitrary Constraints in ECBS with Bounded Sub-Optimality  </h2>
+                  <p>
+                    Yorai Shaoul*, Rishi Veerapaneni*, Maxim Likhachev,  Jiaoyang Li
+                    <br />
+                      International Symposium on Combinatorial Search (SoCS), 2024
+                  </p>
+                  <p>
+                    <a href="https://ojs.aaai.org/index.php/SOCS/article/view/31548/33708"
+                      class="button is-link">Paper</a>
+                    <!--                <a href="https://ashish-kmr.github.io/rma-legged-robots/" class="button is-link">Project Page</a>-->
+                  </p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div class="container">
+        <div class="content has-text-centered">
+
+          <br />
+
+          <p>Page template borrowed from <a
+              href="https://worldsheet.github.io/"><span
+                class="dnerf">Worldsheet</span></a> and <a
+              href="https://nerfies.github.io/"><span
+                class="dnerf">Nerfies</span></a>.</p>
+        </div>
+      </div>
+    </footer>
+
+  </body>
+</html>
