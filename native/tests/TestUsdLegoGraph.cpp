@@ -87,6 +87,29 @@ static bool almost_equal(const pxr::GfQuatd &a, const pxr::GfQuatd &b,
 	return std::abs(std::abs(dot) - 1.0) <= eps;
 }
 
+static bool almost_equal(const Eigen::Matrix3d &a, const Eigen::Matrix3d &b,
+                         double eps = 1e-5) {
+	return (a - b).norm() <= eps;
+}
+
+static Eigen::Matrix3d
+reconstruct_local_inertia_tensor(const pxr::UsdPrim &prim) {
+	pxr::GfVec3f diag_gf;
+	pxr::GfQuatf principal_axes_gf;
+	bool got_diag =
+	    prim.GetAttribute(pxr::UsdPhysicsTokens->physicsDiagonalInertia)
+	        .Get(&diag_gf);
+	bool got_axes =
+	    prim.GetAttribute(pxr::UsdPhysicsTokens->physicsPrincipalAxes)
+	        .Get(&principal_axes_gf);
+	assert(got_diag && got_axes);
+
+	Eigen::Vector3d diag = as<Eigen::Vector3d>(diag_gf);
+	Eigen::Quaterniond q = as<Eigen::Quaterniond>(principal_axes_gf);
+	Eigen::Matrix3d R = q.normalized().toRotationMatrix();
+	return R * diag.asDiagonal() * R.transpose();
+}
+
 static void assert_brick_colliders(const UsdPartWrapper<BrickPart> &pw,
                                    const pxr::SdfPath &path) {
 	auto colls = pw.colliders();
@@ -648,6 +671,48 @@ static void test_remove_part_unmanaged_returns_false() {
 	assert(!removed);
 	assert(g.topology().parts().size() == 1);
 	assert(stage->GetPrimAtPath(unmanaged_path).IsValid());
+}
+
+static void test_authored_mass_properties_roundtrip_inertia_tensor() {
+	auto stage = make_stage();
+	MetricSystem metrics(stage);
+
+	auto assert_mass_properties = [&](const BrickPart &brick,
+	                                  const pxr::SdfPath &path) {
+		SimpleBrickAuthor{}(stage, path, brick);
+
+		pxr::UsdPrim prim = stage->GetPrimAtPath(path);
+		assert(prim);
+
+		float mass_u{};
+		pxr::GfVec3f com_u_gf;
+		bool got_mass =
+		    prim.GetAttribute(pxr::UsdPhysicsTokens->physicsMass).Get(&mass_u);
+		bool got_com =
+		    prim.GetAttribute(pxr::UsdPhysicsTokens->physicsCenterOfMass)
+		        .Get(&com_u_gf);
+		assert(got_mass && got_com);
+
+		double expected_mass_u = metrics.from_kg(brick.mass());
+		Eigen::Vector3d expected_com_u = metrics.from_m(brick.com());
+		Eigen::Matrix3d expected_inertia_u =
+		    metrics.from_kgm2(brick.inertia_tensor());
+		Eigen::Vector3d com_u = as<Eigen::Vector3d>(com_u_gf);
+		Eigen::Matrix3d reconstructed_inertia_u =
+		    reconstruct_local_inertia_tensor(prim);
+
+		assert(std::abs(static_cast<double>(mass_u) - expected_mass_u) <= 1e-6);
+		assert((com_u - expected_com_u).norm() <= 1e-6);
+		assert(almost_equal(reconstructed_inertia_u, expected_inertia_u));
+	};
+
+	BrickColor red{255, 0, 0};
+	assert_mass_properties(make_brick(BrickUnit{4}, BrickUnit{2},
+	                                  PlateUnit{BrickHeightPerPlate}, red),
+	                       pxr::SdfPath("/World/RegularBrick"));
+	assert_mass_properties(
+	    make_brick(BrickUnit{6}, BrickUnit{12}, PlateUnit{27}, red),
+	    pxr::SdfPath("/World/NonRegularBrick"));
 }
 
 // Helper behavior: with only a managed connection authored in USD that
@@ -1609,6 +1674,7 @@ int main() {
 	test_add_part_graph_to_usd();
 	test_remove_part_no_connections_graph_api();
 	test_remove_part_unmanaged_returns_false();
+	test_authored_mass_properties_roundtrip_inertia_tensor();
 	test_unrealized_helpers_for_managed_connection_only();
 	test_remove_part_with_unrealized_connection();
 	test_connect_and_disconnect_realized_graph_api();

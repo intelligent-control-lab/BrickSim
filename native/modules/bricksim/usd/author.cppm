@@ -123,7 +123,7 @@ void setup_mass_properties(const MetricSystem &metrics,
 	if (Q.determinant() < 0.0) {
 		Q.col(0) *= -1.0;
 	}
-	Eigen::Matrix3d R = Q.transpose();
+	Eigen::Matrix3d R = Q;
 	Eigen::Quaterniond q_pa = Eigen::Quaterniond(R).normalized();
 	if (q_pa.w() < 0.0) {
 		q_pa.coeffs() *= -1.0;
