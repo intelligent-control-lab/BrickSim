@@ -3,7 +3,19 @@ set -eo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
-source "$ROOT_DIR/.venv/bin/activate"
+source "$ROOT_DIR/scripts/_resolve_env.sh"
+bricksim_require_env
+
+if [[ ! -x "$BRICKSIM_ENV_ISAACSIM" ]]; then
+  cat >&2 <<EOF
+[ERROR] Isaac Sim is not installed in the resolved BrickSim environment.
+Resolved environment: $BRICKSIM_ENV_DIR ($BRICKSIM_ENV_KIND)
+
+Run:
+  ./scripts/setup_env.sh
+EOF
+  exit 1
+fi
 
 EXPERIENCE="isaacsim.exp.full"
 
@@ -48,4 +60,4 @@ else
 fi
 
 # exec $ISAACSIM_PATH/isaac-sim.sh "${ISAAC_ARGS[@]}"
-exec isaacsim "${ISAAC_ARGS[@]}"
+exec "$BRICKSIM_ENV_ISAACSIM" "${ISAAC_ARGS[@]}"

@@ -31,17 +31,8 @@
 git clone --recursive https://github.com/intelligent-control-lab/BrickSim BrickSim
 cd BrickSim
 
-sudo apt install build-essential wget python3.11-full xz-utils zstd
-
 python3.11 -m venv --symlinks --prompt bricksim --upgrade-deps .venv
-source .venv/bin/activate
-
-python -m pip install "setuptools<81" "wheel<0.46" "packaging==23.0"
-pip install "isaacsim[all,extscache]==5.1.0" --extra-index-url https://pypi.nvidia.com
-CMAKE_POLICY_VERSION_MINIMUM=3.5 PIP_NO_BUILD_ISOLATION=1 ./IsaacLab/isaaclab.sh --install
-
-scripts/build.sh
-pip install -e exts/bricksim -v
+./scripts/setup_env.sh
 
 ./scripts/launch_isaacsim.sh demos/demo_assembly.py
 ```
@@ -62,39 +53,49 @@ git clone --recursive https://github.com/intelligent-control-lab/BrickSim BrickS
 cd BrickSim
 ```
 
-### 2. Create the virtual environment
+### 2. Prepare a Python virtual environment
+
+BrickSim scripts resolve the Python virtual environment in this order:
+
+1. Active conda environment
+2. Active Python virtualenv
+3. Repository-local `.venv` without sourcing it
+
+Use one of the following supported setups.
+
+Repository-local virtualenv:
 
 ```bash
 python3.11 -m venv --symlinks --prompt bricksim --upgrade-deps .venv
-source .venv/bin/activate
 ```
 
-### 3. Install system packages
+Conda:
+
+```bash
+conda create -n bricksim python=3.11
+conda activate bricksim
+```
+
+### 3. Install required host tools
+
+Debian/Ubuntu example:
 
 ```bash
 sudo apt install build-essential wget python3.11-full xz-utils zstd
 ```
 
-### 4. Install Isaac Sim
+### 4. Run the BrickSim setup script
+
+```bash
+./scripts/setup_env.sh
+```
+
+### 5. Launch Isaac Sim
 
 Only Isaac Sim 5.1 is currently supported.
 
 ```bash
-pip install "isaacsim[all,extscache]==5.1.0" --extra-index-url https://pypi.nvidia.com
-```
-
-### 5. Install Isaac Lab
-
-```bash
-python -m pip install "setuptools<81" "wheel<0.46" "packaging==23.0"
-CMAKE_POLICY_VERSION_MINIMUM=3.5 PIP_NO_BUILD_ISOLATION=1 ./IsaacLab/isaaclab.sh --install
-```
-
-### 6. Build and install BrickSim
-
-```bash
-scripts/build.sh
-pip install -e exts/bricksim -v
+./scripts/launch_isaacsim.sh demos/demo_assembly.py
 ```
 
 ## Build & Test
@@ -144,7 +145,6 @@ The teleoperation demo expects the `lerobot` package plus a configured leader de
 Generate dependency-aware Pyright configuration for VS Code completion:
 
 ```bash
-source .venv/bin/activate
 python scripts/generate_pyrightconfig.py
 ```
 
