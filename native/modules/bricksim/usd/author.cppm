@@ -98,6 +98,13 @@ struct PrototypePartAuthor {
 		auto proto_path = PrototypesPath.AppendChild(pxr::TfToken(proto_name));
 		if (!layer->GetPrimAtPath(proto_path)) {
 			PA{}(stage, proto_path, part);
+			auto proto_prim = layer->GetPrimAtPath(proto_path);
+			if (!proto_prim) {
+				throw std::runtime_error(
+				    std::format("Failed to create prototype prim at path {}",
+				                proto_path.GetString()));
+			}
+			proto_prim->SetSpecifier(pxr::SdfSpecifierClass);
 		}
 		return proto_path;
 	}
@@ -158,7 +165,7 @@ export struct SimpleBrickAuthor {
 		pxr::SdfChangeBlock _changes;
 
 		auto root = pxr::SdfCreatePrimInLayer(layer, root_path);
-		root->SetSpecifier(pxr::SdfSpecifierClass);
+		root->SetSpecifier(pxr::SdfSpecifierDef);
 		root->SetTypeName(pxr::UsdGeomTokens->Xform);
 		SetInfo(root, pxr::UsdTokens->apiSchemas,
 		        pxr::SdfTokenListOp::Create({
