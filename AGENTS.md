@@ -29,7 +29,7 @@ This project is written in C++26 (with modules) and Python 3.11. The project is 
 ```
 
 ## Build & Test
-1. Only if you modified the C++ code, run `RUN_TESTS=1 scripts/build.sh` to build and sanity‑check.
+1. Only if you modified the C++ code, run `scripts/build.sh` to build and sanity‑check. Testing is needed only if you're ready to commit, do not run them in regular development because it's time-consuming.
 
 ## Coding Style
 1. Fail fast: if something might error and we can’t recover, let it error. Don’t add catch‑and‑rethrow or cosmetic error handling—keep code concise.
