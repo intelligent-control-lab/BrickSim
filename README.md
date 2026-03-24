@@ -36,8 +36,9 @@ sudo apt install build-essential wget python3.11-full xz-utils zstd
 python3.11 -m venv --symlinks --prompt bricksim --upgrade-deps .venv
 source .venv/bin/activate
 
+python -m pip install "setuptools<81" "wheel<0.46" "packaging==23.0"
 pip install "isaacsim[all,extscache]==5.1.0" --extra-index-url https://pypi.nvidia.com
-CMAKE_POLICY_VERSION_MINIMUM=3.5 ./IsaacLab/isaaclab.sh --install
+CMAKE_POLICY_VERSION_MINIMUM=3.5 PIP_NO_BUILD_ISOLATION=1 ./IsaacLab/isaaclab.sh --install
 
 scripts/build.sh
 pip install -e exts/bricksim -v
@@ -85,7 +86,8 @@ pip install "isaacsim[all,extscache]==5.1.0" --extra-index-url https://pypi.nvid
 ### 5. Install Isaac Lab
 
 ```bash
-CMAKE_POLICY_VERSION_MINIMUM=3.5 ./IsaacLab/isaaclab.sh --install
+python -m pip install "setuptools<81" "wheel<0.46" "packaging==23.0"
+CMAKE_POLICY_VERSION_MINIMUM=3.5 PIP_NO_BUILD_ISOLATION=1 ./IsaacLab/isaaclab.sh --install
 ```
 
 ### 6. Build and install BrickSim
