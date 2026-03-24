@@ -1,9 +1,0 @@
-__pycache__/
-_toolchain/
-.cache/
-.thumbs
-.venv/
-*.egg-info/
-logs/
-outputs/
-pyrightconfig.deps.json
