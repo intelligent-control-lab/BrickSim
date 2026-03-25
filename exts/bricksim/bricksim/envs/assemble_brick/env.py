@@ -445,7 +445,7 @@ class RewardsCfg:
             "pos_tol": GOAL.pos_tol,
             "rot_tol": GOAL.rot_tol,
         },
-        weight=20.0,
+        weight=1000.0,
     )
 
     action_rate = RewardTermCfg(
