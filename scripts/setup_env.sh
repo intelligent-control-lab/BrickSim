@@ -95,7 +95,10 @@ main() {
     pip_install_editable "$ROOT_DIR/IsaacLab/source/isaaclab_assets"
     pip_install_editable "$ROOT_DIR/IsaacLab/source/isaaclab_tasks"
     pip_install --no-build-isolation -e "$ROOT_DIR/IsaacLab/source/isaaclab_rl[all]"
-    pip_install --no-build-isolation -e "$ROOT_DIR/IsaacLab/source/isaaclab_mimic[all]"
+    (
+        export CMAKE_POLICY_VERSION_MINIMUM=3.5
+        pip_install --no-build-isolation -e "$ROOT_DIR/IsaacLab/source/isaaclab_mimic[all]"
+    )
 
     "$ROOT_DIR/scripts/build.sh"
     pip_install -e "$ROOT_DIR/exts/bricksim"
