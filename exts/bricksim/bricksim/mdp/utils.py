@@ -1,14 +1,14 @@
 from isaaclab.assets import RigidObject
-from isaaclab.envs import ManagerBasedRLEnv
+from isaaclab.envs import ManagerBasedEnv
 
 from bricksim.mdp.spawn import BrickPartCfg
 
 
-def resolve_brick_rigid_object(env: ManagerBasedRLEnv, entity_name: str) -> RigidObject:
+def resolve_brick_rigid_object(env: ManagerBasedEnv, entity_name: str) -> RigidObject:
     """Resolve a BrickSim brick scene entity to its runtime Isaac Lab asset.
 
     Args:
-        env: The manager-based RL environment.
+        env: The manager-based Isaac Lab environment.
         entity_name: Name of the scene entity in ``env.scene``.
 
     Returns:
