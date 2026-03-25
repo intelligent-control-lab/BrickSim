@@ -291,14 +291,6 @@ export bool are_parts_connected(const PathStr &part_a_path,
 	                                   usd_part_id(part_b_path));
 }
 
-export bool does_connection_exist(const PathStr &stud_path, InterfaceId stud_if,
-                                  const PathStr &hole_path,
-                                  InterfaceId hole_if) {
-	ConnSegRef conn_ref{{usd_part_id(stud_path), stud_if},
-	                    {usd_part_id(hole_path), hole_if}};
-	return usd_topology().connection_segments().contains(conn_ref);
-}
-
 TableRect parse_table_rect(const BBox2dArray &table_xy, double table_z) {
 	return {
 	    .x_min = table_xy[0],
@@ -549,6 +541,21 @@ export struct ConnectionInfo {
 		    conn_path ? std::format("'{}'", *conn_path) : "None");
 	}
 };
+
+export std::optional<ConnectionInfo>
+lookup_physics_connection(const PathStr &stud_path, InterfaceId stud_if,
+                          const PathStr &hole_path, InterfaceId hole_if) {
+	auto *bridge = lego_world().bridge();
+	if (!bridge) {
+		throw std::runtime_error("Physics graph is not available");
+	}
+	auto conn_info = bridge->lookup_connection_info(
+	    pxr::SdfPath{stud_path}, stud_if, pxr::SdfPath{hole_path}, hole_if);
+	if (!conn_info) {
+		return std::nullopt;
+	}
+	return ConnectionInfo(*conn_info);
+}
 
 export std::vector<ConnectionInfo> get_assembled_connections(bool clear) {
 	auto *bridge = lego_world().bridge();

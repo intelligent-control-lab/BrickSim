@@ -109,12 +109,6 @@ PYBIND11_MODULE(_native, m) {
 	      "Return true if the specified parts are connected in the current "
 	      "USD topology. Throws if either part is unknown.");
 
-	m.def("does_connection_exist", &does_connection_exist,
-	      pybind11::arg("stud_path"), pybind11::arg("stud_if"),
-	      pybind11::arg("hole_path"), pybind11::arg("hole_if"),
-	      "Return true if a connection segment exists between the specified "
-	      "stud and hole interfaces. Throws if either part is unknown.");
-
 	m.def("get_connection_utilization", &get_connection_utilization,
 	      pybind11::arg("connection_path"),
 	      "Get the most recent clutch utilization for the specified managed "
@@ -242,6 +236,15 @@ PYBIND11_MODULE(_native, m) {
 	    .def_readonly("usd_csid", &ConnectionInfo::usd_csid)
 	    .def_readonly("conn_path", &ConnectionInfo::conn_path)
 	    .def("__repr__", &ConnectionInfo::repr);
+
+	m.def("lookup_physics_connection", &lookup_physics_connection,
+	      pybind11::arg("stud_path"), pybind11::arg("stud_if"),
+	      pybind11::arg("hole_path"), pybind11::arg("hole_if"),
+	      "Look up the current physics connection segment between the "
+	      "specified stud and hole interfaces. Returns None when the query "
+	      "does not resolve to a current physics connection, including "
+	      "unresolved paths, missing physics bindings, invalid interface ids "
+	      "or types, or a disconnected interface pair.");
 
 	m.def("get_assembled_connections", &get_assembled_connections,
 	      pybind11::arg("clear") = false,

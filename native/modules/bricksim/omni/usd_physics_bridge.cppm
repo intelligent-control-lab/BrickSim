@@ -221,6 +221,47 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	void clear_disassembled_connections() {
 		disassembled_conns_.clear();
 	}
+	std::optional<ConnectionInfo>
+	lookup_connection_info(const pxr::SdfPath &stud_path, InterfaceId stud_ifid,
+	                       const pxr::SdfPath &hole_path,
+	                       InterfaceId hole_ifid) const {
+		auto find_physics_pid =
+		    [this](const pxr::SdfPath &part_path) -> std::optional<PartId> {
+			const auto *usd_pid_ptr =
+			    usd_graph_->topology().parts().template find_key<PartId>(
+			        part_path);
+			if (!usd_pid_ptr) {
+				return std::nullopt;
+			}
+			const auto *physics_pid_ptr =
+			    pid_mapping_.template find_key<PhysicsPartId>(
+			        UsdPartId{*usd_pid_ptr});
+			if (!physics_pid_ptr) {
+				return std::nullopt;
+			}
+			return physics_pid_ptr->value();
+		};
+		std::optional<PartId> physics_stud_pid_opt =
+		    find_physics_pid(stud_path);
+		std::optional<PartId> physics_hole_pid_opt =
+		    find_physics_pid(hole_path);
+		if (!physics_stud_pid_opt || !physics_hole_pid_opt) {
+			return std::nullopt;
+		}
+		ConnSegRef physics_csref{
+		    {physics_stud_pid_opt.value(), stud_ifid},
+		    {physics_hole_pid_opt.value(), hole_ifid},
+		};
+		const auto *cs_entry_ptr =
+		    physics_graph_->topology().connection_segments().find(
+		        physics_csref);
+		if (!cs_entry_ptr) {
+			return std::nullopt;
+		}
+		return make_connection_info(cs_entry_ptr->template key<ConnSegId>(),
+		                            physics_csref,
+		                            cs_entry_ptr->value().wrapped());
+	}
 
   private:
 	Hooks hooks_;
@@ -258,9 +299,10 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 	std::vector<ConnectionInfo> assembled_conns_;
 	std::vector<ConnectionInfo> disassembled_conns_;
 
-	ConnectionInfo make_connection_info(ConnSegId physics_csid,
-	                                    const ConnSegRef &physics_csref,
-	                                    const ConnectionSegment &conn_seg) {
+	ConnectionInfo
+	make_connection_info(ConnSegId physics_csid,
+	                     const ConnSegRef &physics_csref,
+	                     const ConnectionSegment &conn_seg) const {
 		ConnectionInfo info;
 		info.physics_csid = physics_csid;
 		const auto &[physics_stud_ref, physics_hole_ref] = physics_csref;

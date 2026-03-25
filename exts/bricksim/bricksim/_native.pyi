@@ -76,13 +76,6 @@ def are_parts_connected(
     part_b_path: str,
 ) -> bool: ...
 
-def does_connection_exist(
-    stud_path: str,
-    stud_if: int,
-    hole_path: str,
-    hole_if: int,
-) -> bool: ...
-
 def get_connection_utilization(connection_path: str) -> float: ...
 
 def arrange_parts_on_table(
@@ -165,6 +158,13 @@ class ConnectionInfo:
 def get_assembled_connections(clear: bool = False) -> list[ConnectionInfo]: ...
 
 def get_disassembled_connections(clear: bool = False) -> list[ConnectionInfo]: ...
+
+def lookup_physics_connection(
+    stud_path: str,
+    stud_if: int,
+    hole_path: str,
+    hole_if: int,
+) -> ConnectionInfo | None: ...
 
 class AssemblyDebugInfo:
     def __repr__(self) -> str: ...
