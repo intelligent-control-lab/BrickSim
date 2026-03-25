@@ -2,6 +2,7 @@ __pycache__/
 _toolchain/
 .cache/
 .thumbs
+.pyright/
 .venv/
 *.egg-info/
 logs/
