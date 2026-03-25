@@ -6,7 +6,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import quat_apply_inverse, quat_unique, subtract_frame_transforms
 from isaaclab_tasks.manager_based.manipulation.place.mdp.observations import object_grasped
 
-from .common import marker_pose_w
+from .common import connection_target_match, gripper_is_open, marker_pose_w, wrong_connection_to_target
 
 
 def object_grasped_obs(
@@ -77,3 +77,74 @@ def object_marker_pose_error(
     if return_key == "quat":
         return delta_quat_t
     return torch.cat((delta_pos_t, delta_quat_t), dim=1)
+
+
+def goal_target_match_obs(
+    env,
+    stud_if: int,
+    hole_if: int,
+    target_offset: tuple[int, int],
+    target_yaw: int,
+    object_cfg: SceneEntityCfg,
+    stud_cfg: SceneEntityCfg = SceneEntityCfg("lego_baseplate"),
+) -> torch.Tensor:
+    return connection_target_match(
+        env,
+        stud_if=stud_if,
+        hole_if=hole_if,
+        target_offset=target_offset,
+        target_yaw=target_yaw,
+        object_cfg=object_cfg,
+        stud_cfg=stud_cfg,
+    ).to(torch.float32).unsqueeze(-1)
+
+
+def wrong_connection_obs(
+    env,
+    stud_if: int,
+    hole_if: int,
+    target_offset: tuple[int, int],
+    target_yaw: int,
+    object_cfg: SceneEntityCfg,
+    stud_cfg: SceneEntityCfg = SceneEntityCfg("lego_baseplate"),
+) -> torch.Tensor:
+    return wrong_connection_to_target(
+        env,
+        stud_if=stud_if,
+        hole_if=hole_if,
+        target_offset=target_offset,
+        target_yaw=target_yaw,
+        object_cfg=object_cfg,
+        stud_cfg=stud_cfg,
+    ).to(torch.float32).unsqueeze(-1)
+
+
+def gripper_is_open_obs(
+    env,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    return gripper_is_open(env, robot_cfg).to(torch.float32).unsqueeze(-1)
+
+
+def captured_hole_to_eef_obs(
+    env,
+    return_key: Literal["pos", "quat", None] = None,
+) -> torch.Tensor:
+    dtype = env.scene.env_origins.dtype
+    expert = getattr(env, "_expert", None)
+    pos = getattr(expert, "_captured_hole_to_eef_pos", None)
+    quat = getattr(expert, "_captured_hole_to_eef_quat", None)
+    valid = getattr(expert, "_captured_valid", None)
+
+    if pos is None or quat is None or valid is None:
+        pos = torch.zeros((env.num_envs, 3), device=env.device, dtype=dtype)
+        quat = torch.zeros((env.num_envs, 4), device=env.device, dtype=dtype)
+    else:
+        pos = torch.where(valid.unsqueeze(-1), pos, torch.zeros_like(pos))
+        quat = torch.where(valid.unsqueeze(-1), quat, torch.zeros_like(quat))
+
+    if return_key == "pos":
+        return pos
+    if return_key == "quat":
+        return quat
+    return torch.cat((pos, quat), dim=1)

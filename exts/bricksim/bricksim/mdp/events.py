@@ -9,6 +9,44 @@ from isaacsim.core.prims import XFormPrim
 from bricksim._native import compute_connection_transform, deallocate_all_managed
 from bricksim.mdp.utils import resolve_brick_rigid_object
 
+# TODO: clean up _interface_pose & _compute_visual_connection_transform
+def _interface_pose(
+    dimensions: tuple[int, int, int],
+    side: Literal["stud", "hole"],
+    *,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    length = float(dimensions[0]) * 0.008
+    width = float(dimensions[1]) * 0.008
+    height = float(dimensions[2]) * 0.0032
+    z = height if side == "stud" else 0.0
+    pos = torch.tensor([[-length / 2.0, -width / 2.0, z]], device=device, dtype=dtype)
+    quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+    return pos, quat
+
+
+def _compute_visual_connection_transform(
+    stud_dimensions: tuple[int, int, int],
+    hole_dimensions: tuple[int, int, int],
+    offset: tuple[int, int],
+    yaw: int,
+    *,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    stud_if_pos, stud_if_quat = _interface_pose(stud_dimensions, "stud", device=device, dtype=dtype)
+    hole_if_pos, hole_if_quat = _interface_pose(hole_dimensions, "hole", device=device, dtype=dtype)
+
+    yaw_angle = torch.tensor([float(yaw) * (torch.pi / 2.0)], device=device, dtype=dtype)
+    zero = torch.zeros_like(yaw_angle)
+    si_hi_quat = math_utils.quat_from_euler_xyz(zero, zero, yaw_angle)
+    si_hi_pos = torch.tensor([[float(offset[0]) * 0.008, float(offset[1]) * 0.008, 0.0]], device=device, dtype=dtype)
+
+    hole_inv_pos, hole_inv_quat = math_utils.subtract_frame_transforms(hole_if_pos, hole_if_quat)
+    stud_hi_pos, stud_hi_quat = math_utils.combine_frame_transforms(stud_if_pos, stud_if_quat, si_hi_pos, si_hi_quat)
+    return math_utils.combine_frame_transforms(stud_hi_pos, stud_hi_quat, hole_inv_pos, hole_inv_quat)
+
 
 def _rigid_object_is_kinematic(rigid_object: RigidObject) -> bool:
     spawn_cfg = rigid_object.cfg.spawn
@@ -164,32 +202,57 @@ def reset_to_connected_pose(
     reference_pos_w = reference_brick.data.root_pos_w[env_ids, :3]
     reference_quat_w = reference_brick.data.root_quat_w[env_ids]
 
-    rel_pos_values = []
-    rel_quat_values = []
-    for env_id in env_id_values:
+    if isinstance(moved, XFormPrim):
+        moved_cfg_value = getattr(env.scene.cfg, moved_cfg.name)
+        moved_dimensions = tuple(int(v) for v in moved_cfg_value.spawn.dimensions)
+        reference_dimensions = tuple(int(v) for v in reference_brick.cfg.spawn.dimensions)
         if moved_side == "hole":
-            quat_wxyz, pos_xyz = compute_connection_transform(
-                stud_path=reference_paths[env_id],
-                stud_if=stud_if,
-                hole_path=moved_paths[env_id],
-                hole_if=hole_if,
-                offset=offset,
-                yaw=yaw,
+            rel_pos, rel_quat = _compute_visual_connection_transform(
+                reference_dimensions,
+                moved_dimensions,
+                offset,
+                yaw,
+                device=reference_pos_w.device,
+                dtype=reference_pos_w.dtype,
             )
         else:
-            quat_wxyz, pos_xyz = compute_connection_transform(
-                stud_path=moved_paths[env_id],
-                stud_if=stud_if,
-                hole_path=reference_paths[env_id],
-                hole_if=hole_if,
-                offset=offset,
-                yaw=yaw,
+            rel_pos, rel_quat = _compute_visual_connection_transform(
+                moved_dimensions,
+                reference_dimensions,
+                offset,
+                yaw,
+                device=reference_pos_w.device,
+                dtype=reference_pos_w.dtype,
             )
-        rel_pos_values.append(pos_xyz)
-        rel_quat_values.append(quat_wxyz)
+        rel_pos = rel_pos.expand(len(env_id_values), -1)
+        rel_quat = rel_quat.expand(len(env_id_values), -1)
+    else:
+        rel_pos_values = []
+        rel_quat_values = []
+        for env_id in env_id_values:
+            if moved_side == "hole":
+                quat_wxyz, pos_xyz = compute_connection_transform(
+                    stud_path=reference_paths[env_id],
+                    stud_if=stud_if,
+                    hole_path=moved_paths[env_id],
+                    hole_if=hole_if,
+                    offset=offset,
+                    yaw=yaw,
+                )
+            else:
+                quat_wxyz, pos_xyz = compute_connection_transform(
+                    stud_path=moved_paths[env_id],
+                    stud_if=stud_if,
+                    hole_path=reference_paths[env_id],
+                    hole_if=hole_if,
+                    offset=offset,
+                    yaw=yaw,
+                )
+            rel_pos_values.append(pos_xyz)
+            rel_quat_values.append(quat_wxyz)
 
-    rel_pos = torch.tensor(rel_pos_values, device=reference_pos_w.device, dtype=reference_pos_w.dtype)
-    rel_quat = torch.tensor(rel_quat_values, device=reference_quat_w.device, dtype=reference_quat_w.dtype)
+        rel_pos = torch.tensor(rel_pos_values, device=reference_pos_w.device, dtype=reference_pos_w.dtype)
+        rel_quat = torch.tensor(rel_quat_values, device=reference_quat_w.device, dtype=reference_quat_w.dtype)
 
     if moved_side == "hole":
         target_pos_w, target_quat_w = math_utils.combine_frame_transforms(

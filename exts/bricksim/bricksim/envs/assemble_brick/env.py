@@ -1,9 +1,12 @@
 import math
+from collections.abc import Sequence
 from pathlib import Path
+
+import torch
 
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
-from isaaclab.envs import ManagerBasedRLEnvCfg
+from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from isaaclab.envs.mdp import (
     action_rate_l2,
     joint_pos_rel,
@@ -38,13 +41,18 @@ from bricksim.mdp.events import (
 )
 from bricksim.mdp.spawn import BrickPartCfg, MarkerBrickPartCfg
 
+from .expert import AssembleBrickExpert
 from .mdp.common import assemble_brick_goal_satisfied, wrong_connection_to_target
 from .mdp.goal import AssembleBrickGoal
 from .mdp.observations import (
+    captured_hole_to_eef_obs,
+    goal_target_match_obs,
+    gripper_is_open_obs,
     marker_pose_in_robot_root_frame,
     object_grasped_obs,
     object_marker_pose_error,
     rigid_object_velocity_in_robot_root_frame,
+    wrong_connection_obs,
 )
 from .mdp.rewards import (
     assemble_brick_success_bonus,
@@ -55,7 +63,6 @@ from .mdp.rewards import (
     object_transport_xy,
     object_yaw_align,
 )
-
 
 GOAL = AssembleBrickGoal(
     stud_if=1,
@@ -155,8 +162,8 @@ class ActionsCfg:
         joint_names=["panda_joint.*"],
         body_name="panda_hand",
         controller=DifferentialIKControllerCfg(command_type="pose", use_relative_mode=True, ik_method="dls"),
-        scale=0.5,
-        body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
+        scale=1.0,
+        body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.100]),
     )
 
     gripper_action = BinaryJointPositionActionCfg(
@@ -226,7 +233,88 @@ class ObservationsCfg:
             self.enable_corruption = False
             self.concatenate_terms = True
 
+    @configclass
+    class CriticCfg(ObservationGroupCfg):
+        joint_pos = ObservationTermCfg(func=joint_pos_rel)
+        joint_vel = ObservationTermCfg(func=joint_vel_rel)
+        eef_pos = ObservationTermCfg(func=ee_frame_pose_in_base_frame, params={"return_key": "pos"})
+        eef_quat = ObservationTermCfg(func=ee_frame_pose_in_base_frame, params={"return_key": "quat"})
+        gripper_pos = ObservationTermCfg(func=gripper_pos)
+        brick_pos = ObservationTermCfg(
+            func=object_poses_in_base_frame,
+            params={"object_cfg": SceneEntityCfg("lego_brick"), "return_key": "pos"},
+        )
+        brick_quat = ObservationTermCfg(
+            func=object_poses_in_base_frame,
+            params={"object_cfg": SceneEntityCfg("lego_brick"), "return_key": "quat"},
+        )
+        brick_lin_vel = ObservationTermCfg(
+            func=rigid_object_velocity_in_robot_root_frame,
+            params={"asset_cfg": SceneEntityCfg("lego_brick"), "return_key": "lin"},
+        )
+        brick_ang_vel = ObservationTermCfg(
+            func=rigid_object_velocity_in_robot_root_frame,
+            params={"asset_cfg": SceneEntityCfg("lego_brick"), "return_key": "ang"},
+        )
+        target_pos = ObservationTermCfg(
+            func=marker_pose_in_robot_root_frame,
+            params={"marker_cfg": SceneEntityCfg("marker_brick"), "return_key": "pos"},
+        )
+        target_quat = ObservationTermCfg(
+            func=marker_pose_in_robot_root_frame,
+            params={"marker_cfg": SceneEntityCfg("marker_brick"), "return_key": "quat"},
+        )
+        brick_to_target_pos = ObservationTermCfg(
+            func=object_marker_pose_error,
+            params={
+                "object_cfg": SceneEntityCfg("lego_brick"),
+                "marker_cfg": SceneEntityCfg("marker_brick"),
+                "return_key": "pos",
+            },
+        )
+        brick_to_target_quat = ObservationTermCfg(
+            func=object_marker_pose_error,
+            params={
+                "object_cfg": SceneEntityCfg("lego_brick"),
+                "marker_cfg": SceneEntityCfg("marker_brick"),
+                "return_key": "quat",
+            },
+        )
+        brick_grasped = ObservationTermCfg(
+            func=object_grasped_obs,
+            params={"object_cfg": SceneEntityCfg("lego_brick"), "diff_threshold": 0.04},
+        )
+        last_actions = ObservationTermCfg(func=last_action)
+        goal_target_match = ObservationTermCfg(
+            func=goal_target_match_obs,
+            params={
+                "stud_if": GOAL.stud_if,
+                "hole_if": GOAL.hole_if,
+                "target_offset": GOAL.offset,
+                "target_yaw": GOAL.yaw,
+                "object_cfg": SceneEntityCfg("lego_brick"),
+            },
+        )
+        wrong_connection = ObservationTermCfg(
+            func=wrong_connection_obs,
+            params={
+                "stud_if": GOAL.stud_if,
+                "hole_if": GOAL.hole_if,
+                "target_offset": GOAL.offset,
+                "target_yaw": GOAL.yaw,
+                "object_cfg": SceneEntityCfg("lego_brick"),
+            },
+        )
+        gripper_open = ObservationTermCfg(func=gripper_is_open_obs)
+        captured_hole_to_eef_pos = ObservationTermCfg(func=captured_hole_to_eef_obs, params={"return_key": "pos"})
+        captured_hole_to_eef_quat = ObservationTermCfg(func=captured_hole_to_eef_obs, params={"return_key": "quat"})
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
+
     policy: PolicyCfg = PolicyCfg()
+    critic: CriticCfg = CriticCfg()
 
 
 @configclass
@@ -432,6 +520,32 @@ class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physx.gpu_total_aggregate_pairs_capacity = 16 * 1024
         self.sim.physx.friction_correlation_distance = 0.00625
 
+        # IsaacLab viewer defaults for the assemble-brick task.
+        # Units: meters in world frame. The look-at point is inferred from the saved viewport pose.
+        self.viewer.eye = (0.86535, 0.47963, 0.24637)
+        self.viewer.lookat = (0.21471784579495856, -0.2155713921141228, -0.05919967178876398)
+
         self.gripper_joint_names = ["panda_finger_.*"]
         self.gripper_open_val = 0.04
         self.gripper_threshold = 0.005
+
+
+class AssembleBrickEnv(ManagerBasedRLEnv):
+    cfg: AssembleBrickEnvCfg
+
+    def __init__(self, cfg: AssembleBrickEnvCfg, render_mode: str | None = None, **kwargs):
+        super().__init__(cfg=cfg, render_mode=render_mode, **kwargs)
+        self._expert = AssembleBrickExpert(
+            self,
+            stud_if=GOAL.stud_if,
+            hole_if=GOAL.hole_if,
+            target_offset=GOAL.offset,
+            target_yaw=GOAL.yaw,
+        )
+
+    def _reset_idx(self, env_ids: Sequence[int]):
+        super()._reset_idx(env_ids)
+        self._expert.reset(env_ids)
+
+    def compute_expert_actions(self) -> torch.Tensor:
+        return self._expert.compute_actions()

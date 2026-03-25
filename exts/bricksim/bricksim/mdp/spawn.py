@@ -3,12 +3,11 @@ from typing import Callable
 
 from bricksim._native import allocate_unmanaged_brick_part
 from bricksim.colors import parse_color
-from isaaclab.sim import (PreviewSurfaceCfg, RigidBodyPropertiesCfg,
-                          SpawnerCfg, bind_visual_material, clone,
+from isaaclab.sim import (RigidBodyPropertiesCfg, SpawnerCfg, clone,
                           get_current_stage, modify_rigid_body_properties)
 from isaaclab.utils import configclass
 from isaacsim.core.utils.xforms import reset_and_set_xform_ops
-from pxr import Gf, Usd, UsdGeom, UsdPhysics
+from pxr import Gf, Usd, UsdGeom
 
 
 def _reset_brick_xform_ops(
@@ -59,27 +58,67 @@ class BrickPartCfg(SpawnerCfg):
     color: str | tuple[int, int, int] = MISSING
     rigid_props: RigidBodyPropertiesCfg | None = None
 
-def _bind_marker_material(
+
+def _build_marker_wireframe_points(dimensions: tuple[int, int, int]) -> list[Gf.Vec3f]:
+    length = float(dimensions[0]) * 0.008
+    width = float(dimensions[1]) * 0.008
+    top_z = float(dimensions[2]) * 0.0032 + 0.0017
+    x0 = -length / 2.0
+    y0 = -width / 2.0
+    z0 = 0.0
+    x1 = length / 2.0
+    y1 = width / 2.0
+    z1 = top_z
+
+    p000 = Gf.Vec3f(x0, y0, z0)
+    p100 = Gf.Vec3f(x1, y0, z0)
+    p110 = Gf.Vec3f(x1, y1, z0)
+    p010 = Gf.Vec3f(x0, y1, z0)
+    p001 = Gf.Vec3f(x0, y0, z1)
+    p101 = Gf.Vec3f(x1, y0, z1)
+    p111 = Gf.Vec3f(x1, y1, z1)
+    p011 = Gf.Vec3f(x0, y1, z1)
+
+    return [
+        p000, p100,
+        p100, p110,
+        p110, p010,
+        p010, p000,
+        p001, p101,
+        p101, p111,
+        p111, p011,
+        p011, p001,
+        p000, p001,
+        p100, p101,
+        p110, p111,
+        p010, p011,
+    ]
+
+
+def _configure_marker_curves(
     stage: Usd.Stage,
-    prim_path: str,
+    prim: Usd.Prim,
+    dimensions: tuple[int, int, int],
     color: tuple[int, int, int],
-    opacity: float,
 ) -> None:
-    material_path = f"{prim_path}/Looks/Marker"
-    if not stage.GetPrimAtPath(material_path).IsValid():
-        material_cfg = PreviewSurfaceCfg(
-            diffuse_color=tuple(c / 255.0 for c in color),
-            opacity=opacity,
-            roughness=1.0,
-            metallic=0.5,
+    curves_path = prim.GetPath().AppendChild("EdgeCurves")
+    existing = stage.GetPrimAtPath(curves_path)
+    if existing.IsValid() and existing.GetTypeName() != "BasisCurves":
+        raise RuntimeError(
+            f"Cannot create marker wireframe at '{curves_path}': existing child has type '{existing.GetTypeName()}'."
         )
-        material_cfg.func(material_path, material_cfg)
-    bind_visual_material(
-        prim_path=prim_path,
-        material_path=material_path,
-        stage=stage,
-        stronger_than_descendants=True,
+    curves = UsdGeom.BasisCurves.Define(stage, curves_path)
+
+    curves.CreateTypeAttr().Set(UsdGeom.Tokens.linear)
+    curves.CreateWrapAttr().Set(UsdGeom.Tokens.nonperiodic)
+    curves.CreateCurveVertexCountsAttr().Set([2] * 12)
+    curves.CreatePointsAttr().Set(_build_marker_wireframe_points(dimensions))
+    curves.CreateWidthsAttr().Set([0.001])
+    curves.SetWidthsInterpolation(UsdGeom.Tokens.constant)
+    curves.CreateDisplayColorPrimvar(UsdGeom.Tokens.constant).Set(
+        [Gf.Vec3f(*(float(c) / 255.0 for c in color))]
     )
+
 
 @clone
 def spawn_marker_brick_part(
@@ -96,21 +135,16 @@ def spawn_marker_brick_part(
     else:
         color = cfg.color
     if not prim.IsValid():
-        allocate_unmanaged_brick_part(cfg.dimensions, color, prim_path)
-        prim = stage.GetPrimAtPath(prim_path)
+        prim = UsdGeom.Xform.Define(stage, prim_path).GetPrim()
         if not prim.IsValid():
-            raise RuntimeError(f"Failed to spawn BrickPart at '{prim_path}'.")
+            raise RuntimeError(f"Failed to spawn marker wireframe at '{prim_path}'.")
     _reset_brick_xform_ops(prim, translation=translation, orientation=orientation)
-    prim.SetInstanceable(False)
-    prim.RemoveAPI(UsdPhysics.RigidBodyAPI)
-    stage.OverridePrim(prim.GetPath().AppendChild("BodyCollider")).SetActive(False)
-    stage.OverridePrim(prim.GetPath().AppendChild("TopCollider")).SetActive(False)
-    _bind_marker_material(stage, prim_path, color, cfg.opacity)
+    _configure_marker_curves(stage, prim, cfg.dimensions, color)
     return prim
+
 
 @configclass
 class MarkerBrickPartCfg(SpawnerCfg):
     func: Callable = spawn_marker_brick_part
     dimensions: tuple[int, int, int] = MISSING
     color: str | tuple[int, int, int] = MISSING
-    opacity: float = 0.1
