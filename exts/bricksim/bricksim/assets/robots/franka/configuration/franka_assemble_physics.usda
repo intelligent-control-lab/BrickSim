@@ -1,0 +1,54 @@
+#usda 1.0
+(
+    defaultPrim = "panda"
+    subLayers = [
+        @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd@
+    ]
+)
+
+over "panda"
+{
+    int physxArticulation:solverPositionIterationCount = 64
+
+    def Scope "PhysicsMaterials"
+    {
+        def Material "FingerPad" (
+            prepend apiSchemas = ["PhysicsMaterialAPI", "PhysxMaterialAPI"]
+        )
+        {
+            float physics:staticFriction = 2.5
+            float physics:dynamicFriction = 2.0
+            float physics:restitution = 0.0
+        }
+    }
+
+    over "panda_leftfinger"
+    {
+        over "geometry" (
+            instanceable = false
+        )
+        {
+            over "panda_leftfinger" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                rel material:binding:physics = </panda/PhysicsMaterials/FingerPad>
+            }
+        }
+    }
+
+    over "panda_rightfinger"
+    {
+        over "geometry" (
+            instanceable = false
+        )
+        {
+            over "panda_rightfinger" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                rel material:binding:physics = </panda/PhysicsMaterials/FingerPad>
+            }
+        }
+    }
+}

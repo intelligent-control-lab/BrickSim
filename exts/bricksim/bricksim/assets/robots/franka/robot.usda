@@ -1,0 +1,23 @@
+#usda 1.0
+(
+    defaultPrim = "panda"
+)
+
+def Xform "panda" (
+    variants = {
+        string Physics = "Assemble"
+    }
+    prepend variantSets = ["Physics"]
+)
+{
+    variantSet "Physics" = {
+        "None" (
+            prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd@
+        ) {
+        }
+        "Assemble" (
+            prepend payload = @configuration/franka_assemble_physics.usda@
+        ) {
+        }
+    }
+}

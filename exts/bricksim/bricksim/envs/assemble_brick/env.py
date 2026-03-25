@@ -1,32 +1,84 @@
 import math
+from pathlib import Path
+
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
+from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
-from isaaclab.envs.mdp import (BinaryJointPositionActionCfg,
-                               JointPositionActionCfg, joint_pos_rel,
-                               joint_vel_rel, last_action, reset_root_state_uniform, time_out)
-from isaaclab.managers import (EventTermCfg, ObservationGroupCfg, ObservationTermCfg, RewardTermCfg, SceneEntityCfg,
-                               TerminationTermCfg)
+from isaaclab.envs.mdp import (
+    action_rate_l2,
+    joint_pos_rel,
+    joint_vel_l2,
+    joint_vel_rel,
+    last_action,
+    reset_root_state_uniform,
+    root_height_below_minimum,
+    time_out,
+)
+from isaaclab.envs.mdp.actions.actions_cfg import BinaryJointPositionActionCfg, DifferentialInverseKinematicsActionCfg
+from isaaclab.managers import EventTermCfg, ObservationGroupCfg, ObservationTermCfg, RewardTermCfg, SceneEntityCfg
+from isaaclab.managers import TerminationTermCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import FrameTransformerCfg, OffsetCfg
-from isaaclab.sim import (DomeLightCfg, GroundPlaneCfg, RigidBodyPropertiesCfg,
-                          UsdFileCfg)
+from isaaclab.sim import DomeLightCfg, GroundPlaneCfg, RigidBodyPropertiesCfg, UsdFileCfg
 from isaaclab.utils import configclass
-from isaaclab_assets import FRANKA_PANDA_CFG, ISAAC_NUCLEUS_DIR
-from isaaclab_tasks.manager_based.manipulation.stack.mdp import (ee_frame_pos,
-                                                                 ee_frame_quat)
-from isaaclab_tasks.manager_based.manipulation.lift.mdp import object_ee_distance
+from isaaclab_assets import ISAAC_NUCLEUS_DIR
+from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG
+from isaaclab_tasks.manager_based.manipulation.lift.mdp.rewards import object_ee_distance
+from isaaclab_tasks.manager_based.manipulation.place.mdp.observations import object_poses_in_base_frame
+from isaaclab_tasks.manager_based.manipulation.stack.mdp import franka_stack_events
+from isaaclab_tasks.manager_based.manipulation.stack.mdp.observations import (
+    ee_frame_pose_in_base_frame,
+    gripper_pos,
+)
+from bricksim.mdp.connection_thresholds import configure_assembly_thresholds, configure_breakage_thresholds
+from bricksim.mdp.events import (
+    reset_bricksim_managed,
+    reset_scene_to_default_no_kinematic_vel,
+    reset_to_connected_pose,
+)
 from bricksim.mdp.spawn import BrickPartCfg, MarkerBrickPartCfg
-from bricksim.mdp.events import reset_managed_lego, reset_to_assembled_pose
+
+from .mdp.common import assemble_brick_goal_satisfied, wrong_connection_to_target
+from .mdp.goal import AssembleBrickGoal
+from .mdp.observations import (
+    marker_pose_in_robot_root_frame,
+    object_grasped_obs,
+    object_marker_pose_error,
+    rigid_object_velocity_in_robot_root_frame,
+)
+from .mdp.rewards import (
+    assemble_brick_success_bonus,
+    grasp_bonus_from_object_grasped,
+    lift_bonus_relative_to_target,
+    object_insert_z,
+    object_pre_insert_height,
+    object_transport_xy,
+    object_yaw_align,
+)
+
+
+GOAL = AssembleBrickGoal(
+    stud_if=1,
+    hole_if=0,
+    offset=(5, 5),
+    yaw=1,
+    pos_tol=0.002,
+    rot_tol=math.radians(5.0),
+)
 
 
 @configclass
 class SceneCfg(InteractiveSceneCfg):
-
     replicate_physics = False
 
-    robot: ArticulationCfg = FRANKA_PANDA_CFG.replace(
-        prim_path="{ENV_REGEX_NS}/Robot"
-    )
+    robot: ArticulationCfg = FRANKA_PANDA_HIGH_PD_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+    robot.spawn.usd_path = str(Path(__file__).resolve().parents[2] / "assets" / "robots" / "franka" / "robot.usda")
+    robot.spawn.variants = {"Physics": "Assemble"}
+    robot.spawn.articulation_props.solver_position_iteration_count = 64
+    robot.spawn.articulation_props.solver_velocity_iteration_count = 1
+    robot.actuators["panda_hand"].effort_limit_sim = 15.0
+    robot.actuators["panda_hand"].stiffness = 400.0
+    robot.actuators["panda_hand"].damping = 80.0
 
     ee_frame = FrameTransformerCfg(
         prim_path="{ENV_REGEX_NS}/Robot/panda_link0",
@@ -35,23 +87,17 @@ class SceneCfg(InteractiveSceneCfg):
             FrameTransformerCfg.FrameCfg(
                 prim_path="{ENV_REGEX_NS}/Robot/panda_hand",
                 name="end_effector",
-                offset=OffsetCfg(
-                    pos=[0.0, 0.0, 0.1034],
-                ),
+                offset=OffsetCfg(pos=[0.0, 0.0, 0.1034]),
             ),
             FrameTransformerCfg.FrameCfg(
                 prim_path="{ENV_REGEX_NS}/Robot/panda_rightfinger",
                 name="tool_rightfinger",
-                offset=OffsetCfg(
-                    pos=(0.0, 0.0, 0.046),
-                ),
+                offset=OffsetCfg(pos=(0.0, 0.0, 0.046)),
             ),
             FrameTransformerCfg.FrameCfg(
                 prim_path="{ENV_REGEX_NS}/Robot/panda_leftfinger",
                 name="tool_leftfinger",
-                offset=OffsetCfg(
-                    pos=(0.0, 0.0, 0.046),
-                ),
+                offset=OffsetCfg(pos=(0.0, 0.0, 0.046)),
             ),
         ],
         visualizer_cfg=None,
@@ -101,14 +147,16 @@ class SceneCfg(InteractiveSceneCfg):
         ),
     )
 
+
 @configclass
 class ActionsCfg:
-
-    arm_action = JointPositionActionCfg(
+    arm_action = DifferentialInverseKinematicsActionCfg(
         asset_name="robot",
         joint_names=["panda_joint.*"],
+        body_name="panda_hand",
+        controller=DifferentialIKControllerCfg(command_type="pose", use_relative_mode=True, ik_method="dls"),
         scale=0.5,
-        use_default_offset=True,
+        body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
     )
 
     gripper_action = BinaryJointPositionActionCfg(
@@ -118,38 +166,98 @@ class ActionsCfg:
         close_command_expr={"panda_finger_.*": 0.0},
     )
 
-@configclass
-class CommandsCfg:
-    pass
 
 @configclass
 class ObservationsCfg:
     @configclass
     class PolicyCfg(ObservationGroupCfg):
-        joint_pos_rel = ObservationTermCfg(
-            func=joint_pos_rel,
+        joint_pos = ObservationTermCfg(func=joint_pos_rel)
+        joint_vel = ObservationTermCfg(func=joint_vel_rel)
+        eef_pos = ObservationTermCfg(func=ee_frame_pose_in_base_frame, params={"return_key": "pos"})
+        eef_quat = ObservationTermCfg(func=ee_frame_pose_in_base_frame, params={"return_key": "quat"})
+        gripper_pos = ObservationTermCfg(func=gripper_pos)
+        brick_pos = ObservationTermCfg(
+            func=object_poses_in_base_frame,
+            params={"object_cfg": SceneEntityCfg("lego_brick"), "return_key": "pos"},
         )
+        brick_quat = ObservationTermCfg(
+            func=object_poses_in_base_frame,
+            params={"object_cfg": SceneEntityCfg("lego_brick"), "return_key": "quat"},
+        )
+        brick_lin_vel = ObservationTermCfg(
+            func=rigid_object_velocity_in_robot_root_frame,
+            params={"asset_cfg": SceneEntityCfg("lego_brick"), "return_key": "lin"},
+        )
+        brick_ang_vel = ObservationTermCfg(
+            func=rigid_object_velocity_in_robot_root_frame,
+            params={"asset_cfg": SceneEntityCfg("lego_brick"), "return_key": "ang"},
+        )
+        target_pos = ObservationTermCfg(
+            func=marker_pose_in_robot_root_frame,
+            params={"marker_cfg": SceneEntityCfg("marker_brick"), "return_key": "pos"},
+        )
+        target_quat = ObservationTermCfg(
+            func=marker_pose_in_robot_root_frame,
+            params={"marker_cfg": SceneEntityCfg("marker_brick"), "return_key": "quat"},
+        )
+        brick_to_target_pos = ObservationTermCfg(
+            func=object_marker_pose_error,
+            params={
+                "object_cfg": SceneEntityCfg("lego_brick"),
+                "marker_cfg": SceneEntityCfg("marker_brick"),
+                "return_key": "pos",
+            },
+        )
+        brick_to_target_quat = ObservationTermCfg(
+            func=object_marker_pose_error,
+            params={
+                "object_cfg": SceneEntityCfg("lego_brick"),
+                "marker_cfg": SceneEntityCfg("marker_brick"),
+                "return_key": "quat",
+            },
+        )
+        brick_grasped = ObservationTermCfg(
+            func=object_grasped_obs,
+            params={"object_cfg": SceneEntityCfg("lego_brick"), "diff_threshold": 0.04},
+        )
+        last_actions = ObservationTermCfg(func=last_action)
 
-        joint_vel_rel = ObservationTermCfg(
-            func=joint_vel_rel,
-        )
-
-        eef_pos = ObservationTermCfg(
-            func=ee_frame_pos,
-        )
-
-        eef_quat = ObservationTermCfg(
-            func=ee_frame_quat,
-        )
-
-        last_actions = ObservationTermCfg(
-            func=last_action,
-        )
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
 
     policy: PolicyCfg = PolicyCfg()
 
+
 @configclass
 class EventCfg:
+    reset_all = EventTermCfg(
+        func=reset_scene_to_default_no_kinematic_vel,
+        mode="reset",
+    )
+
+    init_franka_arm_pose = EventTermCfg(
+        func=franka_stack_events.set_default_joint_pose,
+        mode="startup",
+        params={
+            "default_pose": [0.0444, -0.1894, -0.1107, -2.5148, 0.0044, 2.3775, 0.6952, 0.0400, 0.0400],
+        },
+    )
+
+    reset_bricksim_managed = EventTermCfg(
+        func=reset_bricksim_managed,
+        mode="reset",
+    )
+
+    randomize_franka_joint_state = EventTermCfg(
+        func=franka_stack_events.randomize_joint_by_gaussian_offset,
+        mode="reset",
+        params={
+            "mean": 0.0,
+            "std": 0.02,
+            "asset_cfg": SceneEntityCfg("robot"),
+        },
+    )
 
     reset_brick_pose = EventTermCfg(
         func=reset_root_state_uniform,
@@ -162,66 +270,168 @@ class EventCfg:
                 "yaw": (0.0, math.tau),
             },
             "velocity_range": {},
-          },
-      )
-
-    reset_marker_brick_pose = EventTermCfg(
-        func=reset_to_assembled_pose,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("marker_brick"),
-            "stud": SceneEntityCfg("lego_baseplate"),
-            "offset": (5, 5),
-            "yaw": 1,
         },
     )
 
-    reset_managed_lego = EventTermCfg(
-        func=reset_managed_lego,
+    reset_marker_brick_pose = EventTermCfg(
+        func=reset_to_connected_pose,
         mode="reset",
+        params={
+            "moved_cfg": SceneEntityCfg("marker_brick"),
+            "reference_brick_cfg": SceneEntityCfg("lego_baseplate"),
+            "moved_side": "hole",
+            "stud_if": GOAL.stud_if,
+            "hole_if": GOAL.hole_if,
+            "offset": GOAL.offset,
+            "yaw": GOAL.yaw,
+        },
     )
+
 
 @configclass
 class RewardsCfg:
-    reaching_brick = RewardTermCfg(
+    reach_brick = RewardTermCfg(
         func=object_ee_distance,
-        params={
-            "std": 0.1,
-            "object_cfg": SceneEntityCfg("lego_brick"),
-        },
+        params={"std": 0.08, "object_cfg": SceneEntityCfg("lego_brick")},
         weight=1.0,
     )
 
-@configclass
-class TerminationsCfg:
-    time_out = TerminationTermCfg(
-        func=time_out,
-        time_out=True,
+    grasp_bonus = RewardTermCfg(
+        func=grasp_bonus_from_object_grasped,
+        params={"object_cfg": SceneEntityCfg("lego_brick"), "diff_threshold": 0.04},
+        weight=2.0,
     )
 
+    lift_bonus = RewardTermCfg(
+        func=lift_bonus_relative_to_target,
+        params={"object_cfg": SceneEntityCfg("lego_brick"), "target_cfg": SceneEntityCfg("marker_brick"), "lift_height": 0.03},
+        weight=2.0,
+    )
+
+    transport_xy = RewardTermCfg(
+        func=object_transport_xy,
+        params={"std": 0.04, "object_cfg": SceneEntityCfg("lego_brick"), "target_cfg": SceneEntityCfg("marker_brick")},
+        weight=4.0,
+    )
+
+    yaw_align = RewardTermCfg(
+        func=object_yaw_align,
+        params={"std": 0.20, "object_cfg": SceneEntityCfg("lego_brick"), "target_cfg": SceneEntityCfg("marker_brick")},
+        weight=2.0,
+    )
+
+    pre_insert_height = RewardTermCfg(
+        func=object_pre_insert_height,
+        params={
+            "std": 0.01,
+            "object_cfg": SceneEntityCfg("lego_brick"),
+            "target_cfg": SceneEntityCfg("marker_brick"),
+            "target_height_offset": 0.02,
+            "loose_xy_threshold": 0.03,
+            "loose_rot_threshold": 0.25,
+        },
+        weight=3.0,
+    )
+
+    insert_z = RewardTermCfg(
+        func=object_insert_z,
+        params={
+            "std": 0.006,
+            "object_cfg": SceneEntityCfg("lego_brick"),
+            "target_cfg": SceneEntityCfg("marker_brick"),
+            "tight_xy_threshold": 0.012,
+            "tight_rot_threshold": 0.12,
+        },
+        weight=4.0,
+    )
+
+    success_bonus = RewardTermCfg(
+        func=assemble_brick_success_bonus,
+        params={
+            "stud_if": GOAL.stud_if,
+            "hole_if": GOAL.hole_if,
+            "target_offset": GOAL.offset,
+            "target_yaw": GOAL.yaw,
+            "object_cfg": SceneEntityCfg("lego_brick"),
+            "target_cfg": SceneEntityCfg("marker_brick"),
+            "pos_tol": GOAL.pos_tol,
+            "rot_tol": GOAL.rot_tol,
+        },
+        weight=20.0,
+    )
+
+    action_rate = RewardTermCfg(
+        func=action_rate_l2,
+        weight=-1e-4,
+    )
+
+    joint_vel = RewardTermCfg(
+        func=joint_vel_l2,
+        weight=-1e-4,
+        params={"asset_cfg": SceneEntityCfg("robot")},
+    )
+
+
 @configclass
-class CurriculumCfg:
-    pass
+class TerminationsCfg:
+    time_out = TerminationTermCfg(func=time_out, time_out=True)
+
+    success = TerminationTermCfg(
+        func=assemble_brick_goal_satisfied,
+        params={
+            "stud_if": GOAL.stud_if,
+            "hole_if": GOAL.hole_if,
+            "target_offset": GOAL.offset,
+            "target_yaw": GOAL.yaw,
+            "object_cfg": SceneEntityCfg("lego_brick"),
+            "target_cfg": SceneEntityCfg("marker_brick"),
+            "pos_tol": GOAL.pos_tol,
+            "rot_tol": GOAL.rot_tol,
+        },
+    )
+
+    wrong_connection = TerminationTermCfg(
+        func=wrong_connection_to_target,
+        params={
+            "stud_if": GOAL.stud_if,
+            "hole_if": GOAL.hole_if,
+            "target_offset": GOAL.offset,
+            "target_yaw": GOAL.yaw,
+            "object_cfg": SceneEntityCfg("lego_brick"),
+        },
+    )
+
+    brick_dropped = TerminationTermCfg(
+        func=root_height_below_minimum,
+        params={"minimum_height": -0.02, "asset_cfg": SceneEntityCfg("lego_brick")},
+    )
+
 
 @configclass
 class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
     scene = SceneCfg(num_envs=16, env_spacing=2.5)
     observations = ObservationsCfg()
     actions = ActionsCfg()
-    commands = CommandsCfg()
+    commands = None
     rewards = RewardsCfg()
     terminations = TerminationsCfg()
     events = EventCfg()
-    curriculum: CurriculumCfg = CurriculumCfg()
+    curriculum = None
 
     def __post_init__(self):
+        configure_assembly_thresholds(enabled=True)
+        configure_breakage_thresholds(enabled=False)
         self.sim.device = "cpu"
-        self.decimation = 2
-        self.episode_length_s = 30.0
+        self.sim.use_fabric = False
+        self.decimation = 1
+        self.episode_length_s = 12.0
         self.sim.dt = 0.01
         self.sim.render_interval = self.decimation
-        self.sim.physx.bounce_threshold_velocity = 0.2
         self.sim.physx.bounce_threshold_velocity = 0.01
         self.sim.physx.gpu_found_lost_aggregate_pairs_capacity = 1024 * 1024 * 4
         self.sim.physx.gpu_total_aggregate_pairs_capacity = 16 * 1024
         self.sim.physx.friction_correlation_distance = 0.00625
+
+        self.gripper_joint_names = ["panda_finger_.*"]
+        self.gripper_open_val = 0.04
+        self.gripper_threshold = 0.005
