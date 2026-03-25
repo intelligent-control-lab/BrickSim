@@ -8,6 +8,7 @@ from isaaclab.app import AppLauncher
 parser = argparse.ArgumentParser(description="Random-policy rollout for the BrickSim assemble-brick task.")
 parser.add_argument("--task", type=str, default="Lego-AssembleBrick-v0", help="Gym task id.")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of parallel environments.")
+parser.add_argument("--seed", type=int, default=None, help="Optional environment seed.")
 parser.add_argument(
     "--mode",
     type=str,
@@ -62,6 +63,8 @@ def get_concatenated_term_slice(env, group_name: str, term_name: str) -> slice:
 
 def main():
     env_cfg = parse_env_cfg(args_cli.task, num_envs=args_cli.num_envs, use_fabric=False, device="cpu")
+    if args_cli.seed is not None:
+        env_cfg.seed = args_cli.seed
     env = gym.make(args_cli.task, cfg=env_cfg)
     gripper_obs_slice = get_concatenated_term_slice(env, group_name="policy", term_name="gripper_pos")
 
@@ -70,6 +73,8 @@ def main():
         print(f"[INFO]: observation space: {env.observation_space}")
         print(f"[INFO]: action space: {env.action_space}")
         print(f"[INFO]: mode: {args_cli.mode}")
+        if args_cli.seed is not None:
+            print(f"[INFO]: Using seed: {args_cli.seed}")
 
         env.reset()
         step_count = 0

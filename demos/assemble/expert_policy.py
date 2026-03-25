@@ -7,6 +7,7 @@ from isaaclab.app import AppLauncher
 parser = argparse.ArgumentParser(description="Expert-policy rollout for BrickSim assemble-brick.")
 parser.add_argument("--task", type=str, default="Lego-AssembleBrick-v0")
 parser.add_argument("--num_envs", type=int, default=1)
+parser.add_argument("--seed", type=int, default=None, help="Optional environment seed.")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
@@ -27,9 +28,13 @@ def main():
         use_fabric=False,
         device="cpu",
     )
+    if args_cli.seed is not None:
+        env_cfg.seed = args_cli.seed
     env = gym.make(args_cli.task, cfg=env_cfg)
 
     try:
+        if args_cli.seed is not None:
+            print(f"[INFO]: Using seed: {args_cli.seed}")
         env.reset()
         step = 0
 
