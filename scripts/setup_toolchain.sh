@@ -45,8 +45,8 @@ download_with_retry() {
         rm -f "$dest"
     fi
 
-    echo "Downloading with retry: ${url}" >&2
-    if ! wget --tries=10 --retry-on-http-error=500 -O "$dest" "$url"; then
+    echo "Downloading: ${url}" >&2
+    if ! wget --tries=10 --retry-on-http-error=500 --retry-on-host-error -O "$dest" "$url"; then
         echo "Download failed for $url" >&2
         exit 1
     fi
