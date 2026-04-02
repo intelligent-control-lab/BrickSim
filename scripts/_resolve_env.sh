@@ -13,12 +13,14 @@ BrickSim scripts use the first available environment in this order:
 3. Repository-local .venv (without sourcing it)
 
 Fix one of the following and rerun the command:
-- Activate a conda environment containing Python 3.11
-- Activate a Python virtualenv containing Python 3.11
-- Create a repo-local environment at:
-    ${_BRICKSIM_RESOLVER_ROOT_DIR}/.venv
-  for example:
-    python3.11 -m venv --symlinks --prompt bricksim --upgrade-deps ${_BRICKSIM_RESOLVER_ROOT_DIR}/.venv
+- Activate a conda environment containing Python 3.11, then run:
+    uv sync --directory ${_BRICKSIM_RESOLVER_ROOT_DIR} --locked --active --inexact
+- Activate a Python virtualenv containing Python 3.11, then run:
+    uv sync --directory ${_BRICKSIM_RESOLVER_ROOT_DIR} --locked --active --inexact
+- Create a repo-local environment with:
+    uv sync --directory ${_BRICKSIM_RESOLVER_ROOT_DIR} --locked
+  or run:
+    ${_BRICKSIM_RESOLVER_ROOT_DIR}/scripts/setup_env.sh
 EOF
 }
 

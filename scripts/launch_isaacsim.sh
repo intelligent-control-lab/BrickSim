@@ -12,7 +12,11 @@ if [[ ! -x "$BRICKSIM_ENV_ISAACSIM" ]]; then
 Resolved environment: $BRICKSIM_ENV_DIR ($BRICKSIM_ENV_KIND)
 
 Run:
+  uv sync --directory "$ROOT_DIR" --locked --python
+or:
   ./scripts/setup_env.sh
+or, for an activated conda / virtualenv:
+  uv sync --directory "$ROOT_DIR" --locked --active --inexact
 EOF
   exit 1
 fi

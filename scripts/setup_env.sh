@@ -4,15 +4,11 @@ set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
 source "$ROOT_DIR/scripts/_resolve_env.sh"
-bricksim_require_env
-
-readonly NVIDIA_PYPI_URL="https://pypi.nvidia.com"
-readonly PYTORCH_CU128_INDEX_URL="https://download.pytorch.org/whl/cu128"
 
 require_commands() {
     local missing=()
     local command_name
-    for command_name in git wget tar ar sha256sum; do
+    for command_name in git wget tar ar sha256sum uv; do
         if ! command -v "$command_name" >/dev/null 2>&1; then
             missing+=("$command_name")
         fi
@@ -27,6 +23,23 @@ require_commands() {
     fi
 }
 
+sync_environment() {
+    if [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/python" ]]; then
+        echo "[INFO] Syncing BrickSim dependencies into active conda environment: $CONDA_PREFIX"
+        uv sync --directory "$ROOT_DIR" --locked --active --inexact
+        return
+    fi
+
+    if [[ -n "${VIRTUAL_ENV:-}" && -x "${VIRTUAL_ENV}/bin/python" ]]; then
+        echo "[INFO] Syncing BrickSim dependencies into active virtualenv: $VIRTUAL_ENV"
+        uv sync --directory "$ROOT_DIR" --locked --active --inexact
+        return
+    fi
+
+    echo "[INFO] Syncing BrickSim dependencies into repo-local environment: $ROOT_DIR/.venv"
+    uv sync --directory "$ROOT_DIR" --locked
+}
+
 check_python_version() {
     "$BRICKSIM_ENV_PYTHON" - <<'PY'
 import sys
@@ -36,14 +49,6 @@ if sys.version_info[:2] != (3, 11):
         f"[ERROR] BrickSim requires Python 3.11.x in the resolved environment, found {sys.version.split()[0]}."
     )
 PY
-}
-
-pip_install() {
-    "$BRICKSIM_ENV_PYTHON" -m pip install "$@"
-}
-
-pip_install_editable() {
-    "$BRICKSIM_ENV_PYTHON" -m pip install --no-build-isolation -e "$1"
 }
 
 verify_python_packages() {
@@ -80,28 +85,13 @@ verify_native_module_artifact() {
 
 main() {
     require_commands
+    sync_environment
+    bricksim_require_env
     check_python_version
 
     echo "[INFO] Using BrickSim environment: $BRICKSIM_ENV_DIR ($BRICKSIM_ENV_KIND)"
 
-    pip_install "setuptools<81" "wheel<0.46" "packaging==23.0" "poetry-core"
-    pip_install "isaacsim[all,extscache]==5.1.0" --extra-index-url "$NVIDIA_PYPI_URL"
-    pip_install --index-url "$PYTORCH_CU128_INDEX_URL" \
-        "torch==2.7.0" \
-        "torchvision==0.22.0" \
-        "torchaudio==2.7.0"
-
-    pip_install_editable "$ROOT_DIR/IsaacLab/source/isaaclab"
-    pip_install_editable "$ROOT_DIR/IsaacLab/source/isaaclab_assets"
-    pip_install_editable "$ROOT_DIR/IsaacLab/source/isaaclab_tasks"
-    pip_install --no-build-isolation -e "$ROOT_DIR/IsaacLab/source/isaaclab_rl[all]"
-    (
-        export CMAKE_POLICY_VERSION_MINIMUM=3.5
-        pip_install --no-build-isolation -e "$ROOT_DIR/IsaacLab/source/isaaclab_mimic[all]"
-    )
-
     "$ROOT_DIR/scripts/build.sh"
-    pip_install -e "$ROOT_DIR/exts/bricksim"
 
     verify_isaacsim_entrypoint
     verify_python_packages

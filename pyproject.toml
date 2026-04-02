@@ -1,0 +1,48 @@
+[project]
+name = "bricksim-dev"
+version = "0.0.0"
+description = "BrickSim development environment"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "bricksim",
+    "isaaclab",
+    "isaaclab_assets",
+    "isaaclab_tasks",
+    "isaaclab_rl[skrl]",
+    "isaaclab_mimic",
+    "isaacsim[all,extscache]==5.1.0",
+    "torch==2.7.0",
+    "torchvision==0.22.0",
+    "torchaudio==2.7.0",
+]
+
+[tool.uv]
+package = false
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+build-constraint-dependencies = ["setuptools<81", "wheel<0.46"]
+override-dependencies = [
+    "pywin32==306 ; sys_platform == 'win32'",
+    "starlette==0.49.1",
+]
+
+[tool.uv.sources]
+bricksim = { path = "exts/bricksim", editable = true }
+isaaclab = { path = "IsaacLab/source/isaaclab", editable = true }
+isaaclab_assets = { path = "IsaacLab/source/isaaclab_assets", editable = true }
+isaaclab_tasks = { path = "IsaacLab/source/isaaclab_tasks", editable = true }
+isaaclab_rl = { path = "IsaacLab/source/isaaclab_rl", editable = true }
+isaaclab_mimic = { path = "IsaacLab/source/isaaclab_mimic", editable = true }
+isaacsim = { index = "nvidia" }
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+torchaudio = { index = "pytorch-cu128" }
+
+[[tool.uv.index]]
+name = "nvidia"
+url = "https://pypi.nvidia.com"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true

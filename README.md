@@ -25,127 +25,73 @@
   <img src="docs/assets/bricksim_teaser.png" alt="BrickSim teaser showing a multi-robot brick assembly workflow and a gallery of simulated brick structures." width="100%">
 </p>
 
-## Quickstart
+## Getting Started
 
-```bash
-git clone --recursive https://github.com/intelligent-control-lab/BrickSim BrickSim
-cd BrickSim
-
-python3.11 -m venv --symlinks --prompt bricksim --upgrade-deps .venv
-./scripts/setup_env.sh
-
-./scripts/launch_isaacsim.sh demos/demo_assembly.py
-```
-
-## Prerequisites
-
-- BrickSim currently supports the x86-64 Linux platform. Support for other platforms is coming.
+### Prerequisites
+- x86-64 Linux platform. Support for other platforms is coming.
 - Ubuntu 22.04+ or another Linux distribution with `GLIBC >= 2.35`, `GLIBCXX >= 3.4.30`, and `CXXABI >= 1.3.13`
-- Python 3.11
-- A working NVIDIA driver compatible with Isaac Sim RTX requirements
+- [`uv` package manager](https://docs.astral.sh/uv/getting-started/installation/)
+- A working NVIDIA driver compatible with [Isaac Sim requirements](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/requirements.html#system-requirements)
+- Only Isaac Sim 5.1 is currently supported.
 
-## Installation
-
-### 1. Clone the repository
+### Installation
+We use `uv` for package management. If you don't have it installed, please refer to [Installing uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 ```bash
+# Install host tools (for Debian/Ubuntu)
+sudo apt install build-essential wget xz-utils zstd git
+
+# Clone the repository
 git clone --recursive https://github.com/intelligent-control-lab/BrickSim BrickSim
 cd BrickSim
+
+# Set up the Python environment
+uv sync --locked
+
+# Build the native extension
+./scripts/build.sh
 ```
 
-### 2. Prepare a Python virtual environment
-
-BrickSim scripts resolve the Python virtual environment in this order:
-
-1. Active conda environment
-2. Active Python virtualenv
-3. Repository-local `.venv` without sourcing it
-
-Use one of the following supported setups.
-
-Repository-local virtualenv:
-
+### Run Demos
 ```bash
-python3.11 -m venv --symlinks --prompt bricksim --upgrade-deps .venv
-```
-
-Conda:
-
-```bash
-conda create -n bricksim python=3.11
-conda activate bricksim
-```
-
-### 3. Install required host tools
-
-Debian/Ubuntu example:
-
-```bash
-sudo apt install build-essential wget python3.11-full xz-utils zstd
-```
-
-### 4. Run the BrickSim setup script
-
-```bash
-./scripts/setup_env.sh
-```
-
-### 5. Launch Isaac Sim
-
-Only Isaac Sim 5.1 is currently supported.
-
-```bash
+# Launch the assembly demo in Isaac Sim
 ./scripts/launch_isaacsim.sh demos/demo_assembly.py
 ```
 
-## Build & Test
-
-Build the native extension:
-
-```bash
-scripts/build.sh
-```
-
-Build and run the C++ sanity checks:
-
-```bash
-RUN_TESTS=1 scripts/build.sh
-```
-
-The build copies the compiled `_native` module into `exts/bricksim/bricksim/`.
-
-## Run Demos
-
-Launch the assembly demo:
-
-```bash
-./scripts/launch_isaacsim.sh demos/demo_assembly.py
-```
-
-Other useful entry points:
-
+Other demos include:
 - `demos/demo_inhand.py` for in-hand manipulation experiments
 - `demos/demo_keyboard_teleop.py` for keyboard-driven interaction
 - `demos/demo_teleop.py` for teleoperation, recording, and replay workflows
+  - The teleoperation demo expects the `lerobot` package plus a configured leader device path inside `demos/demo_teleop.py`.
 
-The teleoperation demo expects the `lerobot` package plus a configured leader device path inside `demos/demo_teleop.py`.
+## Development
 
-## Repository Layout
+### Repository Layout
+| Path              | Purpose                                       |
+| ----------------- | --------------------------------------------- |
+| `native/`         | C++26 core                                    |
+| `exts/bricksim/`  | Python extension and API                      |
+| `demos/`          | Demos                                         |
+| `resources/`      | USD assets, robot assets, and brick datasets  |
+| `scripts/`        | Utility scripts                               |
 
-| Path | Purpose |
-| --- | --- |
-| `native/` | C++26 core |
-| `exts/bricksim/` | Python extension and API |
-| `demos/` | End-to-end examples |
-| `resources/` | USD assets, robot assets, and brick datasets |
-| `scripts/` | Utility scripts |
-
-## Development Setup
+### Generating Pyright Configuration
 
 Generate dependency-aware Pyright configuration for VS Code completion:
-
 ```bash
-python scripts/generate_pyrightconfig.py
+uv run python scripts/generate_pyrightconfig.py
 ```
 
 This creates `pyrightconfig.deps.json`.
+
+### Building the C++ Extension
+If you make changes to the C++ code in `native/`, you need to re-compile the native extension for the changes to take effect.
+
+```bash
+./scripts/build.sh
+
+# To also build & run the tests, use:
+RUN_TESTS=1 ./scripts/build.sh
+```
+
+The build copies the compiled `_native` module into `exts/bricksim/bricksim/`.
