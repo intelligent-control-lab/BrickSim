@@ -12,27 +12,27 @@
 </p>
 
 <p>
+  <a href="https://intelligent-control-lab.github.io/BrickSim/">Website</a> •
   <a href="https://arxiv.org/abs/2603.16853">Paper</a> •
   <a href="#quickstart">Quickstart</a> •
-  <a href="#build--test">Build &amp; Test</a> •
-  <a href="#run-demos">Demos</a> •
   <a href="https://www.youtube.com/watch?v=VGuHfz4yxLU">Video</a>
 </p>
 
 </div>
 
 <p align="center">
-  <img src="docs/assets/bricksim_teaser.png" alt="BrickSim teaser showing a multi-robot brick assembly workflow and a gallery of simulated brick structures." width="100%">
+  <a href="https://www.youtube.com/watch?v=VGuHfz4yxLU">
+    <img src="docs/assets/bricksim_teaser.png" alt="BrickSim teaser showing a multi-robot brick assembly workflow and a gallery of simulated brick structures." width="100%">
+  </a>
 </p>
 
-## Getting Started
+## Quickstart
 
 ### Prerequisites
 - x86-64 Linux platform. Support for other platforms is coming.
 - Ubuntu 22.04+ or another Linux distribution with `GLIBC >= 2.35`, `GLIBCXX >= 3.4.30`, and `CXXABI >= 1.3.13`
 - [`uv` package manager](https://docs.astral.sh/uv/getting-started/installation/)
 - A working NVIDIA driver compatible with [Isaac Sim requirements](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/requirements.html#system-requirements)
-- Only Isaac Sim 5.1 is currently supported.
 
 ### Installation
 We use `uv` for package management. If you don't have it installed, please refer to [Installing uv](https://docs.astral.sh/uv/getting-started/installation/).
@@ -46,6 +46,7 @@ git clone --recursive https://github.com/intelligent-control-lab/BrickSim BrickS
 cd BrickSim
 
 # Set up the Python environment
+# This will also install Isaac Sim 5.1 and Isaac Lab
 uv sync --locked
 
 # Build the native extension
