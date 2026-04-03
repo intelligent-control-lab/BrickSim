@@ -4,9 +4,9 @@ import os
 import traceback
 import math
 import numpy as np
-import omni.kit.app  # pyright: ignore
-import omni.timeline  # pyright: ignore
-from omni.kit.viewport.utility import capture_viewport_to_file, get_active_viewport, get_viewport_from_window_name  # pyright: ignore
+import omni.kit.app
+import omni.timeline
+from omni.kit.viewport.utility import capture_viewport_to_file, get_active_viewport, get_viewport_from_window_name
 from typing import Any, Optional
 from pxr import UsdPhysics, Usd, Gf
 from isaacsim.core.api.world import World

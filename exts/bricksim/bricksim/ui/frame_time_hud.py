@@ -20,7 +20,7 @@ def _install_viewport_fps_patch() -> None:
     if _ORIGINAL_VIEWPORT_FPS_SKIP_UPDATE is not None:
         return
 
-    import omni.kit.viewport.window.stats as viewport_stats  # type: ignore
+    import omni.kit.viewport.window.stats as viewport_stats
 
     _ORIGINAL_VIEWPORT_FPS_SKIP_UPDATE = viewport_stats.ViewportFPS.skip_update
     _ORIGINAL_VIEWPORT_FPS_UPDATE_STATS = viewport_stats.ViewportFPS.update_stats
@@ -62,7 +62,7 @@ def _restore_viewport_fps_patch() -> None:
     if _ORIGINAL_VIEWPORT_FPS_SKIP_UPDATE is None:
         return
 
-    import omni.kit.viewport.window.stats as viewport_stats  # type: ignore
+    import omni.kit.viewport.window.stats as viewport_stats
 
     viewport_stats.ViewportFPS.skip_update = _ORIGINAL_VIEWPORT_FPS_SKIP_UPDATE
     viewport_stats.ViewportFPS.update_stats = _ORIGINAL_VIEWPORT_FPS_UPDATE_STATS
@@ -75,8 +75,8 @@ class FrameTimeHudController:
         carb.settings.get_settings().set_default(SETTING_DISPLAY_LAST_STEP, False)
         _install_viewport_fps_patch()
 
-        from omni.kit.viewport.menubar.core import CategoryStateItem  # type: ignore
-        from omni.kit.viewport.menubar.display import get_instance  # type: ignore
+        from omni.kit.viewport.menubar.core import CategoryStateItem
+        from omni.kit.viewport.menubar.display import get_instance
 
         self._menubar_display_inst = get_instance()
         self._custom_item = CategoryStateItem(

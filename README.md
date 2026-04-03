@@ -73,14 +73,12 @@ Other demos include:
 | `resources/`      | USD assets, robot assets, and brick datasets  |
 | `scripts/`        | Utility scripts                               |
 
-### Generating Pyright Configuration
+### Generating Type Checker Configuration
 
-Generate dependency-aware Pyright configuration for VS Code completion:
+Generate the Pyright and ty configuration for type analysis and completion in editors like VSCode:
 ```bash
-uv run python scripts/generate_pyrightconfig.py
+uv run python scripts/generate_type_configs.py
 ```
-
-This creates `pyrightconfig.deps.json`.
 
 ### Building the C++ Extension
 If you make changes to the C++ code in `native/`, you need to re-compile the native extension for the changes to take effect.

@@ -1,4 +1,4 @@
-import omni.ext #type: ignore
+import omni.ext
 
 class BrickSimExtension(omni.ext.IExt):
     def on_startup(self, ext_id):

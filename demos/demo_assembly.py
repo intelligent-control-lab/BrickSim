@@ -2,7 +2,7 @@ import math
 import json
 import os
 import numpy as np
-import omni.kit.app # pyright: ignore
+import omni.kit.app
 from typing import Optional
 from copy import deepcopy
 from pxr import Gf, Usd
@@ -21,7 +21,7 @@ from bricksim.importers.stabletext2brick import bricks_text_to_topology_json, is
 from bricksim.importers.legolization import legolization_json_to_topology_json, is_legolization_json
 
 try:
-    from isaacsim.util.debug_draw import _debug_draw # pyright: ignore
+    from isaacsim.util.debug_draw import _debug_draw
     DEBUG_DRAW = _debug_draw.acquire_debug_draw_interface()
 except Exception:
     print("Warning: Unable to import debug draw interface.")

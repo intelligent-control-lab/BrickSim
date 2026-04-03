@@ -3,7 +3,7 @@ import os
 import traceback
 import numpy as np
 import sys, tty, termios, select
-import omni.kit.app  # pyright: ignore
+import omni.kit.app
 from typing import Optional
 from isaacsim.core.api.world import World
 from isaacsim.core.prims import SingleArticulation, SingleXFormPrim

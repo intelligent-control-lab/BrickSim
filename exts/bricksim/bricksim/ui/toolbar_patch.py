@@ -29,7 +29,7 @@ def _redirect_select_mode_model():
     This allows us to store our synthetic LEGO placeholder in the UI setting,
     while we keep the engine setting always valid and parseable for omni.usd.
     """
-    from omni.kit.widget.toolbar.builtin_tools.models.select_mode_model import (  # type: ignore  # noqa: E501
+    from omni.kit.widget.toolbar.builtin_tools.models.select_mode_model import (
         SelectModeModel,
     )
 
@@ -37,9 +37,9 @@ def _redirect_select_mode_model():
         return
 
     # Remember the original engine-facing setting key and replace it with our UI key.
-    SelectModeModel._lego_engine_setting = SelectModeModel.PICKING_MODE_SETTING  # type: ignore[attr-defined]  # noqa: E501
+    SelectModeModel._lego_engine_setting = SelectModeModel.PICKING_MODE_SETTING
     SelectModeModel.PICKING_MODE_SETTING = _UI_PICKING_MODE_SETTING
-    SelectModeModel._lego_redirected = True  # type: ignore[attr-defined]
+    SelectModeModel._lego_redirected = True
 
 
 def _install_bridges():
@@ -131,17 +131,17 @@ def _patch_select_button_group():
     - use a dedicated icon name and tooltip for that mode based on the
       effective picking mode (engine + LEGO selection flag).
     """
-    from omni.kit.widget.options_menu import (  # type: ignore
+    from omni.kit.widget.options_menu import (
         OptionItem,
         OptionSeparator,
         OptionRadios,
         OptionsModel,
     )
-    from omni.kit.widget.toolbar.builtin_tools.select_button_group import (  # type: ignore  # noqa: E501
+    from omni.kit.widget.toolbar.builtin_tools.select_button_group import (
         LIGHT_TYPES,
         SelectButtonGroup,
     )
-    from omni.kit.widget.toolbar.builtin_tools.models.select_mode_model import (  # type: ignore  # noqa: E501
+    from omni.kit.widget.toolbar.builtin_tools.models.select_mode_model import (
         SelectModeModel,
     )
 
@@ -209,7 +209,7 @@ def _patch_select_button_group():
         else:
             self._options_model.rebuild_items(items)
 
-    SelectButtonGroup._build_select_menu_model = _build_select_menu_model  # type: ignore[assignment]  # noqa: E501
+    SelectButtonGroup._build_select_menu_model = _build_select_menu_model
 
     # Patch get_style so we can use a distinct icon name for the LEGO
     # Connected Component mode while reusing the component glyph.
@@ -226,7 +226,7 @@ def _patch_select_button_group():
             }
         return style
 
-    SelectButtonGroup.get_style = _lego_get_style  # type: ignore[assignment]
+    SelectButtonGroup.get_style = _lego_get_style
 
     # Patch how the main Select Mode button chooses its icon and tooltip so
     # that we can distinguish between plain 'Component' and LEGO Connected
@@ -242,7 +242,7 @@ def _patch_select_button_group():
             return "component_cc"
         return orig_get_name(self)
 
-    SelectButtonGroup._get_select_mode_button_name = _lego_get_select_mode_button_name  # type: ignore[assignment]  # noqa: E501
+    SelectButtonGroup._get_select_mode_button_name = _lego_get_select_mode_button_name
 
     orig_get_tooltip = SelectButtonGroup._get_select_mode_tooltip
 
@@ -254,9 +254,9 @@ def _patch_select_button_group():
             return f"Connected Component ({self._mode_hotkey.get_as_string('T')})"
         return orig_get_tooltip(self)
 
-    SelectButtonGroup._get_select_mode_tooltip = _lego_get_select_mode_tooltip  # type: ignore[assignment]  # noqa: E501
+    SelectButtonGroup._get_select_mode_tooltip = _lego_get_select_mode_tooltip
 
-    SelectButtonGroup._lego_cc_patched = True  # type: ignore[attr-defined]
+    SelectButtonGroup._lego_cc_patched = True
 
 
 def _rebuild_select_button_group():
@@ -269,8 +269,8 @@ def _rebuild_select_button_group():
     reference, which later causes AbstractValueModel::get_value_as_bool to be
     called on an invalid model during the UI draw.
     """
-    import omni.kit.widget.toolbar.extension as tb_ext  # type: ignore
-    from omni.kit.widget.toolbar.builtin_tools.select_button_group import (  # type: ignore  # noqa: E501
+    import omni.kit.widget.toolbar.extension as tb_ext
+    from omni.kit.widget.toolbar.builtin_tools.select_button_group import (
         SelectButtonGroup,
     )
 

@@ -4,7 +4,7 @@ import asyncio
 import json
 import tempfile
 import carb
-import omni.ui # type: ignore
+import omni.ui
 import omni.usd
 import omni.kit.app
 from bricksim.colors import parse_color, Colors

@@ -1,7 +1,7 @@
 import math
 import os
 import numpy as np
-import omni.kit.app # pyright: ignore
+import omni.kit.app
 from typing import Optional
 from pxr import Gf, Usd
 from isaacsim.core.api.world import World
@@ -16,7 +16,7 @@ from isaacsim.robot_motion.motion_generation import RmpFlow, ArticulationMotionP
 from isaacsim.robot_motion.motion_generation.interface_config_loader import load_supported_motion_policy_config
 from bricksim import allocate_brick_part, parse_color, get_brick_dimensions, compute_connection_transform, set_assembly_thresholds, AssemblyThresholds, wait_for_physics_step
 # try:
-    # from isaacsim.util.debug_draw import _debug_draw # pyright: ignore
+    # from isaacsim.util.debug_draw import _debug_draw
     # DEBUG_DRAW = _debug_draw.acquire_debug_draw_interface()
 # except Exception:
     # print("Warning: Unable to import debug draw interface.")

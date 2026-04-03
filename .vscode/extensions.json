@@ -1,5 +1,6 @@
 {
     "recommendations": [
+        "astral-sh.ty",
         "augustocdias.tasks-shell-input",
         "llvm-vs-code-extensions.vscode-clangd",
         "ms-python.debugpy",

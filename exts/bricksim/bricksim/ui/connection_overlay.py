@@ -1,10 +1,10 @@
 import traceback
 import carb.settings
-import omni.kit.app  # type: ignore
-import omni.ui # type: ignore
-import omni.usd # type: ignore
+import omni.kit.app
+import omni.ui
+import omni.usd
 from dataclasses import dataclass
-from omni.kit.viewport.registry import RegisterScene # type: ignore
+from omni.kit.viewport.registry import RegisterScene
 from pxr import Gf, Usd, UsdGeom
 from bricksim._native import compute_connection_local_transform, get_connection_utilization
 from bricksim.utils.usd_parse import parse_connection_prim
@@ -193,8 +193,8 @@ class ConnectionOverlayController:
         self._menubar_display_inst = None
         self._custom_item = None
         try:
-            from omni.kit.viewport.menubar.core import CategoryStateItem # type: ignore
-            from omni.kit.viewport.menubar.display import get_instance # type: ignore
+            from omni.kit.viewport.menubar.core import CategoryStateItem
+            from omni.kit.viewport.menubar.display import get_instance
             self._menubar_display_inst = get_instance()
             self._custom_item = CategoryStateItem("LEGO Connections", setting_path=SETTING_DISPLAY_CONNECTIONS)
             self._menubar_display_inst.register_custom_category_item("Show By Type", self._custom_item)

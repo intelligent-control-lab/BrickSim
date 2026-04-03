@@ -6,8 +6,8 @@ async def _play_then_pause_immediately():
     Advance timeline by one app update by issuing PLAY and pausing on the
     next update.
     """
-    import omni.kit.app  # type: ignore
-    import omni.timeline  # type: ignore
+    import omni.kit.app
+    import omni.timeline
 
     timeline = omni.timeline.get_timeline_interface()
     timeline.play()
@@ -20,9 +20,9 @@ def _patch_play_button_group():
     Patch PlayButtonGroup to add a dedicated "Step one frame" button beside
     Play/Stop on the left toolbar.
     """
-    import omni.timeline  # type: ignore
-    import omni.ui as ui  # type: ignore
-    from omni.kit.widget.toolbar.builtin_tools.play_button_group import (  # type: ignore  # noqa: E501
+    import omni.timeline
+    import omni.ui as ui
+    from omni.kit.widget.toolbar.builtin_tools.play_button_group import (
         PlayButtonGroup,
     )
 
@@ -38,7 +38,7 @@ def _patch_play_button_group():
         orig_clean(self)
         self._lego_step_one_frame_button = None
 
-    PlayButtonGroup.clean = _lego_clean  # type: ignore[assignment]
+    PlayButtonGroup.clean = _lego_clean
 
     def _lego_get_style(self):
         style = orig_get_style(self)
@@ -47,7 +47,7 @@ def _patch_play_button_group():
         }
         return style
 
-    PlayButtonGroup.get_style = _lego_get_style  # type: ignore[assignment]
+    PlayButtonGroup.get_style = _lego_get_style
 
     def _lego_create(self, default_size):
         widgets = orig_create(self, default_size)
@@ -69,7 +69,7 @@ def _patch_play_button_group():
         widgets["step_one_frame"] = step_button
         return widgets
 
-    PlayButtonGroup.create = _lego_create  # type: ignore[assignment]
+    PlayButtonGroup.create = _lego_create
 
     def _lego_on_timeline_event(self, e):
         orig_on_timeline_event(self, e)
@@ -80,8 +80,8 @@ def _patch_play_button_group():
             if step_button is not None:
                 step_button.visible = self._visible
 
-    PlayButtonGroup._on_timeline_event = _lego_on_timeline_event  # type: ignore[assignment]  # noqa: E501
-    PlayButtonGroup._lego_step_one_frame_patched = True  # type: ignore[attr-defined]
+    PlayButtonGroup._on_timeline_event = _lego_on_timeline_event
+    PlayButtonGroup._lego_step_one_frame_patched = True
 
 
 def _rebuild_play_button_group():
@@ -89,8 +89,8 @@ def _rebuild_play_button_group():
     Rebuild the PlayButtonGroup instance so it picks up our monkey patch that
     adds the Step one frame button.
     """
-    import omni.kit.widget.toolbar.extension as tb_ext  # type: ignore
-    from omni.kit.widget.toolbar.builtin_tools.play_button_group import (  # type: ignore  # noqa: E501
+    import omni.kit.widget.toolbar.extension as tb_ext
+    from omni.kit.widget.toolbar.builtin_tools.play_button_group import (
         PlayButtonGroup,
     )
 

@@ -9,7 +9,7 @@ from isaaclab.envs.mdp.actions.task_space_actions import DifferentialInverseKine
 from bricksim._native import compute_connection_transform
 
 try:
-    from isaacsim.util.debug_draw import _debug_draw  # pyright: ignore
+    from isaacsim.util.debug_draw import _debug_draw
 
     DEBUG_DRAW = _debug_draw.acquire_debug_draw_interface()
 except Exception:

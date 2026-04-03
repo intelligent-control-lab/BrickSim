@@ -101,7 +101,7 @@ def bricks_grid_to_topology_json(
     else:
         # Try to interpret as a single (r,g,b) tuple.
         try:
-            c_seq = tuple(color)  # type: ignore[arg-type]
+            c_seq = tuple(color)
         except TypeError:
             c_seq = ()
 
@@ -111,7 +111,7 @@ def bricks_grid_to_topology_json(
         else:
             # Must be an iterable of per-brick colors.
             per_brick_colors = []
-            for item in color:  # type: ignore[operator]
+            for item in color:
                 t = tuple(item)
                 if len(t) != 3:
                     raise ValueError(

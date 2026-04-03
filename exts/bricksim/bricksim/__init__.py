@@ -4,7 +4,7 @@ from .colors import *
 # of debug dumps) by only importing Isaac/Omniverse-dependent modules when `carb`
 # is available.
 try:
-    import carb as _carb  # type: ignore
+    import carb as _carb
 except ModuleNotFoundError:
     _carb = None
 
