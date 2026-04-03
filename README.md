@@ -46,11 +46,8 @@ git clone --recursive https://github.com/intelligent-control-lab/BrickSim BrickS
 cd BrickSim
 
 # Set up the Python environment
-# This will also install Isaac Sim 5.1 and Isaac Lab
+# This will also install Isaac Sim 5.1, Isaac Lab, and the BrickSim package
 uv sync --locked
-
-# Build the native extension
-./scripts/build.sh
 ```
 
 ### Run Demos
@@ -94,5 +91,3 @@ If you make changes to the C++ code in `native/`, you need to re-compile the nat
 # To also build & run the tests, use:
 RUN_TESTS=1 ./scripts/build.sh
 ```
-
-The build copies the compiled `_native` module into `exts/bricksim/bricksim/`.

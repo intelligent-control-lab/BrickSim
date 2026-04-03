@@ -9,6 +9,7 @@ ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
 source "$ROOT_DIR/_toolchain/env.sh"
 
 BUILD_PROFILE=${1:-RelWithDebInfo}  # Debug, Release, RelWithDebInfo, MinSizeRel
+BRICKSIM_NATIVE_OUTPUT=${BRICKSIM_NATIVE_OUTPUT:-}
 
 SRC="$ROOT_DIR/native"
 BUILD="$SRC/.build/${BUILD_PROFILE}"
@@ -26,7 +27,18 @@ cmake -S "$SRC" -B "$BUILD" \
   -G Ninja
 cmake --build "$BUILD" --parallel
 
-cp -v "$BUILD/"_native.*.so "exts/bricksim/bricksim/"
+native_outputs=("$BUILD"/_native.*.so)
+if [ "${#native_outputs[@]}" -ne 1 ]; then
+  echo "[ERROR] Expected exactly one _native shared library in $BUILD" >&2
+  exit 1
+fi
+
+if [ -n "$BRICKSIM_NATIVE_OUTPUT" ]; then
+  mkdir -p "$(dirname "$BRICKSIM_NATIVE_OUTPUT")"
+  cp -v "${native_outputs[0]}" "$BRICKSIM_NATIVE_OUTPUT"
+else
+  cp -v "${native_outputs[0]}" "exts/bricksim/bricksim/"
+fi
 
 # Run tests only when RUN_TESTS is set
 if [ -n "${RUN_TESTS:-}" ]; then

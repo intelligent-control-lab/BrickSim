@@ -1,3 +1,26 @@
+[project]
+name = "bricksim"
+version = "0.1.0"
+description = "BrickSim Simulator"
+requires-python = ">=3.11"
+dependencies = [
+    "gymnasium==1.2.0",
+    "isaaclab",
+    "isaaclab_assets",
+    "isaaclab_tasks",
+    "isaacsim[all,extscache]==5.1.0",
+    "numpy<2",
+    "requests",
+    "torch>=2.7",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+stable-lego = ["gurobipy"]
+
+[project.urls]
+Repository = "https://github.com/intelligent-control-lab/BrickSim.git"
+
 [build-system]
-requires = ["setuptools", "wheel", "toml", "cmake>=4.1"]
+requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"

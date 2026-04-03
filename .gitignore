@@ -5,6 +5,7 @@ _toolchain/
 .pyright/
 .venv/
 *.egg-info/
+build/
 logs/
 outputs/
 pyrightconfig.deps.json
