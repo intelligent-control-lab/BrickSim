@@ -3,23 +3,31 @@ set -eo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
-source "$ROOT_DIR/scripts/_resolve_env.sh"
-bricksim_require_env
 
-if [[ ! -x "$BRICKSIM_ENV_ISAACSIM" ]]; then
-  cat >&2 <<EOF
-[ERROR] Isaac Sim is not installed in the resolved BrickSim environment.
-Resolved environment: $BRICKSIM_ENV_DIR ($BRICKSIM_ENV_KIND)
-
-Run:
-  uv sync --directory "$ROOT_DIR" --locked --python
-or:
-  ./scripts/setup_env.sh
-or, for an activated conda / virtualenv:
-  uv sync --directory "$ROOT_DIR" --locked --active --inexact
+resolve_bricksim_env() {
+  if [[ -n "${VIRTUAL_ENV:-}" && -x "${VIRTUAL_ENV}/bin/python" ]]; then
+    BRICKSIM_ENV_DIR="${VIRTUAL_ENV}"
+  elif [[ -x "$ROOT_DIR/.venv/bin/python" ]]; then
+    source "$ROOT_DIR/.venv/bin/activate"
+    BRICKSIM_ENV_DIR="${VIRTUAL_ENV}"
+    echo "[INFO] Sourced repo-local virtualenv: $BRICKSIM_ENV_DIR"
+  else
+    cat >&2 <<EOF
+[ERROR] No Python environment found.
+Run from the repo root:
+  uv sync --locked
 EOF
-  exit 1
-fi
+    exit 1
+  fi
+
+  BRICKSIM_ENV_ISAACSIM="$BRICKSIM_ENV_DIR/bin/isaacsim"
+  if [[ ! -x "$BRICKSIM_ENV_ISAACSIM" ]]; then
+    echo "[ERROR] Isaac Sim executable not found: $BRICKSIM_ENV_ISAACSIM" >&2
+    exit 1
+  fi
+}
+
+resolve_bricksim_env
 
 EXPERIENCE="isaacsim.exp.full"
 
