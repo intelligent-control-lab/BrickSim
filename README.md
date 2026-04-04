@@ -80,6 +80,8 @@ Generate the Pyright and ty configuration for type analysis and completion in ed
 uv run python scripts/generate_type_configs.py
 ```
 
+We recommend installing the [ty extension](https://marketplace.visualstudio.com/items?itemName=astral-sh.ty) for VSCode auto-completion, as it's much faster at handling Isaac Sim's many dependencies.
+
 ### Building the C++ Extension
 If you make changes to the C++ code in `native/`, you need to re-compile the native extension for the changes to take effect.
 
