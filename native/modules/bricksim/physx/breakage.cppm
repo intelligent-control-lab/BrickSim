@@ -272,12 +272,6 @@ export void from_json(const nlohmann::ordered_json &j,
 	j.at("breakage_cooldown_time").get_to(thresholds.BreakageCooldownTime);
 }
 
-// FaceRef compares pid then fid,
-// UnorderedPair ensures fref1 <= fref2,
-// thus pid1 <= pid2,
-// which agrees with the ordering in TouchingFacePair.
-using FaceRefPair = UnorderedPair<FaceRef>;
-
 export class BreakageSystem {
   public:
 	int num_parts() const {
