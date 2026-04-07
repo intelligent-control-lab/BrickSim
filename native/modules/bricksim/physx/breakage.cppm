@@ -4,7 +4,7 @@ import std;
 import bricksim.core.specs;
 import bricksim.core.connections;
 import bricksim.core.graph;
-import bricksim.physx.touching_face_detection;
+import bricksim.physx.face_overlap_detection;
 import bricksim.physx.polygon_clipping;
 import bricksim.physx.osqp;
 import bricksim.utils.transforms;
@@ -720,23 +720,23 @@ export class BreakageChecker {
 		std::vector<Triplet<double>> H_triplets;
 		std::vector<Triplet<double>> V_triplets;
 
-		for (TouchingFacePair p : detect_touching_faces(g, rep)) {
+		for_each_overlapping_face_pairs(g, rep, [&](const auto &pair) {
 			std::vector<Vector2d> intersection =
-			    convex_polygon_intersection(p.polygon_u, p.polygon_v);
+			    convex_polygon_intersection(pair.polygon_u, pair.polygon_v);
 			if (intersection.empty()) {
-				continue;
+				return;
 			}
 			double area = polygon_area(intersection);
 			if (area < 1e-12) {
-				continue;
+				return;
 			}
 
-			PartId pid_i = p.face_u.ref.pid;
-			PartId pid_j = p.face_v.ref.pid;
+			PartId pid_i = pair.patch_u.part_id();
+			PartId pid_j = pair.patch_v.part_id();
 			int index_i = sys.pid_to_index_.at(pid_i);
 			int index_j = sys.pid_to_index_.at(pid_j);
 
-			const Transformd &T_CC_fu = p.face_u.T;
+			const Transformd &T_CC_fu = pair.patch_u.transform();
 			const auto &[q_CC_fu, t_CC_fu] = T_CC_fu;
 			Vector3d n_hat = q_CC_fu * Vector3d::UnitZ();
 			Vector3d t_CC_com_i = sys.c_CC_.row(index_i);
@@ -765,7 +765,7 @@ export class BreakageChecker {
 				Q_triplets.emplace_back(var_idx, var_idx,
 				                        thresholds.ContactRegularization);
 			}
-		}
+		});
 
 		for (typename Graph::ConnSegConstEntry cs_entry :
 		     cc_view.connection_segments()) {

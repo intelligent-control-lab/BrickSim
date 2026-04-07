@@ -1,26 +1,26 @@
-export module bricksim.physx.touching_face_detection;
+export module bricksim.physx.overlap_detection;
 
 import std;
-import bricksim.core.specs;
-import bricksim.core.graph;
 import bricksim.utils.transforms;
 import bricksim.utils.hash;
 import bricksim.utils.bbox;
 import bricksim.utils.memory;
+import bricksim.utils.concepts;
 import bricksim.vendor;
 
 namespace bricksim {
 
-template <int S2Level, int DExp2> struct FaceBinKey {
+template <int S2Level, int DExp2> class PlaneBinKey {
 	static_assert(S2Level >= 0 && S2Level <= 30);
 
+  public:
 	// Packed normal-cell id: [face:3 bits][i:30 bits][j:30 bits][1 spare bit]
 	std::uint64_t s2_cell = 0;
 
 	// Quantized displacement bin.
 	std::int64_t d_bin = 0;
 
-	static FaceBinKey from_face(const Eigen::Vector3d &n, double d) {
+	static PlaneBinKey from_plane(const Eigen::Vector3d &n, double d) {
 		return {
 		    .s2_cell = quantize_normal(n),
 		    .d_bin = quantize_displacement(d),
@@ -30,7 +30,7 @@ template <int S2Level, int DExp2> struct FaceBinKey {
 	// Yields **this key** plus its neighbor bins:
 	// - 3x3 neighborhood on S^2 at fixed S2Level (deduped)
 	// - d_bin +/- 1
-	std::generator<FaceBinKey> neighborhood() const {
+	void for_each_neighbor(std::invocable<PlaneBinKey> auto consumer) const {
 		int face = 0;
 		std::uint32_t i = 0;
 		std::uint32_t j = 0;
@@ -76,18 +76,18 @@ template <int S2Level, int DExp2> struct FaceBinKey {
 		// Emit (S2-neighbor cells) x (d neighbors).
 		for (int c = 0; c < cell_count; ++c) {
 			for (int dd = -1; dd <= 1; ++dd) {
-				co_yield FaceBinKey{
-				    .s2_cell = cells[c],
-				    .d_bin = add_d_saturating(d_bin, dd),
-				};
+				std::invoke(consumer, PlaneBinKey{
+				                          .s2_cell = cells[c],
+				                          .d_bin = add_d_saturating(d_bin, dd),
+				                      });
 			}
 		}
 	}
 
-	bool operator==(const FaceBinKey &other) const = default;
+	bool operator==(const PlaneBinKey &other) const = default;
 
 	struct Hash {
-		std::size_t operator()(const FaceBinKey &key) const {
+		std::size_t operator()(const PlaneBinKey &key) const {
 			std::size_t h1 = std::hash<std::uint64_t>{}(key.s2_cell);
 			std::size_t h2 = std::hash<std::int64_t>{}(key.d_bin);
 			hash_combine(h2, h1);
@@ -199,17 +199,17 @@ template <int S2Level, int DExp2> struct FaceBinKey {
 	}
 
 	static constexpr std::uint64_t kCoordMask = (std::uint64_t{1} << 30) - 1;
-	static constexpr std::uint64_t kFaceShift = 61;
+	static constexpr std::uint64_t kPatchShift = 61;
 
 	static std::uint64_t pack_cell(int face, std::uint32_t i, std::uint32_t j) {
-		return (std::uint64_t(face) << kFaceShift) |
+		return (std::uint64_t(face) << kPatchShift) |
 		       (std::uint64_t(i & kCoordMask) << 31) |
 		       (std::uint64_t(j & kCoordMask) << 1);
 	}
 
 	static void unpack_cell(std::uint64_t id, int *face, std::uint32_t *i,
 	                        std::uint32_t *j) {
-		*face = static_cast<int>(id >> kFaceShift);
+		*face = static_cast<int>(id >> kPatchShift);
 		*i = static_cast<std::uint32_t>((id >> 31) & kCoordMask);
 		*j = static_cast<std::uint32_t>((id >> 1) & kCoordMask);
 	}
@@ -252,73 +252,44 @@ template <int S2Level, int DExp2> struct FaceBinKey {
 		return base + static_cast<std::int64_t>(delta);
 	}
 };
-
-export struct FaceRef {
-	PartId pid;
-	FaceId fid;
-	auto operator<=>(const FaceRef &) const = default;
-	struct Hash {
-		std::size_t operator()(const FaceRef &fr) const {
-			std::size_t h1 = std::hash<PartId>{}(fr.pid);
-			std::size_t h2 = std::hash<FaceId>{}(fr.fid);
-			hash_combine(h2, h1);
-			return h2;
-		}
-	};
-};
-
-export void to_json(nlohmann::ordered_json &j, const FaceRef &fr) {
-	j = nlohmann::ordered_json{
-	    {"part_id", fr.pid},
-	    {"face_id", fr.fid},
-	};
-}
-
-export void from_json(const nlohmann::ordered_json &j, FaceRef &fr) {
-	j.at("part_id").get_to(fr.pid);
-	j.at("face_id").get_to(fr.fid);
-}
 } // namespace bricksim
 
 namespace std {
 template <int S2Level, int DExp2>
-struct hash<bricksim::FaceBinKey<S2Level, DExp2>> {
-	using FaceBinKey = bricksim::FaceBinKey<S2Level, DExp2>;
-	std::size_t operator()(const FaceBinKey &key) const {
-		return typename FaceBinKey::Hash{}(key);
-	}
-};
-
-export template <> struct hash<bricksim::FaceRef> {
-	std::size_t operator()(const bricksim::FaceRef &fr) const {
-		return bricksim::FaceRef::Hash{}(fr);
+struct hash<bricksim::PlaneBinKey<S2Level, DExp2>> {
+	using PlaneBinKey = bricksim::PlaneBinKey<S2Level, DExp2>;
+	std::size_t operator()(const PlaneBinKey &key) const {
+		return typename PlaneBinKey::Hash{}(key);
 	}
 };
 } // namespace std
 
 namespace bricksim {
 
-export struct Face {
-	FaceRef ref;
-	Transformd T;
-	BBox2d bbox;
+export template <class T>
+concept PlanarPatchLike = requires(const T &f) {
+	{ f.transform() } -> std::convertible_to<Transformd>;
+	{ f.bbox() } -> std::convertible_to<BBox2d>;
+	{ f.polygon_vertices() } -> range_of<Eigen::Vector2d>;
 };
 
-constexpr double kSATMinPenetration = 1e-6;             // meters
-constexpr double kCoplanarDisplacementThreshold = 1e-6; // meters
-constexpr double kCoplanarAngleThreshold = 1e-6;        // radians
-
-// Use this to compute max DExp2 and S2Level:
-//  double kEpsilon = 1e-6;
-//  int kMaxDExp2   = std::ceil(-std::log2(kCoplanarDisplacementThreshold   + 2 * kEpsilon)) - 1;
-//  int kMaxS2Level = std::ceil(-std::log2(kCoplanarAngleThreshold          + 2 * kEpsilon)) - 1;
-
-constexpr int kDExp2 = 18;
-constexpr int kS2Level = 18;
-
-using LegoFaceBinKey = FaceBinKey<kS2Level, kDExp2>;
-using FaceKey = std::pair<PartId, FaceId>;
-using LegoFaceBinMap = std::unordered_map<LegoFaceBinKey, std::vector<Face>>;
+BBox2d transform_bbox2d(const BBox2d &bbox, const Eigen::Matrix2d &R,
+                        const Eigen::Vector2d &t) {
+	constexpr double inf = std::numeric_limits<double>::infinity();
+	Eigen::Vector2d new_min{inf, inf};
+	Eigen::Vector2d new_max{-inf, -inf};
+	for (int ix = 0; ix <= 1; ++ix) {
+		double cx = (ix == 0) ? bbox.min.x() : bbox.max.x();
+		for (int iy = 0; iy <= 1; ++iy) {
+			double cy = (iy == 0) ? bbox.min.y() : bbox.max.y();
+			Eigen::Vector2d p_local{cx, cy};
+			Eigen::Vector2d p = R * p_local + t;
+			new_min = new_min.cwiseMin(p);
+			new_max = new_max.cwiseMax(p);
+		}
+	}
+	return {.min = new_min, .max = new_max};
+}
 
 // Projects vertices onto an axis and returns {min, max}
 std::tuple<double, double>
@@ -369,143 +340,166 @@ double sat(std::span<const Eigen::Vector2d> poly_a,
 	return min_penetration;
 }
 
-aligned_generator<std::tuple<const Face &, const Face &>>
-coplanar_face_pairs(const LegoFaceBinMap &face_bins) {
-	double dot_threshold = -std::cos(kCoplanarAngleThreshold);
-	for (const auto &[bk_u, f_us] : face_bins) {
-		for (const Face &f_u : f_us) {
-			const auto &[q_u, t_u] = f_u.T;
-			Eigen::Vector3d n_u = q_u * Eigen::Vector3d::UnitZ();
-			double d_u = n_u.dot(t_u);
-			auto bk_u_opposite = LegoFaceBinKey::from_face(-n_u, -d_u);
-			for (LegoFaceBinKey bk_v : bk_u_opposite.neighborhood()) {
-				auto it_f_vs = face_bins.find(bk_v);
-				if (it_f_vs != face_bins.end()) {
-					for (const Face &f_v : it_f_vs->second) {
-						if (f_u.ref >= f_v.ref) {
-							continue;
-						}
-						const auto &[q_v, t_v] = f_v.T;
-						Eigen::Vector3d n_v = q_v * Eigen::Vector3d::UnitZ();
-						if (n_u.dot(n_v) > dot_threshold) {
-							continue;
-						}
-						double d = (t_v - t_u).dot(n_u);
-						if (std::abs(d) > kCoplanarDisplacementThreshold) {
-							continue;
-						}
-						co_yield {f_u, f_v};
-					}
-				}
+// Use this to compute max DExp2 and S2Level:
+//  double kEpsilon = 1e-6;
+//  int kMaxDExp2   = std::ceil(-std::log2(kCoplanarDisplacementThreshold   + 2 * kEpsilon)) - 1;
+//  int kMaxS2Level = std::ceil(-std::log2(kCoplanarAngleThreshold          + 2 * kEpsilon)) - 1;
+
+export template <PlanarPatchLike Patch, int S2Level = 18, int DExp2 = 18,
+                 double SATMinPenetration = 1e-6,
+                 double CoplanarDisplacementThreshold = 1e-6,
+                 double CoplanarAngleThreshold = 1e-6>
+class PlanarPatchBinMap {
+  public:
+	using PatchIdx = std::uint32_t;
+
+	PatchIdx insert(Patch patch) {
+		Key key = compute_key(patch);
+		PatchIdx idx = static_cast<PatchIdx>(patches_.size());
+		patches_.push_back({.key = key, .patch = std::move(patch)});
+		bins_[key].push_back(idx);
+		return idx;
+	}
+	const Patch &patch_at(PatchIdx idx) const {
+		return patches_[idx].patch;
+	}
+	std::size_t size() const {
+		return patches_.size();
+	}
+	void clear() {
+		patches_.clear();
+		bins_.clear();
+	}
+
+	struct OverlapPatchPair {
+		PatchIdx idx_u;
+		PatchIdx idx_v;
+		const Patch &patch_u;
+		const Patch &patch_v;
+
+		// Valid only during the callback invocation.
+		std::span<const Eigen::Vector2d> polygon_u;
+		std::span<const Eigen::Vector2d> polygon_v;
+
+		OverlapPatchPair(PatchIdx idx_u, PatchIdx idx_v, const Patch &patch_u,
+		                 const Patch &patch_v,
+		                 std::span<const Eigen::Vector2d> polygon_u,
+		                 std::span<const Eigen::Vector2d> polygon_v)
+		    : idx_u(idx_u), idx_v(idx_v), patch_u(patch_u), patch_v(patch_v),
+		      polygon_u(polygon_u), polygon_v(polygon_v) {}
+	};
+
+	void
+	for_each_overlap(std::invocable<OverlapPatchPair> auto consumer) const {
+		std::vector<Eigen::Vector2d> vbuf_u;
+		std::vector<Eigen::Vector2d> vbuf_v;
+		for_each_coplanar([&](PatchIdx f_u, PatchIdx f_v) {
+			const Patch &patch_u = patches_[f_u].patch;
+			const Patch &patch_v = patches_[f_v].patch;
+			const Transformd &T_u = patch_u.transform();
+			const Transformd &T_v = patch_v.transform();
+			Transformd T_u_v = inverse(T_u) * T_v;
+			const auto &[q_u_v, t_u_v] = T_u_v;
+			Eigen::Vector3d e1 = q_u_v * Eigen::Vector3d::UnitX();
+			Eigen::Vector3d e2 = q_u_v * Eigen::Vector3d::UnitY();
+			// CAUTION: det(R2d) = -1 (improper rotation)
+			Eigen::Matrix2d R2d;
+			R2d.col(0) = e1.head<2>();
+			R2d.col(1) = e2.head<2>();
+			Eigen::Vector2d t2d = t_u_v.head<2>();
+
+			// 1. Fast reject check by bbox overlap
+			const BBox2d &bbox_u = patch_u.bbox();
+			const BBox2d &bbox_v = patch_v.bbox();
+			BBox2d bbox_v_in_u = transform_bbox2d(bbox_v, R2d, t2d);
+			if (!bbox_u.overlaps(bbox_v_in_u)) {
+				return;
 			}
-		}
-	}
-}
 
-BBox2d transform_bbox2d(const BBox2d &bbox, const Eigen::Matrix2d &R,
-                        const Eigen::Vector2d &t) {
-	constexpr double inf = std::numeric_limits<double>::infinity();
-	Eigen::Vector2d new_min{inf, inf};
-	Eigen::Vector2d new_max{-inf, -inf};
-	for (int ix = 0; ix <= 1; ++ix) {
-		double cx = (ix == 0) ? bbox.min.x() : bbox.max.x();
-		for (int iy = 0; iy <= 1; ++iy) {
-			double cy = (iy == 0) ? bbox.min.y() : bbox.max.y();
-			Eigen::Vector2d p_local{cx, cy};
-			Eigen::Vector2d p = R * p_local + t;
-			new_min = new_min.cwiseMin(p);
-			new_max = new_max.cwiseMax(p);
-		}
-	}
-	return {.min = new_min, .max = new_max};
-}
-
-export struct TouchingFacePair {
-	const Face &face_u;
-	const Face &face_v;
-	std::span<const Eigen::Vector2d> polygon_u;
-	std::span<const Eigen::Vector2d> polygon_v;
-};
-
-export template <class G>
-aligned_generator<TouchingFacePair> detect_touching_faces(const G &g,
-                                                          PartId root) {
-	LegoFaceBinMap face_bins;
-	// Broadphase: Collect faces
-	for (auto [u, T_root_u] : g.component_view(root).transforms()) {
-		g.parts().visit(u, [&](const auto &pw) {
-			for (auto &&face : pw.wrapped().faces()) {
-				Transformd T_root_face = T_root_u * face.transform();
-				auto &[q, t] = T_root_face;
-				// Outward normal
-				Eigen::Vector3d n = q * Eigen::Vector3d::UnitZ();
-				// Displacement from origin
-				double d = n.dot(t);
-				auto bin_key = LegoFaceBinKey::from_face(n, d);
-				face_bins[bin_key].emplace_back(Face{
-				    .ref = FaceRef{.pid = u, .fid = face.id()},
-				    .T = T_root_face,
-				    .bbox = face.bbox(),
-				});
-			}
-		});
-	}
-	// Narrowphase: Test coplanar face pairs
-	std::vector<Eigen::Vector2d> vbuf_u;
-	std::vector<Eigen::Vector2d> vbuf_v;
-	for (const auto &[f_u, f_v] : coplanar_face_pairs(face_bins)) {
-		if (f_u.ref.pid == f_v.ref.pid) {
-			continue;
-		}
-		const Transformd &T_root_u = f_u.T;
-		const Transformd &T_root_v = f_v.T;
-		Transformd T_u_v = inverse(T_root_u) * T_root_v;
-		const auto &[q_u_v, t_u_v] = T_u_v;
-		Eigen::Vector3d e1 = q_u_v * Eigen::Vector3d::UnitX();
-		Eigen::Vector3d e2 = q_u_v * Eigen::Vector3d::UnitY();
-		// CAUTION: det(R2d) = -1 (improper rotation)
-		Eigen::Matrix2d R2d;
-		R2d.col(0) = e1.head<2>();
-		R2d.col(1) = e2.head<2>();
-		Eigen::Vector2d t2d = t_u_v.head<2>();
-
-		// 1. Fast reject check by bbox overlap
-		const BBox2d &bbox_u = f_u.bbox;
-		const BBox2d &bbox_v = f_v.bbox;
-		BBox2d bbox_v_in_u = transform_bbox2d(bbox_v, R2d, t2d);
-		if (!bbox_u.overlaps(bbox_v_in_u)) {
-			continue;
-		}
-
-		// 2. Collect vertices
-		// CAUTION: because R2d is improper, the vertex order for vbuf_u is CCW, but for vbuf_v it's CW
-		vbuf_u.clear();
-		vbuf_v.clear();
-		g.parts().visit(f_u.ref.pid, [&](const auto &pw) {
-			for (const Eigen::Vector2d &vertex :
-			     pw.wrapped().get_face(f_u.ref.fid)->polygon_vertices()) {
+			// 2. Collect vertices
+			// CAUTION: because R2d is improper, the vertex order for vbuf_u is CCW, but for vbuf_v it's CW
+			vbuf_u.clear();
+			vbuf_v.clear();
+			for (const Eigen::Vector2d &vertex : patch_u.polygon_vertices()) {
 				vbuf_u.emplace_back(vertex);
 			}
-		});
-		g.parts().visit(f_v.ref.pid, [&](const auto &pw) {
-			for (const Eigen::Vector2d &vertex :
-			     pw.wrapped().get_face(f_v.ref.fid)->polygon_vertices()) {
+			for (const Eigen::Vector2d &vertex : patch_v.polygon_vertices()) {
 				vbuf_v.emplace_back(R2d * vertex + t2d);
 			}
-		});
 
-		// 3. SAT
-		// SAT also accepts CW ordering
-		double penetration = sat(vbuf_u, vbuf_v);
-		if (penetration >= kSATMinPenetration) {
-			// Convert vbuf_v to CCW before yielding
-			std::ranges::reverse(vbuf_v);
-			co_yield {.face_u = f_u,
-			          .face_v = f_v,
-			          .polygon_u = std::span{vbuf_u},
-			          .polygon_v = std::span{vbuf_v}};
-		}
+			// 3. SAT
+			// SAT also accepts CW ordering
+			double penetration = sat(vbuf_u, vbuf_v);
+			if (penetration >= SATMinPenetration) {
+				// Convert vbuf_v to CCW before yielding
+				std::ranges::reverse(vbuf_v);
+				std::invoke(consumer,
+				            OverlapPatchPair{
+				                f_u,
+				                f_v,
+				                patches_[f_u].patch,
+				                patches_[f_v].patch,
+				                std::span<const Eigen::Vector2d>(vbuf_u),
+				                std::span<const Eigen::Vector2d>(vbuf_v),
+				            });
+			}
+		});
+	}
+
+  private:
+	using Key = PlaneBinKey<S2Level, DExp2>;
+	struct StagedPatch {
+		Key key;
+		Patch patch;
 	};
-}
+
+	static Key compute_key(const Patch &patch) {
+		const Transformd &T = patch.transform();
+		auto &[q, t] = T;
+		Eigen::Vector3d n = q * Eigen::Vector3d::UnitZ();
+		double d = n.dot(t);
+		return Key::from_plane(n, d);
+	}
+
+	std::vector<StagedPatch> patches_;
+	std::unordered_map<Key, std::vector<PatchIdx>> bins_;
+
+	void
+	for_each_coplanar(std::invocable<PatchIdx, PatchIdx> auto consumer) const {
+		double dot_threshold = -std::cos(CoplanarAngleThreshold);
+		for (const auto &[bk_u, f_us] : bins_) {
+			for (PatchIdx f_u : f_us) {
+				const Transformd &T_u = patches_[f_u].patch.transform();
+				const auto &[q_u, t_u] = T_u;
+				Eigen::Vector3d n_u = q_u * Eigen::Vector3d::UnitZ();
+				double d_u = n_u.dot(t_u);
+				Key bk_u_opposite = Key::from_plane(-n_u, -d_u);
+				bk_u_opposite.for_each_neighbor([&](Key bk_v) {
+					auto it_f_vs = bins_.find(bk_v);
+					if (it_f_vs != bins_.end()) {
+						for (PatchIdx f_v : it_f_vs->second) {
+							if (f_u >= f_v) {
+								continue;
+							}
+							const Transformd &T_v =
+							    patches_[f_v].patch.transform();
+							const auto &[q_v, t_v] = T_v;
+							Eigen::Vector3d n_v =
+							    q_v * Eigen::Vector3d::UnitZ();
+							if (n_u.dot(n_v) > dot_threshold) {
+								continue;
+							}
+							double d = (t_v - t_u).dot(n_u);
+							if (std::abs(d) > CoplanarDisplacementThreshold) {
+								continue;
+							}
+							std::invoke(consumer, f_u, f_v);
+						}
+					}
+				});
+			}
+		}
+	}
+};
 
 } // namespace bricksim
