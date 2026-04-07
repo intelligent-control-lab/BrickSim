@@ -19,12 +19,19 @@ class BricksimDatasetItem:
     stable_with_plate: bool
     max_stability_score_with_plate: float
 
+def _resolve_bricksim_dataset_path() -> Path:
+    dataset_path = os.environ.get("BRICKSIM_DATASET_PATH")
+    if dataset_path:
+        return Path(dataset_path).expanduser()
+    env_xdg_cache_home = os.environ.get("XDG_CACHE_HOME")
+    if env_xdg_cache_home:
+        cache_home = Path(env_xdg_cache_home).expanduser()
+    else:
+        cache_home = Path.home() / ".cache"
+    return cache_home / "bricksim" / "bricksim_dataset"
+
 BRICKSIM_DATASET_URL = "https://www.cs.cmu.edu/~haoweiw/bricksim_downloads/bricksim_dataset.tar.xz"
-BRICKSIM_DATASET_PATH = (
-    Path(os.environ["BRICKSIM_DATASET_PATH"])
-    if "BRICKSIM_DATASET_PATH" in os.environ
-    else Path(__file__).resolve().parents[3] / "resources" / "bricksim_dataset"
-)
+BRICKSIM_DATASET_PATH = _resolve_bricksim_dataset_path()
 BRICKSIM_DATASET_CATALOG_PATH = BRICKSIM_DATASET_PATH / "data" / "lego" / "data" / "simulator_testset" / "dataset.json"
 
 def is_bricksim_dataset_available() -> bool:
@@ -33,6 +40,7 @@ def is_bricksim_dataset_available() -> bool:
 async def download_bricksim_dataset() -> None:
     if is_bricksim_dataset_available():
         return
+    BRICKSIM_DATASET_PATH.mkdir(parents=True, exist_ok=True)
     print(f"Downloading BrickSim dataset from {BRICKSIM_DATASET_URL} to {BRICKSIM_DATASET_PATH}...")
     with tempfile.NamedTemporaryFile(suffix=".tar.xz") as archive_file:
         with requests.get(BRICKSIM_DATASET_URL, stream=True) as res:

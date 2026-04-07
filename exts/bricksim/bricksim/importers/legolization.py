@@ -43,7 +43,7 @@ def load_default_lego_library() -> dict[str, dict[str, Any]]:
     global DEFAULT_LEGO_LIBRARY
     if DEFAULT_LEGO_LIBRARY is None:
         if not os.path.exists(DEFAULT_LEGO_LIBRARY_PATH):
-            raise FileNotFoundError(f"Default lego library not found at {DEFAULT_LEGO_LIBRARY_PATH}\nPlease run scripts/download_legosim_dataset.py to download it.")
+            raise FileNotFoundError(f"Default lego library not found at {DEFAULT_LEGO_LIBRARY_PATH}.")
         with open(DEFAULT_LEGO_LIBRARY_PATH, "r", encoding="utf-8") as f:
             DEFAULT_LEGO_LIBRARY = json.load(f)
     return DEFAULT_LEGO_LIBRARY
