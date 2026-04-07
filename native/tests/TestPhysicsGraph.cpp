@@ -1,3 +1,4 @@
+import std;
 import bricksim.core.specs;
 import bricksim.core.graph;
 import bricksim.core.connections;
@@ -8,14 +9,11 @@ import bricksim.physx.patcher;
 import bricksim.utils.type_list;
 import bricksim.utils.metric_system;
 import bricksim.utils.transforms;
+import bricksim.utils.conversions;
 import bricksim.vendor;
 
-#include <PxPhysicsAPI.h>
-#include <array>
 #include <cassert>
-#include <cstdint>
-#include <initializer_list>
-#include <vector>
+#include <foundation/PxPhysicsVersion.h>
 
 using namespace bricksim;
 
@@ -68,13 +66,13 @@ struct PhysxEnv {
 	physx::PxMaterial *material{nullptr};
 
 	PhysxEnv() {
-		foundation =
-		    PxCreateFoundation(PX_PHYSICS_VERSION, allocator, error_callback);
+		foundation = physx::PxCreateFoundation(PX_PHYSICS_VERSION, allocator,
+		                                       error_callback);
 		assert(foundation);
 
 		physx::PxTolerancesScale scale;
-		physics = PxCreatePhysics(PX_PHYSICS_VERSION, *foundation, scale, true,
-		                          nullptr);
+		physics = physx::PxCreatePhysics(PX_PHYSICS_VERSION, *foundation, scale,
+		                                 true, nullptr);
 		assert(physics);
 
 		physx::PxSceneDesc desc(physics->getTolerancesScale());
@@ -113,6 +111,7 @@ struct PhysxEnv {
 // Helper to build a tiny brick-like rigid actor with two shapes:
 // one associated with the hole interface, one with the stud interface.
 static physx::PxRigidDynamic *create_brick_actor(PhysxEnv &env,
+                                                 const BrickPart &part,
                                                  const physx::PxTransform &pose,
                                                  physx::PxShape *&hole_shape,
                                                  physx::PxShape *&stud_shape) {
@@ -129,7 +128,10 @@ static physx::PxRigidDynamic *create_brick_actor(PhysxEnv &env,
 	actor->attachShape(*hole_shape);
 	actor->attachShape(*stud_shape);
 
-	physx::PxRigidBodyExt::updateMassAndInertia(*actor, 1.0f);
+	actor->setMass(static_cast<physx::PxReal>(part.mass()));
+	actor->setCMassLocalPose(physx::PxTransform(as<physx::PxVec3>(part.com())));
+	Eigen::Vector3d inertia_diag = part.inertia_tensor().diagonal();
+	actor->setMassSpaceInertiaTensor(as<physx::PxVec3>(inertia_diag));
 	env.scene->addActor(*actor);
 
 	return actor;
@@ -161,18 +163,21 @@ struct PhysicsGraphFixture {
 		assert(graph.bind_physx_scene(env.scene));
 
 		// Two brick actors with per-interface shapes.
+		BrickColor red{255, 0, 0};
+		BrickColor green{0, 255, 0};
+		BrickPart partA{BrickUnit{2}, BrickUnit{4},
+		                PlateUnit{BrickHeightPerPlate}, red};
+		BrickPart partB{BrickUnit{2}, BrickUnit{4},
+		                PlateUnit{BrickHeightPerPlate}, green};
 		actorA = create_brick_actor(
-		    env, physx::PxTransform(physx::PxVec3(0.0f, 0.0f, 0.0f)),
+		    env, partA, physx::PxTransform(physx::PxVec3(0.0f, 0.0f, 0.0f)),
 		    holeShapeA, studShapeA);
 		actorB = create_brick_actor(
-		    env,
+		    env, partB,
 		    physx::PxTransform(physx::PxVec3(
 		        0.0f, 0.0f,
 		        static_cast<float>(BrickHeightPerPlate * PlateUnitHeight))),
 		    holeShapeB, studShapeB);
-
-		BrickColor red{255, 0, 0};
-		BrickColor green{0, 255, 0};
 
 		// Map interface ids to PhysX shapes for each part.
 		std::initializer_list<InterfaceShapePair> ifsA{
