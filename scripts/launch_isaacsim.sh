@@ -27,7 +27,37 @@ EOF
   fi
 }
 
+resolve_installed_isaaclab_source_root() {
+  BRICKSIM_ENV_ISAACLAB_SOURCE_ROOT="$("$BRICKSIM_ENV_DIR/bin/python" - <<'PY'
+import importlib.util
+from pathlib import Path
+
+
+def resolve_isaaclab_source_root() -> Path:
+    spec = importlib.util.find_spec("isaaclab")
+    if spec is None or spec.origin is None:
+        raise RuntimeError("Missing required Python package: isaaclab")
+
+    module_dir = Path(spec.origin).resolve().parent
+
+    nested_source_root = module_dir / "source"
+    if (nested_source_root / "isaaclab" / "config" / "extension.toml").is_file():
+        return nested_source_root
+
+    editable_source_root = module_dir.parent.parent
+    if (editable_source_root / "isaaclab" / "config" / "extension.toml").is_file():
+        return editable_source_root
+
+    raise RuntimeError(f"Unable to resolve Isaac Lab source root from {module_dir}")
+
+
+print(resolve_isaaclab_source_root())
+PY
+  )"
+}
+
 resolve_bricksim_env
+resolve_installed_isaaclab_source_root
 
 EXPERIENCE="isaacsim.exp.full"
 
@@ -38,7 +68,6 @@ HEADLESS="${HEADLESS:-false}"
 
 ISAAC_ARGS=(
   "$EXPERIENCE"
-  --ext-folder "$ROOT_DIR/IsaacLab/source"
   --ext-folder "$ROOT_DIR/exts"
   --enable bricksim
   --enable omni.kit.debug.python
@@ -55,6 +84,7 @@ ISAAC_ARGS=(
   '--/log/channels/bricksim.*'=info
 )
 
+ISAAC_ARGS+=( --ext-folder "$BRICKSIM_ENV_ISAACLAB_SOURCE_ROOT" )
 if [[ "$HEADLESS" == "true" ]]; then
   ISAAC_ARGS+=( --no-window )
 fi

@@ -1,14 +1,10 @@
 [project]
 name = "bricksim"
 version = "0.1.0"
-description = "BrickSim Simulator"
+description = "BrickSim: A Physics-Based Simulator for Manipulating Interlocking Brick Assemblies"
 requires-python = ">=3.11"
 dependencies = [
     "gymnasium==1.2.0",
-    "isaaclab",
-    "isaaclab_assets",
-    "isaaclab_tasks",
-    "isaacsim[all,extscache]==5.1.0",
     "numpy<2",
     "requests",
     "torch>=2.7",
@@ -16,7 +12,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-stable-lego = ["gurobipy"]
+isaacsim = ["isaacsim[all,extscache]==5.1.0"]
+isaaclab = ["isaaclab==2.3.2.post1"]
+all = [
+    "isaacsim[all,extscache]==5.1.0",
+    "isaaclab==2.3.2.post1",
+]
+stablelego = ["gurobipy==12.0.3"]
 
 [project.urls]
 Repository = "https://github.com/intelligent-control-lab/BrickSim.git"
