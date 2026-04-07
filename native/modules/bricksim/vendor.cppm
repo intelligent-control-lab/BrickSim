@@ -1,5 +1,24 @@
 module;
 
+// Link against old glibc symbols
+extern "C" {
+extern float __bricksim_glibc225_acosf(float);
+extern float __bricksim_glibc225_atan2f(float, float);
+extern float __bricksim_glibc225_sqrtf(float);
+__asm__(".symver __bricksim_glibc225_acosf, acosf@GLIBC_2.2.5");
+__asm__(".symver __bricksim_glibc225_atan2f, atan2f@GLIBC_2.2.5");
+__asm__(".symver __bricksim_glibc225_sqrtf, sqrtf@GLIBC_2.2.5");
+__attribute__((visibility("hidden"))) float acosf(float x) noexcept {
+	return __bricksim_glibc225_acosf(x);
+}
+__attribute__((visibility("hidden"))) float atan2f(float y, float x) noexcept {
+	return __bricksim_glibc225_atan2f(y, x);
+}
+__attribute__((visibility("hidden"))) float sqrtf(float x) noexcept {
+	return __bricksim_glibc225_sqrtf(x);
+}
+}
+
 // ==== Eigen ====
 #include <Eigen/Eigen>
 
