@@ -2,7 +2,6 @@ import torch
 
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import quat_error_magnitude
-from isaacsim.core.prims import XFormPrim
 
 from bricksim.mdp.connection_state import InterfacePairConnectionQuery, interface_pair_connection_state
 
@@ -12,8 +11,6 @@ def marker_pose_w(
     marker_cfg: SceneEntityCfg = SceneEntityCfg("marker_brick"),
 ) -> tuple[torch.Tensor, torch.Tensor]:
     marker = env.scene[marker_cfg.name]
-    if not isinstance(marker, XFormPrim):
-        raise TypeError(f"Scene entity '{marker_cfg.name}' must resolve to XFormPrim, got {type(marker)}")
     pos_w, quat_w = marker.get_world_poses(indices=list(range(env.num_envs)))
     dtype = env.scene.env_origins.dtype
     return (

@@ -5,7 +5,6 @@ import isaaclab.utils.math as math_utils
 from isaaclab.assets import RigidObject
 from isaaclab.envs import ManagerBasedEnv
 from isaaclab.managers import SceneEntityCfg
-from isaacsim.core.prims import XFormPrim
 from bricksim._native import compute_connection_transform, deallocate_all_managed
 from bricksim.mdp.utils import resolve_brick_rigid_object
 
@@ -190,69 +189,46 @@ def reset_to_connected_pose(
         return
 
     moved = env.scene[moved_cfg.name]
-    if isinstance(moved, RigidObject):
-        moved_paths = moved.root_physx_view.prim_paths
-    elif isinstance(moved, XFormPrim):
-        moved_paths = moved.prim_paths
-    else:
-        raise TypeError(f"Scene entity '{moved_cfg.name}' must resolve to RigidObject or XFormPrim, got {type(moved)}")
-
     reference_brick = resolve_brick_rigid_object(env, reference_brick_cfg.name)
-    reference_paths = reference_brick.root_physx_view.prim_paths
     reference_pos_w = reference_brick.data.root_pos_w[env_ids, :3]
     reference_quat_w = reference_brick.data.root_quat_w[env_ids]
 
-    if isinstance(moved, XFormPrim):
-        moved_cfg_value = getattr(env.scene.cfg, moved_cfg.name)
-        moved_dimensions = tuple(int(v) for v in moved_cfg_value.spawn.dimensions)
+    if isinstance(moved, RigidObject):
+        stud_paths = reference_brick.root_physx_view.prim_paths if moved_side == "hole" else moved.root_physx_view.prim_paths
+        hole_paths = moved.root_physx_view.prim_paths if moved_side == "hole" else reference_brick.root_physx_view.prim_paths
+        rel_quat_pos = [
+            compute_connection_transform(
+                stud_path=stud_paths[env_id],
+                stud_if=stud_if,
+                hole_path=hole_paths[env_id],
+                hole_if=hole_if,
+                offset=offset,
+                yaw=yaw,
+            )
+            for env_id in env_id_values
+        ]
+        rel_quat = torch.tensor([quat_wxyz for quat_wxyz, _ in rel_quat_pos], device=reference_quat_w.device, dtype=reference_quat_w.dtype)
+        rel_pos = torch.tensor([pos_xyz for _, pos_xyz in rel_quat_pos], device=reference_pos_w.device, dtype=reference_pos_w.dtype)
+    elif all(hasattr(moved, attr) for attr in ("set_world_poses", "prim_paths")):
+        moved_dimensions = tuple(int(v) for v in getattr(env.scene.cfg, moved_cfg.name).spawn.dimensions)
         reference_dimensions = tuple(int(v) for v in reference_brick.cfg.spawn.dimensions)
-        if moved_side == "hole":
-            rel_pos, rel_quat = _compute_visual_connection_transform(
-                reference_dimensions,
-                moved_dimensions,
-                offset,
-                yaw,
-                device=reference_pos_w.device,
-                dtype=reference_pos_w.dtype,
-            )
-        else:
-            rel_pos, rel_quat = _compute_visual_connection_transform(
-                moved_dimensions,
-                reference_dimensions,
-                offset,
-                yaw,
-                device=reference_pos_w.device,
-                dtype=reference_pos_w.dtype,
-            )
+        stud_dimensions, hole_dimensions = (
+            (reference_dimensions, moved_dimensions) if moved_side == "hole" else (moved_dimensions, reference_dimensions)
+        )
+        rel_pos, rel_quat = _compute_visual_connection_transform(
+            stud_dimensions,
+            hole_dimensions,
+            offset,
+            yaw,
+            device=reference_pos_w.device,
+            dtype=reference_pos_w.dtype,
+        )
         rel_pos = rel_pos.expand(len(env_id_values), -1)
         rel_quat = rel_quat.expand(len(env_id_values), -1)
     else:
-        rel_pos_values = []
-        rel_quat_values = []
-        for env_id in env_id_values:
-            if moved_side == "hole":
-                quat_wxyz, pos_xyz = compute_connection_transform(
-                    stud_path=reference_paths[env_id],
-                    stud_if=stud_if,
-                    hole_path=moved_paths[env_id],
-                    hole_if=hole_if,
-                    offset=offset,
-                    yaw=yaw,
-                )
-            else:
-                quat_wxyz, pos_xyz = compute_connection_transform(
-                    stud_path=moved_paths[env_id],
-                    stud_if=stud_if,
-                    hole_path=reference_paths[env_id],
-                    hole_if=hole_if,
-                    offset=offset,
-                    yaw=yaw,
-                )
-            rel_pos_values.append(pos_xyz)
-            rel_quat_values.append(quat_wxyz)
-
-        rel_pos = torch.tensor(rel_pos_values, device=reference_pos_w.device, dtype=reference_pos_w.dtype)
-        rel_quat = torch.tensor(rel_quat_values, device=reference_quat_w.device, dtype=reference_quat_w.dtype)
+        raise TypeError(
+            f"Scene entity '{moved_cfg.name}' must resolve to a RigidObject or Xform-like view, got {type(moved)}"
+        )
 
     if moved_side == "hole":
         target_pos_w, target_quat_w = math_utils.combine_frame_transforms(
