@@ -81,6 +81,8 @@ You may operate in:
 You must NOT:
 - Run global searches from filesystem root, or from the home directory, or other directories not listed above—they are too large—unless you first ask the user for approval.
 
+If you start Isaac Sim or other processes, you must ensure it's terminated after you are done. These processes can consume significant resources, and might not respond to SIGINT. Use `pgrep` to find their PIDs and `kill` to terminate them if needed.
+
 ## Collaboration Rules (How to Work With the User)
 - NEVER modify code unless the user explicitly asks (e.g., says "modify", "implement", "refactor", "add", or similar). Observations and diagnostics are fine; changes require explicit instruction.
 - Respect explicit decisions: do not change established values or designs (e.g., callback orders, algorithm choices) without strong evidence and prior approval.
