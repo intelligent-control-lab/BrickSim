@@ -73,8 +73,9 @@ Other demos include:
 | `native/`         | C++26 core                                    |
 | `python/`         | Python extension and API                      |
 | `demos/`          | Demos                                         |
+| `experiments/`    | Research and evaluation scripts               |
 | `resources/`      | USD assets, robot assets, and brick datasets  |
-| `scripts/`        | Utility scripts                               |
+| `scripts/`        | Development and build scripts                 |
 
 ### Generating Type Checker Configuration
 

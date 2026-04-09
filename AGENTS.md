@@ -14,10 +14,13 @@ This project is written in C++26 (with modules) and Python 3.11. The project is 
 │  └─ ...
 ├─ python/                # Omniverse extension (Python)
 ├─ demos/                 # Demos for conducting research experiments
+├─ experiments/           # Research and evaluation scripts
 ├─ IsaacLab/              # IsaacLab submodule
 ├─ resources/             # USD files and other assets
-├─ scripts/
+├─ scripts/               # Development and build scripts
 │  ├─ build.sh            # Build & test C++ code
+│  ├─ setup_toolchain.sh  # Toolchain setup helper for native builds
+│  ├─ find_bricksim_pid.py# Helper for locating a running BrickSim process
 │  └─ ...
 ├─ .vscode/               # VS Code workspace settings
 ├─ .venv/                 # Project virtualenv
