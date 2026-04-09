@@ -6,12 +6,28 @@ except ModuleNotFoundError:
     _carb = None
 
 def _is_bricksim_launcher_invocation() -> bool:
-    import inspect
     import os
+    import sys
+
+    argv0 = os.path.basename(sys.argv[0]) if sys.argv else ""
+    if argv0 == "bricksim" or argv0.startswith("bricksim-"):
+        return True
+
+    main_module = sys.modules.get("__main__")
+    main_spec = getattr(main_module, "__spec__", None)
+    main_name = getattr(main_spec, "name", None)
+    if isinstance(main_name, str) and (main_name == "bricksim" or main_name.startswith("bricksim.")):
+        return True
+
+    import inspect
+
     for frame in inspect.stack():
         if frame.filename == "<frozen runpy>" and frame.function == "_run_module_as_main":
             return True
-        if frame.function == "<module>" and os.path.basename(frame.filename) == "bricksim":
+        if frame.function == "<module>" and (
+            os.path.basename(frame.filename) == "bricksim"
+            or os.path.basename(frame.filename).startswith("bricksim-")
+        ):
             return True
     return False
 

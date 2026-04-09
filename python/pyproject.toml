@@ -25,6 +25,7 @@ Repository = "https://github.com/intelligent-control-lab/BrickSim.git"
 
 [project.scripts]
 bricksim = "bricksim.__main__:main"
+bricksim-type-configs = "bricksim.cli.type_configs:main"
 
 [build-system]
 requires = ["setuptools", "wheel"]

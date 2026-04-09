@@ -80,7 +80,7 @@ Other demos include:
 
 Generate the Pyright and ty configuration for type analysis and completion in editors like VSCode:
 ```bash
-uv run python scripts/generate_type_configs.py
+uv run bricksim-type-configs
 ```
 
 We recommend installing the [ty extension](https://marketplace.visualstudio.com/items?itemName=astral-sh.ty) for VSCode auto-completion, as it's much faster at handling Isaac Sim's many dependencies.
