@@ -19,6 +19,7 @@ from bricksim import arrange_parts_in_workspace, import_lego, get_brick_dimensio
 from bricksim.utils.topology import bfs_sort_connections
 from bricksim.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
 from bricksim.importers.legolization import legolization_json_to_topology_json, is_legolization_json
+from bricksim.assets import DEFAULT_STAGE_PATH
 
 try:
     from isaacsim.util.debug_draw import _debug_draw
@@ -548,8 +549,7 @@ async def main():
     # Initialize simulation
     if World._world_initialized:
         World.clear_instance()
-    stage_path = os.path.join(SCRIPT_DIR, "../resources/demo.usda")
-    await open_stage_async(stage_path)
+    await open_stage_async(str(DEFAULT_STAGE_PATH))
     world: World = World(
         backend="numpy",
         device="cpu",

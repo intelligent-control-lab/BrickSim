@@ -2,48 +2,63 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Attach 5678",
+            "name": "Python: Current File",
             "type": "debugpy",
-            "request": "attach",
-            "connect": {
-                "host": "localhost",
-                "port": 5678
-            },
+            "request": "launch",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "program": "${file}",
+            "args": [],
+            "console": "integratedTerminal",
             "justMyCode": false,
-            "presentation": {
-                "hidden": true
-            }
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "Build Extension"
         },
         {
-            "name": "C++: Attach IsaacSim",
+            "name": "Python: BrickSim",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "program": "${workspaceFolder}/.venv/bin/bricksim",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "Build Extension"
+        },
+        {
+            "name": "Python: BrickSim (Current File)",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "program": "${workspaceFolder}/.venv/bin/bricksim",
+            "args": [
+                "${file}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "Build Extension"
+        },
+        {
+            "name": "C++: Attach BrickSim",
             "type": "lldb",
             "request": "attach",
-            "program": "${workspaceRoot}/.venv/bin/python",
-            "pid": "${input:pid_isaacsim}",
+            "program": "${workspaceFolder}/.venv/bin/python",
+            "pid": "${input:pid_bricksim}",
             "stopOnEntry": false,
             "initCommands": [
                 "process handle --stop false --notify false SIGWINCH"
-            ],
+            ]
         },
         {
-            "name": "C++: Attach IsaacSim (Select process)",
+            "name": "C++: Attach BrickSim (Select process)",
             "type": "lldb",
             "request": "attach",
-            "program": "${workspaceRoot}/.venv/bin/python",
+            "program": "${workspaceFolder}/.venv/bin/python",
             "pid": "${command:pickProcess}",
             "stopOnEntry": false,
             "initCommands": [
                 "process handle --stop false --notify false SIGWINCH"
-            ],
-        },
-        {
-            "name": "Python: Current File",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${file}",
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "cwd": "${workspaceFolder}",
+            ]
         },
         {
             "name": "C++: CMake Debug",
@@ -54,53 +69,37 @@
             "stopOnEntry": false,
             "cwd": "${workspaceFolder}",
             "env": {
-                "PATH": "${env:PATH}:${command:cmake.getLaunchTargetDirectory}",
-            },
+                "PATH": "${env:PATH}:${command:cmake.getLaunchTargetDirectory}"
+            }
         }
     ],
     "compounds": [
         {
-            "name": "Debug Python",
-            "configurations": [
-                "Python: Attach 5678"
-            ],
-            "stopAll": true,
-            "preLaunchTask": "Launch IsaacSim"
-        },
-        {
-            "name": "Debug Python (Current File)",
-            "configurations": [
-                "Python: Attach 5678"
-            ],
-            "stopAll": true,
-            "preLaunchTask": "Launch IsaacSim & Execute Current File"
-        },
-        {
             "name": "Debug C++ & Python",
             "configurations": [
-                "Python: Attach 5678",
-                "C++: Attach IsaacSim"
+                "Python: BrickSim",
+                "C++: Attach BrickSim"
             ],
-            "stopAll": true,
-            "preLaunchTask": "Launch IsaacSim"
+            "preLaunchTask": "Build Extension",
+            "stopAll": true
         },
         {
             "name": "Debug C++ & Python (Current File)",
             "configurations": [
-                "Python: Attach 5678",
-                "C++: Attach IsaacSim"
+                "Python: BrickSim (Current File)",
+                "C++: Attach BrickSim"
             ],
-            "stopAll": true,
-            "preLaunchTask": "Launch IsaacSim & Execute Current File"
+            "preLaunchTask": "Build Extension",
+            "stopAll": true
         }
     ],
     "inputs": [
         {
-            "id": "pid_isaacsim",
+            "id": "pid_bricksim",
             "type": "command",
             "command": "shellCommand.execute",
             "args": {
-                "command": "pgrep -nx isaacsim",
+                "command": "${workspaceFolder}/scripts/find_bricksim_pid.py",
                 "useFirstResult": true
             }
         }

@@ -1,2 +1,2 @@
-recursive-include bricksim *.pyi *.json *.yaml *.svg *.usda
+recursive-include bricksim *.pyi *.json *.yaml *.toml *.svg *.usda
 global-exclude __pycache__ *.py[cod]

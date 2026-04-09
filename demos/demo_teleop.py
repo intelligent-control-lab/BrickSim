@@ -15,6 +15,7 @@ from isaacsim.core.prims import SingleArticulation, SingleXFormPrim, SingleGeome
 from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.core.utils.stage import open_stage_async, add_reference_to_stage, get_current_stage
 from bricksim import allocate_brick_part, parse_color, create_connection, AssemblyThresholds, set_assembly_thresholds, BreakageThresholds, set_breakage_thresholds, get_breakage_thresholds
+from bricksim.assets import DEFAULT_STAGE_PATH
 
 LEADER_PORT = "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5AAF288330-if00" #### ---- CHANGE THIS TO YOUR SERIAL PORT ---- ####
 LEADER_ID = "my_lerobot_leader" #### ---- CHANGE THIS TO YOUR LEADER ID ---- ####
@@ -102,8 +103,7 @@ async def main():
     app = omni.kit.app.get_app()
     if World._world_initialized:
         World.clear_instance()
-    stage_path = os.path.join(SCRIPT_DIR, "../resources/demo.usda")
-    await open_stage_async(stage_path)
+    await open_stage_async(str(DEFAULT_STAGE_PATH))
     stage = get_current_stage()
     world: World = World(
         backend="numpy",

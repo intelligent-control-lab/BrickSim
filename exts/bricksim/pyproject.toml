@@ -23,6 +23,9 @@ stablelego = ["gurobipy==12.0.3"]
 [project.urls]
 Repository = "https://github.com/intelligent-control-lab/BrickSim.git"
 
+[project.scripts]
+bricksim = "bricksim.__main__:main"
+
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"

@@ -171,6 +171,11 @@ target_sources(_native PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/py/pybind11.cpp")
 target_include_directories(_native BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
 target_link_libraries(_native PRIVATE bricksim_modules pybind11::module)
 pybind11_extension(_native)
+set_target_properties(_native PROPERTIES
+  SKIP_BUILD_RPATH ON
+  BUILD_WITH_INSTALL_RPATH OFF
+  INSTALL_RPATH ""
+)
 
 function(bricksim_add_tool TOOL_NAME)
   add_executable(${TOOL_NAME} tools/${TOOL_NAME}.cpp)

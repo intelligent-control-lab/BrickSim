@@ -40,6 +40,7 @@ from bricksim.mdp.events import (
     reset_to_connected_pose,
 )
 from bricksim.mdp.spawn import BrickPartCfg, MarkerBrickPartCfg
+from bricksim.assets import FRANKA_ROBOT_USD_PATH
 
 from .expert import AssembleBrickExpert
 from .mdp.common import assemble_brick_goal_satisfied, wrong_connection_to_target
@@ -79,7 +80,7 @@ class SceneCfg(InteractiveSceneCfg):
     replicate_physics = False
 
     robot: ArticulationCfg = FRANKA_PANDA_HIGH_PD_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-    robot.spawn.usd_path = str(Path(__file__).resolve().parents[2] / "assets" / "robots" / "franka" / "robot.usda")
+    robot.spawn.usd_path = str(FRANKA_ROBOT_USD_PATH)
     robot.spawn.variants = {"Physics": "Assemble"}
     robot.spawn.articulation_props.solver_position_iteration_count = 64
     robot.spawn.articulation_props.solver_velocity_iteration_count = 1

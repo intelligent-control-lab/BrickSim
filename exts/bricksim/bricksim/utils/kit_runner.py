@@ -1,14 +1,17 @@
 import asyncio
+import contextlib
 import importlib
 import os
 import runpy
-from typing import Any, Awaitable, Optional, Tuple
+import sys
+from typing import Any, Awaitable, Optional, Sequence, Tuple
 
 import carb.settings
 import omni.kit.async_engine as _async_engine
 
 _current_task: Optional[asyncio.Task[Any]] = None
 _current_target: Optional[str] = None
+_current_cli_args: Tuple[str, ...] = ()
 
 _settings = carb.settings.get_settings()
 _SETTING_HAS_TARGET = "/app/bricksim/kit_runner/has_target"
@@ -36,7 +39,22 @@ def _is_path(s: str) -> bool:
     return s.endswith(".py") or os.path.isabs(s) or (os.sep in s) or ("\\" in s)
 
 
-def run(target: str, *args: Any, **kwargs: Any) -> asyncio.Task[Any]:
+@contextlib.contextmanager
+def _temporary_argv(argv0: str, cli_args: Sequence[str]):
+    old_argv = sys.argv.copy()
+    sys.argv = [argv0, *cli_args]
+    try:
+        yield
+    finally:
+        sys.argv = old_argv
+
+
+def run(
+    target: str,
+    *args: Any,
+    cli_args: Sequence[str] = (),
+    **kwargs: Any,
+) -> asyncio.Task[Any]:
     """
     Run (and hot-reload) a target async function inside Kit.
 
@@ -45,18 +63,21 @@ def run(target: str, *args: Any, **kwargs: Any) -> asyncio.Task[Any]:
                 e.g. "demos.demo_r1lite", "demos.demo_r1lite:main",
                 "/abs/path/to/demo_r1lite.py", or "/abs/path/to/demo_r1lite.py:main".
         *args: Positional arguments forwarded to the target function.
+        cli_args: CLI arguments exposed to the target via sys.argv.
         **kwargs: Keyword arguments forwarded to the target function.
 
     Returns:
         The asyncio.Task created by Kit's async engine for the coroutine.
     """
-    global _current_task, _current_target
+    global _current_task, _current_target, _current_cli_args
 
     # Cancel previous run if still active.
     if _current_task is not None and not _current_task.done():
         _current_task.cancel()
 
+    run_cli_args = tuple(cli_args)
     _current_target = target
+    _current_cli_args = run_cli_args
     # Publish to carb settings so other components (e.g., UI) can react.
     try:
         _settings.set(_SETTING_TARGET, target)
@@ -69,18 +90,21 @@ def run(target: str, *args: Any, **kwargs: Any) -> asyncio.Task[Any]:
     # Script path case: execute via runpy and fetch the target function from globals.
     if _is_path(module_or_path):
         script_path = module_or_path
-        globals_dict = runpy.run_path(script_path, run_name="__lego_kit_runner__")
+        with _temporary_argv(script_path, run_cli_args):
+            globals_dict = runpy.run_path(script_path, run_name="__lego_kit_runner__")
         func = globals_dict.get(func_name)
         if func is None:
             raise AttributeError(
                 f"Target function '{func_name}' not found in script '{script_path}'"
             )
     else:
-        module = importlib.import_module(module_or_path)
-        module = importlib.reload(module)
+        with _temporary_argv(module_or_path, run_cli_args):
+            module = importlib.import_module(module_or_path)
+            module = importlib.reload(module)
         func = getattr(module, func_name)
 
-    coro = func(*args, **kwargs)
+    with _temporary_argv(module_or_path, run_cli_args):
+        coro = func(*args, **kwargs)
     if not isinstance(coro, Awaitable):
         raise TypeError(
             f"Target '{module_or_path}:{func_name}' did not return an awaitable coroutine"
@@ -88,7 +112,8 @@ def run(target: str, *args: Any, **kwargs: Any) -> asyncio.Task[Any]:
 
     async def wrapper_coro():
         try:
-            await coro
+            with _temporary_argv(module_or_path, run_cli_args):
+                await coro
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -136,4 +161,4 @@ def rerun() -> asyncio.Task[Any]:
     """
     if _current_target is None:
         raise RuntimeError("kit_runner.rerun() called but no previous target is stored")
-    return run(_current_target)
+    return run(_current_target, cli_args=_current_cli_args)

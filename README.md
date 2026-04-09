@@ -52,8 +52,11 @@ uv sync --locked
 
 ### Run Demos
 ```bash
-# Launch the assembly demo in Isaac Sim
-./scripts/launch_isaacsim.sh demos/demo_assembly.py
+# Open an empty stage to play interactively
+uv run bricksim
+
+# Run the assembly demo
+uv run bricksim demos/demo_assembly.py
 ```
 
 Other demos include:

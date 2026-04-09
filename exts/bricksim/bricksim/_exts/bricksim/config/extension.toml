@@ -16,3 +16,4 @@ reloadable = true
 
 [[python.module]]
 name = "bricksim"
+path = "../../.."

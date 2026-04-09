@@ -2,12 +2,12 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build Extension (RelWithDebInfo)",
+            "label": "Build Extension",
             "type": "shell",
             "command": "bash",
             "args": [
                 "-lc",
-                "${workspaceFolder}/scripts/build.sh RelWithDebInfo"
+                "${workspaceFolder}/scripts/build.sh"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"
@@ -20,92 +20,6 @@
             "presentation": {
                 "clear": true
             }
-        },
-        {
-            "label": "Launch IsaacSim",
-            "type": "shell",
-            "command": "bash",
-            "args": [
-                "-lc",
-                "${workspaceFolder}/scripts/launch_isaacsim.sh"
-            ],
-            "options": {
-                "cwd": "${workspaceFolder}",
-                "env": {
-                    "WAIT_FOR_CLIENT": "true"
-                }
-            },
-            "isBackground": true,
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": false,
-                "panel": "dedicated",
-                "showReuseMessage": true,
-                "clear": true
-            },
-            "problemMatcher": [
-                {
-                    "owner": "custom",
-                    "fileLocation": [
-                        "absolute"
-                    ],
-                    "pattern": {
-                        "regexp": "a^",
-                        "file": 1,
-                        "message": 1
-                    },
-                    "background": {
-                        "activeOnStart": true,
-                        "beginsPattern": "a^",
-                        "endsPattern": "Waiting for debugger to connect"
-                    }
-                }
-            ],
-            "dependsOn": "Build Extension (RelWithDebInfo)"
-        },
-        {
-            "label": "Launch IsaacSim & Execute Current File",
-            "type": "shell",
-            "command": "bash",
-            "args": [
-                "-lc",
-                "${workspaceFolder}/scripts/launch_isaacsim.sh ${file}"
-            ],
-            "options": {
-                "cwd": "${workspaceFolder}",
-                "env": {
-                    "WAIT_FOR_CLIENT": "true"
-                }
-            },
-            "isBackground": true,
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": false,
-                "panel": "dedicated",
-                "showReuseMessage": true,
-                "clear": true
-            },
-            "problemMatcher": [
-                {
-                    "owner": "custom",
-                    "fileLocation": [
-                        "absolute"
-                    ],
-                    "pattern": {
-                        "regexp": "a^",
-                        "file": 1,
-                        "message": 1
-                    },
-                    "background": {
-                        "activeOnStart": true,
-                        "beginsPattern": "a^",
-                        "endsPattern": "Waiting for debugger to connect"
-                    }
-                }
-            ],
-            "dependsOn": "Build Extension (RelWithDebInfo)"
         }
     ]
 }

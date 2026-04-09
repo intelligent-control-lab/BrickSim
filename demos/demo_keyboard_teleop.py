@@ -10,6 +10,7 @@ from isaacsim.core.prims import SingleArticulation, SingleXFormPrim
 from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.core.utils.stage import open_stage_async, add_reference_to_stage
 from bricksim import allocate_brick_part, parse_color, create_connection
+from bricksim.assets import DEFAULT_STAGE_PATH
 import time
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -102,9 +103,8 @@ async def main():
     app = omni.kit.app.get_app()
     if World._world_initialized:
         World.clear_instance()
-    stage_path = os.path.join(SCRIPT_DIR, "../resources/demo.usda")
     time.sleep(0.5)
-    await open_stage_async(stage_path)
+    await open_stage_async(str(DEFAULT_STAGE_PATH))
     world: World = World(
         backend="numpy",
         device="cpu",

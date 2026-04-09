@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -133,6 +134,18 @@ def _iter_eval_entries(node: Any, prefix: tuple[str, ...] = ()) -> Iterator[Eval
 
 def _resolve_structure_path(datarootdir: Path, json_fname: str) -> Path:
     return datarootdir / json_fname.lstrip("/")
+
+
+def _resolve_bricksim_dataset_path() -> Path:
+    dataset_path = os.environ.get("BRICKSIM_DATASET_PATH")
+    if dataset_path:
+        return Path(dataset_path).expanduser()
+    env_xdg_cache_home = os.environ.get("XDG_CACHE_HOME")
+    if env_xdg_cache_home:
+        cache_home = Path(env_xdg_cache_home).expanduser()
+    else:
+        cache_home = Path.home() / ".cache"
+    return cache_home / "bricksim" / "bricksim_dataset"
 
 
 def _as_optional_bool(value: Any) -> bool | None:
@@ -389,7 +402,8 @@ def main() -> None:
         default=None,
         help=(
             "Root corresponding to /data in json_fname paths. "
-            "Default: <repo>/resources/bricksim_dataset"
+            "Default: BRICKSIM_DATASET_PATH, else XDG_CACHE_HOME/bricksim/bricksim_dataset, "
+            "else ~/.cache/bricksim/bricksim_dataset"
         ),
     )
     parser.add_argument(
@@ -413,7 +427,7 @@ def main() -> None:
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
-    datarootdir = args.datarootdir if args.datarootdir is not None else repo_root / "resources" / "bricksim_dataset"
+    datarootdir = args.datarootdir if args.datarootdir is not None else _resolve_bricksim_dataset_path()
     solver_path = args.solver if args.solver is not None else repo_root / "native" / ".build" / "RelWithDebInfo" / "static_solve"
     if not solver_path.is_file():
         raise FileNotFoundError(f"Missing solver binary at {solver_path}")

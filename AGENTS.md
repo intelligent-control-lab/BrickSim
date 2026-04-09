@@ -18,7 +18,6 @@ This project is written in C++26 (with modules) and Python 3.11. The project is 
 ├─ resources/             # USD files and other assets
 ├─ scripts/
 │  ├─ build.sh            # Build & test C++ code
-│  ├─ launch_isaacsim.sh  # Launches Isaac Sim for debugging
 │  └─ ...
 ├─ .vscode/               # VS Code workspace settings
 ├─ .venv/                 # Project virtualenv
@@ -93,7 +92,7 @@ If you start Isaac Sim or other processes, you must ensure it's terminated after
 
 ## Debugging
 - If `gdb` tool is available, you can use gdb to do interactive debugging.
-- Isaac Sim's PID can be obtained by `pgrep -nx isaacsim`. If the process not running, ask the user to start it. Don't start on yourself.
+- Isaac Sim now runs inside the BrickSim Python process. Use `pgrep -af -- '(/\.venv/bin/bricksim| -m bricksim([[:space:]]|$))'` or the VS Code process picker to locate the PID. If the process is not running, ask the user to start it. Don't start it yourself.
 - The executable to use is `.venv/bin/python`.
 - When you need the user to trigger error, ask the user to do so before proceeding.
 - Be cautious not producing large amount of output, otherwise your context window would be full.
