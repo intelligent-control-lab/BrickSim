@@ -301,7 +301,7 @@ wheels = [
 [[package]]
 name = "bricksim"
 version = "0.1.0"
-source = { editable = "exts/bricksim" }
+source = { editable = "python" }
 dependencies = [
     { name = "gymnasium", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "numpy", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -346,7 +346,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "bricksim", extras = ["all", "stablelego"], editable = "exts/bricksim" },
+    { name = "bricksim", extras = ["all", "stablelego"], editable = "python" },
     { name = "lerobot", specifier = "==0.4.4" },
     { name = "skrl", specifier = ">=1.4.3" },
 ]

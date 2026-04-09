@@ -71,7 +71,7 @@ Other demos include:
 | Path              | Purpose                                       |
 | ----------------- | --------------------------------------------- |
 | `native/`         | C++26 core                                    |
-| `exts/bricksim/`  | Python extension and API                      |
+| `python/`         | Python extension and API                      |
 | `demos/`          | Demos                                         |
 | `resources/`      | USD assets, robot assets, and brick datasets  |
 | `scripts/`        | Utility scripts                               |

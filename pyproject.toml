@@ -22,7 +22,7 @@ override-dependencies = [
 ]
 
 [tool.uv.sources]
-bricksim = { path = "exts/bricksim", editable = true }
+bricksim = { path = "python", editable = true }
 isaaclab = { index = "nvidia" }
 isaacsim = { index = "nvidia" }
 

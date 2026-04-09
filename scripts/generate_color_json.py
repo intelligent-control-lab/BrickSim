@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Usage: ./scripts/generate_color_json.py --input=resources/lego_colors_20250311.csv --output=exts/bricksim/bricksim/colors.json
+# Usage: ./scripts/generate_color_json.py --input=resources/lego_colors_20250311.csv --output=python/bricksim/colors.json
 # From https://rebrickable.com/colors/
 
 import argparse

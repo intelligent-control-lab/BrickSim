@@ -12,7 +12,7 @@ This project is written in C++26 (with modules) and Python 3.11. The project is 
 │  ├─ py/                 # C++ Modules (pybind11 bindings)
 │  ├─ tests/              # C++ unit tests
 │  └─ ...
-├─ exts/bricksim/         # Omniverse extension (Python)
+├─ python/                # Omniverse extension (Python)
 ├─ demos/                 # Demos for conducting research experiments
 ├─ IsaacLab/              # IsaacLab submodule
 ├─ resources/             # USD files and other assets

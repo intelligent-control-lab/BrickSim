@@ -37,7 +37,7 @@ if [ -n "$BRICKSIM_NATIVE_OUTPUT" ]; then
   mkdir -p "$(dirname "$BRICKSIM_NATIVE_OUTPUT")"
   cp -v "${native_outputs[0]}" "$BRICKSIM_NATIVE_OUTPUT"
 else
-  cp -v "${native_outputs[0]}" "exts/bricksim/bricksim/"
+  cp -v "${native_outputs[0]}" "python/bricksim/"
 fi
 
 # Run tests only when RUN_TESTS is set
