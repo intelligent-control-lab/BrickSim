@@ -10,7 +10,8 @@ from setuptools.command.sdist import sdist
 
 class BrickSimBuildExt(build_ext):
     def build_extension(self, ext):
-        repo_root = Path(__file__).resolve().parents[1]
+        py_project_root = Path(__file__).resolve().parent
+        repo_root = py_project_root.parent
         build_script = repo_root / "scripts" / "build.sh"
         if not build_script.is_file():
             raise DistutilsSetupError(
@@ -19,6 +20,9 @@ class BrickSimBuildExt(build_ext):
             )
 
         output_path = Path(self.get_ext_fullpath(ext.name))
+        if not output_path.is_absolute():
+            output_path = py_project_root / output_path
+        output_path = output_path.resolve()
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         env = os.environ.copy()
