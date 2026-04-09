@@ -8,8 +8,8 @@ import omni.ui
 import omni.usd
 import omni.kit.app
 from bricksim.colors import parse_color, Colors
-from bricksim.utils import kit_runner
-from bricksim._native import (
+from bricksim import kit_runner
+from bricksim.core import (
     allocate_brick_part,
     allocate_unmanaged_brick_part,
     deallocate_all_managed,
@@ -28,8 +28,9 @@ from bricksim._native import (
 )
 from bricksim.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
 from bricksim.importers.legolization import legolization_json_to_topology_json, is_legolization_json
-from bricksim.utils.ui import show_file_picker_dialog
 from bricksim.utils.usd_parse import get_env_path, get_brick_dimensions
+
+from .file_picker import show_file_picker_dialog
 
 _HOT_RELOAD_SETTING = "/app/bricksim/kit_runner/has_target"
 

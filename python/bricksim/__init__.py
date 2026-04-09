@@ -1,4 +1,4 @@
-from .colors import *
+# Loads the extension when imported
 
 try:
     import carb as _carb
@@ -63,14 +63,10 @@ def _ensure_bricksim_extension_enabled():
 
 if _carb is None:
     if not _is_bricksim_launcher_invocation():
-        import warnings
-        warnings.warn("BrickSim is loaded outside Omniverse, some features may not work properly.", UserWarning, stacklevel=2)
+        from warnings import warn as _warn
+        _warn("BrickSim is loaded outside Omniverse, some features may not work properly.", UserWarning, stacklevel=2)
 else:
-    from ._native import *
-    from .extension import *
-    from .envs import *
-    from .utils.usd_parse import *
-    from .utils.sim import *
+    from . import core as _core                 # Load native library
+    from . import envs as _envs                 # Register all environments
+    from .extension import BrickSimExtension    # Ensure extension class is registered with Omniverse
     _ensure_bricksim_extension_enabled()
-
-del _carb

@@ -27,9 +27,9 @@ cmake -S "$SRC" -B "$BUILD" \
   -G Ninja
 cmake --build "$BUILD" --parallel
 
-native_outputs=("$BUILD"/_native.*.so)
+native_outputs=("$BUILD"/core.*.so)
 if [ "${#native_outputs[@]}" -ne 1 ]; then
-  echo "[ERROR] Expected exactly one _native shared library in $BUILD" >&2
+  echo "[ERROR] Expected exactly one core.*.so shared library in $BUILD" >&2
   exit 1
 fi
 

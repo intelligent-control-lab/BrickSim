@@ -14,8 +14,17 @@ from isaacsim.core.api.materials import PhysicsMaterial
 from isaacsim.core.prims import SingleArticulation, SingleXFormPrim, SingleGeometryPrim
 from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.core.utils.stage import open_stage_async, add_reference_to_stage, get_current_stage
-from bricksim import allocate_brick_part, parse_color, create_connection, AssemblyThresholds, set_assembly_thresholds, BreakageThresholds, set_breakage_thresholds, get_breakage_thresholds
 from bricksim.assets import DEFAULT_STAGE_PATH
+from bricksim.colors import parse_color
+from bricksim.core import (
+    allocate_brick_part,
+    AssemblyThresholds,
+    BreakageThresholds,
+    create_connection,
+    get_breakage_thresholds,
+    set_assembly_thresholds,
+    set_breakage_thresholds,
+)
 
 LEADER_PORT = "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5AAF288330-if00" #### ---- CHANGE THIS TO YOUR SERIAL PORT ---- ####
 LEADER_ID = "my_lerobot_leader" #### ---- CHANGE THIS TO YOUR LEADER ID ---- ####

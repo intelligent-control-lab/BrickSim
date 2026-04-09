@@ -15,11 +15,21 @@ from isaacsim.core.utils.nucleus import get_assets_root_path
 from isaacsim.core.utils.numpy.rotations import quats_to_rot_matrices, rot_matrices_to_quats
 from isaacsim.robot_motion.motion_generation import RmpFlow, ArticulationMotionPolicy
 from isaacsim.robot_motion.motion_generation.interface_config_loader import load_supported_motion_policy_config
-from bricksim import arrange_parts_in_workspace, import_lego, get_brick_dimensions, compute_connection_transform, set_assembly_thresholds, AssemblyThresholds, wait_for_physics_step, parse_color, Colors, are_parts_connected
 from bricksim.utils.topology import bfs_sort_connections
 from bricksim.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
 from bricksim.importers.legolization import legolization_json_to_topology_json, is_legolization_json
 from bricksim.assets import DEFAULT_STAGE_PATH
+from bricksim.colors import Colors, parse_color
+from bricksim.core import (
+    are_parts_connected,
+    arrange_parts_in_workspace,
+    AssemblyThresholds,
+    compute_connection_transform,
+    import_lego,
+    set_assembly_thresholds,
+)
+from bricksim.utils.sim import wait_for_physics_step
+from bricksim.utils.usd_parse import get_brick_dimensions
 
 try:
     from isaacsim.util.debug_draw import _debug_draw

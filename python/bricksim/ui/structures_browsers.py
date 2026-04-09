@@ -2,12 +2,12 @@ import json
 import carb
 import asyncio
 import omni.ui as ui
-from bricksim._native import import_lego, arrange_parts_in_workspace
+from bricksim.core import import_lego, arrange_parts_in_workspace
 from bricksim.importers.legolization import legolization_json_to_topology_json
-from bricksim.ui.main_ui import LegoUI
 from bricksim.utils.usd_parse import get_env_path
 from bricksim.structures import BricksimDatasetItem, load_bricksim_dataset
 from bricksim.colors import parse_color
+from .main_ui import LegoUI
 
 class LegoStructuresBrowser:
     MAX_VISIBLE = 100

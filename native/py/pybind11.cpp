@@ -10,9 +10,9 @@ import bricksim.api;
 
 using namespace bricksim::api;
 
-// Remember to update _native.pyi when changing the API below.
-PYBIND11_MODULE(_native, m) {
-	m.doc() = "bricksim: native module";
+// Remember to update core.pyi when changing the API below.
+PYBIND11_MODULE(core, m) {
+	m.doc() = "bricksim: core native module";
 
 	m.def(
 	    "allocate_brick_part", &allocate_brick_part,

@@ -5,8 +5,8 @@ import isaaclab.utils.math as math_utils
 from isaaclab.assets import RigidObject
 from isaaclab.envs import ManagerBasedEnv
 from isaaclab.managers import SceneEntityCfg
-from bricksim._native import compute_connection_transform, deallocate_all_managed
-from bricksim.mdp.utils import resolve_brick_rigid_object
+from bricksim.core import compute_connection_transform, deallocate_all_managed
+from .utils import resolve_brick_rigid_object
 
 # TODO: clean up _interface_pose & _compute_visual_connection_transform
 def _interface_pose(

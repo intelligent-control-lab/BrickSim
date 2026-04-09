@@ -3,9 +3,9 @@ from typing import cast
 
 import torch
 
-from bricksim.mdp.cache_token import ResetAwareCacheToken
-from bricksim._native import lookup_physics_connection
-from bricksim.mdp.utils import resolve_brick_rigid_object
+from .cache_token import ResetAwareCacheToken
+from .utils import resolve_brick_rigid_object
+from bricksim.core import lookup_physics_connection
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.managers import SceneEntityCfg
 

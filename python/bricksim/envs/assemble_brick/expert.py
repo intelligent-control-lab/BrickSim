@@ -6,7 +6,7 @@ import torch
 import isaaclab.utils.math as math_utils
 from isaaclab.envs.mdp.actions.task_space_actions import DifferentialInverseKinematicsAction
 
-from bricksim._native import compute_connection_transform
+from bricksim.core import compute_connection_transform
 
 try:
     from isaacsim.util.debug_draw import _debug_draw

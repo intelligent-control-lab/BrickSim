@@ -20,7 +20,7 @@ def main():
     import bricksim  # Importing bricksim bootstraps the extension inside Kit.
     args = sys.argv[1:]
     if args:
-        from bricksim.utils import kit_runner
+        from bricksim import kit_runner
         kit_runner.run(args[0], cli_args=args[1:])
     else:
         import omni.kit.async_engine as async_engine

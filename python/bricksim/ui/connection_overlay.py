@@ -6,7 +6,7 @@ import omni.usd
 from dataclasses import dataclass
 from omni.kit.viewport.registry import RegisterScene
 from pxr import Gf, Usd, UsdGeom
-from bricksim._native import compute_connection_local_transform, get_connection_utilization
+from bricksim.core import compute_connection_local_transform, get_connection_utilization
 from bricksim.utils.usd_parse import parse_connection_prim
 
 SETTING_DISPLAY_CONNECTIONS = "/persistent/bricksim/visualizationDisplayConnections"

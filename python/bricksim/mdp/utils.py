@@ -1,7 +1,7 @@
 from isaaclab.assets import RigidObject
 from isaaclab.envs import ManagerBasedEnv
 
-from bricksim.mdp.spawn import BrickPartCfg
+from .spawn import BrickPartCfg
 
 
 def resolve_brick_rigid_object(env: ManagerBasedEnv, entity_name: str) -> RigidObject:

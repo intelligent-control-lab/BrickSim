@@ -1,7 +1,7 @@
 import carb.settings
 import omni.usd
 
-from bricksim._native import compute_connected_component
+from bricksim.core import compute_connected_component
 
 
 class AssemblySelectionSync:

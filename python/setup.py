@@ -36,7 +36,7 @@ class BrickSimSdist(sdist):
 setup(
     packages=find_namespace_packages(where=".", include=["bricksim*"]),
     ext_modules=[
-        Extension("bricksim._native", sources=[])
+        Extension("bricksim.core", sources=[])
     ],
     cmdclass={
         "build_ext": BrickSimBuildExt,

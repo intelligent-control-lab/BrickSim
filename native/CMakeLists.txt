@@ -166,12 +166,12 @@ target_include_directories(bricksim_modules BEFORE PRIVATE "${CMAKE_CURRENT_SOUR
 # target_compile_options(bricksim_modules PRIVATE $<$<CONFIG:DEBUG>:${SAN_CFLAGS}>)
 # target_link_options(bricksim_modules PRIVATE $<$<CONFIG:DEBUG>:${SAN_LDFLAGS}>)
 
-add_library(_native MODULE)
-target_sources(_native PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/py/pybind11.cpp")
-target_include_directories(_native BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
-target_link_libraries(_native PRIVATE bricksim_modules pybind11::module)
-pybind11_extension(_native)
-set_target_properties(_native PROPERTIES
+add_library(core MODULE)
+target_sources(core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/py/pybind11.cpp")
+target_include_directories(core BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/shims")
+target_link_libraries(core PRIVATE bricksim_modules pybind11::module)
+pybind11_extension(core)
+set_target_properties(core PROPERTIES
   SKIP_BUILD_RPATH ON
   BUILD_WITH_INSTALL_RPATH OFF
   INSTALL_RPATH ""
@@ -188,7 +188,7 @@ bricksim_add_tool(solve_breakage)
 bricksim_add_tool(static_solve)
 
 include(AbiCheck)
-bricksim_add_abi_check(_native)
+bricksim_add_abi_check(core)
 
 if(BRICKSIM_BUILD_TESTS)
   enable_testing()

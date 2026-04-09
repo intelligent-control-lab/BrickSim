@@ -14,8 +14,11 @@ from isaacsim.core.utils.nucleus import get_assets_root_path
 from isaacsim.core.utils.numpy.rotations import quats_to_rot_matrices, rot_matrices_to_quats
 from isaacsim.robot_motion.motion_generation import RmpFlow, ArticulationMotionPolicy
 from isaacsim.robot_motion.motion_generation.interface_config_loader import load_supported_motion_policy_config
-from bricksim import allocate_brick_part, parse_color, get_brick_dimensions, compute_connection_transform, set_assembly_thresholds, AssemblyThresholds, wait_for_physics_step
 from bricksim.assets import DEFAULT_STAGE_PATH
+from bricksim.colors import parse_color
+from bricksim.core import allocate_brick_part, AssemblyThresholds, compute_connection_transform, set_assembly_thresholds
+from bricksim.utils.sim import wait_for_physics_step
+from bricksim.utils.usd_parse import get_brick_dimensions
 # try:
     # from isaacsim.util.debug_draw import _debug_draw
     # DEBUG_DRAW = _debug_draw.acquire_debug_draw_interface()

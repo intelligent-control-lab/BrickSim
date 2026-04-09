@@ -17,7 +17,7 @@ simulation_app = app_launcher.app
 import gymnasium as gym
 import torch
 
-import bricksim.envs
+import bricksim
 from isaaclab_tasks.utils import parse_env_cfg
 
 

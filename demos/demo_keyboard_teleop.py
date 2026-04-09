@@ -9,8 +9,9 @@ from isaacsim.core.api.world import World
 from isaacsim.core.prims import SingleArticulation, SingleXFormPrim
 from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.core.utils.stage import open_stage_async, add_reference_to_stage
-from bricksim import allocate_brick_part, parse_color, create_connection
 from bricksim.assets import DEFAULT_STAGE_PATH
+from bricksim.colors import parse_color
+from bricksim.core import allocate_brick_part, create_connection
 import time
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))

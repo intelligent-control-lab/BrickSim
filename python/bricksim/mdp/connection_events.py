@@ -4,12 +4,12 @@ from typing import cast
 
 import torch
 
-from bricksim._native import ConnectionInfo
-from bricksim._native import get_assembled_connections as _native_get_assembled_connections
-from bricksim._native import get_disassembled_connections as _native_get_disassembled_connections
-from bricksim.mdp.cache_token import ResetAwareCacheToken
-from bricksim.mdp.connection_state import InterfacePairConnectionQuery
-from bricksim.mdp.utils import resolve_brick_rigid_object
+from bricksim.core import ConnectionInfo
+from bricksim.core import get_assembled_connections as _native_get_assembled_connections
+from bricksim.core import get_disassembled_connections as _native_get_disassembled_connections
+from .cache_token import ResetAwareCacheToken
+from .connection_state import InterfacePairConnectionQuery
+from .utils import resolve_brick_rigid_object
 from isaaclab.envs import ManagerBasedRLEnv
 
 

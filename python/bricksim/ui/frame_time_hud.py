@@ -1,6 +1,6 @@
 import carb.settings
 
-from bricksim._native import get_last_step_profiling
+from bricksim.core import get_last_step_profiling
 
 
 SETTING_DISPLAY_LAST_STEP = "/persistent/bricksim/hud/displayLastStepProfiling"

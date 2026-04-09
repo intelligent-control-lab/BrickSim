@@ -1,7 +1,7 @@
 from dataclasses import MISSING
 from typing import Callable
 
-from bricksim._native import allocate_unmanaged_brick_part
+from bricksim.core import allocate_unmanaged_brick_part
 from bricksim.colors import parse_color
 from isaaclab.sim import (RigidBodyPropertiesCfg, SpawnerCfg, clone,
                           get_current_stage, modify_rigid_body_properties)
