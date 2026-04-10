@@ -57,14 +57,28 @@ uv sync --locked
 ```
 
 ### Install as a Python Package
-If you want to use BrickSim as part of your project without cloning the repository,
-you can install the `bricksim` package from our nightly build registry:
+You can install the `bricksim` package from our nightly build registry.
+Note that the published Python packages do not include demos or experiment scripts.
 
 ```bash
-uv add "bricksim[all]" --index bricksim=https://dl.cloudsmith.io/public/bricksim/bricksim/python/simple/
+uv pip install "bricksim[all]" \
+  --index https://dl.cloudsmith.io/public/bricksim/bricksim/python/simple/ \
+  --override <(printf 'pywin32==306 ; sys_platform == "win32"\n')
 ```
 
-Note that the published Python packages do not include demos or experiment scripts.
+Or, if you want to add BrickSim to `pyproject.toml`:
+1. Add the following override to your `pyproject.toml` (to mitigate Isaac Sim's dependency issue):
+    ```toml
+    [tool.uv]
+    override-dependencies = [
+      'pywin32==306 ; sys_platform == "win32"',
+    ]
+    ```
+2. Add the `bricksim` dependency:
+    ```bash
+    uv add "bricksim[all]" \
+      --index bricksim=https://dl.cloudsmith.io/public/bricksim/bricksim/python/simple/
+    ```
 
 ### Run Demos
 ```bash
@@ -86,11 +100,11 @@ Other demos include:
 ### Repository Layout
 | Path              | Purpose                                       |
 | ----------------- | --------------------------------------------- |
-| `native/`         | C++26 core                                    |
+| `native/`         | C++ native extension                          |
 | `python/`         | Python extension and API                      |
 | `demos/`          | Demos                                         |
 | `experiments/`    | Research and evaluation scripts               |
-| `resources/`      | USD assets, robot assets, and brick datasets  |
+| `resources/`      | USD files and other assets                    |
 | `scripts/`        | Development and build scripts                 |
 
 ### Generating Type Checker Configuration
