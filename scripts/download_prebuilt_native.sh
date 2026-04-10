@@ -8,7 +8,10 @@ die() {
 
 resolve_download_url() {
     local commit="$1"
-    local template="${BRICKSIM_PREBUILT_NATIVE_URL_TEMPLATE:-https://generic.cloudsmith.io/public/bricksim/bricksim/commits/{commit}/wheel-url.txt}"
+    local template="${BRICKSIM_PREBUILT_NATIVE_URL_TEMPLATE-}"
+    if [[ -z "$template" ]]; then
+        template='https://generic.cloudsmith.io/bricksim/bricksim/commits/{commit}/wheel-url.txt'
+    fi
     printf '%s\n' "${template//\{commit\}/$commit}"
 }
 
@@ -65,7 +68,6 @@ ensure_native_tree_clean() {
 select_prebuilt() {
     local commit="$1"
     local strict="$2"
-    local searched_commits=0
     local url_file_url
 
     while true; do
@@ -83,11 +85,6 @@ select_prebuilt() {
             die "No prebuilt native artifact found for commit $commit, and that commit changes native/, so fallback to older prebuilts is invalid."
         fi
 
-        searched_commits=$((searched_commits + 1))
-        if [[ "$searched_commits" -ge "$MAX_FALLBACK_COMMITS" ]]; then
-            die "No prebuilt native artifact found within the last $MAX_FALLBACK_COMMITS fallback-eligible first-parent commits from $RESOLVED_COMMIT. Pass a commit hash with a known prebuilt artifact."
-        fi
-
         commit=$(git -C "$ROOT_DIR" rev-parse --verify "${commit}^1" 2>/dev/null) || die "No prebuilt native artifact found for commit $RESOLVED_COMMIT, and no older first-parent commit is available."
     done
 }
@@ -95,7 +92,6 @@ select_prebuilt() {
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
 PREBUILT_NATIVE_DIR="$ROOT_DIR/.prebuilt-native"
-MAX_FALLBACK_COMMITS=100
 
 if [[ $# -gt 1 ]]; then
     die "Usage: $0 [ref]"
