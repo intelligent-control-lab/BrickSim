@@ -1,6 +1,7 @@
 __pycache__/
 _toolchain/
 .cache/
+.prebuilt-native/
 .thumbs
 .pyright/
 .ty/

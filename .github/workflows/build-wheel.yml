@@ -1,0 +1,174 @@
+name: Build Wheel
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "native/**"
+      - "python/**"
+      - "scripts/build.sh"
+      - "scripts/setup_toolchain.sh"
+      - ".github/workflows/build-wheel.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-wheel:
+    if: github.repository == 'intelligent-control-lab/BrickSim'
+    name: cp311_amd64_linux
+    runs-on: ubuntu-22.04
+    env:
+      CLOUDSMITH_NAMESPACE: bricksim
+      CLOUDSMITH_REPOSITORY: bricksim
+    steps:
+      - name: Free disk space
+        run: |
+          df -h
+          echo "Removing hostedtoolcache..."
+          sudo rm -rf /opt/hostedtoolcache || true
+          echo "Removing Android SDK..."
+          sudo rm -rf /usr/local/lib/android || true
+          echo "Removing .NET SDKs..."
+          sudo rm -rf /usr/share/dotnet /etc/skel/.dotnet || true
+          echo "Removing Miniconda..."
+          sudo rm -rf /usr/share/miniconda /usr/bin/conda || true
+          echo "Removing Haskell toolchain..."
+          sudo rm -rf /usr/local/.ghcup /etc/skel/.ghcup || true
+          echo "Removing browsers (Chrome/Chromium) and drivers..."
+          sudo rm -rf /usr/local/share/chromium /usr/local/share/chromedriver-linux64 || true
+          sudo rm -rf /opt/google/chrome || true
+          sudo rm -f /usr/bin/google-chrome /usr/bin/google-chrome-stable /usr/bin/chromium /usr/bin/chromium-browser || true
+          df -h
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Cache toolchain downloads
+        uses: actions/cache@v4
+        with:
+          path: _toolchain/downloads
+          key: toolchain-downloads-${{ runner.os }}-${{ hashFiles('scripts/setup_toolchain.sh') }}
+          restore-keys: |
+            toolchain-downloads-${{ runner.os }}-
+
+      - name: Cache Isaac Sim deps
+        uses: actions/cache@v4
+        with:
+          path: native/_deps
+          key: isaac-deps-${{ runner.os }}-${{ hashFiles('native/cmake/FetchIsaacDeps.cmake') }}
+          restore-keys: |
+            isaac-deps-${{ runner.os }}-
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential wget xz-utils zstd unzip
+
+      - name: Build native extension
+        run: scripts/build.sh
+
+      - name: Compute wheel version
+        id: version
+        run: |
+          base_version=$(
+          python - <<'PY'
+          from pathlib import Path
+          import tomllib
+
+          data = tomllib.loads(Path("python/pyproject.toml").read_text())
+          print(data["project"]["version"])
+          PY
+          )
+          sequence=$(git rev-list --count --first-parent HEAD)
+          short_sha=$(git rev-parse --short HEAD)
+          wheel_version="${base_version}.dev${sequence}+g${short_sha}"
+
+          echo "wheel_version=$wheel_version" >> "$GITHUB_OUTPUT"
+
+      - name: Apply wheel version
+        env:
+          WHEEL_VERSION: ${{ steps.version.outputs.wheel_version }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("python/pyproject.toml")
+          lines = path.read_text().splitlines()
+          wheel_version = os.environ["WHEEL_VERSION"]
+
+          in_project = False
+          updated = False
+          for index, line in enumerate(lines):
+              stripped = line.strip()
+              if stripped == "[project]":
+                  in_project = True
+                  continue
+              if in_project and stripped.startswith("["):
+                  break
+              if in_project and re.match(r"version\s*=", stripped):
+                  lines[index] = f'version = "{wheel_version}"'
+                  updated = True
+                  break
+
+          if not updated:
+              raise SystemExit("Failed to update [project].version in python/pyproject.toml")
+
+          path.write_text("\n".join(lines) + "\n")
+          PY
+
+      - name: Build wheel
+        working-directory: python
+        run: uv build --wheel
+
+      - name: Upload wheel artifact to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: python/dist/*.whl
+          if-no-files-found: error
+
+      - name: Authenticate with Cloudsmith via OIDC
+        uses: cloudsmith-io/cloudsmith-cli-action@v2
+        with:
+          oidc-namespace: ${{ env.CLOUDSMITH_NAMESPACE }}
+          oidc-service-slug: bricksim-github-actions
+
+      - name: Upload wheel to Cloudsmith
+        working-directory: python
+        run: |
+          cloudsmith push python "$CLOUDSMITH_NAMESPACE/$CLOUDSMITH_REPOSITORY" dist/*.whl --republish
+
+      - name: Upload wheel pointer to Cloudsmith
+        working-directory: python
+        run: |
+          wheel_file=$(basename dist/*.whl)
+          wheel_url=$(
+            cloudsmith list packages "$CLOUDSMITH_NAMESPACE/$CLOUDSMITH_REPOSITORY" -F json \
+              -q "format:python AND filename:^${wheel_file}$" \
+            | python -c 'import json, sys; payload = json.load(sys.stdin); data = payload["data"] if isinstance(payload, dict) and "data" in payload else payload; len(data) == 1 or (_ for _ in ()).throw(SystemExit(f"Expected exactly one Cloudsmith package match, got {len(data)}")); print(data[0]["cdn_url"])'
+          )
+
+          pointer_dir=$(mktemp -d)
+          pointer_file="$pointer_dir/wheel-url.txt"
+          printf '%s\n' "$wheel_url" > "$pointer_file"
+
+          cloudsmith push generic "$CLOUDSMITH_NAMESPACE/$CLOUDSMITH_REPOSITORY" "$pointer_file" \
+            --filepath "commits/${GITHUB_SHA}/wheel-url.txt" \
+            --republish

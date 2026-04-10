@@ -34,21 +34,37 @@
 - [`uv` package manager](https://docs.astral.sh/uv/getting-started/installation/)
 - A working NVIDIA driver compatible with [Isaac Sim requirements](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/requirements.html#system-requirements)
 
-### Installation
+### Install from Source
 We use `uv` for package management. If you don't have it installed, please refer to [Installing uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 ```bash
-# Install host tools (for Debian/Ubuntu)
-sudo apt install build-essential wget xz-utils zstd git
+# Install required tools (Debian/Ubuntu)
+sudo apt install git wget unzip
 
 # Clone the repository
-git clone --recursive https://github.com/intelligent-control-lab/BrickSim BrickSim
+git clone https://github.com/intelligent-control-lab/BrickSim BrickSim
 cd BrickSim
 
-# Set up the Python environment
-# This will also install Isaac Sim 5.1, Isaac Lab, and the BrickSim package
+# Download the prebuilt native extension to shorten setup time
+./scripts/download_prebuilt_native.sh
+
+# Alternatively, if you want to build the native extension from source, run:
+#  sudo apt install build-essential xz-utils zstd
+#  ./scripts/build.sh
+
+# Set up the Python environment and install dependencies
 uv sync --locked
 ```
+
+### Install as a Python Package
+If you want to use BrickSim as part of your project without cloning the repository,
+you can install the `bricksim` package from our nightly build registry:
+
+```bash
+uv add "bricksim[all]" --index bricksim=https://dl.cloudsmith.io/public/bricksim/bricksim/python/simple/
+```
+
+Note that the published Python packages do not include demos or experiment scripts.
 
 ### Run Demos
 ```bash
@@ -95,3 +111,25 @@ If you make changes to the C++ code in `native/`, you need to re-compile the nat
 # To also build & run the tests, use:
 RUN_TESTS=1 ./scripts/build.sh
 ```
+
+## Citation
+If you use BrickSim in your research, please cite:
+```
+@article{wen2026bricksim,
+    title = {BrickSim: A Physics-Based Simulator for Manipulating Interlocking Brick Assemblies},
+    author = {Wen, Haowei and Liu, Ruixuan and Piao, Weiyi and Li, Siyu and Liu, Changliu},
+    journal = {arXiv:2603.16853},
+    year = {2026},
+    eprint = {2603.16853},
+    archiveprefix = {arXiv},
+    primaryclass = {cs.RO},
+    url = {https://arxiv.org/abs/2603.16853}
+}
+```
+
+## Attributions
+<a href="https://cloudsmith.com"><img alt="Cloudsmith OSS Hosting" src="https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith&style=for-the-badge"></a><br>
+Package repository hosting is graciously provided by [Cloudsmith](https://cloudsmith.com).
+Cloudsmith is the only fully hosted, cloud-native, universal package management solution, that
+enables your organization to create, store and share packages in any format, to any place, with total
+confidence.

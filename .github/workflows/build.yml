@@ -1,7 +1,19 @@
 name: Build and Test 
 on:
   push:
+    paths:
+      - "native/**"
+      - "python/**"
+      - "scripts/build.sh"
+      - "scripts/setup_toolchain.sh"
+      - ".github/workflows/build.yml"
   pull_request:
+    paths:
+      - "native/**"
+      - "python/**"
+      - "scripts/build.sh"
+      - "scripts/setup_toolchain.sh"
+      - ".github/workflows/build.yml"
 jobs:
   build:
     name: ${{ matrix.build_type }}_amd64_linux

@@ -23,10 +23,3 @@ override-dependencies = [
 
 [tool.uv.sources]
 bricksim = { path = "python", editable = true }
-isaaclab = { index = "nvidia" }
-isaacsim = { index = "nvidia" }
-
-[[tool.uv.index]]
-name = "nvidia"
-url = "https://pypi.nvidia.com"
-explicit = true
