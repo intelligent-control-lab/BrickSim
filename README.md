@@ -57,7 +57,7 @@ uv sync --locked
 ```
 
 ### Install as a Python Package
-You can install the `bricksim` package from our nightly build registry.
+You can install the `bricksim` package from [our nightly build registry](https://broadcasts.cloudsmith.com/bricksim/bricksim).
 Note that the published Python packages do not include demos or experiment scripts.
 
 ```bash
