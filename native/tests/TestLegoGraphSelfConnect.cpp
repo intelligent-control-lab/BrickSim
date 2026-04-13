@@ -31,9 +31,10 @@ int main() {
 	std::initializer_list<InterfaceSpec> ifs{stud(10), hole(20)};
 	assert(g.add_part<CustomPart>(0.1, BrickColor{0, 0, 0}, ifs));
 
-	// Self-connection must be rejected gracefully (no value), not crash
+	// Self-connection must be rejected gracefully with the expected error code.
 	ConnectionSegment cs{};
 	auto ok = g.connect(InterfaceRef{0, 10}, InterfaceRef{0, 20}, cs);
 	assert(!ok && "Self-connection should be rejected");
+	assert(ok.error() == ConnectError::SelfConnectionDisallowed);
 	return 0;
 }

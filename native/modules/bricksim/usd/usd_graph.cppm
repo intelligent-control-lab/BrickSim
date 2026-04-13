@@ -364,7 +364,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 		}
 		pxr::SdfPath conn_path = allocator_.allocate_conn_managed(
 		    stud_path, stud_ifid, hole_path, hole_ifid, conn_seg);
-		std::optional<ConnSegId> csid =
+		auto csid =
 		    topology_.connect(stud_if, hole_if, conn_path, std::move(conn_seg));
 		if (!csid) [[unlikely]] {
 			// rollback
@@ -764,7 +764,7 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 					                         conn->stud_interface};
 					InterfaceRef hole_if_ref{*hole_info.pid,
 					                         conn->hole_interface};
-					std::optional<ConnSegId> csid =
+					auto csid =
 					    topology_.connect(stud_if_ref, hole_if_ref, path,
 					                      std::move(conn->conn_seg));
 					if (csid) [[likely]] {
@@ -1187,8 +1187,8 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 			PartId hole_pid = *hole_id_ptr;
 			InterfaceRef stud_if_ref{stud_pid, conn.stud_interface};
 			InterfaceRef hole_if_ref{hole_pid, conn.hole_interface};
-			std::optional<ConnSegId> csid = topology_.connect(
-			    stud_if_ref, hole_if_ref, path, std::move(conn.conn_seg));
+			auto csid = topology_.connect(stud_if_ref, hole_if_ref, path,
+			                              std::move(conn.conn_seg));
 			if (!csid) [[unlikely]] {
 				conns_to_retry_.insert(path);
 				if (!old_conns_to_retry.contains(path)) {

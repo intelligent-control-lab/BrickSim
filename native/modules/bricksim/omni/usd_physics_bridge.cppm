@@ -583,10 +583,9 @@ class UsdPhysicsBridge<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>> {
 			// Endpoint parts not bound yet
 			return false;
 		}
-		std::optional<ConnSegId> physics_csid_opt =
-		    physics_graph_->topology().connect(
-		        {t_physics_stud_pid->value(), stud_ifid},
-		        {t_physics_hole_pid->value(), hole_ifid}, usd_csw.wrapped());
+		auto physics_csid_opt = physics_graph_->topology().connect(
+		    {t_physics_stud_pid->value(), stud_ifid},
+		    {t_physics_hole_pid->value(), hole_ifid}, usd_csw.wrapped());
 		if (!physics_csid_opt) {
 			// Failed to connect. This could happen when two graphs diverge.
 			if (warn_divergence_) {

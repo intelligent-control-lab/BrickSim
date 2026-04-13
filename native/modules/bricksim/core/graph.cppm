@@ -16,6 +16,16 @@ import bricksim.utils.memory;
 
 namespace bricksim {
 
+export enum class ConnectError {
+	AlreadyConnected, // The two interfaces are already connected.
+	NoSuchInterface,  // One or both of the specified interfaces do not exist.
+	IncompatibleInterfaces, // The specified interfaces exist but are not compatible for connection (e.g., both are studs or both are holes).
+	SelfConnectionDisallowed, // Connecting a part to itself is not allowed.
+	NoOverlap, // The connection does not have positive overlap region.
+	InconsistentTransform, // Two parts are already in the same component, and the transform induced by this new connection doesn't agree with the existing transform.
+	KeyCollision,
+};
+
 export template <class T>
 concept WrapperLike = requires(T t) {
 	typename T::wrapped_type;
@@ -700,40 +710,37 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 		return pid;
 	}
 
-	// Returns nullopt if connection segment could not be created
-	// due to invalid parts, interfaces, self-connection, transform mismatch,
-	// or existing connection segment between the same interfaces
 	template <class... Args>
 	    requires(sizeof...(Args) >= sizeof...(CSEKs) &&
 	             type_list<Args...>::template take_front<
 	                 sizeof...(CSEKs)>::template convertible_to<CSEKs...> &&
 	             type_list<Args...>::template drop_front<
 	                 sizeof...(CSEKs)>::template can_construct<ConnSegWrapper>)
-	std::optional<ConnSegId> connect(const InterfaceRef &stud_if,
-	                                 const InterfaceRef &hole_if,
-	                                 Args &&...args) {
+	std::expected<ConnSegId, ConnectError> connect(const InterfaceRef &stud_if,
+	                                               const InterfaceRef &hole_if,
+	                                               Args &&...args) {
 		ConnSegRef csref{stud_if, hole_if};
 		if (conn_segs_.contains(csref)) {
 			// already connected
-			return std::nullopt;
+			return std::unexpected{ConnectError::AlreadyConnected};
 		}
 		std::optional<InterfaceSpec> stud_spec = find_interface_spec(stud_if);
 		std::optional<InterfaceSpec> hole_spec = find_interface_spec(hole_if);
 		if (!stud_spec || !hole_spec) {
 			// part or interface not found
-			return std::nullopt;
+			return std::unexpected{ConnectError::NoSuchInterface};
 		}
 		if (!(stud_spec->type == InterfaceType::Stud &&
 		      hole_spec->type == InterfaceType::Hole)) {
 			// invalid interface types
-			return std::nullopt;
+			return std::unexpected{ConnectError::IncompatibleInterfaces};
 		}
 
 		const auto &[stud_pid, stud_ifid] = stud_if;
 		const auto &[hole_pid, hole_ifid] = hole_if;
 		if (stud_pid == hole_pid) {
 			// self-connection not allowed
-			return std::nullopt;
+			return std::unexpected{ConnectError::SelfConnectionDisallowed};
 		}
 
 		auto csw = std::make_from_tuple<ConnSegWrapper>(
@@ -743,7 +750,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 
 		if (!csw.wrapped().compute_overlap(*stud_spec, *hole_spec).is_valid()) {
 			// no overlap
-			return std::nullopt;
+			return std::unexpected{ConnectError::NoOverlap};
 		}
 
 		Transformd new_transform = SE3d{}.project(
@@ -758,13 +765,13 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 			    stud_pid < hole_pid ? bundle.T_a_b : bundle.T_b_a;
 			if (!SE3d{}.almost_equal(existent_direct_transform,
 			                         new_transform)) {
-				return std::nullopt;
+				return std::unexpected{ConnectError::InconsistentTransform};
 			}
 		}
 		auto existent_transform = lookup_transform(stud_pid, hole_pid);
 		if (existent_transform) {
 			if (!SE3d{}.almost_equal(*existent_transform, new_transform)) {
-				return std::nullopt;
+				return std::unexpected{ConnectError::InconsistentTransform};
 			}
 		}
 
@@ -775,7 +782,7 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 		                           std::make_index_sequence<sizeof...(CSEKs)>>(
 		                           std::forward<Args>(args)...)),
 		        std::move(csw))) {
-			return std::nullopt;
+			return std::unexpected{ConnectError::KeyCollision};
 		}
 		next_conn_seg_id_++;
 

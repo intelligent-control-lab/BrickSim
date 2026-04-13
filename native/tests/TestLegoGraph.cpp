@@ -11,6 +11,13 @@ using namespace bricksim;
 
 namespace {
 
+static void
+assert_connect_error(const std::expected<ConnSegId, ConnectError> &result,
+                     ConnectError expected_error) {
+	assert(!result.has_value());
+	assert(result.error() == expected_error);
+}
+
 // Helpers to build interface specs quickly
 static Transformd Ixf() {
 	return SE3d{}.identity();
@@ -304,12 +311,13 @@ static void test_connect_branches_and_bundle() {
 	// Wrong types: stud/hole reversed → false
 	ConnectionSegment cs0; // default offset(0,0), yaw=0
 	auto r_wrong = g.connect(IR(0, 20), IR(1, 11), cs0);
-	assert(!r_wrong);
+	assert_connect_error(r_wrong, ConnectError::IncompatibleInterfaces);
 
 	// Missing iface on either side → false
 	auto r_miss1 = g.connect(IR(0, 999), IR(1, 21), cs0);
 	auto r_miss2 = g.connect(IR(0, 10), IR(1, 999), cs0);
-	assert(!r_miss1 && !r_miss2);
+	assert_connect_error(r_miss1, ConnectError::NoSuchInterface);
+	assert_connect_error(r_miss2, ConnectError::NoSuchInterface);
 
 	// First valid connect (stud 0:10 -> hole 1:21). Bundle does not exist yet.
 	auto r1 = g.connect(IR(0, 10), IR(1, 21), cs0);
@@ -317,14 +325,14 @@ static void test_connect_branches_and_bundle() {
 
 	// Duplicate same segment (same (stud,hole)) → guarded by conn_segs_.contains → false
 	auto r_dup_seg = g.connect(IR(0, 10), IR(1, 21), cs0);
-	assert(!r_dup_seg);
+	assert_connect_error(r_dup_seg, ConnectError::AlreadyConnected);
 
 	// Bundle exists now for endpoint {0,1}; attempt another segment between
 	// the same endpoint but different interface pair and different transform.
 	ConnectionSegment cs_diff;
 	cs_diff.offset = Eigen::Vector2i{1, 0}; // different from default (0,0)
 	auto r_diff_T = g.connect(IR(0, 12), IR(1, 23), cs_diff);
-	assert(!r_diff_T); // rejected by bundle-exists with mismatched transform
+	assert_connect_error(r_diff_T, ConnectError::InconsistentTransform);
 
 	// Validate connection_segments count and bundle contents
 	assert(g.connection_segments().size() == 1);
@@ -378,12 +386,16 @@ static void test_connect_inputs_and_status() {
 	ConnectionSegment cs{}; // default offset(0,0), yaw=0
 
 	// Inexistent part id on stud side
-	assert(!g.connect(IR(9999, 10), IR(1, 21), cs));
+	assert_connect_error(g.connect(IR(9999, 10), IR(1, 21), cs),
+	                     ConnectError::NoSuchInterface);
 	// Inexistent part id on hole side
-	assert(!g.connect(IR(0, 10), IR(9999, 21), cs));
+	assert_connect_error(g.connect(IR(0, 10), IR(9999, 21), cs),
+	                     ConnectError::NoSuchInterface);
 	// Existing parts but non-existent interface ids
-	assert(!g.connect(IR(0, 999), IR(1, 21), cs));
-	assert(!g.connect(IR(0, 10), IR(1, 999), cs));
+	assert_connect_error(g.connect(IR(0, 999), IR(1, 21), cs),
+	                     ConnectError::NoSuchInterface);
+	assert_connect_error(g.connect(IR(0, 10), IR(1, 999), cs),
+	                     ConnectError::NoSuchInterface);
 
 	// Status unchanged
 	assert(g.connection_segments().size() == 0);
@@ -397,7 +409,8 @@ static void test_connect_inputs_and_status() {
 	assert(dg_conn(0, 1));
 
 	// Duplicate (existing) connection must fail
-	assert(!g.connect(IR(0, 10), IR(1, 21), cs));
+	assert_connect_error(g.connect(IR(0, 10), IR(1, 21), cs),
+	                     ConnectError::AlreadyConnected);
 
 	// Disconnect non-existent connections (by id and by ref)
 	assert(!g.disconnect(ConnSegId{999999}));
@@ -413,7 +426,8 @@ static void test_zero_overlap_cannot_connect() {
 	cs.offset =
 	    Eigen::Vector2i{0, 2}; // touches boundary only; zero overlap in y
 
-	assert(!g.connect(IR(1, 11), IR(2, 31), cs));
+	assert_connect_error(g.connect(IR(1, 11), IR(2, 31), cs),
+	                     ConnectError::NoOverlap);
 	assert(g.connection_segments().size() == 0);
 	assert(g.connection_bundles().size() == 0);
 }
@@ -433,7 +447,8 @@ static void test_multi_connections_match_and_mismatch() {
 	// First connect succeeds and establishes the bundle transform A->B
 	assert(g.connect(IR(0, 10), IR(1, 21), cs0));
 	// Duplicate identical connection should fail
-	assert(!g.connect(IR(0, 10), IR(1, 21), cs0));
+	assert_connect_error(g.connect(IR(0, 10), IR(1, 21), cs0),
+	                     ConnectError::AlreadyConnected);
 	assert(g.connection_segments().size() == 1);
 	assert(g.connection_bundles().size() == 1);
 	// DG shows connectivity
@@ -446,7 +461,8 @@ static void test_multi_connections_match_and_mismatch() {
 	(void)dg_conn(0, 1);
 
 	// Mismatched transform on a different s/h pair for the same endpoint must be rejected
-	assert(!g.connect(IR(0, 12), IR(1, 23), cs_mismatch));
+	assert_connect_error(g.connect(IR(0, 12), IR(1, 23), cs_mismatch),
+	                     ConnectError::InconsistentTransform);
 
 	// Disconnect the existing segment; now bundle removed and DG edge cleared
 	ConnSegRef csref1{IR(0, 10), IR(1, 21)};
@@ -527,8 +543,10 @@ static void test_triangle_consistency_inconsistent() {
 	assert(g.connect(IR(0, 12), IR(2, 31), cs0));
 	assert(g.connection_bundles().size() >= 3); // A-B, B-C, A-C
 
-	// A–C inconsistent transform should be rejected; if not, disconnect immediately
-	assert(!g.connect(IR(0, 12), IR(2, 31), cs_bad));
+	// A second A–C segment with a different interface pair but mismatched
+	// induced transform should be rejected against the existing A–C bundle/path.
+	assert_connect_error(g.connect(IR(0, 10), IR(2, 31), cs_bad),
+	                     ConnectError::InconsistentTransform);
 
 	// Cleanup: disconnect A–C and verify DG A–C remains via A–B–C
 	ConnSegRef ac_ref{IR(0, 12), IR(2, 31)};

@@ -757,8 +757,7 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			}
 			for (const auto &[csref, conn_seg] : pending_assemblies) {
 				const auto &[stud_if, hole_if] = csref;
-				std::optional<ConnSegId> csid =
-				    topology_.connect(stud_if, hole_if, conn_seg);
+				auto csid = topology_.connect(stud_if, hole_if, conn_seg);
 				if (csid.has_value()) {
 					if constexpr (HasOnAssembledHook) {
 						if (hooks_) {
