@@ -21,6 +21,10 @@ export struct ConnectionOverlap {
 	Eigen::Vector2i ov_end{};
 	Eigen::Vector2d ov_mid{};
 	Eigen::Vector2i overlap{};
+
+	bool is_valid() const {
+		return overlap.x() > 0 && overlap.y() > 0;
+	}
 };
 
 export struct ConnectionLocalTransform {

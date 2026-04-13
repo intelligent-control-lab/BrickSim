@@ -183,7 +183,8 @@ static void test_part_bfs_matches_lookup_transform() {
 	ConnectionSegment cs01{};
 	cs01.offset = Eigen::Vector2i{1, 0}; // translate along +x
 	ConnectionSegment cs12{};
-	cs12.offset = Eigen::Vector2i{0, 2}; // translate along +y
+	cs12.offset =
+	    Eigen::Vector2i{0, 1}; // translate along +y with valid overlap
 
 	assert(g.connect(IR(0, 10), IR(1, 21), cs01));
 	assert(g.connect(IR(1, 11), IR(2, 31), cs12));
@@ -404,6 +405,19 @@ static void test_connect_inputs_and_status() {
 	assert(!g.disconnect(nonref));
 }
 
+static void test_zero_overlap_cannot_connect() {
+	G g;
+	build_three_parts(g); // 0,1,2
+
+	ConnectionSegment cs{};
+	cs.offset =
+	    Eigen::Vector2i{0, 2}; // touches boundary only; zero overlap in y
+
+	assert(!g.connect(IR(1, 11), IR(2, 31), cs));
+	assert(g.connection_segments().size() == 0);
+	assert(g.connection_bundles().size() == 0);
+}
+
 // Multiple connections between the same two parts through different
 // studs/holes: matching transforms could co-exist if the implementation
 // maintains a consistent relative pose; mismatched must be rejected.
@@ -578,6 +592,7 @@ int main() {
 	test_components_after_removals();
 	test_connect_branches_and_bundle();
 	test_connect_inputs_and_status();
+	test_zero_overlap_cannot_connect();
 	test_multi_connections_match_and_mismatch();
 	test_remove_part_nonexistent_and_existent();
 	test_remove_part_variants();

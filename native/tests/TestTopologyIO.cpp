@@ -365,7 +365,7 @@ static void test_topology_serializer_export_import_graph_roundtrip() {
 	InterfaceRef stud_if{*pidA_src, BrickPart::StudId};
 	InterfaceRef hole_if{*pidB_src, BrickPart::HoleId};
 	ConnectionSegment cs{
-	    .offset = Eigen::Vector2i{1, -2},
+	    .offset = Eigen::Vector2i{2, 0},
 	    .yaw = YawC4::DEG_90,
 	};
 	assert(g_src.connect(stud_if, hole_if, cs).has_value());

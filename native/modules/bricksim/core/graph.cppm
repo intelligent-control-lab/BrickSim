@@ -741,6 +741,11 @@ class LegoGraph<type_list<Ps...>, PartWrapper, type_list<PEKs...>,
 		        Args...>::template drop_front_seq<sizeof...(CSEKs)>>(
 		        std::forward<Args>(args)...));
 
+		if (!csw.wrapped().compute_overlap(*stud_spec, *hole_spec).is_valid()) {
+			// no overlap
+			return std::nullopt;
+		}
+
 		Transformd new_transform = SE3d{}.project(
 		    csw.wrapped().compute_transform(*stud_spec, *hole_spec));
 
