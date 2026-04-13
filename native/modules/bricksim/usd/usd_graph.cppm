@@ -7,7 +7,7 @@ import bricksim.core.connections;
 import bricksim.usd.allocator;
 import bricksim.usd.author;
 import bricksim.usd.parse;
-import bricksim.usd.specs;
+import bricksim.usd.interface_colliders;
 import bricksim.utils.conversions;
 import bricksim.utils.metric_system;
 import bricksim.utils.transforms;

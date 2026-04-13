@@ -4,7 +4,7 @@ import std;
 import bricksim.core.specs;
 import bricksim.core.connections;
 import bricksim.usd.tokens;
-import bricksim.usd.specs;
+import bricksim.usd.interface_colliders;
 import bricksim.usd.geometry;
 import bricksim.usd.material;
 import bricksim.utils.conversions;

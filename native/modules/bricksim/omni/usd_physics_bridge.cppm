@@ -10,7 +10,7 @@ import bricksim.physx.physics_graph;
 import bricksim.usd.usd_graph;
 import bricksim.usd.author;
 import bricksim.usd.parse;
-import bricksim.usd.specs;
+import bricksim.usd.interface_colliders;
 import bricksim.utils.type_list;
 import bricksim.utils.multi_key_set;
 import bricksim.utils.typed_id;

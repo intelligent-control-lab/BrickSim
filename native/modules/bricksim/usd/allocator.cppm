@@ -5,7 +5,7 @@ import bricksim.core.specs;
 import bricksim.core.connections;
 import bricksim.usd.tokens;
 import bricksim.usd.author;
-import bricksim.usd.specs;
+import bricksim.usd.interface_colliders;
 import bricksim.utils.usd_envs;
 import bricksim.utils.sdf;
 import bricksim.vendor;

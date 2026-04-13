@@ -8,7 +8,7 @@ import bricksim.physx.physics_graph;
 import bricksim.usd.usd_graph;
 import bricksim.usd.author;
 import bricksim.usd.parse;
-import bricksim.usd.specs;
+import bricksim.usd.interface_colliders;
 import bricksim.omni.usd_physics_bridge;
 import bricksim.utils.type_list;
 import bricksim.utils.metric_system;

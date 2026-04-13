@@ -1,4 +1,4 @@
-export module bricksim.usd.specs;
+export module bricksim.usd.interface_colliders;
 
 import std;
 import bricksim.core.specs;

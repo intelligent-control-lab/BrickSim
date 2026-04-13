@@ -4,7 +4,7 @@ import std;
 import bricksim.usd.tokens;
 import bricksim.core.specs;
 import bricksim.core.connections;
-import bricksim.usd.specs;
+import bricksim.usd.interface_colliders;
 import bricksim.utils.conversions;
 import bricksim.utils.c4_rotation;
 import bricksim.vendor;
