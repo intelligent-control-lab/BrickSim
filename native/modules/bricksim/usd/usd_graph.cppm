@@ -1126,7 +1126,8 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 				}
 			}
 		};
-		dirty_conns.insert_range(std::move(conns_to_retry_));
+		dirty_conns.insert_range(conns_to_retry_);
+		auto old_conns_to_retry = std::move(conns_to_retry_);
 		conns_to_retry_.clear();
 		for (const pxr::SdfPath &path : dirty_conns) {
 			preprocess_conn(path, stage_->GetPrimAtPath(path));
@@ -1190,10 +1191,18 @@ class UsdLegoGraph<type_list<Ps...>, type_list<PAs...>, type_list<PPs...>,
 			    stud_if_ref, hole_if_ref, path, std::move(conn.conn_seg));
 			if (!csid) [[unlikely]] {
 				conns_to_retry_.insert(path);
-				log_warn("UsdLegoGraph: failed to realize connection for "
-				         "prim {} during resync",
-				         path.GetText());
+				if (!old_conns_to_retry.contains(path)) {
+					// Do not log every time for the same connection if it was already in the retry list before this resync, as it can be noisy.
+					log_warn("UsdLegoGraph: failed to realize connection for "
+					         "prim {} during resync",
+					         path.GetText());
+				}
 				continue;
+			}
+			if (old_conns_to_retry.contains(path)) {
+				log_info("UsdLegoGraph: successfully realized previously "
+				         "failed connection for prim {} during resync",
+				         path.GetText());
 			}
 			conn_path_table_[path].csid = *csid;
 			// Remove from involving parts' unrealized_conns
