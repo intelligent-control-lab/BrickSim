@@ -446,6 +446,57 @@ class PlanarPatchBinMap {
 		});
 	}
 
+	void for_each_overlap_between(
+	    const PlanarPatchBinMap &other, const Transformd &T_this_other,
+	    std::invocable<OverlapPatchPair> auto consumer) const {
+		std::vector<Eigen::Vector2d> vbuf_u;
+		std::vector<Eigen::Vector2d> vbuf_v;
+		for_each_coplanar_between(
+		    other, T_this_other, [&](PatchIdx f_u, PatchIdx f_v) {
+			    const Patch &patch_u = patches_[f_u].patch;
+			    const Patch &patch_v = other.patches_[f_v].patch;
+			    const Transformd &T_u = patch_u.transform();
+			    Transformd T_v = T_this_other * patch_v.transform();
+			    Transformd T_u_v = inverse(T_u) * T_v;
+			    const auto &[q_u_v, t_u_v] = T_u_v;
+			    Eigen::Vector3d e1 = q_u_v * Eigen::Vector3d::UnitX();
+			    Eigen::Vector3d e2 = q_u_v * Eigen::Vector3d::UnitY();
+			    Eigen::Matrix2d R2d;
+			    R2d.col(0) = e1.head<2>();
+			    R2d.col(1) = e2.head<2>();
+			    Eigen::Vector2d t2d = t_u_v.head<2>();
+			    const BBox2d &bbox_u = patch_u.bbox();
+			    const BBox2d &bbox_v = patch_v.bbox();
+			    BBox2d bbox_v_in_u = transform_bbox2d(bbox_v, R2d, t2d);
+			    if (!bbox_u.overlaps(bbox_v_in_u)) {
+				    return;
+			    }
+			    vbuf_u.clear();
+			    vbuf_v.clear();
+			    for (const Eigen::Vector2d &vertex :
+			         patch_u.polygon_vertices()) {
+				    vbuf_u.emplace_back(vertex);
+			    }
+			    for (const Eigen::Vector2d &vertex :
+			         patch_v.polygon_vertices()) {
+				    vbuf_v.emplace_back(R2d * vertex + t2d);
+			    }
+			    double penetration = sat(vbuf_u, vbuf_v);
+			    if (penetration >= SATMinPenetration) {
+				    std::ranges::reverse(vbuf_v);
+				    std::invoke(consumer,
+				                OverlapPatchPair{
+				                    f_u,
+				                    f_v,
+				                    patch_u,
+				                    patch_v,
+				                    std::span<const Eigen::Vector2d>(vbuf_u),
+				                    std::span<const Eigen::Vector2d>(vbuf_v),
+				                });
+			    }
+		    });
+	}
+
   private:
 	using Key = PlaneBinKey<S2Level, DExp2>;
 	struct StagedPatch {
@@ -495,6 +546,49 @@ class PlanarPatchBinMap {
 							}
 							std::invoke(consumer, f_u, f_v);
 						}
+					}
+				});
+			}
+		}
+	}
+
+	void for_each_coplanar_between(
+	    const PlanarPatchBinMap &other, const Transformd &T_this_other,
+	    std::invocable<PatchIdx, PatchIdx> auto consumer) const {
+		double dot_threshold = -std::cos(CoplanarAngleThreshold);
+		const auto &[q_this_other, t_this_other] = T_this_other;
+
+		for (const auto &[bk_u, f_us] : bins_) {
+			for (PatchIdx f_u : f_us) {
+				const Patch &patch_u = patches_[f_u].patch;
+				const Transformd &T_u = patch_u.transform();
+				const auto &[q_u, t_u] = T_u;
+				Eigen::Vector3d n_u = q_u * Eigen::Vector3d::UnitZ();
+				double d_u = n_u.dot(t_u);
+
+				// Transform n_u, d_u to other's frame
+				Eigen::Vector3d n_u_other = q_this_other.conjugate() * n_u;
+				double d_u_other = d_u - n_u.dot(t_this_other);
+				Key bk_u_opposite = Key::from_plane(-n_u_other, -d_u_other);
+
+				bk_u_opposite.for_each_neighbor([&](Key bk_v) {
+					auto it_f_vs = other.bins_.find(bk_v);
+					if (it_f_vs == other.bins_.end()) {
+						return;
+					}
+					for (PatchIdx f_v : it_f_vs->second) {
+						const Patch &patch_v = other.patches_[f_v].patch;
+						Transformd T_v = T_this_other * patch_v.transform();
+						const auto &[q_v, t_v] = T_v;
+						Eigen::Vector3d n_v = q_v * Eigen::Vector3d::UnitZ();
+						if (n_u.dot(n_v) > dot_threshold) {
+							continue;
+						}
+						double d = (t_v - t_u).dot(n_u);
+						if (std::abs(d) > CoplanarDisplacementThreshold) {
+							continue;
+						}
+						std::invoke(consumer, f_u, f_v);
 					}
 				});
 			}
