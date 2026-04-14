@@ -107,13 +107,18 @@ export struct ConnectionSegment {
 		return compute_local_transform(stud, hole, ov);
 	}
 
-	// Compute T_stud_hole
-	Transformd compute_transform(const InterfaceSpec &stud,
-	                             const InterfaceSpec &hole) const {
-		Transformd T_si_hi{
+	// Compute T_si_hi
+	Transformd compute_interface_transform() const {
+		return {
 		    c4_to_quat(yaw),
 		    {offset(0) * BrickUnitLength, offset(1) * BrickUnitLength, 0.0},
 		};
+	}
+
+	// Compute T_stud_hole
+	Transformd compute_transform(const InterfaceSpec &stud,
+	                             const InterfaceSpec &hole) const {
+		Transformd T_si_hi = compute_interface_transform();
 		return stud.pose * T_si_hi * inverse(hole.pose);
 	}
 
