@@ -222,6 +222,7 @@ if(BRICKSIM_BUILD_TESTS)
   bricksim_add_test(TestConstraintScheduler tests/TestConstraintScheduler.cpp)
   bricksim_add_test(TestRandomRegularGraphSchedulingPolicy tests/TestRandomRegularGraphSchedulingPolicy.cpp)
   bricksim_add_test(TestPack2dMaxrect tests/TestPack2dMaxrect.cpp)
+  bricksim_add_test(TestPhysicsGraphAssemblyClosure tests/TestPhysicsGraphAssemblyClosure.cpp)
 endif()
 
 # Ensure the CMake-provided std modules provider compiles <iostream>

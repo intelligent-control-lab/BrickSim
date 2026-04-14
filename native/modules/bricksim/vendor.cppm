@@ -344,6 +344,7 @@ using physx::PxQuatT;
 using physx::PxReal;
 using physx::PxRigidActor;
 using physx::PxRigidBody;
+using physx::PxRigidBodyExt;
 using physx::PxRigidDynamic;
 using physx::PxRigidStatic;
 using physx::PxScene;

@@ -6,6 +6,7 @@ import bricksim.core.graph;
 import bricksim.core.connections;
 import bricksim.core.component_index;
 import bricksim.physx.assembly;
+import bricksim.physx.interface_overlap_detection;
 import bricksim.physx.constraint_scheduler;
 import bricksim.physx.filtering_reset;
 import bricksim.physx.shape_mapping;
@@ -755,10 +756,20 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 					}
 				}
 			}
-			for (const auto &[csref, conn_seg] : pending_assemblies) {
-				const auto &[stud_if, hole_if] = csref;
-				auto csid = topology_.connect(stud_if, hole_if, conn_seg);
-				if (csid.has_value()) {
+			for (const auto &seed : pending_assemblies) {
+				for (const auto &induced : compute_assembly_closure(seed)) {
+					const auto &[csref, conn_seg] = induced;
+					const auto &[stud_ifref, hole_ifref] = csref;
+					const auto &[stud_pid, stud_ifid] = stud_ifref;
+					const auto &[hole_pid, hole_ifid] = hole_ifref;
+					auto csid =
+					    topology_.connect(stud_ifref, hole_ifref, conn_seg);
+					if (!csid.has_value()) {
+						log_error("Failed to connect {} #{} to {} #{} during "
+						          "assembly",
+						          stud_pid, stud_ifid, hole_pid, hole_ifid);
+						continue;
+					}
 					if constexpr (HasOnAssembledHook) {
 						if (hooks_) {
 							hooks_->on_assembled(*csid, csref, conn_seg);
@@ -766,9 +777,9 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 					}
 				}
 			}
+			last_step_profiling_ = current_step_profiling_;
+			sim_time_++;
 		}
-		last_step_profiling_ = current_step_profiling_;
-		sim_time_++;
 	}
 
 	bool bind_physx_scene(physx::PxScene *px_scene) {
@@ -1087,6 +1098,43 @@ class PhysicsLegoGraph<type_list<Ps...>, Hooks> {
 			info_b.linear_impulse -= F1_W * dt;
 			info_b.angular_impulse -= tau1_W_atCOM1 * dt;
 		}
+	}
+
+	std::vector<PendingAssembly>
+	compute_assembly_closure(const PendingAssembly &seed) {
+		const auto &[stud_if, hole_if] = seed.csref;
+		const auto &[stud_pid, stud_iface] = stud_if;
+		const auto &[hole_pid, hole_iface] = hole_if;
+		if (topology_.is_connected(stud_pid, hole_pid)) {
+			// Already connected, skip
+			return {};
+		}
+		InterfaceBinMap bin_a;
+		bin_a.add_component(topology_, stud_pid);
+		InterfaceBinMap bin_b;
+		bin_b.add_component(topology_, hole_pid);
+		Transformd T_a_b = seed.conn_seg.compute_transform(
+		    topology_.interface_spec_at(stud_if),
+		    topology_.interface_spec_at(hole_if));
+		std::vector<PendingAssembly> closure;
+		bool seed_found = false;
+		bin_a.for_each_induced_between(
+		    bin_b, T_a_b, [&](const CandidateConnection &conn) {
+			    auto csref = conn.conn_seg_ref();
+			    if (csref == seed.csref && conn.conn_seg == seed.conn_seg) {
+				    seed_found = true;
+			    }
+			    if (topology_.connection_segments().contains(csref)) {
+				    return;
+			    }
+			    closure.emplace_back(csref, conn.conn_seg);
+		    });
+		if (!seed_found) {
+			log_error("PhysicsLegoGraph::compute_assembly_closure: seed "
+			          "connection not found in induced connection closure");
+			return {};
+		}
+		return closure;
 	}
 
 	static_assert(TopologyGraph::HasOnPartAddedHook);
