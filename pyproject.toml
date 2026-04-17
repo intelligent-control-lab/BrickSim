@@ -9,6 +9,11 @@ dependencies = [
     "lerobot==0.4.4",
 ]
 
+[dependency-groups]
+dev = [
+    "ruff",
+]
+
 [tool.uv]
 package = false
 environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
@@ -23,3 +28,20 @@ override-dependencies = [
 
 [tool.uv.sources]
 bricksim = { path = "python", editable = true }
+
+[tool.ruff]
+# Keep the first Ruff rollout scoped to the package so legacy scripts and demos
+# can be cleaned up separately.
+force-exclude = true
+include = ["python/bricksim/**/*.py"]
+src = ["python"]
+target-version = "py311"
+
+[tool.ruff.lint]
+# Use pycodestyle, Pyflakes, and pep8-naming, then add import sorting.
+select = ["E", "F", "N"]
+extend-select = ["I", "D", "DOC201"]
+preview = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
