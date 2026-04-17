@@ -1,3 +1,5 @@
+"""Selection synchronization for BrickSim connected-component picking."""
+
 import carb.settings
 import omni.usd
 
@@ -5,22 +7,27 @@ from bricksim.core import compute_connected_component
 
 
 class AssemblySelectionSync:
-    """Expands a single-part pick into its full connected component when Assembly mode is active."""
+    """Expands a single-part pick into its full connected component.
+
+    This applies when Assembly mode is active.
+    """
 
     PICKING_MODE_SETTING = "/persistent/app/viewport/pickingMode"
     LEGO_SELECTION_MODE_SETTING = "/exts/bricksim/selection_mode"
     LEGO_CC_VALUE = "connected_component"
 
     def __init__(self):
+        """Subscribe to USD selection changes."""
         self._settings = carb.settings.get_settings()
         self._usd_context = omni.usd.get_context()
-        self._stage_event_sub = (
-            self._usd_context.get_stage_event_stream().create_subscription_to_pop_by_type(
-                int(omni.usd.StageEventType.SELECTION_CHANGED), self._on_selection_changed)
+        stage_event_stream = self._usd_context.get_stage_event_stream()
+        self._stage_event_sub = stage_event_stream.create_subscription_to_pop_by_type(
+            int(omni.usd.StageEventType.SELECTION_CHANGED), self._on_selection_changed
         )
         self._updating_selection = False
 
     def destroy(self):
+        """Unsubscribe from USD selection changes."""
         if self._stage_event_sub is not None:
             self._stage_event_sub.unsubscribe()
             self._stage_event_sub = None

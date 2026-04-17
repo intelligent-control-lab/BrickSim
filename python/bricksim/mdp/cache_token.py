@@ -1,3 +1,5 @@
+"""Reset-aware cache tokens for BrickSim MDP helpers."""
+
 from dataclasses import dataclass
 
 from isaaclab.envs import ManagerBasedRLEnv
@@ -59,7 +61,11 @@ class ResetAwareCacheToken:
 
     @classmethod
     def from_env(cls, env: ManagerBasedRLEnv) -> "ResetAwareCacheToken":
-        """Create a reset-sensitive freshness token for the current env state."""
+        """Create a reset-sensitive freshness token for the current env state.
+
+        Returns:
+            Token matching the environment's current step/reset generation.
+        """
         cls._ensure_reset_generation_tracking(env)
         return cls(
             step=env.common_step_counter,
@@ -67,9 +73,17 @@ class ResetAwareCacheToken:
         )
 
     def matches_env(self, env: ManagerBasedRLEnv) -> bool:
-        """Return whether this token still matches the current env state."""
+        """Return whether this token still matches the current env state.
+
+        Returns:
+            ``True`` when the environment has not stepped or reset since the
+            token was created.
+        """
         self._ensure_reset_generation_tracking(env)
-        return self.step == env.common_step_counter and self.reset_generation == env._bricksim_reset_generation
+        return (
+            self.step == env.common_step_counter
+            and self.reset_generation == env._bricksim_reset_generation
+        )
 
     def invalidated_by_same_step_reset(self, env: ManagerBasedRLEnv) -> bool:
         """Return whether this token was invalidated by a reset within the same step.
@@ -77,6 +91,12 @@ class ResetAwareCacheToken:
         This is the awkward case for event streams: pre-reset events and
         reset-time native artifacts would otherwise leak into post-reset queries
         without a new ``common_step_counter`` value.
+
+        Returns:
+            ``True`` when only the reset generation changed.
         """
         self._ensure_reset_generation_tracking(env)
-        return self.step == env.common_step_counter and self.reset_generation != env._bricksim_reset_generation
+        return (
+            self.step == env.common_step_counter
+            and self.reset_generation != env._bricksim_reset_generation
+        )

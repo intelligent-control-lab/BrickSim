@@ -1,10 +1,13 @@
+"""Toolbar patch that adds a one-frame step button."""
+
 import asyncio
 from pathlib import Path
 
+
 async def _play_then_pause_immediately():
-    """
-    Advance timeline by one app update by issuing PLAY and pausing on the
-    next update.
+    """Advance the timeline by one app update.
+
+    Issue PLAY, then pause on the next app update.
     """
     import omni.kit.app
     import omni.timeline
@@ -16,9 +19,9 @@ async def _play_then_pause_immediately():
 
 
 def _patch_play_button_group():
-    """
-    Patch PlayButtonGroup to add a dedicated "Step one frame" button beside
-    Play/Stop on the left toolbar.
+    """Patch PlayButtonGroup to add a dedicated "Step one frame" button.
+
+    Place it beside Play/Stop on the left toolbar.
     """
     import omni.timeline
     import omni.ui as ui
@@ -73,9 +76,9 @@ def _patch_play_button_group():
 
     def _lego_on_timeline_event(self, e):
         orig_on_timeline_event(self, e)
-        if hasattr(omni.timeline.TimelineEventType, "DIRECTOR_CHANGED") and e.type == int(
-            omni.timeline.TimelineEventType.DIRECTOR_CHANGED
-        ):
+        if hasattr(
+            omni.timeline.TimelineEventType, "DIRECTOR_CHANGED"
+        ) and e.type == int(omni.timeline.TimelineEventType.DIRECTOR_CHANGED):
             step_button = getattr(self, "_lego_step_one_frame_button", None)
             if step_button is not None:
                 step_button.visible = self._visible
@@ -85,9 +88,9 @@ def _patch_play_button_group():
 
 
 def _rebuild_play_button_group():
-    """
-    Rebuild the PlayButtonGroup instance so it picks up our monkey patch that
-    adds the Step one frame button.
+    """Rebuild the PlayButtonGroup instance.
+
+    Make it pick up our monkey patch that adds the Step one frame button.
     """
     import omni.kit.widget.toolbar.extension as tb_ext
     from omni.kit.widget.toolbar.builtin_tools.play_button_group import (
@@ -113,9 +116,9 @@ def _rebuild_play_button_group():
 
 
 def install_step_one_frame_patch():
-    """
-    Entry point invoked from extension startup to patch the Isaac toolbar
-    with an extra Step one frame control.
+    """Entry point invoked from extension startup.
+
+    Patch the Isaac toolbar with an extra Step one frame control.
     """
     _patch_play_button_group()
     _rebuild_play_button_group()

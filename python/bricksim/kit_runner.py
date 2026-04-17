@@ -1,3 +1,5 @@
+"""Hot-reload runner for executing Python targets inside Kit."""
+
 import asyncio
 import contextlib
 import importlib
@@ -19,11 +21,13 @@ _SETTING_TARGET = "/app/bricksim/kit_runner/target"
 
 
 def _parse_target(target: str) -> Tuple[str, str]:
-    """
-    Parse a target string into (module_or_path, func_name).
+    """Parse a target string into (module_or_path, func_name).
 
     Accepts either "module_or_path" or "module_or_path:func".
     If no function is specified, "main" is assumed.
+
+    Returns:
+        Tuple of module/path string and function name.
     """
     if ":" in target:
         module_or_path, func_name = target.split(":", 1)
@@ -33,8 +37,10 @@ def _parse_target(target: str) -> Tuple[str, str]:
 
 
 def _is_path(s: str) -> bool:
-    """
-    Heuristic check whether the given string looks like a filesystem path.
+    """Heuristic check whether the given string looks like a filesystem path.
+
+    Returns:
+        ``True`` if the string looks like a Python file path.
     """
     return s.endswith(".py") or os.path.isabs(s) or (os.sep in s) or ("\\" in s)
 
@@ -55,8 +61,7 @@ def run(
     cli_args: Sequence[str] = (),
     **kwargs: Any,
 ) -> asyncio.Task[Any]:
-    """
-    Run (and hot-reload) a target async function inside Kit.
+    """Run (and hot-reload) a target async function inside Kit.
 
     Args:
         target: Module name or filesystem path, optionally with ":func" suffix,
@@ -107,7 +112,8 @@ def run(
         coro = func(*args, **kwargs)
     if not isinstance(coro, Awaitable):
         raise TypeError(
-            f"Target '{module_or_path}:{func_name}' did not return an awaitable coroutine"
+            f"Target '{module_or_path}:{func_name}' did not return an "
+            "awaitable coroutine"
         )
 
     async def wrapper_coro():
@@ -116,19 +122,19 @@ def run(
                 await coro
         except asyncio.CancelledError:
             pass
-        except Exception as e:
+        except Exception:
             print(f"Exception in kit_runner target '{target}':")
             import traceback
+
             traceback.print_exc()
+
     task = _async_engine.run_coroutine(wrapper_coro())
     _current_task = task
     return task
 
 
 def stop() -> None:
-    """
-    Cancel the currently running task, if any.
-    """
+    """Cancel the currently running task, if any."""
     global _current_task
     if _current_task is not None and not _current_task.done():
         _current_task.cancel()
@@ -136,22 +142,17 @@ def stop() -> None:
 
 
 def has_target() -> bool:
-    """
-    Return True if a target has been run via kit_runner in this process.
-    """
+    """Return True if a target has been run via kit_runner in this process."""
     return _current_target is not None
 
 
 def current_target() -> Optional[str]:
-    """
-    Return the last target string passed to run(), if any.
-    """
+    """Return the last target string passed to run(), if any."""
     return _current_target
 
 
 def rerun() -> asyncio.Task[Any]:
-    """
-    Rerun the last target, if any.
+    """Rerun the last target, if any.
 
     Returns:
         The asyncio.Task created by Kit's async engine for the coroutine.

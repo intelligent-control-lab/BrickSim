@@ -1,5 +1,4 @@
-"""
-Convert a StableText2Brick-style brick string into bricksim JsonTopology.
+"""Convert a StableText2Brick-style brick string into bricksim JsonTopology.
 
 Input format (per line):
     hxw (x,y,z)
@@ -26,11 +25,15 @@ _BRICK_LINE_RE = re.compile(
     r"^\s*(?P<h>\d+)x(?P<w>\d+)\s*"
     r"\(\s*(?P<x>-?\d+)\s*,\s*(?P<y>-?\d+)\s*,\s*(?P<z>-?\d+)\s*\)\s*$"
 )
+
+
 def _parse_bricks_text(bricks_text: str) -> list[tuple[int, int, int, int, int]]:
-    """
-    Parse StableText2Brick 'bricks' text into a list of (h, w, x, y, z).
+    """Parse StableText2Brick 'bricks' text into a list of (h, w, x, y, z).
 
     Each line: "hxw (x,y,z)".
+
+    Returns:
+        Parsed bricks as ``(h, w, x, y, z)`` tuples.
     """
     bricks: list[tuple[int, int, int, int, int]] = []
     for line in bricks_text.splitlines():
@@ -50,8 +53,10 @@ def _parse_bricks_text(bricks_text: str) -> list[tuple[int, int, int, int, int]]
 
 
 def is_bricks_text(text: str) -> bool:
-    """
-    Heuristic check if the given text is in StableText2Brick 'bricks' format by checking the first non-empty line.
+    """Check the first non-empty line for StableText2Brick brick format.
+
+    Returns:
+        ``True`` if the first non-empty line matches the brick-line format.
     """
     for line in text.splitlines():
         line = line.strip()
@@ -59,6 +64,7 @@ def is_bricks_text(text: str) -> bool:
             continue
         return _BRICK_LINE_RE.match(line) is not None
     return False
+
 
 def bricks_text_to_topology_json(
     bricks_text: str,
@@ -68,9 +74,9 @@ def bricks_text_to_topology_json(
     base_plate_size: tuple[int, int] | None = None,
     base_plate_color: tuple[int, int, int] | None = None,
 ) -> dict[str, Any]:
-    """
-    Convert a StableText2Brick brick string into a JsonTopology dict
-    matching your C++ bricksim.io.json schema.
+    """Convert a StableText2Brick brick string into a JsonTopology dict.
+
+    The output matches the C++ bricksim.io.json schema.
 
     - Parts: one BrickPart per line
       * L = h, W = w, H = 3 plates (one brick tall)
@@ -89,6 +95,9 @@ def bricks_text_to_topology_json(
       * top brick provides holes (HoleId = 0)
       * offset = (x_hole_origin - x_stud_origin, y_hole_origin - y_stud_origin)
       * yaw = 0 (all bricks axis-aligned in this representation)
+
+    Returns:
+        JsonTopology-compatible dictionary.
     """
     bricks = _parse_bricks_text(bricks_text)
     return bricks_grid_to_topology_json(

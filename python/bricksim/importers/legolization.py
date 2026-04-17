@@ -1,6 +1,4 @@
-"""
-Convert a legolization-style LEGO JSON structure (task_graph.json)
-into a bricksim JsonTopology.
+"""Convert legolization-style LEGO JSON into a bricksim JsonTopology.
 
 Input format (per brick, in JSON):
     {
@@ -30,8 +28,8 @@ This mirrors the behavior of stabletext2brick.bricks_text_to_topology_json,
 but takes the legolization JSON + lego_library.json instead of text lines.
 """
 
-import os
 import json
+import os
 from typing import Any
 
 from .grid_topology import bricks_grid_to_topology_json
@@ -39,24 +37,33 @@ from .grid_topology import bricks_grid_to_topology_json
 DEFAULT_LEGO_LIBRARY_PATH = os.path.join(os.path.dirname(__file__), "lego_library.json")
 DEFAULT_LEGO_LIBRARY = None
 
+
 def load_default_lego_library() -> dict[str, dict[str, Any]]:
+    """Load and cache the bundled legolization LEGO library.
+
+    Returns:
+        Brick library keyed by legolization brick id.
+    """
     global DEFAULT_LEGO_LIBRARY
     if DEFAULT_LEGO_LIBRARY is None:
         if not os.path.exists(DEFAULT_LEGO_LIBRARY_PATH):
-            raise FileNotFoundError(f"Default lego library not found at {DEFAULT_LEGO_LIBRARY_PATH}.")
+            raise FileNotFoundError(
+                f"Default lego library not found at {DEFAULT_LEGO_LIBRARY_PATH}."
+            )
         with open(DEFAULT_LEGO_LIBRARY_PATH, "r", encoding="utf-8") as f:
             DEFAULT_LEGO_LIBRARY = json.load(f)
     return DEFAULT_LEGO_LIBRARY
 
 
 def is_legolization_json(text: str) -> bool:
-    """
-    Lightweight heuristic check whether the given string looks like a
-    legolization-style task_graph.json.
+    """Lightweight heuristic for legolization-style task_graph JSON.
 
     Similar spirit to is_bricks_text: we only look at the top-level JSON
     object and the first digit key we find, and we do not validate types
     beyond basic structure.
+
+    Returns:
+        ``True`` if the text appears to be legolization task-graph JSON.
     """
     try:
         obj = json.loads(text)
@@ -79,8 +86,7 @@ def _extract_bricks_from_lego_json(
     lego_structure: dict[str, Any],
     lego_library: dict[str, dict[str, Any]],
 ) -> list[tuple[int, int, int, int, int]]:
-    """
-    Convert a legolization JSON structure into a list of (h, w, x, y, z).
+    """Convert a legolization JSON structure into a list of (h, w, x, y, z).
 
     lego_structure:
         Dict[str, dict] with keys "1", "2", ... and values containing
@@ -127,9 +133,9 @@ def legolization_json_to_topology_json(
     base_plate_size: tuple[int, int] | None = None,
     base_plate_color: tuple[int, int, int] | None = None,
 ) -> dict[str, Any]:
-    """
-    Convert a legolization LEGO JSON (task_graph-style) into a JsonTopology dict
-    matching bricksim.io.json.JsonTopology.
+    """Convert legolization LEGO JSON into a JsonTopology dict.
+
+    This accepts task_graph-style input and matches bricksim.io.json.JsonTopology.
 
     - Parts:
         * one BrickPart per brick in lego_structure
@@ -154,6 +160,9 @@ def legolization_json_to_topology_json(
         * if a base plate is present and connected, it is the anchor;
           otherwise, the lowest brick in the component is used.
         * anchor origin (bottom center) is placed at z = 0.
+
+    Returns:
+        JsonTopology-compatible dictionary.
     """
     if lego_library is None:
         lego_library = load_default_lego_library()

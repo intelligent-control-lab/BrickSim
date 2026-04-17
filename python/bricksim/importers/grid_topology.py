@@ -1,6 +1,7 @@
-"""
-Shared utilities for converting a list of bricks on a discrete grid
-into a bricksim JsonTopology-compatible Python dict.
+"""Shared utilities for converting discrete-grid bricks.
+
+This converts a list of bricks on a discrete grid into a bricksim
+JsonTopology-compatible Python dict.
 
 This module factors out the common logic used by:
   - stabletext2brick.py
@@ -22,8 +23,8 @@ from typing import Any
 
 Brick = tuple[int, int, int, int, int]  # (L, W, x, y, z)
 
-BRICK_UNIT_LENGTH = 0.008      # meters per stud
-PLATE_HEIGHT = 0.0032          # meters per plate
+BRICK_UNIT_LENGTH = 0.008  # meters per stud
+PLATE_HEIGHT = 0.0032  # meters per plate
 BRICK_HEIGHT = 3 * PLATE_HEIGHT  # 1 brick = 3 plates = 0.0096 m
 
 SCHEMA_STRING = "bricksim/lego_topology@2"
@@ -43,9 +44,9 @@ def bricks_grid_to_topology_json(
     base_plate_size: tuple[int, int] | None = None,
     base_plate_color: tuple[int, int, int] | None = None,
 ) -> dict[str, Any]:
-    """
-    Convert a list of bricks on a discrete grid into a JsonTopology dict
-    matching bricksim.io.json.JsonTopology.
+    """Convert a list of discrete-grid bricks into a JsonTopology dict.
+
+    The output matches bricksim.io.json.JsonTopology.
 
     bricks:
         list of (L, W, x, y, z) where:
@@ -138,10 +139,10 @@ def bricks_grid_to_topology_json(
     brick_yaws: list[int] = []
     brick_origins: list[tuple[int, int]] = []
 
-    for (L, W, x, y, z) in bricks_list:
-        if L >= W:
+    for length, width, x, y, z in bricks_list:
+        if length >= width:
             # Long side already along +x: no rotation.
-            L_can, W_can = L, W
+            canonical_length, canonical_width = length, width
             yaw = 0
             origin_x = x
             origin_y = y
@@ -155,12 +156,12 @@ def bricks_grid_to_topology_json(
             #   C_d = (x + L/2, y + W/2)
             #   C_c = (W/2, L/2)   (since L_can=W, W_can=L)
             #   origin = C_d - R_90(C_c) = (x + L, y)
-            L_can, W_can = W, L
+            canonical_length, canonical_width = width, length
             yaw = 1  # 90 degrees
-            origin_x = x + L
+            origin_x = x + length
             origin_y = y
 
-        canonical_dims.append((L_can, W_can))
+        canonical_dims.append((canonical_length, canonical_width))
         brick_yaws.append(yaw)
         brick_origins.append((origin_x, origin_y))
 
@@ -168,12 +169,12 @@ def bricks_grid_to_topology_json(
     # using the original (L, W) so connectivity matches the source layout. The
     # grid itself is indexed from 0, so we allow negative coordinates by
     # subtracting the global minima when indexing into the occupancy grid.
-    min_x = min(x for (L, W, x, y, z) in bricks_list)
-    min_y = min(y for (L, W, x, y, z) in bricks_list)
-    min_z = min(z for (L, W, x, y, z) in bricks_list)
-    max_x = max(x + L for (L, W, x, y, z) in bricks_list)
-    max_y = max(y + W for (L, W, x, y, z) in bricks_list)
-    max_z = max(z + 1 for (L, W, x, y, z) in bricks_list)  # z layer plus one
+    min_x = min(x for (length, width, x, y, z) in bricks_list)
+    min_y = min(y for (length, width, x, y, z) in bricks_list)
+    min_z = min(z for (length, width, x, y, z) in bricks_list)
+    max_x = max(x + length for (length, width, x, y, z) in bricks_list)
+    max_y = max(y + width for (length, width, x, y, z) in bricks_list)
+    max_z = max(z + 1 for (length, width, x, y, z) in bricks_list)
 
     grid_size_x = max_x - min_x
     grid_size_y = max_y - min_y
@@ -185,9 +186,9 @@ def bricks_grid_to_topology_json(
         for _ in range(grid_size_x)
     ]
 
-    for brick_idx, (L, W, x, y, z) in enumerate(bricks_list):
-        for dx in range(L):
-            for dy in range(W):
+    for brick_idx, (length, width, x, y, z) in enumerate(bricks_list):
+        for dx in range(length):
+            for dy in range(width):
                 gx = x + dx
                 gy = y + dy
                 gz = z
@@ -214,13 +215,13 @@ def bricks_grid_to_topology_json(
     # provided, we center the bricks on it (axis-wise when the bricks fit).
     px_plate = py_plate = 0.0
     if include_base_plate:
-        footprint_L = int(max_x - min_x)
-        footprint_W = int(max_y - min_y)
+        footprint_length = int(max_x - min_x)
+        footprint_width = int(max_y - min_y)
         if base_plate_size is None:
-            plate_L = footprint_L
-            plate_W = footprint_W
+            plate_length = footprint_length
+            plate_width = footprint_width
         else:
-            plate_L, plate_W = base_plate_size
+            plate_length, plate_width = base_plate_size
 
         if base_plate_color is not None:
             plate_color = base_plate_color
@@ -230,12 +231,12 @@ def bricks_grid_to_topology_json(
             plate_color = (255, 255, 255)
         plate_x = min_x
         plate_y = min_y
-        if footprint_L <= plate_L:
-            plate_x = (min_x + max_x - plate_L) // 2
-        if footprint_W <= plate_W:
-            plate_y = (min_y + max_y - plate_W) // 2
-        cx_plate = plate_x + 0.5 * plate_L
-        cy_plate = plate_y + 0.5 * plate_W
+        if footprint_length <= plate_length:
+            plate_x = (min_x + max_x - plate_length) // 2
+        if footprint_width <= plate_width:
+            plate_y = (min_y + max_y - plate_width) // 2
+        cx_plate = plate_x + 0.5 * plate_length
+        cy_plate = plate_y + 0.5 * plate_width
         px_plate = cx_plate * BRICK_UNIT_LENGTH
         py_plate = cy_plate * BRICK_UNIT_LENGTH
 
@@ -244,8 +245,8 @@ def bricks_grid_to_topology_json(
                 "id": 0,
                 "type": "brick",
                 "payload": {
-                    "L": int(plate_L),
-                    "W": int(plate_W),
+                    "L": int(plate_length),
+                    "W": int(plate_width),
                     "H": 1,
                     "color": [
                         int(plate_color[0]),
@@ -256,13 +257,13 @@ def bricks_grid_to_topology_json(
             }
         )
 
-    for brick_idx, (L, W, x, y, z) in enumerate(bricks_list):
+    for brick_idx, (length, width, x, y, z) in enumerate(bricks_list):
         if per_brick_colors is not None:
             c = per_brick_colors[brick_idx]
         else:
             c = single_color or (255, 255, 255)
 
-        L_can, W_can = canonical_dims[brick_idx]
+        canonical_length, canonical_width = canonical_dims[brick_idx]
 
         pid = brick_idx + pid_offset
         parts.append(
@@ -270,8 +271,8 @@ def bricks_grid_to_topology_json(
                 "id": int(pid),
                 "type": "brick",
                 "payload": {
-                    "L": int(L_can),
-                    "W": int(W_can),
+                    "L": int(canonical_length),
+                    "W": int(canonical_width),
                     "H": 3,
                     "color": [
                         int(c[0]),
@@ -344,12 +345,12 @@ def bricks_grid_to_topology_json(
                     }
                 )
 
-    # Optional connections from the base plate (studs) to the bottom-layer bricks (holes)
+    # Optional connections from the base plate studs to bottom-layer brick holes.
     if include_base_plate:
         plate_id = 0
         bottom_z = min_z
 
-        for brick_idx, (L, W, x, y, z) in enumerate(bricks_list):
+        for brick_idx, (length, width, x, y, z) in enumerate(bricks_list):
             if z != bottom_z:
                 continue
 
@@ -433,13 +434,13 @@ def bricks_grid_to_topology_json(
                         # Skip base plate id in this branch (shouldn't happen).
                         continue
                     brick_idx = pid - pid_offset
-                    L, W, x, y, z = bricks_list[brick_idx]
+                    length, width, x, y, z = bricks_list[brick_idx]
                     key = (z, y, x, brick_idx)
                     if best_key is None or key < best_key:
                         best_key = key
                         anchor_pid = pid
-                        cx = x + 0.5 * L
-                        cy = y + 0.5 * W
+                        cx = x + 0.5 * length
+                        cy = y + 0.5 * width
                         anchor_px = cx * BRICK_UNIT_LENGTH
                         anchor_py = cy * BRICK_UNIT_LENGTH
                         anchor_yaw = brick_yaws[brick_idx]

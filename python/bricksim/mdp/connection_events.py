@@ -1,29 +1,37 @@
+"""Connection-event stream projections for BrickSim MDP terms."""
+
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import cast
 
 import torch
+from isaaclab.envs import ManagerBasedRLEnv
 
 from bricksim.core import ConnectionInfo
 from bricksim.core import get_assembled_connections as _native_get_assembled_connections
-from bricksim.core import get_disassembled_connections as _native_get_disassembled_connections
+from bricksim.core import (
+    get_disassembled_connections as _native_get_disassembled_connections,
+)
+
 from .cache_token import ResetAwareCacheToken
 from .connection_state import InterfacePairConnectionQuery
 from .utils import resolve_brick_rigid_object
-from isaaclab.envs import ManagerBasedRLEnv
 
 
 class ConnectionEventStream(Enum):
+    """Native connection-event stream selector."""
+
     ASSEMBLED = "assembled"
     DISASSEMBLED = "disassembled"
 
 
 @dataclass(slots=True)
 class InterfacePairConnectionEvents:
-    """Matching connection events for one fixed brick-interface query in the current step.
+    """Matching connection events for one fixed brick-interface query.
 
-    This object summarizes one event stream, either assembled or disassembled,
-    after filtering it to a single fixed interface-pair query.
+    This object summarizes one event stream in the current step, either
+    assembled or disassembled, after filtering it to a single fixed
+    interface-pair query.
 
     The query endpoints are scene entities that must resolve to BrickSim brick
     rigid objects, i.e. runtime assets accepted by
@@ -69,13 +77,19 @@ class InterfacePairConnectionEvents:
 class _ProjectedConnectionEventsCache:
     token: ResetAwareCacheToken | None = None
     raw_events: list[ConnectionInfo] = field(default_factory=list)
-    by_query: dict[InterfacePairConnectionQuery, InterfacePairConnectionEvents] = field(default_factory=dict)
+    by_query: dict[InterfacePairConnectionQuery, InterfacePairConnectionEvents] = field(
+        default_factory=dict
+    )
 
 
 @dataclass(slots=True)
 class _ConnectionEventsCache:
-    assembled: _ProjectedConnectionEventsCache = field(default_factory=_ProjectedConnectionEventsCache)
-    disassembled: _ProjectedConnectionEventsCache = field(default_factory=_ProjectedConnectionEventsCache)
+    assembled: _ProjectedConnectionEventsCache = field(
+        default_factory=_ProjectedConnectionEventsCache
+    )
+    disassembled: _ProjectedConnectionEventsCache = field(
+        default_factory=_ProjectedConnectionEventsCache
+    )
 
 
 def _connection_events_cache(env: ManagerBasedRLEnv) -> _ConnectionEventsCache:
@@ -86,7 +100,9 @@ def _connection_events_cache(env: ManagerBasedRLEnv) -> _ConnectionEventsCache:
     return cast(_ConnectionEventsCache, cache)
 
 
-def _stream_cache(env: ManagerBasedRLEnv, stream: ConnectionEventStream) -> _ProjectedConnectionEventsCache:
+def _stream_cache(
+    env: ManagerBasedRLEnv, stream: ConnectionEventStream
+) -> _ProjectedConnectionEventsCache:
     cache = _connection_events_cache(env)
     if stream is ConnectionEventStream.ASSEMBLED:
         return cache.assembled
@@ -94,25 +110,37 @@ def _stream_cache(env: ManagerBasedRLEnv, stream: ConnectionEventStream) -> _Pro
 
 
 def _read_native_stream(stream: ConnectionEventStream) -> list[ConnectionInfo]:
-    """Read and clear one native connection-event stream for the current step."""
+    """Read and clear one native connection-event stream for the current step.
+
+    Returns:
+        Native connection events from the selected stream.
+    """
     if stream is ConnectionEventStream.ASSEMBLED:
         return _native_get_assembled_connections(clear=True)
     return _native_get_disassembled_connections(clear=True)
 
 
-def _raw_stream_events(env: ManagerBasedRLEnv, stream: ConnectionEventStream) -> list[ConnectionInfo]:
+def _raw_stream_events(
+    env: ManagerBasedRLEnv, stream: ConnectionEventStream
+) -> list[ConnectionInfo]:
     """Return the cached raw event stream for the current env state.
 
     The stream is refreshed when the reset-aware cache token changes. If the
     token change came from a same-step reset, the previously read raw stream is
     kept and only the projected per-query cache is invalidated, so non-reset
     envs do not lose valid same-step events.
+
+    Returns:
+        Cached raw events for the selected stream.
     """
     stream_cache = _stream_cache(env, stream)
     if stream_cache.token is not None and stream_cache.token.matches_env(env):
         return stream_cache.raw_events
 
-    same_step_reset = stream_cache.token is not None and stream_cache.token.invalidated_by_same_step_reset(env)
+    same_step_reset = (
+        stream_cache.token is not None
+        and stream_cache.token.invalidated_by_same_step_reset(env)
+    )
     if not same_step_reset:
         stream_cache.raw_events = _read_native_stream(stream)
 
@@ -138,6 +166,9 @@ def _interface_pair_events_from_stream(
     non-reset envs are preserved. The MDP-facing summary then masks reset envs
     so downstream reward/observation logic sees only trustworthy per-env
     events.
+
+    Returns:
+        Env-major summary for the requested interface-pair event stream.
     """
     raw_events = _raw_stream_events(env, stream)
     stream_cache = _stream_cache(env, stream)
@@ -192,6 +223,9 @@ def get_assembled_connections(env: ManagerBasedRLEnv) -> list[ConnectionInfo]:
     sub-environments within the current step, this raw list may still contain
     events for those reset envs. The higher-level projected MDP API masks those
     envs explicitly instead of discarding the whole raw stream.
+
+    Returns:
+        Cached raw assembled-connection events.
     """
     return _raw_stream_events(env, ConnectionEventStream.ASSEMBLED)
 
@@ -206,6 +240,9 @@ def get_disassembled_connections(env: ManagerBasedRLEnv) -> list[ConnectionInfo]
     sub-environments within the current step, this raw list may still contain
     events for those reset envs. The higher-level projected MDP API masks those
     envs explicitly instead of discarding the whole raw stream.
+
+    Returns:
+        Cached raw disassembled-connection events.
     """
     return _raw_stream_events(env, ConnectionEventStream.DISASSEMBLED)
 
@@ -225,6 +262,9 @@ def interface_pair_assembled_events(
     Cache freshness is reset-sensitive. If Isaac Lab resets any sub-environment
     within the current step, this function masks those reset envs while still
     preserving valid same-step events for non-reset envs.
+
+    Returns:
+        Env-major assembled-event summary for the query.
     """
     return _interface_pair_events_from_stream(
         env,
@@ -237,17 +277,20 @@ def interface_pair_disassembled_events(
     env: ManagerBasedRLEnv,
     query: InterfacePairConnectionQuery,
 ) -> InterfacePairConnectionEvents:
-    """Return disassembled events for one brick interface-pair query in the current step.
+    """Return disassembled events for one brick interface-pair query.
 
-    The query is expressed in terms of scene-entity names, not USD prim paths.
-    The named scene entities must resolve to runtime brick assets accepted by
-    :func:`bricksim.mdp.utils.resolve_brick_rigid_object`. Per-environment
-    prim paths are resolved internally from those assets when evaluating the
-    query.
+    This is scoped to the current step. The query is expressed in terms of
+    scene-entity names, not USD prim paths. The named scene entities must
+    resolve to runtime brick assets accepted by
+    :func:`bricksim.mdp.utils.resolve_brick_rigid_object`. Per-environment prim
+    paths are resolved internally from those assets when evaluating the query.
 
     Cache freshness is reset-sensitive. If Isaac Lab resets any sub-environment
     within the current step, this function masks those reset envs while still
     preserving valid same-step events for non-reset envs.
+
+    Returns:
+        Env-major disassembled-event summary for the query.
     """
     return _interface_pair_events_from_stream(
         env,

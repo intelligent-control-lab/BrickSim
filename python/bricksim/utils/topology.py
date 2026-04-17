@@ -1,9 +1,11 @@
+"""Topology post-processing helpers."""
+
 from collections import defaultdict, deque
 from typing import Any, Dict, List, Tuple
 
 
 def bfs_sort_connections(topology: Dict[str, Any]) -> Dict[str, Any]:
-    """Return a copy of ``topology`` with its connections sorted in a BFS order.
+    r"""Return a copy of ``topology`` with its connections sorted in a BFS order.
 
     The intent is to approximate an assembly sequence:
 
@@ -121,8 +123,8 @@ def bfs_sort_connections(topology: Dict[str, Any]) -> Dict[str, Any]:
                             sorted_conn_indices.append(idx)
                             break
 
-        # Emit any remaining edges inside this component that were not used as tree edges.
-        for (a, b) in sorted(conn_indices_by_pair.keys()):
+        # Emit remaining edges inside this component not used as tree edges.
+        for a, b in sorted(conn_indices_by_pair.keys()):
             if a not in comp or b not in comp:
                 continue
             for idx in conn_indices_by_pair[(a, b)]:

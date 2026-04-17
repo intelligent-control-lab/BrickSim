@@ -1,3 +1,5 @@
+"""Asset path constants and packaged resources for BrickSim."""
+
 from pathlib import Path as _Path
 
 ASSETS_DIR = _Path(__file__).resolve().parent

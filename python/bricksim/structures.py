@@ -1,14 +1,20 @@
+"""Download and load the BrickSim structures dataset."""
+
 import json
 import os
 import tarfile
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+
 import requests
 import tqdm
 
+
 @dataclass
 class BricksimDatasetItem:
+    """Metadata for one BrickSim structures dataset item."""
+
     model_id: str
     category: str
     caption: str
@@ -18,6 +24,7 @@ class BricksimDatasetItem:
     all_connected_with_plate: bool
     stable_with_plate: bool
     max_stability_score_with_plate: float
+
 
 def _resolve_bricksim_dataset_path() -> Path:
     dataset_path = os.environ.get("BRICKSIM_DATASET_PATH")
@@ -30,18 +37,39 @@ def _resolve_bricksim_dataset_path() -> Path:
         cache_home = Path.home() / ".cache"
     return cache_home / "bricksim" / "bricksim_dataset"
 
-BRICKSIM_DATASET_URL = "https://www.cs.cmu.edu/~haoweiw/bricksim_downloads/bricksim_dataset.tar.xz"
+
+BRICKSIM_DATASET_URL = (
+    "https://www.cs.cmu.edu/~haoweiw/bricksim_downloads/bricksim_dataset.tar.xz"
+)
 BRICKSIM_DATASET_PATH = _resolve_bricksim_dataset_path()
-BRICKSIM_DATASET_CATALOG_PATH = BRICKSIM_DATASET_PATH / "data" / "lego" / "data" / "simulator_testset" / "dataset.json"
+BRICKSIM_DATASET_CATALOG_PATH = (
+    BRICKSIM_DATASET_PATH
+    / "data"
+    / "lego"
+    / "data"
+    / "simulator_testset"
+    / "dataset.json"
+)
+
 
 def is_bricksim_dataset_available() -> bool:
+    """Return whether the BrickSim structures dataset is available locally.
+
+    Returns:
+        ``True`` if the dataset catalog exists.
+    """
     return BRICKSIM_DATASET_CATALOG_PATH.exists()
 
+
 async def download_bricksim_dataset() -> None:
+    """Download and extract the BrickSim structures dataset if missing."""
     if is_bricksim_dataset_available():
         return
     BRICKSIM_DATASET_PATH.mkdir(parents=True, exist_ok=True)
-    print(f"Downloading BrickSim dataset from {BRICKSIM_DATASET_URL} to {BRICKSIM_DATASET_PATH}...")
+    print(
+        f"Downloading BrickSim dataset from {BRICKSIM_DATASET_URL} to "
+        f"{BRICKSIM_DATASET_PATH}..."
+    )
     with tempfile.NamedTemporaryFile(suffix=".tar.xz") as archive_file:
         with requests.get(BRICKSIM_DATASET_URL, stream=True) as res:
             res.raise_for_status()
@@ -57,9 +85,18 @@ async def download_bricksim_dataset() -> None:
     if not is_bricksim_dataset_available():
         raise RuntimeError("Failed to download and extract the BrickSim dataset.")
 
+
 _LOADED_BRICKSIM_DATASET: dict[str, BricksimDatasetItem] | None = None
 
-async def load_bricksim_dataset(download_if_not_available: bool = True) -> dict[str, BricksimDatasetItem]:
+
+async def load_bricksim_dataset(
+    download_if_not_available: bool = True,
+) -> dict[str, BricksimDatasetItem]:
+    """Load the BrickSim structures dataset catalog.
+
+    Returns:
+        Dataset items keyed by model id.
+    """
     global _LOADED_BRICKSIM_DATASET
     if _LOADED_BRICKSIM_DATASET is not None:
         return _LOADED_BRICKSIM_DATASET
@@ -67,7 +104,10 @@ async def load_bricksim_dataset(download_if_not_available: bool = True) -> dict[
         if download_if_not_available:
             await download_bricksim_dataset()
         else:
-            raise RuntimeError("Bricksim dataset not available. Set download_if_not_available=True to download it automatically.")
+            raise RuntimeError(
+                "Bricksim dataset not available. Set "
+                "download_if_not_available=True to download it automatically."
+            )
     with open(BRICKSIM_DATASET_CATALOG_PATH, "r") as f:
         catalog = json.load(f)
     items: dict[str, BricksimDatasetItem] = dict()
@@ -85,13 +125,23 @@ async def load_bricksim_dataset(download_if_not_available: bool = True) -> dict[
                     all_connected_no_plate=bool(meta.get("all_connected_no_plate")),
                     all_connected_with_plate=bool(meta.get("all_connected_with_plate")),
                     stable_with_plate=bool(meta.get("stable_with_plate")),
-                    max_stability_score_with_plate=float(meta.get("max_stability_score_with_plate")),
+                    max_stability_score_with_plate=float(
+                        meta.get("max_stability_score_with_plate")
+                    ),
                 )
     _LOADED_BRICKSIM_DATASET = items
     return _LOADED_BRICKSIM_DATASET
 
+
 def get_bricksim_dataset() -> dict[str, BricksimDatasetItem]:
+    """Return the previously loaded BrickSim structures dataset.
+
+    Returns:
+        Dataset items keyed by model id.
+    """
     global _LOADED_BRICKSIM_DATASET
     if _LOADED_BRICKSIM_DATASET is None:
-        raise RuntimeError("Bricksim dataset not loaded. Call load_bricksim_dataset() first.")
+        raise RuntimeError(
+            "Bricksim dataset not loaded. Call load_bricksim_dataset() first."
+        )
     return _LOADED_BRICKSIM_DATASET

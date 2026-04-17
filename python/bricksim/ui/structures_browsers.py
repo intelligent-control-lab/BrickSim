@@ -1,19 +1,28 @@
-import json
-import carb
+"""UI browser for importing BrickSim structures dataset entries."""
+
 import asyncio
+import json
+
+import carb
 import omni.ui as ui
-from bricksim.core import import_lego, arrange_parts_in_workspace
-from bricksim.importers.legolization import legolization_json_to_topology_json
-from bricksim.utils.usd_parse import get_env_path
-from bricksim.structures import BricksimDatasetItem, load_bricksim_dataset
+
 from bricksim.colors import parse_color
+from bricksim.core import arrange_parts_in_workspace, import_lego
+from bricksim.importers.legolization import legolization_json_to_topology_json
+from bricksim.structures import BricksimDatasetItem, load_bricksim_dataset
+from bricksim.utils.usd_parse import get_env_path
+
 from .main_ui import LegoUI
 
+
 class LegoStructuresBrowser:
+    """Browse and import structures from the BrickSim dataset."""
+
     MAX_VISIBLE = 100
     NUM_BRICKS_LIMIT = 100
 
     def __init__(self, main_ui: LegoUI) -> None:
+        """Create the structures browser window."""
         self._window = ui.Window("StableText2Brick Structures", width=500, height=600)
         self._window.deferred_dock_in("Console")
 
@@ -41,9 +50,19 @@ class LegoStructuresBrowser:
                 with ui.HStack(spacing=5, height=0):
                     ui.Label("Search:", width=60, height=0)
                     ui.StringField(self._search_model, height=0)
-                    ui.Label("Use Baseplate", width=100, height=0, alignment=ui.Alignment.RIGHT_CENTER)
+                    ui.Label(
+                        "Use Baseplate",
+                        width=100,
+                        height=0,
+                        alignment=ui.Alignment.RIGHT_CENTER,
+                    )
                     ui.CheckBox(model=self._use_baseplate_model, width=20, height=0)
-                    ui.Label("Show Connected Only", width=150, height=0, alignment=ui.Alignment.RIGHT_CENTER)
+                    ui.Label(
+                        "Show Connected Only",
+                        width=150,
+                        height=0,
+                        alignment=ui.Alignment.RIGHT_CENTER,
+                    )
                     ui.CheckBox(model=self._show_connected_only, width=20, height=0)
 
                 # Status line
@@ -61,6 +80,7 @@ class LegoStructuresBrowser:
         asyncio.ensure_future(self._load_dataset())
 
     def destroy(self) -> None:
+        """Destroy the structures browser window."""
         if self._window:
             self._window.destroy()
             self._window = None
@@ -106,7 +126,9 @@ class LegoStructuresBrowser:
                 if not use_baseplate and not item.all_connected_no_plate:
                     continue
             if filter_text is not None:
-                haystack = " ".join([item.category, item.model_id, item.caption, str(item.json_path)]).lower()
+                haystack = " ".join(
+                    [item.category, item.model_id, item.caption, str(item.json_path)]
+                ).lower()
                 if filter_text not in haystack:
                     continue
             visible.append(item)
@@ -128,7 +150,9 @@ class LegoStructuresBrowser:
             num_matches = len(matches)
             num_shown = len(shown)
 
-            self._set_status(f"{num_total} loaded, {num_matches} matches, showing {num_shown}")
+            self._set_status(
+                f"{num_total} loaded, {num_matches} matches, showing {num_shown}"
+            )
 
             if not shown:
                 ui.Label("No matches.", height=0)
@@ -138,7 +162,9 @@ class LegoStructuresBrowser:
                 ui.Spacer(width=5)
                 ui.Label("Category", width=80, height=0, ellipsize=True)
                 ui.Label("Model", width=240, height=0, ellipsize=True)
-                ui.Label("Bricks", width=50, height=0, alignment=ui.Alignment.RIGHT_CENTER)
+                ui.Label(
+                    "Bricks", width=50, height=0, alignment=ui.Alignment.RIGHT_CENTER
+                )
                 ui.Label("Caption", height=0, ellipsize=True)
 
             for idx, item in enumerate(shown):
@@ -150,9 +176,16 @@ class LegoStructuresBrowser:
                     ui.Rectangle(style={"background_color": bg_color})
                     with ui.HStack(spacing=8, height=0):
                         ui.Spacer(width=5)
-                        ui.Label(f"[{item.category}]", width=80, height=0, ellipsize=True)
+                        ui.Label(
+                            f"[{item.category}]", width=80, height=0, ellipsize=True
+                        )
                         ui.Label(item.model_id, width=240, height=0, ellipsize=True)
-                        ui.Label(str(item.num_bricks), width=50, height=0, alignment=ui.Alignment.RIGHT_CENTER)
+                        ui.Label(
+                            str(item.num_bricks),
+                            width=50,
+                            height=0,
+                            alignment=ui.Alignment.RIGHT_CENTER,
+                        )
                         ui.Label(item.caption, height=0, ellipsize=True)
 
                 def _on_single_click(x, y, button, modifiers, idx=idx):
@@ -215,7 +248,9 @@ class LegoStructuresBrowser:
                 base_plate_color=parse_color("Light Gray"),
             )
         except Exception as e:
-            carb.log_error(f"[LegoStructures] legolization_json_to_topology_json failed: {e}")
+            carb.log_error(
+                f"[LegoStructures] legolization_json_to_topology_json failed: {e}"
+            )
             self._set_status("Conversion to topology failed.")
             return
 
@@ -231,17 +266,25 @@ class LegoStructuresBrowser:
             self._set_status(f"Import failed: {e}")
             return
 
-        carb.log_info(f"[LegoStructures] Imported structure {item.category}/{item.model_id} from {item.json_path} into env_id={env_id}")
+        carb.log_info(
+            "[LegoStructures] Imported structure "
+            f"{item.category}/{item.model_id} from {item.json_path} "
+            f"into env_id={env_id}"
+        )
 
         workspace_path = get_env_path(env_id) + "/LegoWorkspace"
         try:
-            _, not_placed = arrange_parts_in_workspace(workspace_path, imported_parts, [1] * len(imported_parts))
+            _, not_placed = arrange_parts_in_workspace(
+                workspace_path, imported_parts, [1] * len(imported_parts)
+            )
         except Exception as exc:
             carb.log_warn(f"Failed to arrange parts in workspace: {exc}")
             self._set_status("Arrangement in workspace failed.")
             return
         if not_placed:
-            carb.log_warn(f"Could not place parts {not_placed} in workspace {workspace_path}")
+            carb.log_warn(
+                f"Could not place parts {not_placed} in workspace {workspace_path}"
+            )
             self._set_status("Some parts could not be placed in workspace.")
             return
 

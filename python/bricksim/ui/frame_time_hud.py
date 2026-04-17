@@ -1,7 +1,8 @@
+"""Viewport HUD integration for BrickSim frame-time profiling."""
+
 import carb.settings
 
 from bricksim.core import get_last_step_profiling
-
 
 SETTING_DISPLAY_LAST_STEP = "/persistent/bricksim/hud/displayLastStepProfiling"
 
@@ -29,8 +30,7 @@ def _install_viewport_fps_patch() -> None:
         should_skip = _ORIGINAL_VIEWPORT_FPS_SKIP_UPDATE(self, update_info)
         show_last_step = _display_last_step_enabled()
         toggle_changed = (
-            getattr(self, "_bricksim_show_last_step_enabled", None)
-            != show_last_step
+            getattr(self, "_bricksim_show_last_step_enabled", None) != show_last_step
         )
         self._bricksim_show_last_step_enabled = show_last_step
         if show_last_step or toggle_changed:
@@ -71,7 +71,10 @@ def _restore_viewport_fps_patch() -> None:
 
 
 class FrameTimeHudController:
+    """Register the BrickSim frame-time HUD menu item and viewport patch."""
+
     def __init__(self):
+        """Install the viewport FPS patch and menu item."""
         carb.settings.get_settings().set_default(SETTING_DISPLAY_LAST_STEP, False)
         _install_viewport_fps_patch()
 
@@ -90,6 +93,7 @@ class FrameTimeHudController:
             )
 
     def destroy(self):
+        """Unregister the menu item and restore the viewport FPS patch."""
         if self._menubar_display_inst is not None:
             self._menubar_display_inst.deregister_custom_category_item(
                 "Heads Up Display",

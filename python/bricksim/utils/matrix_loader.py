@@ -1,4 +1,4 @@
-# Python loader for matrices serialized by bricksim.utils.matrix_serialization
+"""Load matrices serialized by BrickSim matrix JSON helpers."""
 
 import base64
 import json
@@ -13,10 +13,11 @@ except Exception:  # pragma: no cover
 
 
 def load_matrix(obj: Union[str, Dict[str, Any]]):
-    """
-    Load a matrix serialized by bricksim::matrix_to_json(...) into:
+    """Load a matrix serialized by bricksim::matrix_to_json(...).
+
+    Loads into:
       - np.ndarray for dense
-      - scipy.sparse.csr_matrix / csc_matrix for sparse
+      - scipy.sparse.csr_matrix / csc_matrix for sparse.
 
     Accepts:
       - dict (already-parsed JSON)
@@ -26,6 +27,10 @@ def load_matrix(obj: Union[str, Dict[str, Any]]):
       - dtype strings like "<f8", "<i4", "<c16" are passed to numpy dtype directly.
       - Dense uses order "C" (row-major) or "F" (col-major).
       - Sparse requires SciPy installed.
+
+    Returns:
+        ``numpy.ndarray`` for dense matrices, or a SciPy sparse matrix for
+        sparse matrices.
     """
     j = json.loads(obj) if isinstance(obj, str) else obj
     kind = j.get("kind")
@@ -66,10 +71,16 @@ def load_matrix(obj: Union[str, Dict[str, Any]]):
 
     # basic consistency checks
     if data.size != nnz or indices.size != nnz:
-        raise ValueError(f"nnz mismatch: expected {nnz}, got data={data.size}, indices={indices.size}")
+        message = (
+            f"nnz mismatch: expected {nnz}, got data={data.size}, "
+            f"indices={indices.size}"
+        )
+        raise ValueError(message)
     expected_indptr = (shape[0] + 1) if fmt == "csr" else (shape[1] + 1)
     if indptr.size != expected_indptr:
-        raise ValueError(f"indptr length mismatch: expected {expected_indptr}, got {indptr.size}")
+        raise ValueError(
+            f"indptr length mismatch: expected {expected_indptr}, got {indptr.size}"
+        )
 
     # ensure arrays own their data (SciPy may keep references)
     data = np.array(data, copy=True)

@@ -1,3 +1,5 @@
+"""Load native breakage debug dumps for Python inspection."""
+
 import json
 from pathlib import Path
 from typing import Any, Union

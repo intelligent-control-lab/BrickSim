@@ -1,9 +1,9 @@
+"""Isaac Lab manager-based environment for the assemble-brick task."""
+
 import math
 from collections.abc import Sequence
-from pathlib import Path
 
 import torch
-
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
@@ -17,30 +17,52 @@ from isaaclab.envs.mdp import (
     root_height_below_minimum,
     time_out,
 )
-from isaaclab.envs.mdp.actions.actions_cfg import BinaryJointPositionActionCfg, DifferentialInverseKinematicsActionCfg
-from isaaclab.managers import EventTermCfg, ObservationGroupCfg, ObservationTermCfg, RewardTermCfg, SceneEntityCfg
-from isaaclab.managers import TerminationTermCfg
+from isaaclab.envs.mdp.actions.actions_cfg import (
+    BinaryJointPositionActionCfg,
+    DifferentialInverseKinematicsActionCfg,
+)
+from isaaclab.managers import (
+    EventTermCfg,
+    ObservationGroupCfg,
+    ObservationTermCfg,
+    RewardTermCfg,
+    SceneEntityCfg,
+    TerminationTermCfg,
+)
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import FrameTransformerCfg, OffsetCfg
-from isaaclab.sim import DomeLightCfg, GroundPlaneCfg, RigidBodyPropertiesCfg, UsdFileCfg
+from isaaclab.sim import (
+    DomeLightCfg,
+    GroundPlaneCfg,
+    RigidBodyPropertiesCfg,
+    UsdFileCfg,
+)
 from isaaclab.utils import configclass
 from isaaclab_assets import ISAAC_NUCLEUS_DIR
 from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG
-from isaaclab_tasks.manager_based.manipulation.lift.mdp.rewards import object_ee_distance
-from isaaclab_tasks.manager_based.manipulation.place.mdp.observations import object_poses_in_base_frame
+from isaaclab_tasks.manager_based.manipulation.lift.mdp.rewards import (
+    object_ee_distance,
+)
+from isaaclab_tasks.manager_based.manipulation.place.mdp.observations import (
+    object_poses_in_base_frame,
+)
 from isaaclab_tasks.manager_based.manipulation.stack.mdp import franka_stack_events
 from isaaclab_tasks.manager_based.manipulation.stack.mdp.observations import (
     ee_frame_pose_in_base_frame,
     gripper_pos,
 )
-from bricksim.mdp.connection_thresholds import configure_assembly_thresholds, configure_breakage_thresholds
+
+from bricksim.assets import FRANKA_ROBOT_USD_PATH
+from bricksim.mdp.connection_thresholds import (
+    configure_assembly_thresholds,
+    configure_breakage_thresholds,
+)
 from bricksim.mdp.events import (
     reset_bricksim_managed,
     reset_scene_to_default_no_kinematic_vel,
     reset_to_connected_pose,
 )
 from bricksim.mdp.spawn import BrickPartCfg, MarkerBrickPartCfg
-from bricksim.assets import FRANKA_ROBOT_USD_PATH
 
 from .expert import AssembleBrickExpert
 from .mdp.common import assemble_brick_goal_satisfied, wrong_connection_to_target
@@ -77,9 +99,13 @@ GOAL = AssembleBrickGoal(
 
 @configclass
 class SceneCfg(InteractiveSceneCfg):
+    """Scene assets for the assemble-brick task."""
+
     replicate_physics = False
 
-    robot: ArticulationCfg = FRANKA_PANDA_HIGH_PD_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+    robot: ArticulationCfg = FRANKA_PANDA_HIGH_PD_CFG.replace(
+        prim_path="{ENV_REGEX_NS}/Robot"
+    )
     robot.spawn.usd_path = str(FRANKA_ROBOT_USD_PATH)
     robot.spawn.variants = {"Physics": "Assemble"}
     robot.spawn.articulation_props.solver_position_iteration_count = 64
@@ -113,8 +139,12 @@ class SceneCfg(InteractiveSceneCfg):
 
     table = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Table",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5, 0, 0.003], rot=[0.707, 0, 0, 0.707]),
-        spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"),
+        init_state=AssetBaseCfg.InitialStateCfg(
+            pos=[0.5, 0, 0.003], rot=[0.707, 0, 0, 0.707]
+        ),
+        spawn=UsdFileCfg(
+            usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"
+        ),
     )
 
     ground_plane = AssetBaseCfg(
@@ -130,11 +160,15 @@ class SceneCfg(InteractiveSceneCfg):
 
     lego_baseplate: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Baseplate",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0)),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(0.5, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0)
+        ),
         spawn=BrickPartCfg(
             dimensions=[32, 32, 1],
             color="Dark Gray",
-            rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
+            rigid_props=RigidBodyPropertiesCfg(
+                kinematic_enabled=True, disable_gravity=True
+            ),
         ),
     )
 
@@ -143,7 +177,9 @@ class SceneCfg(InteractiveSceneCfg):
         spawn=BrickPartCfg(
             dimensions=[2, 4, 3],
             color="Pink",
-            rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=False, disable_gravity=False),
+            rigid_props=RigidBodyPropertiesCfg(
+                kinematic_enabled=False, disable_gravity=False
+            ),
         ),
     )
 
@@ -158,13 +194,19 @@ class SceneCfg(InteractiveSceneCfg):
 
 @configclass
 class ActionsCfg:
+    """Action terms for controlling the Franka arm and gripper."""
+
     arm_action = DifferentialInverseKinematicsActionCfg(
         asset_name="robot",
         joint_names=["panda_joint.*"],
         body_name="panda_hand",
-        controller=DifferentialIKControllerCfg(command_type="pose", use_relative_mode=True, ik_method="dls"),
+        controller=DifferentialIKControllerCfg(
+            command_type="pose", use_relative_mode=True, ik_method="dls"
+        ),
         scale=1.0,
-        body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.100]),
+        body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(
+            pos=[0.0, 0.0, 0.100]
+        ),
     )
 
     gripper_action = BinaryJointPositionActionCfg(
@@ -177,12 +219,20 @@ class ActionsCfg:
 
 @configclass
 class ObservationsCfg:
+    """Policy and critic observation groups for assemble-brick training."""
+
     @configclass
     class PolicyCfg(ObservationGroupCfg):
+        """Observation terms exposed to the policy."""
+
         joint_pos = ObservationTermCfg(func=joint_pos_rel)
         joint_vel = ObservationTermCfg(func=joint_vel_rel)
-        eef_pos = ObservationTermCfg(func=ee_frame_pose_in_base_frame, params={"return_key": "pos"})
-        eef_quat = ObservationTermCfg(func=ee_frame_pose_in_base_frame, params={"return_key": "quat"})
+        eef_pos = ObservationTermCfg(
+            func=ee_frame_pose_in_base_frame, params={"return_key": "pos"}
+        )
+        eef_quat = ObservationTermCfg(
+            func=ee_frame_pose_in_base_frame, params={"return_key": "quat"}
+        )
         gripper_pos = ObservationTermCfg(func=gripper_pos)
         brick_pos = ObservationTermCfg(
             func=object_poses_in_base_frame,
@@ -231,15 +281,22 @@ class ObservationsCfg:
         last_actions = ObservationTermCfg(func=last_action)
 
         def __post_init__(self):
+            """Finalize policy observation-group settings."""
             self.enable_corruption = False
             self.concatenate_terms = True
 
     @configclass
     class CriticCfg(ObservationGroupCfg):
+        """Observation terms exposed to the critic."""
+
         joint_pos = ObservationTermCfg(func=joint_pos_rel)
         joint_vel = ObservationTermCfg(func=joint_vel_rel)
-        eef_pos = ObservationTermCfg(func=ee_frame_pose_in_base_frame, params={"return_key": "pos"})
-        eef_quat = ObservationTermCfg(func=ee_frame_pose_in_base_frame, params={"return_key": "quat"})
+        eef_pos = ObservationTermCfg(
+            func=ee_frame_pose_in_base_frame, params={"return_key": "pos"}
+        )
+        eef_quat = ObservationTermCfg(
+            func=ee_frame_pose_in_base_frame, params={"return_key": "quat"}
+        )
         gripper_pos = ObservationTermCfg(func=gripper_pos)
         brick_pos = ObservationTermCfg(
             func=object_poses_in_base_frame,
@@ -307,10 +364,15 @@ class ObservationsCfg:
             },
         )
         gripper_open = ObservationTermCfg(func=gripper_is_open_obs)
-        captured_hole_to_eef_pos = ObservationTermCfg(func=captured_hole_to_eef_obs, params={"return_key": "pos"})
-        captured_hole_to_eef_quat = ObservationTermCfg(func=captured_hole_to_eef_obs, params={"return_key": "quat"})
+        captured_hole_to_eef_pos = ObservationTermCfg(
+            func=captured_hole_to_eef_obs, params={"return_key": "pos"}
+        )
+        captured_hole_to_eef_quat = ObservationTermCfg(
+            func=captured_hole_to_eef_obs, params={"return_key": "quat"}
+        )
 
         def __post_init__(self):
+            """Finalize critic observation-group settings."""
             self.enable_corruption = False
             self.concatenate_terms = True
 
@@ -320,6 +382,8 @@ class ObservationsCfg:
 
 @configclass
 class EventCfg:
+    """Event terms for resets and startup initialization."""
+
     reset_all = EventTermCfg(
         func=reset_scene_to_default_no_kinematic_vel,
         mode="reset",
@@ -329,7 +393,17 @@ class EventCfg:
         func=franka_stack_events.set_default_joint_pose,
         mode="startup",
         params={
-            "default_pose": [0.0444, -0.1894, -0.1107, -2.5148, 0.0044, 2.3775, 0.6952, 0.0400, 0.0400],
+            "default_pose": [
+                0.0444,
+                -0.1894,
+                -0.1107,
+                -2.5148,
+                0.0044,
+                2.3775,
+                0.6952,
+                0.0400,
+                0.0400,
+            ],
         },
     )
 
@@ -379,6 +453,8 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
+    """Reward terms for the assemble-brick task."""
+
     reach_brick = RewardTermCfg(
         func=object_ee_distance,
         params={"std": 0.08, "object_cfg": SceneEntityCfg("lego_brick")},
@@ -393,19 +469,31 @@ class RewardsCfg:
 
     lift_bonus = RewardTermCfg(
         func=lift_bonus_relative_to_target,
-        params={"object_cfg": SceneEntityCfg("lego_brick"), "target_cfg": SceneEntityCfg("marker_brick"), "lift_height": 0.03},
+        params={
+            "object_cfg": SceneEntityCfg("lego_brick"),
+            "target_cfg": SceneEntityCfg("marker_brick"),
+            "lift_height": 0.03,
+        },
         weight=2.0,
     )
 
     transport_xy = RewardTermCfg(
         func=object_transport_xy,
-        params={"std": 0.04, "object_cfg": SceneEntityCfg("lego_brick"), "target_cfg": SceneEntityCfg("marker_brick")},
+        params={
+            "std": 0.04,
+            "object_cfg": SceneEntityCfg("lego_brick"),
+            "target_cfg": SceneEntityCfg("marker_brick"),
+        },
         weight=4.0,
     )
 
     yaw_align = RewardTermCfg(
         func=object_yaw_align,
-        params={"std": 0.20, "object_cfg": SceneEntityCfg("lego_brick"), "target_cfg": SceneEntityCfg("marker_brick")},
+        params={
+            "std": 0.20,
+            "object_cfg": SceneEntityCfg("lego_brick"),
+            "target_cfg": SceneEntityCfg("marker_brick"),
+        },
         weight=2.0,
     )
 
@@ -463,6 +551,8 @@ class RewardsCfg:
 
 @configclass
 class TerminationsCfg:
+    """Termination terms for success, timeout, and failure states."""
+
     time_out = TerminationTermCfg(func=time_out, time_out=True)
 
     success = TerminationTermCfg(
@@ -498,6 +588,8 @@ class TerminationsCfg:
 
 @configclass
 class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
+    """Full Isaac Lab environment config for the assemble-brick task."""
+
     scene = SceneCfg(num_envs=16, env_spacing=2.5)
     observations = ObservationsCfg()
     actions = ActionsCfg()
@@ -508,6 +600,7 @@ class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
     curriculum = None
 
     def __post_init__(self):
+        """Finalize simulation, viewer, and gripper task settings."""
         configure_assembly_thresholds(enabled=True)
         configure_breakage_thresholds(enabled=False)
         self.sim.device = "cpu"
@@ -522,9 +615,14 @@ class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physx.friction_correlation_distance = 0.00625
 
         # IsaacLab viewer defaults for the assemble-brick task.
-        # Units: meters in world frame. The look-at point is inferred from the saved viewport pose.
+        # Units: meters in world frame. The look-at point is inferred from the
+        # saved viewport pose.
         self.viewer.eye = (0.86535, 0.47963, 0.24637)
-        self.viewer.lookat = (0.21471784579495856, -0.2155713921141228, -0.05919967178876398)
+        self.viewer.lookat = (
+            0.21471784579495856,
+            -0.2155713921141228,
+            -0.05919967178876398,
+        )
 
         self.gripper_joint_names = ["panda_finger_.*"]
         self.gripper_open_val = 0.04
@@ -532,9 +630,14 @@ class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
 
 
 class AssembleBrickEnv(ManagerBasedRLEnv):
+    """Manager-based RL environment with an attached scripted expert."""
+
     cfg: AssembleBrickEnvCfg
 
-    def __init__(self, cfg: AssembleBrickEnvCfg, render_mode: str | None = None, **kwargs):
+    def __init__(
+        self, cfg: AssembleBrickEnvCfg, render_mode: str | None = None, **kwargs
+    ):
+        """Initialize the environment and attach the assemble-brick expert."""
         super().__init__(cfg=cfg, render_mode=render_mode, **kwargs)
         self._expert = AssembleBrickExpert(
             self,
@@ -549,4 +652,9 @@ class AssembleBrickEnv(ManagerBasedRLEnv):
         self._expert.reset(env_ids)
 
     def compute_expert_actions(self) -> torch.Tensor:
+        """Compute one batched action tensor from the scripted expert.
+
+        Returns:
+            Expert actions with shape ``(num_envs, action_dim)``.
+        """
         return self._expert.compute_actions()

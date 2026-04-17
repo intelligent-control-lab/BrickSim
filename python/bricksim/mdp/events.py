@@ -1,12 +1,17 @@
-import torch
+"""Event terms for BrickSim-managed Isaac Lab environments."""
+
 from typing import Literal
 
 import isaaclab.utils.math as math_utils
+import torch
 from isaaclab.assets import RigidObject
 from isaaclab.envs import ManagerBasedEnv
 from isaaclab.managers import SceneEntityCfg
+
 from bricksim.core import compute_connection_transform, deallocate_all_managed
+
 from .utils import resolve_brick_rigid_object
+
 
 # TODO: clean up _interface_pose & _compute_visual_connection_transform
 def _interface_pose(
@@ -34,17 +39,33 @@ def _compute_visual_connection_transform(
     device: torch.device,
     dtype: torch.dtype,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    stud_if_pos, stud_if_quat = _interface_pose(stud_dimensions, "stud", device=device, dtype=dtype)
-    hole_if_pos, hole_if_quat = _interface_pose(hole_dimensions, "hole", device=device, dtype=dtype)
+    stud_if_pos, stud_if_quat = _interface_pose(
+        stud_dimensions, "stud", device=device, dtype=dtype
+    )
+    hole_if_pos, hole_if_quat = _interface_pose(
+        hole_dimensions, "hole", device=device, dtype=dtype
+    )
 
-    yaw_angle = torch.tensor([float(yaw) * (torch.pi / 2.0)], device=device, dtype=dtype)
+    yaw_angle = torch.tensor(
+        [float(yaw) * (torch.pi / 2.0)], device=device, dtype=dtype
+    )
     zero = torch.zeros_like(yaw_angle)
     si_hi_quat = math_utils.quat_from_euler_xyz(zero, zero, yaw_angle)
-    si_hi_pos = torch.tensor([[float(offset[0]) * 0.008, float(offset[1]) * 0.008, 0.0]], device=device, dtype=dtype)
+    si_hi_pos = torch.tensor(
+        [[float(offset[0]) * 0.008, float(offset[1]) * 0.008, 0.0]],
+        device=device,
+        dtype=dtype,
+    )
 
-    hole_inv_pos, hole_inv_quat = math_utils.subtract_frame_transforms(hole_if_pos, hole_if_quat)
-    stud_hi_pos, stud_hi_quat = math_utils.combine_frame_transforms(stud_if_pos, stud_if_quat, si_hi_pos, si_hi_quat)
-    return math_utils.combine_frame_transforms(stud_hi_pos, stud_hi_quat, hole_inv_pos, hole_inv_quat)
+    hole_inv_pos, hole_inv_quat = math_utils.subtract_frame_transforms(
+        hole_if_pos, hole_if_quat
+    )
+    stud_hi_pos, stud_hi_quat = math_utils.combine_frame_transforms(
+        stud_if_pos, stud_if_quat, si_hi_pos, si_hi_quat
+    )
+    return math_utils.combine_frame_transforms(
+        stud_hi_pos, stud_hi_quat, hole_inv_pos, hole_inv_quat
+    )
 
 
 def _rigid_object_is_kinematic(rigid_object: RigidObject) -> bool:
@@ -91,28 +112,45 @@ def reset_scene_to_default_no_kinematic_vel(
     env_ids: torch.Tensor,
     reset_joint_targets: bool = False,
 ) -> None:
-    """Reset the scene to defaults without writing PhysX velocities for kinematic rigid objects."""
+    """Reset the scene to defaults.
+
+    Avoid writing PhysX velocities for kinematic rigid objects.
+    """
     for rigid_object in env.scene.rigid_objects.values():
         default_root_state = rigid_object.data.default_root_state[env_ids].clone()
         default_root_state[:, 0:3] += env.scene.env_origins[env_ids]
         rigid_object.write_root_pose_to_sim(default_root_state[:, :7], env_ids=env_ids)
         if _rigid_object_is_kinematic(rigid_object):
-            _set_kinematic_root_velocity_cache(rigid_object, default_root_state[:, 7:], env_ids=env_ids)
+            _set_kinematic_root_velocity_cache(
+                rigid_object, default_root_state[:, 7:], env_ids=env_ids
+            )
         else:
-            rigid_object.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids=env_ids)
+            rigid_object.write_root_velocity_to_sim(
+                default_root_state[:, 7:], env_ids=env_ids
+            )
 
     for articulation_asset in env.scene.articulations.values():
         default_root_state = articulation_asset.data.default_root_state[env_ids].clone()
         default_root_state[:, 0:3] += env.scene.env_origins[env_ids]
-        articulation_asset.write_root_pose_to_sim(default_root_state[:, :7], env_ids=env_ids)
-        articulation_asset.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids=env_ids)
+        articulation_asset.write_root_pose_to_sim(
+            default_root_state[:, :7], env_ids=env_ids
+        )
+        articulation_asset.write_root_velocity_to_sim(
+            default_root_state[:, 7:], env_ids=env_ids
+        )
 
         default_joint_pos = articulation_asset.data.default_joint_pos[env_ids].clone()
         default_joint_vel = articulation_asset.data.default_joint_vel[env_ids].clone()
-        articulation_asset.write_joint_state_to_sim(default_joint_pos, default_joint_vel, env_ids=env_ids)
+        articulation_asset.write_joint_state_to_sim(
+            default_joint_pos, default_joint_vel, env_ids=env_ids
+        )
         if reset_joint_targets:
-            articulation_asset.set_joint_position_target(default_joint_pos, env_ids=env_ids)
-            articulation_asset.set_joint_velocity_target(default_joint_vel, env_ids=env_ids)
+            articulation_asset.set_joint_position_target(
+                default_joint_pos, env_ids=env_ids
+            )
+            articulation_asset.set_joint_velocity_target(
+                default_joint_vel, env_ids=env_ids
+            )
 
     for deformable_object in env.scene.deformable_objects.values():
         nodal_state = deformable_object.data.default_nodal_state_w[env_ids].clone()
@@ -179,7 +217,9 @@ def reset_to_connected_pose(
         yaw: BrickSim discrete yaw index, not radians.
     """
     if moved_side not in ("stud", "hole"):
-        raise ValueError(f"Unsupported moved_side '{moved_side}'. Expected 'stud' or 'hole'.")
+        raise ValueError(
+            f"Unsupported moved_side '{moved_side}'. Expected 'stud' or 'hole'."
+        )
 
     if env_ids.device.type != "cpu":
         env_id_values = [int(env_id) for env_id in env_ids.detach().cpu().tolist()]
@@ -194,8 +234,16 @@ def reset_to_connected_pose(
     reference_quat_w = reference_brick.data.root_quat_w[env_ids]
 
     if isinstance(moved, RigidObject):
-        stud_paths = reference_brick.root_physx_view.prim_paths if moved_side == "hole" else moved.root_physx_view.prim_paths
-        hole_paths = moved.root_physx_view.prim_paths if moved_side == "hole" else reference_brick.root_physx_view.prim_paths
+        stud_paths = (
+            reference_brick.root_physx_view.prim_paths
+            if moved_side == "hole"
+            else moved.root_physx_view.prim_paths
+        )
+        hole_paths = (
+            moved.root_physx_view.prim_paths
+            if moved_side == "hole"
+            else reference_brick.root_physx_view.prim_paths
+        )
         rel_quat_pos = [
             compute_connection_transform(
                 stud_path=stud_paths[env_id],
@@ -207,13 +255,27 @@ def reset_to_connected_pose(
             )
             for env_id in env_id_values
         ]
-        rel_quat = torch.tensor([quat_wxyz for quat_wxyz, _ in rel_quat_pos], device=reference_quat_w.device, dtype=reference_quat_w.dtype)
-        rel_pos = torch.tensor([pos_xyz for _, pos_xyz in rel_quat_pos], device=reference_pos_w.device, dtype=reference_pos_w.dtype)
+        rel_quat = torch.tensor(
+            [quat_wxyz for quat_wxyz, _ in rel_quat_pos],
+            device=reference_quat_w.device,
+            dtype=reference_quat_w.dtype,
+        )
+        rel_pos = torch.tensor(
+            [pos_xyz for _, pos_xyz in rel_quat_pos],
+            device=reference_pos_w.device,
+            dtype=reference_pos_w.dtype,
+        )
     elif all(hasattr(moved, attr) for attr in ("set_world_poses", "prim_paths")):
-        moved_dimensions = tuple(int(v) for v in getattr(env.scene.cfg, moved_cfg.name).spawn.dimensions)
-        reference_dimensions = tuple(int(v) for v in reference_brick.cfg.spawn.dimensions)
+        moved_dimensions = tuple(
+            int(v) for v in getattr(env.scene.cfg, moved_cfg.name).spawn.dimensions
+        )
+        reference_dimensions = tuple(
+            int(v) for v in reference_brick.cfg.spawn.dimensions
+        )
         stud_dimensions, hole_dimensions = (
-            (reference_dimensions, moved_dimensions) if moved_side == "hole" else (moved_dimensions, reference_dimensions)
+            (reference_dimensions, moved_dimensions)
+            if moved_side == "hole"
+            else (moved_dimensions, reference_dimensions)
         )
         rel_pos, rel_quat = _compute_visual_connection_transform(
             stud_dimensions,
@@ -227,7 +289,8 @@ def reset_to_connected_pose(
         rel_quat = rel_quat.expand(len(env_id_values), -1)
     else:
         raise TypeError(
-            f"Scene entity '{moved_cfg.name}' must resolve to a RigidObject or Xform-like view, got {type(moved)}"
+            f"Scene entity '{moved_cfg.name}' must resolve to a RigidObject "
+            f"or Xform-like view, got {type(moved)}"
         )
 
     if moved_side == "hole":
@@ -235,7 +298,9 @@ def reset_to_connected_pose(
             reference_pos_w, reference_quat_w, rel_pos, rel_quat
         )
     else:
-        rel_inv_pos, rel_inv_quat = math_utils.subtract_frame_transforms(rel_pos, rel_quat)
+        rel_inv_pos, rel_inv_quat = math_utils.subtract_frame_transforms(
+            rel_pos, rel_quat
+        )
         target_pos_w, target_quat_w = math_utils.combine_frame_transforms(
             reference_pos_w, reference_quat_w, rel_inv_pos, rel_inv_quat
         )
@@ -243,7 +308,11 @@ def reset_to_connected_pose(
     if isinstance(moved, RigidObject):
         root_pose = torch.cat([target_pos_w, target_quat_w], dim=-1)
         moved.write_root_pose_to_sim(root_pose, env_ids=env_ids)
-        zero_vel = torch.zeros((root_pose.shape[0], 6), device=root_pose.device, dtype=root_pose.dtype)
+        zero_vel = torch.zeros(
+            (root_pose.shape[0], 6), device=root_pose.device, dtype=root_pose.dtype
+        )
         moved.write_root_velocity_to_sim(zero_vel, env_ids=env_ids)
     else:
-        moved.set_world_poses(positions=target_pos_w, orientations=target_quat_w, indices=env_id_values)
+        moved.set_world_poses(
+            positions=target_pos_w, orientations=target_quat_w, indices=env_id_values
+        )

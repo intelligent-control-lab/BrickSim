@@ -1,13 +1,21 @@
+"""Spawner configs for BrickSim LEGO brick assets."""
+
 from dataclasses import MISSING
 from typing import Callable
 
-from bricksim.core import allocate_unmanaged_brick_part
-from bricksim.colors import parse_color
-from isaaclab.sim import (RigidBodyPropertiesCfg, SpawnerCfg, clone,
-                          get_current_stage, modify_rigid_body_properties)
+from isaaclab.sim import (
+    RigidBodyPropertiesCfg,
+    SpawnerCfg,
+    clone,
+    get_current_stage,
+    modify_rigid_body_properties,
+)
 from isaaclab.utils import configclass
 from isaacsim.core.utils.xforms import reset_and_set_xform_ops
 from pxr import Gf, Usd, UsdGeom
+
+from bricksim.colors import parse_color
+from bricksim.core import allocate_unmanaged_brick_part
 
 
 def _reset_brick_xform_ops(
@@ -18,23 +26,35 @@ def _reset_brick_xform_ops(
     xformable = UsdGeom.Xformable(prim)
     local_transform = Gf.Transform(xformable.GetLocalTransformation())
     resolved_translation = (
-        Gf.Vec3d(local_transform.GetTranslation()) if translation is None else Gf.Vec3d(*translation)
+        Gf.Vec3d(local_transform.GetTranslation())
+        if translation is None
+        else Gf.Vec3d(*translation)
     )
     resolved_orientation = (
         # BrickSim spawn inputs use WXYZ quaternions here.
-        Gf.Quatd(local_transform.GetRotation().GetQuat()) if orientation is None else Gf.Quatd(*orientation)
+        Gf.Quatd(local_transform.GetRotation().GetQuat())
+        if orientation is None
+        else Gf.Quatd(*orientation)
     )
     resolved_scale = Gf.Vec3d(local_transform.GetScale())
-    reset_and_set_xform_ops(prim, resolved_translation, resolved_orientation, resolved_scale)
+    reset_and_set_xform_ops(
+        prim, resolved_translation, resolved_orientation, resolved_scale
+    )
+
 
 @clone
 def spawn_brick_part(
     prim_path: str,
-    cfg: 'BrickPartCfg',
+    cfg: "BrickPartCfg",
     translation: tuple[float, float, float] | None = None,
     orientation: tuple[float, float, float, float] | None = None,
     **kwargs,
 ) -> Usd.Prim:
+    """Spawn or update a native BrickSim rigid brick part.
+
+    Returns:
+        USD prim for the spawned brick part.
+    """
     stage = get_current_stage()
     prim: Usd.Prim = stage.GetPrimAtPath(prim_path)
     if isinstance(cfg.color, str):
@@ -51,8 +71,11 @@ def spawn_brick_part(
         modify_rigid_body_properties(prim_path, cfg.rigid_props)
     return prim
 
+
 @configclass
 class BrickPartCfg(SpawnerCfg):
+    """Spawner config for a physical BrickSim brick part."""
+
     func: Callable = spawn_brick_part
     dimensions: tuple[int, int, int] = MISSING
     color: str | tuple[int, int, int] = MISSING
@@ -80,18 +103,30 @@ def _build_marker_wireframe_points(dimensions: tuple[int, int, int]) -> list[Gf.
     p011 = Gf.Vec3f(x0, y1, z1)
 
     return [
-        p000, p100,
-        p100, p110,
-        p110, p010,
-        p010, p000,
-        p001, p101,
-        p101, p111,
-        p111, p011,
-        p011, p001,
-        p000, p001,
-        p100, p101,
-        p110, p111,
-        p010, p011,
+        p000,
+        p100,
+        p100,
+        p110,
+        p110,
+        p010,
+        p010,
+        p000,
+        p001,
+        p101,
+        p101,
+        p111,
+        p111,
+        p011,
+        p011,
+        p001,
+        p000,
+        p001,
+        p100,
+        p101,
+        p110,
+        p111,
+        p010,
+        p011,
     ]
 
 
@@ -105,7 +140,8 @@ def _configure_marker_curves(
     existing = stage.GetPrimAtPath(curves_path)
     if existing.IsValid() and existing.GetTypeName() != "BasisCurves":
         raise RuntimeError(
-            f"Cannot create marker wireframe at '{curves_path}': existing child has type '{existing.GetTypeName()}'."
+            f"Cannot create marker wireframe at '{curves_path}': existing "
+            f"child has type '{existing.GetTypeName()}'."
         )
     curves = UsdGeom.BasisCurves.Define(stage, curves_path)
 
@@ -123,11 +159,16 @@ def _configure_marker_curves(
 @clone
 def spawn_marker_brick_part(
     prim_path: str,
-    cfg: 'MarkerBrickPartCfg',
+    cfg: "MarkerBrickPartCfg",
     translation: tuple[float, float, float] | None = None,
     orientation: tuple[float, float, float, float] | None = None,
     **kwargs,
 ) -> Usd.Prim:
+    """Spawn or update a visual marker brick wireframe.
+
+    Returns:
+        USD prim for the marker brick.
+    """
     stage = get_current_stage()
     prim: Usd.Prim = stage.GetPrimAtPath(prim_path)
     if isinstance(cfg.color, str):
@@ -145,6 +186,8 @@ def spawn_marker_brick_part(
 
 @configclass
 class MarkerBrickPartCfg(SpawnerCfg):
+    """Spawner config for a non-physical marker brick wireframe."""
+
     func: Callable = spawn_marker_brick_part
     dimensions: tuple[int, int, int] = MISSING
     color: str | tuple[int, int, int] = MISSING

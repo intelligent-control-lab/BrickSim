@@ -1,9 +1,19 @@
+"""USD parsing helpers for BrickSim prim metadata."""
+
 from typing import Optional
-from pxr import Gf, Usd
+
 from isaacsim.core.utils.stage import get_current_stage
+from pxr import Gf, Usd
+
 
 def get_env_path(env_id: int) -> str:
+    """Return the USD root path for a BrickSim environment id.
+
+    Returns:
+        ``/World`` for the default env, otherwise the Isaac Lab env path.
+    """
     return "/World" if env_id == -1 else f"/World/envs/env_{env_id}"
+
 
 def get_brick_dimensions(brick_path: str) -> tuple[int, int, int] | None:
     """Get the dimensions of a brick part.
@@ -29,7 +39,10 @@ def get_brick_dimensions(brick_path: str) -> tuple[int, int, int] | None:
     height = int(dimensions_gf[2])
     return (length, width, height)
 
-def parse_connection_prim(prim: Usd.Prim) -> Optional[tuple[str, int, str, int, tuple[int, int], int]]:
+
+def parse_connection_prim(
+    prim: Usd.Prim,
+) -> Optional[tuple[str, int, str, int, tuple[int, int], int]]:
     """Parse a LegoConnection prim.
 
     Args:

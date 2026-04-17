@@ -1,6 +1,13 @@
+"""Configuration helpers for native BrickSim connection thresholds."""
+
 import math
 
-from bricksim.core import AssemblyThresholds, BreakageThresholds, set_assembly_thresholds, set_breakage_thresholds
+from bricksim.core import (
+    AssemblyThresholds,
+    BreakageThresholds,
+    set_assembly_thresholds,
+    set_breakage_thresholds,
+)
 
 
 def configure_assembly_thresholds(

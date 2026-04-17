@@ -1,19 +1,29 @@
+"""CLI for converting supported LEGO structure formats to topology JSON."""
+
 import argparse
 import json
 from pathlib import Path
 
-from bricksim.importers.legolization import is_legolization_json
-from bricksim.importers.legolization import legolization_json_to_topology_json
-from bricksim.importers.stabletext2brick import bricks_text_to_topology_json
-from bricksim.importers.stabletext2brick import is_bricks_text
+from bricksim.importers.legolization import (
+    is_legolization_json,
+    legolization_json_to_topology_json,
+)
+from bricksim.importers.stabletext2brick import (
+    bricks_text_to_topology_json,
+    is_bricks_text,
+)
 
 
 def _build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Convert legolization or StableText2Brick JSON to topology JSON."
     )
-    parser.add_argument("--input", type=Path, required=True, help="Input legolization JSON file")
-    parser.add_argument("--output", type=Path, required=True, help="Output topology JSON file")
+    parser.add_argument(
+        "--input", type=Path, required=True, help="Input legolization JSON file"
+    )
+    parser.add_argument(
+        "--output", type=Path, required=True, help="Output topology JSON file"
+    )
     parser.add_argument(
         "--format",
         choices=["auto", "legolization", "stabletext2brick"],
@@ -52,6 +62,11 @@ def _detect_input_format(input_text: str, requested_format: str) -> str:
 
 
 def main() -> int:
+    """Run the topology conversion command.
+
+    Returns:
+        Process exit code.
+    """
     args = _build_argument_parser().parse_args()
     include_baseplate, baseplate_size = _parse_baseplate(args.baseplate)
 

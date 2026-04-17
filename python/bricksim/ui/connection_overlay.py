@@ -1,31 +1,43 @@
+"""Viewport overlay for visualizing BrickSim connection utilization."""
+
 import traceback
+from dataclasses import dataclass
+
 import carb.settings
 import omni.kit.app
 import omni.ui
 import omni.usd
-from dataclasses import dataclass
 from omni.kit.viewport.registry import RegisterScene
-from pxr import Gf, Usd, UsdGeom
+from pxr import Gf, UsdGeom
+
 from bricksim.core import compute_connection_local_transform, get_connection_utilization
 from bricksim.utils.usd_parse import parse_connection_prim
 
 SETTING_DISPLAY_CONNECTIONS = "/persistent/bricksim/visualizationDisplayConnections"
 
+
 class _YieldToOtherGestures(omni.ui.scene.GestureManager):
     def __init__(self):
         super().__init__()
+
     def can_be_prevented(self, _):
         return True
+
     def should_prevent(self, _, preventer):
-        if preventer.state == omni.ui.scene.GestureState.BEGAN or preventer.state == omni.ui.scene.GestureState.CHANGED:
+        if (
+            preventer.state == omni.ui.scene.GestureState.BEGAN
+            or preventer.state == omni.ui.scene.GestureState.CHANGED
+        ):
             return True
         return False
+
 
 @dataclass
 class _VisualizedConnection:
     root: omni.ui.scene.Transform
     utilization_arc: omni.ui.scene.Arc
     highlight_arc: omni.ui.scene.Arc
+
 
 class _ConnectionOverlayManipulator(omni.ui.scene.Manipulator):
     def __init__(self, usd_context):
@@ -51,13 +63,20 @@ class _ConnectionOverlayManipulator(omni.ui.scene.Manipulator):
         if not stud_prim.IsValid():
             return None
         try:
-            (_, stud_pos_m), (_, _) = compute_connection_local_transform(stud_path=stud_path_str, stud_if=stud_if, hole_path=hole_path_str, hole_if=hole_if, offset=offset, yaw=yaw)
+            (_, stud_pos_m), (_, _) = compute_connection_local_transform(
+                stud_path=stud_path_str,
+                stud_if=stud_if,
+                hole_path=hole_path_str,
+                hole_if=hole_if,
+                offset=offset,
+                yaw=yaw,
+            )
         except Exception:
             traceback.print_exc()
             return None
-        T_W_stud = self._xform_cache.GetLocalToWorldTransform(stud_prim)
-        p_W = T_W_stud.Transform(Gf.Vec3d(*stud_pos_m) / mpu)
-        return float(p_W[0]), float(p_W[1]), float(p_W[2])
+        t_w_stud = self._xform_cache.GetLocalToWorldTransform(stud_prim)
+        p_w = t_w_stud.Transform(Gf.Vec3d(*stud_pos_m) / mpu)
+        return float(p_w[0]), float(p_w[1]), float(p_w[2])
 
     def _get_conn_utilization_color(self, conn_path: str) -> str:
         try:
@@ -87,15 +106,37 @@ class _ConnectionOverlayManipulator(omni.ui.scene.Manipulator):
         color_hex = self._get_conn_utilization_color(path)
         mouse_down_gesture = omni.ui.scene.DragGesture(
             mouse_button=0,
-            on_began_fn=lambda _: self._usd_context.get_selection().set_selected_prim_paths([path], True),
+            on_began_fn=lambda _: (
+                self._usd_context.get_selection().set_selected_prim_paths([path], True)
+            ),
             manager=self._gesture_manager,
         )
-        root = omni.ui.scene.Transform(transform=omni.ui.scene.Matrix44.get_translation_matrix(x, y, z))
+        root = omni.ui.scene.Transform(
+            transform=omni.ui.scene.Matrix44.get_translation_matrix(x, y, z)
+        )
         with root:
-            with omni.ui.scene.Transform(scale_to=omni.ui.scene.Space.SCREEN, look_at=omni.ui.scene.Transform.LookAt.CAMERA):
-                utilization_arc = omni.ui.scene.Arc(radius=12.0, color=omni.ui.color(color_hex), wireframe=True, thickness=2.0)
-                highlight_arc = omni.ui.scene.Arc(radius=15.0, color=omni.ui.color("#00ffff88"), wireframe=True, thickness=6.0, visible=self._is_selected(path))
-                omni.ui.scene.Arc(radius=12.0, color=omni.ui.color("#00000000"), gesture=[mouse_down_gesture])
+            with omni.ui.scene.Transform(
+                scale_to=omni.ui.scene.Space.SCREEN,
+                look_at=omni.ui.scene.Transform.LookAt.CAMERA,
+            ):
+                utilization_arc = omni.ui.scene.Arc(
+                    radius=12.0,
+                    color=omni.ui.color(color_hex),
+                    wireframe=True,
+                    thickness=2.0,
+                )
+                highlight_arc = omni.ui.scene.Arc(
+                    radius=15.0,
+                    color=omni.ui.color("#00ffff88"),
+                    wireframe=True,
+                    thickness=6.0,
+                    visible=self._is_selected(path),
+                )
+                omni.ui.scene.Arc(
+                    radius=12.0,
+                    color=omni.ui.color("#00000000"),
+                    gesture=[mouse_down_gesture],
+                )
         return _VisualizedConnection(root, utilization_arc, highlight_arc)
 
     def update_overlay(self):
@@ -160,17 +201,29 @@ class _ConnectionOverlayManipulator(omni.ui.scene.Manipulator):
             if item is not None:
                 self._items[path] = item
 
+
 class ConnectionOverlayScene:
+    """Viewport scene registered for BrickSim connection overlays."""
+
     def __init__(self, desc: dict):
+        """Create the overlay scene for one USD context."""
         self.visible = True
         self.categories = ()
         self.name = "bricksim.connection_overlay"
         self._usd_context = omni.usd.get_context(desc.get("usd_context_name"))
         self._manipulator = _ConnectionOverlayManipulator(self._usd_context)
-        self._update_sub =  omni.kit.app.get_app().get_update_event_stream().create_subscription_to_pop(self._on_update)
-        self._selection_sub = self._usd_context.get_stage_event_stream().create_subscription_to_pop_by_type(omni.usd.StageEventType.SELECTION_CHANGED, self._on_selection_changed)
+        self._update_sub = (
+            omni.kit.app.get_app()
+            .get_update_event_stream()
+            .create_subscription_to_pop(self._on_update)
+        )
+        stage_event_stream = self._usd_context.get_stage_event_stream()
+        self._selection_sub = stage_event_stream.create_subscription_to_pop_by_type(
+            omni.usd.StageEventType.SELECTION_CHANGED, self._on_selection_changed
+        )
 
     def destroy(self):
+        """Unsubscribe from viewport events and release the manipulator."""
         if self._update_sub is not None:
             self._update_sub.unsubscribe()
             self._update_sub = None
@@ -187,25 +240,39 @@ class ConnectionOverlayScene:
         if self._manipulator is not None:
             self._manipulator.on_selection_changed()
 
+
 class ConnectionOverlayController:
+    """Register the connection overlay and menubar display toggle."""
+
     def __init__(self):
-        self._viewport_overlay_registry = RegisterScene(ConnectionOverlayScene, "bricksim.connection_overlay")
+        """Initialize viewport overlay registration and menu integration."""
+        self._viewport_overlay_registry = RegisterScene(
+            ConnectionOverlayScene, "bricksim.connection_overlay"
+        )
         self._menubar_display_inst = None
         self._custom_item = None
         try:
             from omni.kit.viewport.menubar.core import CategoryStateItem
             from omni.kit.viewport.menubar.display import get_instance
+
             self._menubar_display_inst = get_instance()
-            self._custom_item = CategoryStateItem("LEGO Connections", setting_path=SETTING_DISPLAY_CONNECTIONS)
-            self._menubar_display_inst.register_custom_category_item("Show By Type", self._custom_item)
+            self._custom_item = CategoryStateItem(
+                "LEGO Connections", setting_path=SETTING_DISPLAY_CONNECTIONS
+            )
+            self._menubar_display_inst.register_custom_category_item(
+                "Show By Type", self._custom_item
+            )
         except Exception:
             traceback.print_exc()
             self._menubar_display_inst = None
             self._custom_item = None
 
     def destroy(self):
+        """Remove the viewport overlay and menu integration."""
         if self._menubar_display_inst is not None and self._custom_item is not None:
-            self._menubar_display_inst.deregister_custom_category_item("Show By Type", self._custom_item)
+            self._menubar_display_inst.deregister_custom_category_item(
+                "Show By Type", self._custom_item
+            )
         self._menubar_display_inst = None
         self._custom_item = None
         if self._viewport_overlay_registry is not None:

@@ -1,13 +1,16 @@
+"""Current connection-state queries for BrickSim MDP terms."""
+
 from dataclasses import dataclass, field
 from typing import cast
 
 import torch
+from isaaclab.envs import ManagerBasedRLEnv
+from isaaclab.managers import SceneEntityCfg
+
+from bricksim.core import lookup_physics_connection
 
 from .cache_token import ResetAwareCacheToken
 from .utils import resolve_brick_rigid_object
-from bricksim.core import lookup_physics_connection
-from isaaclab.envs import ManagerBasedRLEnv
-from isaaclab.managers import SceneEntityCfg
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +55,11 @@ class InterfacePairConnectionQuery:
         stud_if: int,
         hole_if: int,
     ) -> "InterfacePairConnectionQuery":
-        """Construct a query from Isaac Lab scene-entity configs."""
+        """Construct a query from Isaac Lab scene-entity configs.
+
+        Returns:
+            Query keyed by scene entity names and interface ids.
+        """
         return cls(
             stud_name=stud_cfg.name,
             hole_name=hole_cfg.name,
@@ -63,10 +70,11 @@ class InterfacePairConnectionQuery:
 
 @dataclass(slots=True)
 class InterfacePairConnectionState:
-    """Current physics connection state for one fixed brick-interface query across all environments.
+    """Current physics state for one fixed brick-interface query.
 
     This object represents the result of querying a single interface pair
     ``query`` against the current physics state of a vectorized environment.
+    The state is batched across all environments.
 
     The query endpoints are scene entities that must resolve to BrickSim brick
     rigid objects, i.e. runtime assets accepted by
@@ -105,7 +113,9 @@ class _ConnectionStateCache:
     """Per-environment cache for interface-pair connection-state queries."""
 
     token: ResetAwareCacheToken | None = None
-    by_query: dict[InterfacePairConnectionQuery, InterfacePairConnectionState] = field(default_factory=dict)
+    by_query: dict[InterfacePairConnectionQuery, InterfacePairConnectionState] = field(
+        default_factory=dict
+    )
 
 
 def _connection_state_cache(env: ManagerBasedRLEnv) -> _ConnectionStateCache:
@@ -120,7 +130,7 @@ def interface_pair_connection_state(
     env: ManagerBasedRLEnv,
     query: InterfacePairConnectionQuery,
 ) -> InterfacePairConnectionState:
-    """Query and cache the current physics connection state for one brick interface pair.
+    """Query and cache current physics state for one brick interface pair.
 
     The returned state is batched over all vectorized environments. For a
     given query, the result is cached until either:
@@ -133,6 +143,9 @@ def interface_pair_connection_state(
     lazily instrumenting ``env._reset_idx`` through
     :class:`ResetAwareCacheToken`. This is slightly awkward, but it avoids
     requiring every task env to wire explicit cache invalidation events.
+
+    Returns:
+        Current connection state for the queried interface pair.
     """
     cache = _connection_state_cache(env)
     if cache.token is None or not cache.token.matches_env(env):
@@ -150,7 +163,9 @@ def interface_pair_connection_state(
     offsets = torch.zeros((env.num_envs, 2), device=env.device, dtype=torch.long)
     yaws = torch.full((env.num_envs,), -1, device=env.device, dtype=torch.long)
 
-    for env_id, (stud_path, hole_path) in enumerate(zip(stud_paths, hole_paths, strict=True)):
+    for env_id, (stud_path, hole_path) in enumerate(
+        zip(stud_paths, hole_paths, strict=True)
+    ):
         info = lookup_physics_connection(
             stud_path=stud_path,
             stud_if=query.stud_if,
@@ -163,6 +178,8 @@ def interface_pair_connection_state(
         offsets[env_id] = torch.tensor(info.offset, device=env.device, dtype=torch.long)
         yaws[env_id] = info.yaw
 
-    state = InterfacePairConnectionState(query=query, connected=connected, offsets=offsets, yaws=yaws)
+    state = InterfacePairConnectionState(
+        query=query, connected=connected, offsets=offsets, yaws=yaws
+    )
     cache.by_query[query] = state
     return state

@@ -1,3 +1,5 @@
+"""Assemble-brick task environment package."""
+
 # Register the environment with Gym
 
 import gymnasium as _gym

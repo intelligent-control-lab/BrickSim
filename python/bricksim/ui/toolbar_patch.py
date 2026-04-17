@@ -1,5 +1,6 @@
-import carb
+"""Toolbar patches for BrickSim connected-component selection."""
 
+import carb
 
 # Engine-facing picking mode (used by omni.usd and others).
 _ENGINE_PICKING_MODE_SETTING = "/persistent/app/viewport/pickingMode"
@@ -22,9 +23,9 @@ _engine_to_ui_bridge_active = False
 
 
 def _redirect_select_mode_model():
-    """
-    Redirect SelectModeModel to watch and write a UI-specific setting key
-    instead of the engine-facing '/persistent/app/viewport/pickingMode'.
+    """Redirect SelectModeModel to watch and write a UI-specific setting key.
+
+    Use this instead of the engine-facing '/persistent/app/viewport/pickingMode'.
 
     This allows us to store our synthetic LEGO placeholder in the UI setting,
     while we keep the engine setting always valid and parseable for omni.usd.
@@ -43,10 +44,10 @@ def _redirect_select_mode_model():
 
 
 def _install_bridges():
-    """
-    Install bridging between the UI pickingMode setting and the engine
-    pickingMode setting. All toolbar UI reads/writes go through the UI key,
-    and we propagate changes to the engine key (and vice versa) while
+    """Install bridges between UI and engine pickingMode settings.
+
+    All toolbar UI reads/writes go through the UI key, and we propagate changes
+    to the engine key (and vice versa) while
     translating the LEGO placeholder into a valid engine value.
     """
     global _ui_to_engine_bridge_active, _engine_to_ui_bridge_active
@@ -120,12 +121,14 @@ def _install_bridges():
             _engine_to_ui_bridge_active = False
 
     settings.subscribe_to_node_change_events(_UI_PICKING_MODE_SETTING, on_ui_change)
-    settings.subscribe_to_node_change_events(_ENGINE_PICKING_MODE_SETTING, on_engine_change)
+    settings.subscribe_to_node_change_events(
+        _ENGINE_PICKING_MODE_SETTING, on_engine_change
+    )
 
 
 def _patch_select_button_group():
-    """
-    Patch SelectButtonGroup to:
+    """Patch SelectButtonGroup.
+
     - add a 'Connected Component' entry in the Select Mode menu that uses the
       synthetic LEGO placeholder value, and
     - use a dedicated icon name and tooltip for that mode based on the
@@ -133,16 +136,16 @@ def _patch_select_button_group():
     """
     from omni.kit.widget.options_menu import (
         OptionItem,
-        OptionSeparator,
         OptionRadios,
+        OptionSeparator,
         OptionsModel,
+    )
+    from omni.kit.widget.toolbar.builtin_tools.models.select_mode_model import (
+        SelectModeModel,
     )
     from omni.kit.widget.toolbar.builtin_tools.select_button_group import (
         LIGHT_TYPES,
         SelectButtonGroup,
-    )
-    from omni.kit.widget.toolbar.builtin_tools.models.select_mode_model import (
-        SelectModeModel,
     )
 
     if getattr(SelectButtonGroup, "_lego_cc_patched", False):
@@ -260,9 +263,9 @@ def _patch_select_button_group():
 
 
 def _rebuild_select_button_group():
-    """
-    Rebuild the SelectButtonGroup instance on the main toolbar so that it
-    picks up our patched SelectModeModel and menu definitions.
+    """Rebuild the SelectButtonGroup instance on the main toolbar.
+
+    Make it pick up our patched SelectModeModel and menu definitions.
 
     We intentionally avoid calling `clean()` on the old group here: doing so
     while the UI is live can invalidate models that omni.ui ToolButtons still
@@ -293,9 +296,9 @@ def _rebuild_select_button_group():
 
 
 def install_toolbar_patches():
-    """
-    Entry point invoked from our extension startup to patch the Isaac toolbar
-    at runtime. Safe to call multiple times.
+    """Entry point invoked from our extension startup.
+
+    Patch the Isaac toolbar at runtime. Safe to call multiple times.
     """
     _redirect_select_mode_model()
     _install_bridges()

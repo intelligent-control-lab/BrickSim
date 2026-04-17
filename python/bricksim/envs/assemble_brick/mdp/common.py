@@ -1,15 +1,25 @@
-import torch
+"""Shared MDP helpers for assemble-brick observations, rewards, and terms."""
 
+import torch
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import quat_error_magnitude
 
-from bricksim.mdp.connection_state import InterfacePairConnectionQuery, interface_pair_connection_state
+from bricksim.mdp.connection_state import (
+    InterfacePairConnectionQuery,
+    interface_pair_connection_state,
+)
 
 
 def marker_pose_w(
     env,
     marker_cfg: SceneEntityCfg = SceneEntityCfg("marker_brick"),
 ) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return marker world poses as tensors.
+
+    Returns:
+        Tuple of world positions ``(num_envs, 3)`` and quaternions
+        ``(num_envs, 4)``.
+    """
     marker = env.scene[marker_cfg.name]
     pos_w, quat_w = marker.get_world_poses(indices=list(range(env.num_envs)))
     dtype = env.scene.env_origins.dtype
@@ -19,12 +29,23 @@ def marker_pose_w(
     )
 
 
-def gripper_is_open(env, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def gripper_is_open(
+    env, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Return a mask indicating whether the gripper is open.
+
+    Returns:
+        Boolean tensor with shape ``(num_envs,)``.
+    """
     robot = env.scene[robot_cfg.name]
     joint_ids, _ = robot.find_joints(env.cfg.gripper_joint_names)
     joint_pos = robot.data.joint_pos[:, joint_ids]
-    open_val = torch.tensor(env.cfg.gripper_open_val, device=env.device, dtype=joint_pos.dtype)
-    return torch.all(torch.abs(joint_pos - open_val) <= env.cfg.gripper_threshold, dim=1)
+    open_val = torch.tensor(
+        env.cfg.gripper_open_val, device=env.device, dtype=joint_pos.dtype
+    )
+    return torch.all(
+        torch.abs(joint_pos - open_val) <= env.cfg.gripper_threshold, dim=1
+    )
 
 
 def object_marker_pose_alignment(
@@ -32,6 +53,11 @@ def object_marker_pose_alignment(
     object_cfg: SceneEntityCfg,
     target_cfg: SceneEntityCfg,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Compute object pose error relative to the marker target.
+
+    Returns:
+        Position delta, XY distance, and quaternion angular error.
+    """
     object = env.scene[object_cfg.name]
     target_pos_w, target_quat_w = marker_pose_w(env, target_cfg)
     pos_delta = object.data.root_pos_w - target_pos_w
@@ -49,6 +75,11 @@ def connection_target_match(
     object_cfg: SceneEntityCfg,
     stud_cfg: SceneEntityCfg = SceneEntityCfg("lego_baseplate"),
 ) -> torch.Tensor:
+    """Return whether the queried connection matches the target placement.
+
+    Returns:
+        Boolean tensor with shape ``(num_envs,)``.
+    """
     connection_state = interface_pair_connection_state(
         env,
         InterfacePairConnectionQuery.make(
@@ -75,6 +106,11 @@ def wrong_connection_to_target(
     object_cfg: SceneEntityCfg,
     stud_cfg: SceneEntityCfg = SceneEntityCfg("lego_baseplate"),
 ) -> torch.Tensor:
+    """Return whether the object is connected at a non-target placement.
+
+    Returns:
+        Boolean tensor with shape ``(num_envs,)``.
+    """
     connection_state = interface_pair_connection_state(
         env,
         InterfacePairConnectionQuery.make(
@@ -105,6 +141,11 @@ def assemble_brick_goal_satisfied(
     pos_tol: float = 0.002,
     rot_tol: float = 0.08726646259971647,
 ) -> torch.Tensor:
+    """Return whether the target assembly goal is satisfied.
+
+    Returns:
+        Boolean tensor with shape ``(num_envs,)``.
+    """
     target_match = connection_target_match(
         env,
         stud_if=stud_if,

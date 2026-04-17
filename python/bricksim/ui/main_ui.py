@@ -1,41 +1,55 @@
-import os
-import math
+"""Main BrickSim Omniverse UI window."""
+
 import asyncio
 import json
+import math
+import os
 import tempfile
+
 import carb
+import omni.kit.app
 import omni.ui
 import omni.usd
-import omni.kit.app
-from bricksim.colors import parse_color, Colors
+
 from bricksim import kit_runner
+from bricksim.colors import Colors, parse_color
 from bricksim.core import (
     allocate_brick_part,
     allocate_unmanaged_brick_part,
+    arrange_parts_in_workspace,
     deallocate_all_managed,
     export_lego,
-    import_lego,
     get_assembly_thresholds,
-    set_assembly_thresholds,
     get_breakage_thresholds,
-    set_breakage_thresholds,
-    arrange_parts_in_workspace,
-    get_usd_id_mappings,
     get_physx_id_mappings,
     get_sync_to_usd,
+    get_usd_id_mappings,
+    import_lego,
+    set_assembly_thresholds,
+    set_breakage_thresholds,
     set_sync_to_usd,
     update_part_prototypes,
 )
-from bricksim.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
-from bricksim.importers.legolization import legolization_json_to_topology_json, is_legolization_json
-from bricksim.utils.usd_parse import get_env_path, get_brick_dimensions
+from bricksim.importers.legolization import (
+    is_legolization_json,
+    legolization_json_to_topology_json,
+)
+from bricksim.importers.stabletext2brick import (
+    bricks_text_to_topology_json,
+    is_bricks_text,
+)
+from bricksim.utils.usd_parse import get_brick_dimensions, get_env_path
 
 from .file_picker import show_file_picker_dialog
 
 _HOT_RELOAD_SETTING = "/app/bricksim/kit_runner/has_target"
 
-class LegoUI():
+
+class LegoUI:
+    """BrickSim settings and import/export UI."""
+
     def __init__(self):
+        """Create the BrickSim settings window and controls."""
         self._window = omni.ui.Window("BrickSim Settings", width=300, height=300)
         self._window.deferred_dock_in("Console")
         self._hot_reload_button = None
@@ -61,17 +75,35 @@ class LegoUI():
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Color:", width=100)
                         self._color_options = list(Colors.keys())
-                        self._color_combo = omni.ui.ComboBox(self._color_options.index("Pink"), *self._color_options)
+                        self._color_combo = omni.ui.ComboBox(
+                            self._color_options.index("Pink"), *self._color_options
+                        )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Env id:", width=100)
                         self._base_path_field = omni.ui.StringField()
                         self._base_path_field.model.set_value("")
                     omni.ui.Button("Add Brick", clicked_fn=self._add_brick_clicked)
                     omni.ui.Button("Reset Env", clicked_fn=self._reset_env_clicked)
-                    omni.ui.Button("Import", clicked_fn=lambda: asyncio.ensure_future(self._import_async()))
-                    omni.ui.Button("Export", clicked_fn=lambda: asyncio.ensure_future(self._export_async()))
-                    omni.ui.Button("Set Color", clicked_fn=lambda: asyncio.ensure_future(self._set_bricks_color()))
-                    omni.ui.Button("Update Prototypes", clicked_fn=lambda: asyncio.ensure_future(self._update_part_prototypes()))
+                    omni.ui.Button(
+                        "Import",
+                        clicked_fn=lambda: asyncio.ensure_future(self._import_async()),
+                    )
+                    omni.ui.Button(
+                        "Export",
+                        clicked_fn=lambda: asyncio.ensure_future(self._export_async()),
+                    )
+                    omni.ui.Button(
+                        "Set Color",
+                        clicked_fn=lambda: asyncio.ensure_future(
+                            self._set_bricks_color()
+                        ),
+                    )
+                    omni.ui.Button(
+                        "Update Prototypes",
+                        clicked_fn=lambda: asyncio.ensure_future(
+                            self._update_part_prototypes()
+                        ),
+                    )
                     # Hot reload button for demo iteration. Visible only when a target
                     # has been run via kit_runner (driven by carb settings).
                     self._hot_reload_button = omni.ui.Button(
@@ -89,49 +121,73 @@ class LegoUI():
                         self._assembly_enabled_model.set_value(bool(_thr.enabled))
                         omni.ui.CheckBox(model=self._assembly_enabled_model)
                         self._assembly_enabled_model.add_value_changed_fn(
-                            lambda m: self._set_threshold("enabled", bool(m.get_value_as_bool()))
+                            lambda m: self._set_threshold(
+                                "enabled", bool(m.get_value_as_bool())
+                            )
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Distance tol (m):", width=140)
                         self._dist_tol_field = omni.ui.FloatDrag(min=0.0, max=0.05)
-                        self._dist_tol_field.model.set_value(float(_thr.distance_tolerance))
+                        self._dist_tol_field.model.set_value(
+                            float(_thr.distance_tolerance)
+                        )
                         self._dist_tol_field.model.add_value_changed_fn(
-                            lambda m: self._set_threshold("distance_tolerance", float(m.as_float))
+                            lambda m: self._set_threshold(
+                                "distance_tolerance", float(m.as_float)
+                            )
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Max penetration (m):", width=140)
                         self._max_pen_field = omni.ui.FloatDrag(min=0.0, max=0.05)
                         self._max_pen_field.model.set_value(float(_thr.max_penetration))
                         self._max_pen_field.model.add_value_changed_fn(
-                            lambda m: self._set_threshold("max_penetration", float(m.as_float))
+                            lambda m: self._set_threshold(
+                                "max_penetration", float(m.as_float)
+                            )
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Z angle tol (deg):", width=140)
                         self._zang_deg_field = omni.ui.FloatDrag(min=0.0, max=90.0)
-                        self._zang_deg_field.model.set_value(float(math.degrees(_thr.z_angle_tolerance)))
+                        self._zang_deg_field.model.set_value(
+                            float(math.degrees(_thr.z_angle_tolerance))
+                        )
                         self._zang_deg_field.model.add_value_changed_fn(
-                            lambda m: self._set_threshold("z_angle_tolerance", math.radians(float(m.as_float)))
+                            lambda m: self._set_threshold(
+                                "z_angle_tolerance", math.radians(float(m.as_float))
+                            )
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Required force (N):", width=140)
                         self._req_force_field = omni.ui.FloatDrag(min=0.0, max=10.0)
-                        self._req_force_field.model.set_value(float(_thr.required_force))
+                        self._req_force_field.model.set_value(
+                            float(_thr.required_force)
+                        )
                         self._req_force_field.model.add_value_changed_fn(
-                            lambda m: self._set_threshold("required_force", float(m.as_float))
+                            lambda m: self._set_threshold(
+                                "required_force", float(m.as_float)
+                            )
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Yaw tol (deg):", width=140)
                         self._yaw_deg_field = omni.ui.FloatDrag(min=0.0, max=180.0)
-                        self._yaw_deg_field.model.set_value(float(math.degrees(_thr.yaw_tolerance)))
+                        self._yaw_deg_field.model.set_value(
+                            float(math.degrees(_thr.yaw_tolerance))
+                        )
                         self._yaw_deg_field.model.add_value_changed_fn(
-                            lambda m: self._set_threshold("yaw_tolerance", math.radians(float(m.as_float)))
+                            lambda m: self._set_threshold(
+                                "yaw_tolerance", math.radians(float(m.as_float))
+                            )
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Position tol (m):", width=140)
                         self._pos_tol_field = omni.ui.FloatDrag(min=0.0, max=0.05)
-                        self._pos_tol_field.model.set_value(float(_thr.position_tolerance))
+                        self._pos_tol_field.model.set_value(
+                            float(_thr.position_tolerance)
+                        )
                         self._pos_tol_field.model.add_value_changed_fn(
-                            lambda m: self._set_threshold("position_tolerance", float(m.as_float))
+                            lambda m: self._set_threshold(
+                                "position_tolerance", float(m.as_float)
+                            )
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Sync connections to USD", width=140)
@@ -150,56 +206,98 @@ class LegoUI():
                         self._breakage_enabled_model.set_value(bool(_bthr.enabled))
                         omni.ui.CheckBox(model=self._breakage_enabled_model)
                         self._breakage_enabled_model.add_value_changed_fn(
-                            lambda m: self._set_breakage_threshold("enabled", bool(m.get_value_as_bool()))
+                            lambda m: self._set_breakage_threshold(
+                                "enabled", bool(m.get_value_as_bool())
+                            )
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Contact regularization:", width=140)
                         self._contact_reg_field = omni.ui.FloatDrag(min=0.0, max=10.0)
-                        self._contact_reg_field.model.set_value(float(_bthr.contact_regularization))
+                        self._contact_reg_field.model.set_value(
+                            float(_bthr.contact_regularization)
+                        )
                         self._contact_reg_field.model.add_value_changed_fn(
-                            lambda m: self._set_breakage_threshold("contact_regularization", float(m.as_float))
+                            lambda m: self._set_breakage_threshold(
+                                "contact_regularization", float(m.as_float)
+                            )
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Clutch axial comp:", width=140)
-                        self._clutch_axial_comp_field = omni.ui.FloatDrag(min=0.0, max=1e6)
-                        self._clutch_axial_comp_field.model.set_value(float(_bthr.clutch_axial_compliance))
+                        self._clutch_axial_comp_field = omni.ui.FloatDrag(
+                            min=0.0, max=1e6
+                        )
+                        self._clutch_axial_comp_field.model.set_value(
+                            float(_bthr.clutch_axial_compliance)
+                        )
                         self._clutch_axial_comp_field.model.add_value_changed_fn(
-                            lambda m: self._set_breakage_threshold("clutch_axial_compliance", float(m.as_float))
+                            lambda m: self._set_breakage_threshold(
+                                "clutch_axial_compliance", float(m.as_float)
+                            )
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Clutch radial comp:", width=140)
-                        self._clutch_radial_comp_field = omni.ui.FloatDrag(min=0.0, max=1e6)
-                        self._clutch_radial_comp_field.model.set_value(float(_bthr.clutch_radial_compliance))
+                        self._clutch_radial_comp_field = omni.ui.FloatDrag(
+                            min=0.0, max=1e6
+                        )
+                        self._clutch_radial_comp_field.model.set_value(
+                            float(_bthr.clutch_radial_compliance)
+                        )
                         self._clutch_radial_comp_field.model.add_value_changed_fn(
-                            lambda m: self._set_breakage_threshold("clutch_radial_compliance", float(m.as_float))
+                            lambda m: self._set_breakage_threshold(
+                                "clutch_radial_compliance", float(m.as_float)
+                            )
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Clutch tangential comp:", width=140)
-                        self._clutch_tang_comp_field = omni.ui.FloatDrag(min=0.0, max=1e6)
-                        self._clutch_tang_comp_field.model.set_value(float(_bthr.clutch_tangential_compliance))
+                        self._clutch_tang_comp_field = omni.ui.FloatDrag(
+                            min=0.0, max=1e6
+                        )
+                        self._clutch_tang_comp_field.model.set_value(
+                            float(_bthr.clutch_tangential_compliance)
+                        )
                         self._clutch_tang_comp_field.model.add_value_changed_fn(
-                            lambda m: self._set_breakage_threshold("clutch_tangential_compliance", float(m.as_float))
+                            lambda m: self._set_breakage_threshold(
+                                "clutch_tangential_compliance", float(m.as_float)
+                            )
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Friction coefficient:", width=140)
-                        self._friction_coefficient_field = omni.ui.FloatDrag(min=0.0, max=100.0)
-                        self._friction_coefficient_field.model.set_value(float(_bthr.friction_coefficient))
+                        self._friction_coefficient_field = omni.ui.FloatDrag(
+                            min=0.0, max=100.0
+                        )
+                        self._friction_coefficient_field.model.set_value(
+                            float(_bthr.friction_coefficient)
+                        )
                         self._friction_coefficient_field.model.add_value_changed_fn(
-                            lambda m: self._set_breakage_threshold("friction_coefficient", float(m.as_float))
+                            lambda m: self._set_breakage_threshold(
+                                "friction_coefficient", float(m.as_float)
+                            )
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Preloaded force:", width=140)
-                        self._preloaded_force_field = omni.ui.FloatDrag(min=0.0, max=100.0)
-                        self._preloaded_force_field.model.set_value(float(_bthr.preloaded_force))
+                        self._preloaded_force_field = omni.ui.FloatDrag(
+                            min=0.0, max=100.0
+                        )
+                        self._preloaded_force_field.model.set_value(
+                            float(_bthr.preloaded_force)
+                        )
                         self._preloaded_force_field.model.add_value_changed_fn(
-                            lambda m: self._set_breakage_threshold("preloaded_force", float(m.as_float))
+                            lambda m: self._set_breakage_threshold(
+                                "preloaded_force", float(m.as_float)
+                            )
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Breakage cooldown time:", width=140)
-                        self._breakage_cooldown_field = omni.ui.FloatDrag(min=0.0, max=1.0)
-                        self._breakage_cooldown_field.model.set_value(float(_bthr.breakage_cooldown_time))
+                        self._breakage_cooldown_field = omni.ui.FloatDrag(
+                            min=0.0, max=1.0
+                        )
+                        self._breakage_cooldown_field.model.set_value(
+                            float(_bthr.breakage_cooldown_time)
+                        )
                         self._breakage_cooldown_field.model.add_value_changed_fn(
-                            lambda m: self._set_breakage_threshold("breakage_cooldown_time", float(m.as_float))
+                            lambda m: self._set_breakage_threshold(
+                                "breakage_cooldown_time", float(m.as_float)
+                            )
                         )
                     with omni.ui.HStack(spacing=10):
                         omni.ui.Label("Debug dump", width=140)
@@ -207,12 +305,17 @@ class LegoUI():
                         self._debug_dump_model.set_value(bool(_bthr.debug_dump))
                         omni.ui.CheckBox(model=self._debug_dump_model)
                         self._debug_dump_model.add_value_changed_fn(
-                            lambda m: self._set_breakage_threshold("debug_dump", bool(m.get_value_as_bool()))
+                            lambda m: self._set_breakage_threshold(
+                                "debug_dump", bool(m.get_value_as_bool())
+                            )
                         )
 
-                    omni.ui.Button("Dump ID Mappings", clicked_fn=self._dump_id_mappings)
+                    omni.ui.Button(
+                        "Dump ID Mappings", clicked_fn=self._dump_id_mappings
+                    )
 
     def destroy(self):
+        """Destroy the BrickSim settings window."""
         # self._monitor.destroy()
         self._window.destroy()
         self._hot_reload_button = None
@@ -224,7 +327,9 @@ class LegoUI():
 
     def get_selected_color(self) -> tuple[int, int, int]:
         """Return the currently selected color as an RGB tuple."""
-        color = self._color_options[self._color_combo.model.get_item_value_model().as_int]
+        color = self._color_options[
+            self._color_combo.model.get_item_value_model().as_int
+        ]
         return parse_color(color)
 
     def _add_brick_clicked(self):
@@ -248,7 +353,9 @@ class LegoUI():
             carb.log_warn(f"Failed to arrange part in workspace: {exc}")
             return
         if not_placed:
-            carb.log_warn(f"Could not place part {not_placed} in workspace {workspace_path}")
+            carb.log_warn(
+                f"Could not place part {not_placed} in workspace {workspace_path}"
+            )
 
     def _reset_env_clicked(self):
         env_id_str = self._base_path_field.model.as_string
@@ -287,11 +394,17 @@ class LegoUI():
 
         if is_bricks_text(text):
             # StableText2Brick format
-            carb.log_info("Detected StableText2Brick format, converting to topology JSON")
-            topology = bricks_text_to_topology_json(text, color=self.get_selected_color())
+            carb.log_info(
+                "Detected StableText2Brick format, converting to topology JSON"
+            )
+            topology = bricks_text_to_topology_json(
+                text, color=self.get_selected_color()
+            )
         elif is_legolization_json(text):
             carb.log_info("Detected legolization format, converting to topology JSON")
-            topology = legolization_json_to_topology_json(json.loads(text), color=self.get_selected_color())
+            topology = legolization_json_to_topology_json(
+                json.loads(text), color=self.get_selected_color()
+            )
         else:
             # Assume direct topology JSON
             carb.log_info("Assuming direct topology JSON format")
@@ -304,12 +417,16 @@ class LegoUI():
 
         workspace_path = get_env_path(env_id) + "/LegoWorkspace"
         try:
-            _, not_placed = arrange_parts_in_workspace(workspace_path, imported_parts, [1] * len(imported_parts))
+            _, not_placed = arrange_parts_in_workspace(
+                workspace_path, imported_parts, [1] * len(imported_parts)
+            )
         except Exception as exc:
             carb.log_warn(f"Failed to arrange parts in workspace: {exc}")
             return
         if not_placed:
-            carb.log_warn(f"Could not place parts {not_placed} in workspace {workspace_path}")
+            carb.log_warn(
+                f"Could not place parts {not_placed} in workspace {workspace_path}"
+            )
 
     def _set_threshold(self, name: str, value: float):
         thr = get_assembly_thresholds()
@@ -350,7 +467,13 @@ class LegoUI():
             "physx_part_map": physx_part_map,
             "physx_conn_map": physx_conn_map,
         }
-        with tempfile.NamedTemporaryFile(delete=False, prefix="id_mappings_", suffix=".json", mode="w", encoding="utf-8") as f:
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            prefix="id_mappings_",
+            suffix=".json",
+            mode="w",
+            encoding="utf-8",
+        ) as f:
             json.dump(result, f, indent=2)
             print(f"Dumped ID mappings to {f.name}")
 
@@ -365,7 +488,9 @@ class LegoUI():
 
     async def _set_bricks_color(self):
         color = self.get_selected_color()
-        selected_paths = omni.usd.get_context().get_selection().get_selected_prim_paths()
+        selected_paths = (
+            omni.usd.get_context().get_selection().get_selected_prim_paths()
+        )
         stage = omni.usd.get_context().get_stage()
         paths_to_resync = []
         for path in selected_paths:

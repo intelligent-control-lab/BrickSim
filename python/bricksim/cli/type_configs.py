@@ -1,3 +1,5 @@
+"""Generate static-analysis configs for Isaac Sim extension imports."""
+
 import argparse
 import collections
 import importlib.metadata
@@ -12,7 +14,6 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 import toml
-
 
 GENERATOR_NAME = "bricksim.cli.type_configs"
 ISAACLAB_SOURCE_PACKAGES = (
@@ -32,6 +33,8 @@ ISAACSIM_PACKAGE_MARKER = (
 
 @dataclass(frozen=True)
 class TargetPaths:
+    """Filesystem targets written by the type-config generator."""
+
     root: Path
     pyright_overlay_dir: Path
     ty_overlay_dir: Path
@@ -42,6 +45,8 @@ class TargetPaths:
 
 @dataclass(frozen=True)
 class Operation:
+    """Planned filesystem operation for a generated config update."""
+
     kind: str
     path: Path
     content: str | None = None
@@ -49,7 +54,10 @@ class Operation:
 
 
 class OperationPlanner:
+    """Plan filesystem operations without applying them immediately."""
+
     def __init__(self, root: Path) -> None:
+        """Initialize the planner for a project root."""
         self.root = root
         self.operations: list[Operation] = []
         self._planned_dirs: set[Path] = set()
@@ -57,6 +65,7 @@ class OperationPlanner:
         self._reset_roots: set[Path] = set()
 
     def plan_remove_dir(self, path: Path) -> None:
+        """Record removal of an existing directory tree."""
         if not path.exists():
             return
         self.operations.append(Operation("remove_dir", path))
@@ -64,6 +73,7 @@ class OperationPlanner:
         self._planned_dirs.discard(path)
 
     def plan_dir(self, path: Path) -> None:
+        """Record creation of a directory and its missing parents."""
         if path == path.parent:
             return
         if self._path_will_exist(path):
@@ -73,12 +83,14 @@ class OperationPlanner:
         self._planned_dirs.add(path)
 
     def plan_text_file(self, path: Path, content: str) -> None:
+        """Record creation or overwrite of a text file."""
         self.plan_dir(path.parent)
         kind = "overwrite_file" if self._path_will_exist(path) else "create_file"
         self.operations.append(Operation(kind, path, content=content))
         self._planned_files.add(path)
 
     def plan_symlink(self, path: Path, target: Path) -> None:
+        """Record creation of a symlink if the path will not already exist."""
         self.plan_dir(path.parent)
         if self._path_will_exist(path):
             return
@@ -93,7 +105,10 @@ class OperationPlanner:
         return path.exists()
 
     def _is_reset(self, path: Path) -> bool:
-        return any(reset_root == path or reset_root in path.parents for reset_root in self._reset_roots)
+        return any(
+            reset_root == path or reset_root in path.parents
+            for reset_root in self._reset_roots
+        )
 
 
 def _resolve_target_paths(root: Path) -> TargetPaths:
@@ -156,6 +171,11 @@ def _resolve_bricksim_import_root_if_editable() -> Path | None:
 
 
 def collect_project_source_roots() -> list[Path]:
+    """Collect editable BrickSim and Isaac Lab source roots.
+
+    Returns:
+        Import roots that should be visible to static analyzers.
+    """
     roots: list[Path] = []
     bricksim_import_root = _resolve_bricksim_import_root_if_editable()
     if bricksim_import_root is not None:
@@ -166,7 +186,9 @@ def collect_project_source_roots() -> list[Path]:
     return roots
 
 
-def _extract_python_module_entries_from_raw_toml(config_path: Path) -> list[dict[str, str]]:
+def _extract_python_module_entries_from_raw_toml(
+    config_path: Path,
+) -> list[dict[str, str]]:
     module_entries: list[dict[str, str]] = []
     current_entry: dict[str, str] | None = None
     for raw_line in config_path.read_text().splitlines():
@@ -193,10 +215,15 @@ def _extract_python_module_entries_from_raw_toml(config_path: Path) -> list[dict
 def _is_importable_root(path: Path) -> bool:
     if not path.is_dir():
         return False
-    if any((path / init_name).is_file() for init_name in ("__init__.py", "__init__.pyi")):
+    if any(
+        (path / init_name).is_file() for init_name in ("__init__.py", "__init__.pyi")
+    ):
         return True
     for entry in path.iterdir():
-        if entry.is_dir() and any((entry / init_name).is_file() for init_name in ("__init__.py", "__init__.pyi")):
+        if entry.is_dir() and any(
+            (entry / init_name).is_file()
+            for init_name in ("__init__.py", "__init__.pyi")
+        ):
             return True
     return False
 
@@ -206,11 +233,17 @@ def _iter_top_level_importables(module_root: Path) -> Iterable[str]:
         return []
     result: list[str] = []
     for entry in module_root.iterdir():
-        if entry.name == "__pycache__" or entry.name.endswith((".dist-info", ".egg-info")):
+        if entry.name == "__pycache__" or entry.name.endswith(
+            (".dist-info", ".egg-info")
+        ):
             continue
         if entry.is_dir() and _is_importable_root(entry):
             result.append(entry.name)
-        elif entry.is_file() and entry.suffix in (".py", ".pyi", ".so", ".pyd") and entry.stem != "__init__":
+        elif (
+            entry.is_file()
+            and entry.suffix in (".py", ".pyi", ".so", ".pyd")
+            and entry.stem != "__init__"
+        ):
             result.append(entry.stem)
     return result
 
@@ -233,7 +266,11 @@ def _iter_extension_python_modules(ext_dir: Path) -> Iterable[tuple[Path, str]]:
     for entry in module_entries:
         module_root = (ext_dir / entry.get("path", ".")).resolve()
         module_name = entry.get("name", "")
-        module_names = [module_name] if module_name else list(_iter_top_level_importables(module_root))
+        module_names = (
+            [module_name]
+            if module_name
+            else list(_iter_top_level_importables(module_root))
+        )
         for resolved_name in module_names:
             if not resolved_name or resolved_name.endswith(".tests"):
                 continue
@@ -316,7 +353,8 @@ def _mirror_extension_module(
         if entry.is_dir():
             child_module_name = f"{module_name}.{entry.name}"
             if any(
-                candidate == child_module_name or candidate.startswith(f"{child_module_name}.")
+                candidate == child_module_name
+                or candidate.startswith(f"{child_module_name}.")
                 for candidate in all_module_names
             ):
                 continue
@@ -334,6 +372,11 @@ def _mirror_extension_module(
 
 
 def collect_isaacsim_extension_paths() -> list[Path]:
+    """Collect Isaac Sim extension roots from the active Python environment.
+
+    Returns:
+        Deduplicated extension directories that may contain Python modules.
+    """
     import isaacsim
 
     isaacsim_path = Path(os.path.realpath(isaacsim.__file__)).parent
@@ -396,6 +439,11 @@ def build_overlay(
     *,
     include_module: Callable[[str], bool],
 ) -> str:
+    """Plan an analyzer overlay that mirrors selected extension modules.
+
+    Returns:
+        Overlay path rendered relative to the project root when possible.
+    """
     extension_modules: list[tuple[Path, str]] = []
     module_names: set[str] = set()
     for ext_path in extension_paths:
@@ -409,12 +457,21 @@ def build_overlay(
     planner.plan_dir(overlay_dir)
 
     for module_root, module_name in extension_modules:
-        _mirror_extension_module(planner, module_root, module_name, module_names, overlay_dir=overlay_dir)
+        _mirror_extension_module(
+            planner, module_root, module_name, module_names, overlay_dir=overlay_dir
+        )
 
     return _relative_or_absolute(overlay_dir, planner.root)
 
 
-def render_ty_config(*, python_path: str, ty_roots: list[str], ty_extra_paths: list[str]) -> str:
+def render_ty_config(
+    *, python_path: str, ty_roots: list[str], ty_extra_paths: list[str]
+) -> str:
+    """Render the generated ty configuration file.
+
+    Returns:
+        TOML text for ``ty.toml``.
+    """
     lines = [
         f"# Generated by {GENERATOR_NAME} for static analysis only.",
         "",
@@ -440,6 +497,11 @@ def _active_python_environment_path(root: Path) -> str:
 
 
 def plan_operations(paths: TargetPaths) -> tuple[list[Operation], str, str]:
+    """Plan all filesystem writes for generated analyzer configs.
+
+    Returns:
+        Planned operations, generated Pyright config JSON, and generated ty TOML.
+    """
     planner = OperationPlanner(paths.root)
 
     project_source_roots = collect_project_source_roots()
@@ -455,7 +517,9 @@ def plan_operations(paths: TargetPaths) -> tuple[list[Operation], str, str]:
         planner,
         isaacsim_extension_paths,
         paths.ty_overlay_dir,
-        include_module=lambda module_name: module_name.split(".", 1)[0] in TY_OVERLAY_TOP_LEVEL_PACKAGES,
+        include_module=lambda module_name: (
+            module_name.split(".", 1)[0] in TY_OVERLAY_TOP_LEVEL_PACKAGES
+        ),
     )
 
     if not paths.pyright_base_config_path.exists():
@@ -473,8 +537,12 @@ def plan_operations(paths: TargetPaths) -> tuple[list[Operation], str, str]:
     pyright_deps_config_text = json.dumps(pyright_deps_config, indent=4)
     planner.plan_text_file(paths.pyright_deps_config_path, pyright_deps_config_text)
 
-    ty_roots = [_relative_or_absolute(path, paths.root) for path in project_source_roots]
-    ty_extra_paths = [_relative_or_absolute(path, paths.root) for path in isaacsim_extension_paths]
+    ty_roots = [
+        _relative_or_absolute(path, paths.root) for path in project_source_roots
+    ]
+    ty_extra_paths = [
+        _relative_or_absolute(path, paths.root) for path in isaacsim_extension_paths
+    ]
     ty_extra_paths.insert(0, ty_overlay_path)
     ty_config_text = render_ty_config(
         python_path=_active_python_environment_path(paths.root),
@@ -498,7 +566,11 @@ def _overlay_bucket(path: Path, root: Path) -> str | None:
         relative_parts = path.relative_to(root).parts
     except ValueError:
         return None
-    if len(relative_parts) >= 2 and relative_parts[0] in {".pyright", ".ty"} and relative_parts[1] == "extension-packages":
+    if (
+        len(relative_parts) >= 2
+        and relative_parts[0] in {".pyright", ".ty"}
+        and relative_parts[1] == "extension-packages"
+    ):
         return f"{relative_parts[0]}/{relative_parts[1]}"
     return None
 
@@ -544,7 +616,13 @@ def _log_operations(
         overlay_counts[bucket][operation.kind] += 1
 
     prefix = "Would update" if dry_run else "Updated"
-    ordered_kinds = ("remove_dir", "create_dir", "create_file", "overwrite_file", "create_link")
+    ordered_kinds = (
+        "remove_dir",
+        "create_dir",
+        "create_file",
+        "overwrite_file",
+        "create_link",
+    )
     for bucket in sorted(overlay_counts):
         summary = " ".join(
             f"{kind}={overlay_counts[bucket][kind]}"
@@ -570,29 +648,56 @@ def _apply_operations(operations: list[Operation]) -> None:
             raise RuntimeError(f"Unknown operation kind: {operation.kind}")
 
 
-def _confirm_operations(root: Path, operations: list[Operation], *, verbose: bool) -> bool:
+def _confirm_operations(
+    root: Path, operations: list[Operation], *, verbose: bool
+) -> bool:
     print(f"Target root: {root.as_posix()}")
     _log_operations(operations, root, dry_run=True, verbose=verbose)
     if not sys.stdin.isatty():
-        raise RuntimeError("Refusing to write without confirmation on a non-interactive stdin. Pass -y to apply non-interactively.")
+        raise RuntimeError(
+            "Refusing to write without confirmation on a non-interactive stdin. "
+            "Pass -y to apply non-interactively."
+        )
     response = input("Apply these changes? [y/N]: ").strip().lower()
     return response in {"y", "yes"}
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Collect Isaac Sim / Omniverse python paths for Pyright and ty.")
-    parser.add_argument("-y", action="store_true", help="Apply changes without interactive confirmation.")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed changes inside .pyright and .ty.")
+    """Run the type-config generator CLI.
+
+    Returns:
+        Process exit code.
+    """
+    parser = argparse.ArgumentParser(
+        description="Collect Isaac Sim / Omniverse python paths for Pyright and ty."
+    )
+    parser.add_argument(
+        "-y",
+        action="store_true",
+        help="Apply changes without interactive confirmation.",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Print detailed changes inside .pyright and .ty.",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Print the generated pyrightconfig.deps.json and ty.toml content without writing them.",
+        help=(
+            "Print the generated pyrightconfig.deps.json and ty.toml content "
+            "without writing them."
+        ),
     )
     parser.add_argument(
         "--root",
         type=Path,
         default=Path("."),
-        help="Target project root where configuration files should be written (default: current directory).",
+        help=(
+            "Target project root where configuration files should be written "
+            "(default: current directory)."
+        ),
     )
     args = parser.parse_args()
 

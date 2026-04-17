@@ -1,10 +1,17 @@
+"""Omniverse extension entry point for BrickSim."""
+
 import omni.ext
 
+
 class BrickSimExtension(omni.ext.IExt):
+    """Register and tear down BrickSim UI components inside Omniverse."""
+
     def on_startup(self, ext_id):
+        """Initialize BrickSim extension UI at startup."""
         self._init_ui()
 
     def on_shutdown(self):
+        """Destroy BrickSim extension UI components at shutdown."""
         if getattr(self, "_frame_time_hud", None) is not None:
             self._frame_time_hud.destroy()
             self._frame_time_hud = None
@@ -23,7 +30,7 @@ class BrickSimExtension(omni.ext.IExt):
 
     def _init_ui(self):
         try:
-            import omni.kit.window.property as p
+            import omni.kit.window.property  # noqa: F401
         except ImportError:
             # Likely running headless
             self._ui = None
@@ -31,22 +38,27 @@ class BrickSimExtension(omni.ext.IExt):
 
         # Patch Isaac Sim's toolbar at runtime to add a "Connected Component"
         # selection mode that shares picking semantics with kind:component.
-        from bricksim.ui.toolbar_patch import install_toolbar_patches
-        from bricksim.ui.step_one_frame_patch import install_step_one_frame_patch
         from bricksim.ui.selection_sync import AssemblySelectionSync
+        from bricksim.ui.step_one_frame_patch import install_step_one_frame_patch
+        from bricksim.ui.toolbar_patch import install_toolbar_patches
+
         install_toolbar_patches()
         install_step_one_frame_patch()
         self._assembly_selection = AssemblySelectionSync()
 
         from bricksim.ui.connection_overlay import ConnectionOverlayController
+
         self._connection_overlay = ConnectionOverlayController()
 
         from bricksim.ui.frame_time_hud import FrameTimeHudController
+
         self._frame_time_hud = FrameTimeHudController()
 
         from bricksim.ui.main_ui import LegoUI
+
         self._ui = LegoUI()
 
         # Lego Structures dataset browser.
         from bricksim.ui.structures_browsers import LegoStructuresBrowser
+
         self._structures_browser = LegoStructuresBrowser(self._ui)
