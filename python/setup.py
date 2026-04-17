@@ -39,7 +39,7 @@ class BrickSimSdist(sdist):
 
 setup(
     packages=find_namespace_packages(where=".", include=["bricksim*"]),
-    ext_modules=[
+    ext_modules=[] if os.environ.get("BRICKSIM_SKIP_NATIVE_BUILD") == "1" else [
         Extension("bricksim.core", sources=[])
     ],
     cmdclass={
