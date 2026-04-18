@@ -5,8 +5,6 @@
         "charliermarsh.ruff",
         "llvm-vs-code-extensions.vscode-clangd",
         "ms-python.debugpy",
-        "ms-python.python",
-        "ms-python.vscode-pylance",
         "ms-vscode.cmake-tools",
         "vadimcn.vscode-lldb",
     ]
