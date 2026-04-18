@@ -10,7 +10,7 @@ import carb
 import carb.settings
 import omni.ui
 import omni.usd
-from isaacsim.core.utils.stage import get_current_stage
+from isaacsim.core.utils.stage import get_current_stage, update_stage_async
 
 from bricksim import kit_runner
 from bricksim.colors import Colors, parse_color
@@ -39,7 +39,6 @@ from bricksim.topology.stabletext2brick import (
     bricks_text_to_topology_json,
     is_bricks_text,
 )
-from bricksim.utils.sim import wait_for_next_update
 from bricksim.utils.usd_parse import get_brick_dimensions, get_env_path
 
 from .file_picker import show_file_picker_dialog
@@ -487,7 +486,7 @@ class LegoUI:
         stage = get_current_stage()
         world = stage.GetDefaultPrim()
         world.SetActive(False)
-        await wait_for_next_update()
+        await update_stage_async()
         world.ClearActive()
 
     async def _set_bricks_color(self):
@@ -509,7 +508,7 @@ class LegoUI:
             active_authored = prim.HasAuthoredActive()
             prim.SetActive(False)
             paths_to_resync.append((prim, active_authored))
-        await wait_for_next_update()
+        await update_stage_async()
         for prim, active_authored in paths_to_resync:
             if active_authored:
                 prim.SetActive(True)

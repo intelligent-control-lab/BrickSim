@@ -1,29 +1,8 @@
 """Async helpers for stepping Isaac Sim worlds."""
 
 import asyncio
-from collections.abc import Awaitable
-from typing import Protocol, runtime_checkable
 
 from isaacsim.core.api.world import World
-
-
-@runtime_checkable
-class _AppWithNextUpdate(Protocol):
-    def next_update_async(self) -> Awaitable[float]: ...
-
-
-async def wait_for_next_update() -> float:
-    """Wait for the next Kit app update.
-
-    Returns:
-        Delta time in seconds.
-    """
-    import omni.kit.app
-
-    app = omni.kit.app.get_app()
-    if not isinstance(app, _AppWithNextUpdate):
-        raise TypeError("Kit app does not expose next_update_async().")
-    return await app.next_update_async()
 
 
 async def wait_for_physics_step(world: World) -> float:

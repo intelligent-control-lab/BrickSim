@@ -3,7 +3,7 @@
 import asyncio
 from pathlib import Path
 
-from bricksim.utils.sim import wait_for_next_update
+from isaacsim.core.utils.stage import update_stage_async
 
 
 async def _play_then_pause_immediately():
@@ -15,7 +15,7 @@ async def _play_then_pause_immediately():
 
     timeline = omni.timeline.get_timeline_interface()
     timeline.play()
-    await wait_for_next_update()
+    await update_stage_async()
     timeline.pause()
 
 
