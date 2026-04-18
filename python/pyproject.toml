@@ -4,9 +4,11 @@ version = "0.1.0"
 description = "BrickSim: A Physics-Based Simulator for Manipulating Interlocking Brick Assemblies"
 requires-python = ">=3.11"
 dependencies = [
+    "accelerate",
     "gymnasium==1.2.0",
     "numpy<2",
     "requests",
+    "scipy",
     "torch>=2.7",
     "tqdm",
 ]

@@ -2,12 +2,16 @@
 
 import traceback
 from dataclasses import dataclass
+from typing import NotRequired, TypedDict
 
+import carb.events
 import carb.settings
 import omni.kit.app
 import omni.ui
+import omni.ui.scene
 import omni.usd
 from omni.kit.viewport.registry import RegisterScene
+from omni.ui_scene import AbstractGesture
 from pxr import Gf, UsdGeom
 
 from bricksim.core import compute_connection_local_transform, get_connection_utilization
@@ -16,17 +20,29 @@ from bricksim.utils.usd_parse import parse_connection_prim
 SETTING_DISPLAY_CONNECTIONS = "/persistent/bricksim/visualizationDisplayConnections"
 
 
+class _ViewportSceneDesc(TypedDict):
+    usd_context_name: str
+    layer_provider: NotRequired[object]
+    viewport_api: NotRequired[object]
+
+
 class _YieldToOtherGestures(omni.ui.scene.GestureManager):
     def __init__(self):
         super().__init__()
 
-    def can_be_prevented(self, _):
+    def can_be_prevented(self, arg0: AbstractGesture) -> bool:
+        del arg0
         return True
 
-    def should_prevent(self, _, preventer):
+    def should_prevent(
+        self,
+        arg0: AbstractGesture,
+        arg1: AbstractGesture,
+    ) -> bool:
+        del arg0
         if (
-            preventer.state == omni.ui.scene.GestureState.BEGAN
-            or preventer.state == omni.ui.scene.GestureState.CHANGED
+            arg1.state == omni.ui.scene.GestureState.BEGAN
+            or arg1.state == omni.ui.scene.GestureState.CHANGED
         ):
             return True
         return False
@@ -205,12 +221,16 @@ class _ConnectionOverlayManipulator(omni.ui.scene.Manipulator):
 class ConnectionOverlayScene:
     """Viewport scene registered for BrickSim connection overlays."""
 
-    def __init__(self, desc: dict):
+    _manipulator: _ConnectionOverlayManipulator | None
+    _update_sub: carb.events.ISubscription | None
+    _selection_sub: carb.events.ISubscription | None
+
+    def __init__(self, desc: _ViewportSceneDesc):
         """Create the overlay scene for one USD context."""
         self.visible = True
         self.categories = ()
         self.name = "bricksim.connection_overlay"
-        self._usd_context = omni.usd.get_context(desc.get("usd_context_name"))
+        self._usd_context = omni.usd.get_context(desc["usd_context_name"])
         self._manipulator = _ConnectionOverlayManipulator(self._usd_context)
         self._update_sub = (
             omni.kit.app.get_app()
@@ -218,11 +238,14 @@ class ConnectionOverlayScene:
             .create_subscription_to_pop(self._on_update)
         )
         stage_event_stream = self._usd_context.get_stage_event_stream()
-        self._selection_sub = stage_event_stream.create_subscription_to_pop_by_type(
-            omni.usd.StageEventType.SELECTION_CHANGED, self._on_selection_changed
+        self._selection_sub = (
+            stage_event_stream.create_subscription_to_pop_by_type(
+                int(omni.usd.StageEventType.SELECTION_CHANGED),
+                self._on_selection_changed,
+            )
         )
 
-    def destroy(self):
+    def destroy(self) -> None:
         """Unsubscribe from viewport events and release the manipulator."""
         if self._update_sub is not None:
             self._update_sub.unsubscribe()
@@ -232,11 +255,11 @@ class ConnectionOverlayScene:
             self._selection_sub = None
         self._manipulator = None
 
-    def _on_update(self, _):
+    def _on_update(self, _event: carb.events.IEvent) -> None:
         if self._manipulator is not None:
             self._manipulator.update_overlay()
 
-    def _on_selection_changed(self, _):
+    def _on_selection_changed(self, _event: carb.events.IEvent) -> None:
         if self._manipulator is not None:
             self._manipulator.on_selection_changed()
 
@@ -259,9 +282,10 @@ class ConnectionOverlayController:
             self._custom_item = CategoryStateItem(
                 "LEGO Connections", setting_path=SETTING_DISPLAY_CONNECTIONS
             )
-            self._menubar_display_inst.register_custom_category_item(
-                "Show By Type", self._custom_item
-            )
+            if self._menubar_display_inst is not None:
+                self._menubar_display_inst.register_custom_category_item(
+                    "Show By Type", self._custom_item
+                )
         except Exception:
             traceback.print_exc()
             self._menubar_display_inst = None

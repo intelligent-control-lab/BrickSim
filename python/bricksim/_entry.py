@@ -6,15 +6,14 @@ async def _open_default_stage():
     from isaacsim.core.utils.stage import open_stage_async
 
     from bricksim.assets import DEFAULT_STAGE_PATH
+    from bricksim.utils.sim import get_current_stage
 
     success, error = await open_stage_async(str(DEFAULT_STAGE_PATH))
     if not success:
         carb.log_error(f"Failed to open default stage: {error}")
         return
     # Prevent the user from saving to the original stage file.
-    import omni.usd
-
-    stage = omni.usd.get_context().get_stage()
+    stage = get_current_stage()
     if stage is None:
         carb.log_error("Default stage opened but no current stage is available.")
         return

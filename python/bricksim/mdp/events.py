@@ -7,10 +7,21 @@ import torch
 from isaaclab.assets import RigidObject
 from isaaclab.envs import ManagerBasedEnv
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.sim.views import XformPrimView
 
 from bricksim.core import compute_connection_transform, deallocate_all_managed
 
-from .utils import resolve_brick_rigid_object
+from .utils import (
+    brick_dimensions_from_spawn,
+    resolve_brick_rigid_object,
+    scene_entity_brick_dimensions,
+    set_articulation_joint_position_target,
+    set_articulation_joint_velocity_target,
+    write_articulation_joint_state_to_sim,
+    write_asset_root_pose_to_sim,
+    write_asset_root_velocity_to_sim,
+    write_deformable_nodal_state_to_sim,
+)
 
 
 # TODO: clean up _interface_pose & _compute_visual_connection_transform
@@ -119,42 +130,46 @@ def reset_scene_to_default_no_kinematic_vel(
     for rigid_object in env.scene.rigid_objects.values():
         default_root_state = rigid_object.data.default_root_state[env_ids].clone()
         default_root_state[:, 0:3] += env.scene.env_origins[env_ids]
-        rigid_object.write_root_pose_to_sim(default_root_state[:, :7], env_ids=env_ids)
+        write_asset_root_pose_to_sim(
+            rigid_object, default_root_state[:, :7], env_ids=env_ids
+        )
         if _rigid_object_is_kinematic(rigid_object):
             _set_kinematic_root_velocity_cache(
                 rigid_object, default_root_state[:, 7:], env_ids=env_ids
             )
         else:
-            rigid_object.write_root_velocity_to_sim(
-                default_root_state[:, 7:], env_ids=env_ids
+            write_asset_root_velocity_to_sim(
+                rigid_object, default_root_state[:, 7:], env_ids=env_ids
             )
 
     for articulation_asset in env.scene.articulations.values():
         default_root_state = articulation_asset.data.default_root_state[env_ids].clone()
         default_root_state[:, 0:3] += env.scene.env_origins[env_ids]
-        articulation_asset.write_root_pose_to_sim(
-            default_root_state[:, :7], env_ids=env_ids
+        write_asset_root_pose_to_sim(
+            articulation_asset, default_root_state[:, :7], env_ids=env_ids
         )
-        articulation_asset.write_root_velocity_to_sim(
-            default_root_state[:, 7:], env_ids=env_ids
+        write_asset_root_velocity_to_sim(
+            articulation_asset, default_root_state[:, 7:], env_ids=env_ids
         )
 
         default_joint_pos = articulation_asset.data.default_joint_pos[env_ids].clone()
         default_joint_vel = articulation_asset.data.default_joint_vel[env_ids].clone()
-        articulation_asset.write_joint_state_to_sim(
-            default_joint_pos, default_joint_vel, env_ids=env_ids
+        write_articulation_joint_state_to_sim(
+            articulation_asset, default_joint_pos, default_joint_vel, env_ids=env_ids
         )
         if reset_joint_targets:
-            articulation_asset.set_joint_position_target(
-                default_joint_pos, env_ids=env_ids
+            set_articulation_joint_position_target(
+                articulation_asset, default_joint_pos, env_ids=env_ids
             )
-            articulation_asset.set_joint_velocity_target(
-                default_joint_vel, env_ids=env_ids
+            set_articulation_joint_velocity_target(
+                articulation_asset, default_joint_vel, env_ids=env_ids
             )
 
     for deformable_object in env.scene.deformable_objects.values():
         nodal_state = deformable_object.data.default_nodal_state_w[env_ids].clone()
-        deformable_object.write_nodal_state_to_sim(nodal_state, env_ids=env_ids)
+        write_deformable_nodal_state_to_sim(
+            deformable_object, nodal_state, env_ids=env_ids
+        )
 
 
 def reset_bricksim_managed(env: ManagerBasedEnv, env_ids: torch.Tensor) -> None:
@@ -179,7 +194,7 @@ def reset_bricksim_managed(env: ManagerBasedEnv, env_ids: torch.Tensor) -> None:
 
 
 def reset_to_connected_pose(
-    env,
+    env: ManagerBasedEnv,
     env_ids: torch.Tensor,
     moved_cfg: SceneEntityCfg,
     reference_brick_cfg: SceneEntityCfg,
@@ -228,7 +243,7 @@ def reset_to_connected_pose(
     if len(env_id_values) == 0:
         return
 
-    moved = env.scene[moved_cfg.name]
+    moved: object = env.scene[moved_cfg.name]
     reference_brick = resolve_brick_rigid_object(env, reference_brick_cfg.name)
     reference_pos_w = reference_brick.data.root_pos_w[env_ids, :3]
     reference_quat_w = reference_brick.data.root_quat_w[env_ids]
@@ -265,13 +280,9 @@ def reset_to_connected_pose(
             device=reference_pos_w.device,
             dtype=reference_pos_w.dtype,
         )
-    elif all(hasattr(moved, attr) for attr in ("set_world_poses", "prim_paths")):
-        moved_dimensions = tuple(
-            int(v) for v in getattr(env.scene.cfg, moved_cfg.name).spawn.dimensions
-        )
-        reference_dimensions = tuple(
-            int(v) for v in reference_brick.cfg.spawn.dimensions
-        )
+    elif isinstance(moved, XformPrimView):
+        moved_dimensions = scene_entity_brick_dimensions(env, moved_cfg.name)
+        reference_dimensions = brick_dimensions_from_spawn(reference_brick.cfg.spawn)
         stud_dimensions, hole_dimensions = (
             (reference_dimensions, moved_dimensions)
             if moved_side == "hole"
@@ -307,11 +318,11 @@ def reset_to_connected_pose(
 
     if isinstance(moved, RigidObject):
         root_pose = torch.cat([target_pos_w, target_quat_w], dim=-1)
-        moved.write_root_pose_to_sim(root_pose, env_ids=env_ids)
+        write_asset_root_pose_to_sim(moved, root_pose, env_ids=env_ids)
         zero_vel = torch.zeros(
             (root_pose.shape[0], 6), device=root_pose.device, dtype=root_pose.dtype
         )
-        moved.write_root_velocity_to_sim(zero_vel, env_ids=env_ids)
+        write_asset_root_velocity_to_sim(moved, zero_vel, env_ids=env_ids)
     else:
         moved.set_world_poses(
             positions=target_pos_w, orientations=target_quat_w, indices=env_id_values

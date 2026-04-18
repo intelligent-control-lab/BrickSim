@@ -88,7 +88,7 @@ def arrange_parts_on_table(
     grid_resolution: Optional[float],
     allow_rotation: Optional[bool],
     avoid_all_other_parts: Optional[bool],
-    structure_ids: Optional[list[int]],
+    structure_ids: Optional[list[int]] = None,
 ) -> tuple[list[str], list[str]]: ...
 
 def compute_obstacle_regions(
@@ -101,7 +101,7 @@ def compute_obstacle_regions(
 def arrange_parts_in_workspace(
     workspace_path: str,
     parts_to_arrange: list[str],
-    structure_ids: Optional[list[int]],
+    structure_ids: Optional[list[int]] = None,
 ) -> tuple[list[str], list[str]]: ...
 
 class AssemblyThresholds:

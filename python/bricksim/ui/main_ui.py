@@ -7,7 +7,7 @@ import os
 import tempfile
 
 import carb
-import omni.kit.app
+import carb.settings
 import omni.ui
 import omni.usd
 
@@ -38,6 +38,7 @@ from bricksim.importers.stabletext2brick import (
     bricks_text_to_topology_json,
     is_bricks_text,
 )
+from bricksim.utils.sim import get_current_stage, wait_for_next_update
 from bricksim.utils.usd_parse import get_brick_dimensions, get_env_path
 
 from .file_picker import show_file_picker_dialog
@@ -372,6 +373,7 @@ class LegoUI:
         if not success:
             return
 
+        assert filename is not None and dirname is not None
         env_id = self.get_env_id()
         topology = export_lego(env_id)
         fullpath = os.path.join(dirname, filename)
@@ -388,6 +390,7 @@ class LegoUI:
         if not success:
             return
 
+        assert filename is not None and dirname is not None
         fullpath = os.path.join(dirname, filename)
         with open(fullpath, "r", encoding="utf-8") as f:
             text = f.read()
@@ -480,10 +483,12 @@ class LegoUI:
     async def _update_part_prototypes(self):
         update_part_prototypes()
         # Force full USD stage resync
-        world = omni.usd.get_context().get_stage().GetDefaultPrim()
+        stage = get_current_stage()
+        if stage is None:
+            raise RuntimeError("No current USD stage is available.")
+        world = stage.GetDefaultPrim()
         world.SetActive(False)
-        app = omni.kit.app.get_app()
-        await app.next_update_async()
+        await wait_for_next_update()
         world.ClearActive()
 
     async def _set_bricks_color(self):
@@ -491,7 +496,9 @@ class LegoUI:
         selected_paths = (
             omni.usd.get_context().get_selection().get_selected_prim_paths()
         )
-        stage = omni.usd.get_context().get_stage()
+        stage = get_current_stage()
+        if stage is None:
+            raise RuntimeError("No current USD stage is available.")
         paths_to_resync = []
         for path in selected_paths:
             prim = stage.GetPrimAtPath(path)
@@ -505,8 +512,7 @@ class LegoUI:
             active_authored = prim.HasAuthoredActive()
             prim.SetActive(False)
             paths_to_resync.append((prim, active_authored))
-        app = omni.kit.app.get_app()
-        await app.next_update_async()
+        await wait_for_next_update()
         for prim, active_authored in paths_to_resync:
             if active_authored:
                 prim.SetActive(True)

@@ -121,7 +121,7 @@ class SceneCfg(InteractiveSceneCfg):
             FrameTransformerCfg.FrameCfg(
                 prim_path="{ENV_REGEX_NS}/Robot/panda_hand",
                 name="end_effector",
-                offset=OffsetCfg(pos=[0.0, 0.0, 0.1034]),
+                offset=OffsetCfg(pos=(0.0, 0.0, 0.1034)),
             ),
             FrameTransformerCfg.FrameCfg(
                 prim_path="{ENV_REGEX_NS}/Robot/panda_rightfinger",
@@ -134,13 +134,12 @@ class SceneCfg(InteractiveSceneCfg):
                 offset=OffsetCfg(pos=(0.0, 0.0, 0.046)),
             ),
         ],
-        visualizer_cfg=None,
     )
 
     table = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Table",
         init_state=AssetBaseCfg.InitialStateCfg(
-            pos=[0.5, 0, 0.003], rot=[0.707, 0, 0, 0.707]
+            pos=(0.5, 0, 0.003), rot=(0.707, 0, 0, 0.707)
         ),
         spawn=UsdFileCfg(
             usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"
@@ -149,7 +148,7 @@ class SceneCfg(InteractiveSceneCfg):
 
     ground_plane = AssetBaseCfg(
         prim_path="/World/GroundPlane",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=[0, 0, -1.037]),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0, 0, -1.037)),
         spawn=GroundPlaneCfg(),
     )
 
@@ -164,7 +163,7 @@ class SceneCfg(InteractiveSceneCfg):
             pos=(0.5, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0)
         ),
         spawn=BrickPartCfg(
-            dimensions=[32, 32, 1],
+            dimensions=(32, 32, 1),
             color="Dark Gray",
             rigid_props=RigidBodyPropertiesCfg(
                 kinematic_enabled=True, disable_gravity=True
@@ -175,7 +174,7 @@ class SceneCfg(InteractiveSceneCfg):
     lego_brick: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Brick",
         spawn=BrickPartCfg(
-            dimensions=[2, 4, 3],
+            dimensions=(2, 4, 3),
             color="Pink",
             rigid_props=RigidBodyPropertiesCfg(
                 kinematic_enabled=False, disable_gravity=False
@@ -186,7 +185,7 @@ class SceneCfg(InteractiveSceneCfg):
     marker_brick: AssetBaseCfg = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/MarkerBrick",
         spawn=MarkerBrickPartCfg(
-            dimensions=[2, 4, 3],
+            dimensions=(2, 4, 3),
             color="Red",
         ),
     )
@@ -205,7 +204,7 @@ class ActionsCfg:
         ),
         scale=1.0,
         body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(
-            pos=[0.0, 0.0, 0.100]
+            pos=(0.0, 0.0, 0.100)
         ),
     )
 

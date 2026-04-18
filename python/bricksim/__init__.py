@@ -2,10 +2,15 @@
 
 # Loads the extension when imported
 
+from types import ModuleType
+
+_carb: ModuleType | None
 try:
-    import carb as _carb
+    import carb
 except ModuleNotFoundError:
     _carb = None
+else:
+    _carb = carb
 
 
 def _is_bricksim_launcher_invocation() -> bool:
@@ -48,8 +53,7 @@ def _ensure_bricksim_extension_enabled():
     import omni.kit.app
 
     ext_manager = omni.kit.app.get_app().get_extension_manager()
-    ext_id = ext_manager.get_extension_id_by_module(__name__)
-    if ext_id is not None and omni.ext.get_extension_name(ext_id) == "bricksim":
+    if ext_manager.get_enabled_extension_id("bricksim"):
         # Extension is already loaded or being loaded
         return
 

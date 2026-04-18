@@ -2,17 +2,53 @@
 
 import base64
 import json
-from typing import Any, Dict, Union
+from typing import Literal, TypeAlias, TypedDict
 
 import numpy as np
-
-try:
-    import scipy.sparse as sp  # optional, only needed for sparse
-except Exception:  # pragma: no cover
-    sp = None
+import scipy.sparse as sp
 
 
-def load_matrix(obj: Union[str, Dict[str, Any]]):
+class DenseMatrixJson(TypedDict):
+    """Dense matrix JSON emitted by ``bricksim::matrix_to_json``.
+
+    Keep in sync with native/modules/bricksim/utils/matrix_serialization.cppm.
+    """
+
+    kind: Literal["dense"]
+    dtype: str
+    order: Literal["C", "F"]
+    shape: list[int]
+    data_b64: str
+
+
+class SparseMatrixJson(TypedDict):
+    """Sparse matrix JSON emitted by ``bricksim::matrix_to_json``.
+
+    Keep in sync with native/modules/bricksim/utils/matrix_serialization.cppm.
+    """
+
+    kind: Literal["sparse"]
+    format: Literal["csr", "csc"]
+    shape: list[int]
+    nnz: int
+    data_dtype: str
+    index_dtype: str
+    data_b64: str
+    indices_b64: str
+    indptr_b64: str
+
+
+MatrixJson: TypeAlias = DenseMatrixJson | SparseMatrixJson
+LoadedMatrix: TypeAlias = np.ndarray | sp.csr_matrix | sp.csc_matrix
+
+
+def _shape_2d(shape: list[int]) -> tuple[int, int]:
+    if len(shape) != 2:
+        raise ValueError(f"shape must be [rows, cols], got {shape!r}")
+    return int(shape[0]), int(shape[1])
+
+
+def load_matrix(obj: str | MatrixJson) -> LoadedMatrix:
     """Load a matrix serialized by bricksim::matrix_to_json(...).
 
     Loads into:
@@ -32,31 +68,19 @@ def load_matrix(obj: Union[str, Dict[str, Any]]):
         ``numpy.ndarray`` for dense matrices, or a SciPy sparse matrix for
         sparse matrices.
     """
-    j = json.loads(obj) if isinstance(obj, str) else obj
-    kind = j.get("kind")
-    if kind not in ("dense", "sparse"):
-        raise ValueError(f"Unknown kind: {kind!r}")
+    j: MatrixJson = json.loads(obj) if isinstance(obj, str) else obj
 
-    if kind == "dense":
+    if j["kind"] == "dense":
         dtype = np.dtype(j["dtype"])
-        order = j.get("order", "C")
-        if order not in ("C", "F"):
-            raise ValueError(f"Invalid dense order: {order!r}")
-        shape = tuple(int(x) for x in j["shape"])
+        order = j["order"]
+        shape = _shape_2d(j["shape"])
         raw = base64.b64decode(j["data_b64"])
         arr = np.frombuffer(raw, dtype=dtype)
         # reshape with explicit order; copy to detach from the temporary bytes object
         return arr.reshape(shape, order=order).copy()
 
-    # sparse
-    if sp is None:
-        raise ImportError("scipy is required to load sparse matrices")
-
     fmt = j["format"]
-    if fmt not in ("csr", "csc"):
-        raise ValueError(f"Invalid sparse format: {fmt!r}")
-
-    shape = tuple(int(x) for x in j["shape"])
+    shape = _shape_2d(j["shape"])
     nnz = int(j["nnz"])
     data_dtype = np.dtype(j["data_dtype"])
     index_dtype = np.dtype(j["index_dtype"])

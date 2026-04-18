@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import cast
+from typing import Protocol, TypeGuard
 
 import torch
 from isaaclab.envs import ManagerBasedRLEnv
@@ -92,12 +92,24 @@ class _ConnectionEventsCache:
     )
 
 
+class _ConnectionEventsCachedEnv(Protocol):
+    """Isaac Lab env with BrickSim connection-events cache attached."""
+
+    _bricksim_connection_events_cache: _ConnectionEventsCache
+
+
+def _has_connection_events_cache(
+    env: ManagerBasedRLEnv,
+) -> TypeGuard[_ConnectionEventsCachedEnv]:
+    return hasattr(env, "_bricksim_connection_events_cache")
+
+
 def _connection_events_cache(env: ManagerBasedRLEnv) -> _ConnectionEventsCache:
-    cache = getattr(env, "_bricksim_connection_events_cache", None)
-    if cache is None:
-        cache = _ConnectionEventsCache()
-        setattr(env, "_bricksim_connection_events_cache", cache)
-    return cast(_ConnectionEventsCache, cache)
+    if _has_connection_events_cache(env):
+        return env._bricksim_connection_events_cache
+    cache = _ConnectionEventsCache()
+    setattr(env, "_bricksim_connection_events_cache", cache)
+    return cache
 
 
 def _stream_cache(

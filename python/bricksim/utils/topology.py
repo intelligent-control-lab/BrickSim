@@ -1,10 +1,11 @@
 """Topology post-processing helpers."""
 
 from collections import defaultdict, deque
-from typing import Any, Dict, List, Tuple
+
+from bricksim.importers.topology import JsonConnection, JsonPoseHint, JsonTopology
 
 
-def bfs_sort_connections(topology: Dict[str, Any]) -> Dict[str, Any]:
+def bfs_sort_connections(topology: JsonTopology) -> JsonTopology:
     r"""Return a copy of ``topology`` with its connections sorted in a BFS order.
 
     The intent is to approximate an assembly sequence:
@@ -33,60 +34,60 @@ def bfs_sort_connections(topology: Dict[str, Any]) -> Dict[str, Any]:
         reordered. If there are no connections, the original topology is
         returned unchanged.
     """
-    connections: List[Dict[str, Any]] = list(topology.get("connections", []))
+    connections: list[JsonConnection] = list(topology["connections"])
     if not connections:
         return topology
 
     # Build the set of involved part ids.
     nodes: set[int] = set()
-    for c in connections:
-        nodes.add(int(c["stud_id"]))
-        nodes.add(int(c["hole_id"]))
+    for conn in connections:
+        nodes.add(conn["stud_id"])
+        nodes.add(conn["hole_id"])
     if not nodes:
         return topology
 
     # Adjacency: node -> neighbor set.
-    adjacency: Dict[int, set[int]] = defaultdict(set)
+    adjacency: defaultdict[int, set[int]] = defaultdict(set)
     # For each unordered pair of nodes, track indices of connections that join them.
-    conn_indices_by_pair: Dict[Tuple[int, int], List[int]] = defaultdict(list)
+    conn_indices_by_pair: defaultdict[tuple[int, int], list[int]] = defaultdict(list)
 
-    for idx, c in enumerate(connections):
-        a = int(c["stud_id"])
-        b = int(c["hole_id"])
-        if a == b:
+    for idx, conn in enumerate(connections):
+        stud_id = conn["stud_id"]
+        hole_id = conn["hole_id"]
+        if stud_id == hole_id:
             # Self-loop; still track so it does not get lost, but it does not
             # participate in BFS tree edges.
-            key = (a, b)
+            key = (stud_id, hole_id)
             conn_indices_by_pair[key].append(idx)
             continue
 
-        adjacency[a].add(b)
-        adjacency[b].add(a)
-        key = (a, b) if a <= b else (b, a)
+        adjacency[stud_id].add(hole_id)
+        adjacency[hole_id].add(stud_id)
+        key = (stud_id, hole_id) if stud_id <= hole_id else (hole_id, stud_id)
         conn_indices_by_pair[key].append(idx)
 
     # Derive connected components over the nodes that appear in connections.
     unvisited = set(nodes)
-    components: List[set[int]] = []
+    components: list[set[int]] = []
     while unvisited:
         root = min(unvisited)  # deterministic choice
         stack = [root]
         comp = {root}
         unvisited.remove(root)
         while stack:
-            u = stack.pop()
-            for v in adjacency.get(u, ()):
-                if v in unvisited:
-                    unvisited.remove(v)
-                    comp.add(v)
-                    stack.append(v)
+            node = stack.pop()
+            for neighbor in adjacency[node]:
+                if neighbor in unvisited:
+                    unvisited.remove(neighbor)
+                    comp.add(neighbor)
+                    stack.append(neighbor)
         components.append(comp)
 
     # Collect anchor candidates from pose hints, if available.
-    pose_hints: List[Dict[str, Any]] = list(topology.get("pose_hints", []))
-    anchor_ids: set[int] = {int(h["part"]) for h in pose_hints if "part" in h}
+    pose_hints: list[JsonPoseHint] = list(topology["pose_hints"])
+    anchor_ids: set[int] = {hint["part"] for hint in pose_hints}
 
-    sorted_conn_indices: List[int] = []
+    sorted_conn_indices: list[int] = []
     seen_conn: set[int] = set()
 
     for comp in components:
@@ -104,19 +105,23 @@ def bfs_sort_connections(topology: Dict[str, Any]) -> Dict[str, Any]:
         # For deterministic behaviour, we iterate neighbors in sorted order and
         # always pick the lowest-index unused connection between two nodes.
         while q:
-            u = q.popleft()
-            for v in sorted(adjacency.get(u, ())):
-                if v not in comp:
+            node = q.popleft()
+            for neighbor in sorted(adjacency[node]):
+                if neighbor not in comp:
                     continue
-                key = (u, v) if u <= v else (v, u)
+                key = (
+                    (node, neighbor)
+                    if node <= neighbor
+                    else (neighbor, node)
+                )
                 indices = conn_indices_by_pair.get(key, [])
                 if not indices:
                     continue
 
-                if v not in visited_nodes:
-                    visited_nodes.add(v)
-                    q.append(v)
-                    # Emit one "tree" edge: the first unused connection between u and v.
+                if neighbor not in visited_nodes:
+                    visited_nodes.add(neighbor)
+                    q.append(neighbor)
+                    # Emit one "tree" edge: the first unused connection.
                     for idx in indices:
                         if idx not in seen_conn:
                             seen_conn.add(idx)
@@ -140,6 +145,6 @@ def bfs_sort_connections(topology: Dict[str, Any]) -> Dict[str, Any]:
 
     # Rebuild the connections list in the new order.
     new_connections = [connections[i] for i in sorted_conn_indices]
-    new_topology = dict(topology)
+    new_topology = topology.copy()
     new_topology["connections"] = new_connections
     return new_topology

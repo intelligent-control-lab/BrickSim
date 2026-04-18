@@ -1,6 +1,5 @@
 """Spawner configs for BrickSim LEGO brick assets."""
 
-from dataclasses import MISSING
 from typing import Callable
 
 from isaaclab.sim import (
@@ -16,6 +15,8 @@ from pxr import Gf, Usd, UsdGeom
 
 from bricksim.colors import parse_color
 from bricksim.core import allocate_unmanaged_brick_part
+
+from .utils import MISSING
 
 
 def _reset_brick_xform_ops(

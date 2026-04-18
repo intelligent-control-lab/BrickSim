@@ -1,7 +1,7 @@
 """Current connection-state queries for BrickSim MDP terms."""
 
 from dataclasses import dataclass, field
-from typing import cast
+from typing import Protocol, TypeGuard
 
 import torch
 from isaaclab.envs import ManagerBasedRLEnv
@@ -118,12 +118,24 @@ class _ConnectionStateCache:
     )
 
 
+class _ConnectionStateCachedEnv(Protocol):
+    """Isaac Lab env with BrickSim connection-state cache attached."""
+
+    _bricksim_connection_state_cache: _ConnectionStateCache
+
+
+def _has_connection_state_cache(
+    env: ManagerBasedRLEnv,
+) -> TypeGuard[_ConnectionStateCachedEnv]:
+    return hasattr(env, "_bricksim_connection_state_cache")
+
+
 def _connection_state_cache(env: ManagerBasedRLEnv) -> _ConnectionStateCache:
-    cache = getattr(env, "_bricksim_connection_state_cache", None)
-    if cache is None:
-        cache = _ConnectionStateCache()
-        setattr(env, "_bricksim_connection_state_cache", cache)
-    return cast(_ConnectionStateCache, cache)
+    if _has_connection_state_cache(env):
+        return env._bricksim_connection_state_cache
+    cache = _ConnectionStateCache()
+    setattr(env, "_bricksim_connection_state_cache", cache)
+    return cache
 
 
 def interface_pair_connection_state(

@@ -1,13 +1,23 @@
 """Viewport HUD integration for BrickSim frame-time profiling."""
 
+from dataclasses import dataclass
+
 import carb.settings
 
 from bricksim.core import get_last_step_profiling
 
 SETTING_DISPLAY_LAST_STEP = "/persistent/bricksim/hud/displayLastStepProfiling"
 
-_ORIGINAL_VIEWPORT_FPS_SKIP_UPDATE = None
-_ORIGINAL_VIEWPORT_FPS_UPDATE_STATS = None
+_ViewportUpdateInfo = dict[str, object]
+
+
+@dataclass(frozen=True)
+class _ViewportFpsPatch:
+    skip_update: object
+    update_stats: object
+
+
+_VIEWPORT_FPS_PATCH: _ViewportFpsPatch | None = None
 
 
 def _display_last_step_enabled() -> bool:
@@ -15,30 +25,39 @@ def _display_last_step_enabled() -> bool:
 
 
 def _install_viewport_fps_patch() -> None:
-    global _ORIGINAL_VIEWPORT_FPS_SKIP_UPDATE
-    global _ORIGINAL_VIEWPORT_FPS_UPDATE_STATS
+    global _VIEWPORT_FPS_PATCH
 
-    if _ORIGINAL_VIEWPORT_FPS_SKIP_UPDATE is not None:
+    if _VIEWPORT_FPS_PATCH is not None:
         return
 
-    import omni.kit.viewport.window.stats as viewport_stats
+    from omni.kit.viewport.window.stats import ViewportFPS
 
-    _ORIGINAL_VIEWPORT_FPS_SKIP_UPDATE = viewport_stats.ViewportFPS.skip_update
-    _ORIGINAL_VIEWPORT_FPS_UPDATE_STATS = viewport_stats.ViewportFPS.update_stats
+    original_skip_update = ViewportFPS.skip_update
+    original_update_stats = ViewportFPS.update_stats
+    _VIEWPORT_FPS_PATCH = _ViewportFpsPatch(
+        skip_update=original_skip_update,
+        update_stats=original_update_stats,
+    )
 
-    def patched_skip_update(self, update_info):
-        should_skip = _ORIGINAL_VIEWPORT_FPS_SKIP_UPDATE(self, update_info)
+    def patched_skip_update(
+        self: ViewportFPS,
+        update_info: _ViewportUpdateInfo,
+    ) -> bool:
+        should_skip = original_skip_update(self, update_info)
         show_last_step = _display_last_step_enabled()
         toggle_changed = (
             getattr(self, "_bricksim_show_last_step_enabled", None) != show_last_step
         )
-        self._bricksim_show_last_step_enabled = show_last_step
+        setattr(self, "_bricksim_show_last_step_enabled", show_last_step)
         if show_last_step or toggle_changed:
             return False
-        return should_skip
+        return bool(should_skip)
 
-    def patched_update_stats(self, update_info):
-        stats = list(_ORIGINAL_VIEWPORT_FPS_UPDATE_STATS(self, update_info))
+    def patched_update_stats(
+        self: ViewportFPS,
+        update_info: _ViewportUpdateInfo,
+    ) -> list[str]:
+        stats = list(original_update_stats(self, update_info))
         if not _display_last_step_enabled():
             return stats
         try:
@@ -51,38 +70,42 @@ def _install_viewport_fps_patch() -> None:
             )
         return stats
 
-    viewport_stats.ViewportFPS.skip_update = patched_skip_update
-    viewport_stats.ViewportFPS.update_stats = patched_update_stats
+    setattr(ViewportFPS, "skip_update", patched_skip_update)
+    setattr(ViewportFPS, "update_stats", patched_update_stats)
 
 
 def _restore_viewport_fps_patch() -> None:
-    global _ORIGINAL_VIEWPORT_FPS_SKIP_UPDATE
-    global _ORIGINAL_VIEWPORT_FPS_UPDATE_STATS
+    global _VIEWPORT_FPS_PATCH
 
-    if _ORIGINAL_VIEWPORT_FPS_SKIP_UPDATE is None:
+    patch = _VIEWPORT_FPS_PATCH
+    if patch is None:
         return
 
-    import omni.kit.viewport.window.stats as viewport_stats
+    from omni.kit.viewport.window.stats import ViewportFPS
 
-    viewport_stats.ViewportFPS.skip_update = _ORIGINAL_VIEWPORT_FPS_SKIP_UPDATE
-    viewport_stats.ViewportFPS.update_stats = _ORIGINAL_VIEWPORT_FPS_UPDATE_STATS
-    _ORIGINAL_VIEWPORT_FPS_SKIP_UPDATE = None
-    _ORIGINAL_VIEWPORT_FPS_UPDATE_STATS = None
+    setattr(ViewportFPS, "skip_update", patch.skip_update)
+    setattr(ViewportFPS, "update_stats", patch.update_stats)
+    _VIEWPORT_FPS_PATCH = None
 
 
 class FrameTimeHudController:
     """Register the BrickSim frame-time HUD menu item and viewport patch."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Install the viewport FPS patch and menu item."""
         carb.settings.get_settings().set_default(SETTING_DISPLAY_LAST_STEP, False)
         _install_viewport_fps_patch()
 
         from omni.kit.viewport.menubar.core import CategoryStateItem
-        from omni.kit.viewport.menubar.display import get_instance
+        from omni.kit.viewport.menubar.display import (
+            ViewportDisplayMenuBarExtension,
+            get_instance,
+        )
 
-        self._menubar_display_inst = get_instance()
-        self._custom_item = CategoryStateItem(
+        self._menubar_display_inst: ViewportDisplayMenuBarExtension | None = (
+            get_instance()
+        )
+        self._custom_item: CategoryStateItem | None = CategoryStateItem(
             "BrickSim Frame Time",
             setting_path=SETTING_DISPLAY_LAST_STEP,
         )
@@ -92,9 +115,9 @@ class FrameTimeHudController:
                 self._custom_item,
             )
 
-    def destroy(self):
+    def destroy(self) -> None:
         """Unregister the menu item and restore the viewport FPS patch."""
-        if self._menubar_display_inst is not None:
+        if self._menubar_display_inst is not None and self._custom_item is not None:
             self._menubar_display_inst.deregister_custom_category_item(
                 "Heads Up Display",
                 self._custom_item,

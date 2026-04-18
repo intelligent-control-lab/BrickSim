@@ -4,6 +4,7 @@ import carb.settings
 import omni.usd
 
 from bricksim.core import compute_connected_component
+from bricksim.utils.sim import get_current_stage
 
 
 class AssemblySelectionSync:
@@ -51,7 +52,7 @@ class AssemblySelectionSync:
         ):
             return
 
-        stage = self._usd_context.get_stage()
+        stage = get_current_stage()
         if stage is None:
             return
         selection = self._usd_context.get_selection()

@@ -1,8 +1,38 @@
 """Reset-aware cache tokens for BrickSim MDP helpers."""
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import Protocol, TypeGuard
 
 from isaaclab.envs import ManagerBasedRLEnv
+
+_ResetIdx = Callable[[Sequence[int]], None]
+
+
+class _ResetGenerationTrackedEnv(Protocol):
+    """Isaac Lab env after BrickSim reset-generation tracking is installed."""
+
+    _bricksim_original_reset_idx: _ResetIdx
+    _bricksim_reset_generation: int
+    _bricksim_reset_generation_installed: bool
+
+
+def _has_reset_generation_tracking(
+    env: ManagerBasedRLEnv,
+) -> TypeGuard[_ResetGenerationTrackedEnv]:
+    return (
+        hasattr(env, "_bricksim_original_reset_idx")
+        and hasattr(env, "_bricksim_reset_generation")
+        and hasattr(env, "_bricksim_reset_generation_installed")
+    )
+
+
+def _require_reset_generation_tracking(
+    env: ManagerBasedRLEnv,
+) -> _ResetGenerationTrackedEnv:
+    if not _has_reset_generation_tracking(env):
+        raise RuntimeError("BrickSim reset-generation tracking is not installed.")
+    return env
 
 
 @dataclass(slots=True)
@@ -32,7 +62,7 @@ class ResetAwareCacheToken:
     reset_generation: int
 
     @staticmethod
-    def _ensure_reset_generation_tracking(env: ManagerBasedRLEnv) -> None:
+    def _reset_tracked_env(env: ManagerBasedRLEnv) -> _ResetGenerationTrackedEnv:
         """Install lazy reset-generation tracking on the env if needed.
 
         Isaac Lab does not expose a built-in reset generation counter. To make
@@ -41,23 +71,27 @@ class ResetAwareCacheToken:
 
         This relies on Isaac Lab reset paths flowing through ``_reset_idx``.
         The wrapper is installed per env instance and is never stacked twice.
+
+        Returns:
+            Env narrowed to the BrickSim reset-generation fields.
         """
-        if getattr(env, "_bricksim_reset_generation_installed", False):
-            return
+        if _has_reset_generation_tracking(env):
+            return env
 
-        env._bricksim_reset_generation = 0
-        original_reset_idx = env._reset_idx
+        original_reset_idx: _ResetIdx = env._reset_idx
 
-        def wrapped_reset_idx(env_ids):
+        def wrapped_reset_idx(env_ids: Sequence[int]) -> None:
             # Increment after delegating so the generation reflects the newly
             # reset scene state that subsequent queries will observe.
-            result = original_reset_idx(env_ids)
-            env._bricksim_reset_generation += 1
-            return result
+            original_reset_idx(env_ids)
+            tracked_env = _require_reset_generation_tracking(env)
+            tracked_env._bricksim_reset_generation += 1
 
-        env._bricksim_original_reset_idx = original_reset_idx
-        env._reset_idx = wrapped_reset_idx
-        env._bricksim_reset_generation_installed = True
+        setattr(env, "_bricksim_original_reset_idx", original_reset_idx)
+        setattr(env, "_bricksim_reset_generation", 0)
+        env._reset_idx: _ResetIdx = wrapped_reset_idx
+        setattr(env, "_bricksim_reset_generation_installed", True)
+        return _require_reset_generation_tracking(env)
 
     @classmethod
     def from_env(cls, env: ManagerBasedRLEnv) -> "ResetAwareCacheToken":
@@ -66,10 +100,10 @@ class ResetAwareCacheToken:
         Returns:
             Token matching the environment's current step/reset generation.
         """
-        cls._ensure_reset_generation_tracking(env)
+        tracked_env = cls._reset_tracked_env(env)
         return cls(
             step=env.common_step_counter,
-            reset_generation=env._bricksim_reset_generation,
+            reset_generation=tracked_env._bricksim_reset_generation,
         )
 
     def matches_env(self, env: ManagerBasedRLEnv) -> bool:
@@ -79,10 +113,10 @@ class ResetAwareCacheToken:
             ``True`` when the environment has not stepped or reset since the
             token was created.
         """
-        self._ensure_reset_generation_tracking(env)
+        tracked_env = self._reset_tracked_env(env)
         return (
             self.step == env.common_step_counter
-            and self.reset_generation == env._bricksim_reset_generation
+            and self.reset_generation == tracked_env._bricksim_reset_generation
         )
 
     def invalidated_by_same_step_reset(self, env: ManagerBasedRLEnv) -> bool:
@@ -95,8 +129,8 @@ class ResetAwareCacheToken:
         Returns:
             ``True`` when only the reset generation changed.
         """
-        self._ensure_reset_generation_tracking(env)
+        tracked_env = self._reset_tracked_env(env)
         return (
             self.step == env.common_step_counter
-            and self.reset_generation != env._bricksim_reset_generation
+            and self.reset_generation != tracked_env._bricksim_reset_generation
         )

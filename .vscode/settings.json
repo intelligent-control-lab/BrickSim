@@ -19,8 +19,6 @@
     "python.analysis.diagnosticMode": "openFilesOnly",
     "python.analysis.indexing": false,
     "python.analysis.autoImportCompletions": false,
-    "ty.diagnosticMode": "off",
-    "ty.showSyntaxErrors": false,
     "C_Cpp.intelliSenseEngine": "disabled",
     "debug.onTaskErrors": "debugAnyway",
     "cmake.cmakePath": "${workspaceFolder}/_toolchain/cmake-4.2.3-linux-x86_64/bin/cmake",
@@ -32,4 +30,8 @@
         "--compile-commands-dir=${workspaceFolder}/native/.build/dev",
         "--header-insertion=never",
     ],
+    "[python]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "charliermarsh.ruff"
+    }
 }

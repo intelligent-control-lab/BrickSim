@@ -5,7 +5,7 @@ from pathlib import Path
 
 _colors_path = Path(__file__).parent / "colors.json"
 with _colors_path.open("r", encoding="utf-8") as f:
-    Colors = dict(sorted(json.load(f).items()))
+    Colors: dict[str, str] = dict(sorted(json.load(f).items()))
 
 
 def parse_color(name: str) -> tuple[int, int, int]:

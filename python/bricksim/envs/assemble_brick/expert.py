@@ -1,7 +1,6 @@
 """Scripted expert policy for the assemble-brick task."""
 
-from collections.abc import Sequence
-from typing import cast
+from collections.abc import Coroutine, Sequence
 
 import isaaclab.utils.math as math_utils
 import torch
@@ -10,14 +9,7 @@ from isaaclab.envs.mdp.actions.task_space_actions import (
 )
 
 from bricksim.core import compute_connection_transform
-
-try:
-    from isaacsim.util.debug_draw import _debug_draw
-
-    DEBUG_DRAW = _debug_draw.acquire_debug_draw_interface()
-except Exception:
-    DEBUG_DRAW = None
-
+from bricksim.utils.debug_draw import DebugDraw, acquire_debug_draw
 
 BRICK_UNIT_LENGTH = 0.0080
 PLATE_UNIT_HEIGHT = 0.0032
@@ -61,6 +53,7 @@ OPEN_GRIPPER_EXTRA_WIDTH = 0.015
 MAX_FRANKA_GRIPPER_WIDTH = 0.08
 
 _STEP_REQUEST = object()
+ExpertCoroutine = Coroutine[object, None, None]
 
 
 class _NextStepAwaitable:
@@ -80,6 +73,7 @@ class AssembleBrickExpert:
         hole_if: int,
         target_offset: tuple[int, int],
         target_yaw: int,
+        enable_debug_draw: bool = True,
     ):
         """Initialize the expert for a fixed target connection."""
         self.env = env
@@ -91,10 +85,9 @@ class AssembleBrickExpert:
         self._robot = self.env.scene["robot"]
         self._brick = self.env.scene["lego_brick"]
         self._baseplate = self.env.scene["lego_baseplate"]
-        self._arm_action_term = cast(
-            DifferentialInverseKinematicsAction,
-            self.env.action_manager.get_term("arm_action"),
-        )
+        arm_action_term = self.env.action_manager.get_term("arm_action")
+        assert isinstance(arm_action_term, DifferentialInverseKinematicsAction)
+        self._arm_action_term = arm_action_term
         self._action_scale = float(self.env.cfg.actions.arm_action.scale)
         self._step_dt = float(self.env.step_dt)
         self._dtype = self.env.scene.env_origins.dtype
@@ -120,9 +113,10 @@ class AssembleBrickExpert:
         self._captured_valid = torch.zeros(
             (self._num_envs,), device=self.env.device, dtype=torch.bool
         )
-        self._coroutines: list[object | None] = [None] * self._num_envs
-        self._debug_draw = DEBUG_DRAW
-        self._debug_draw_enabled = self._debug_draw is not None
+        self._coroutines: list[ExpertCoroutine | None] = [None] * self._num_envs
+        self._debug_draw: DebugDraw | None = (
+            acquire_debug_draw() if enable_debug_draw else None
+        )
         self._debug_draw_env_id = 0
         self._debug_print_env_id = 0
 
@@ -679,17 +673,18 @@ class AssembleBrickExpert:
         self._step_actions[env_id, 6] = -1.0 if close_gripper else 1.0
 
     def _draw_target_and_current(self, env_id: int, target_pos_w: torch.Tensor) -> None:
-        if not self._debug_draw_enabled or env_id != self._debug_draw_env_id:
+        debug_draw = self._debug_draw
+        if debug_draw is None or env_id != self._debug_draw_env_id:
             return
 
         current_pos_w, _ = self._get_control_frame_pose_w(env_id)
-        self._debug_draw.clear_points()
-        self._debug_draw.draw_points(
+        debug_draw.clear_points()
+        debug_draw.draw_points(
             [tuple(target_pos_w.detach().cpu().tolist())],
             [(1.0, 0.0, 0.0, 1.0)],
             [10.0],
         )
-        self._debug_draw.draw_points(
+        debug_draw.draw_points(
             [tuple(current_pos_w.detach().cpu().tolist())],
             [(0.0, 1.0, 0.0, 1.0)],
             [10.0],
@@ -775,11 +770,15 @@ class AssembleBrickExpert:
         ]
         if self._arm_action_term.cfg.body_offset is None:
             return body_pos_w[0], body_quat_w[0]
+        offset_pos = self._arm_action_term._offset_pos
+        offset_rot = self._arm_action_term._offset_rot
+        assert offset_pos is not None
+        assert offset_rot is not None
         control_pos_w, control_quat_w = math_utils.combine_frame_transforms(
             body_pos_w,
             body_quat_w,
-            self._arm_action_term._offset_pos[env_id : env_id + 1],
-            self._arm_action_term._offset_rot[env_id : env_id + 1],
+            offset_pos[env_id : env_id + 1],
+            offset_rot[env_id : env_id + 1],
         )
         return control_pos_w[0], control_quat_w[0]
 

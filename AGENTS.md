@@ -32,6 +32,11 @@ This project is written in C++26 (with modules) and Python 3.11. The project is 
 ## Build & Test
 1. Only if you modified the C++ code, run `scripts/build.sh` to build and sanity‑check. Testing is needed only if you're ready to commit, do not run them in regular development because it's time-consuming.
 
+## Linting & Type Checking
+1. Use Ruff and ty for Python linting and type checking.
+2. Do not use `typing.Any` or `typing.cast` to bypass type checking. Add precise types, protocols, or local stubs instead.
+3. Pyright configs are for compatibility with tools that need them; Ruff and ty are the lint/type-checking tools for this project.
+
 ## Coding Style
 1. Fail fast: if something might error and we can’t recover, let it error. Don’t add catch‑and‑rethrow or cosmetic error handling—keep code concise.
 2. No preemptive engineering: implement only what’s needed now.

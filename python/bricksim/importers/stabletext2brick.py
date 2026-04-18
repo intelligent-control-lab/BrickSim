@@ -16,9 +16,9 @@ Output format (Python dict):
 """
 
 import re
-from typing import Any
 
-from .grid_topology import bricks_grid_to_topology_json
+from .grid_topology import Brick, ColorInput, InputColor, bricks_grid_to_topology_json
+from .topology import JsonTopology
 
 # Regex for lines like: "2x6 (13,12,0)"
 _BRICK_LINE_RE = re.compile(
@@ -27,7 +27,7 @@ _BRICK_LINE_RE = re.compile(
 )
 
 
-def _parse_bricks_text(bricks_text: str) -> list[tuple[int, int, int, int, int]]:
+def _parse_bricks_text(bricks_text: str) -> list[Brick]:
     """Parse StableText2Brick 'bricks' text into a list of (h, w, x, y, z).
 
     Each line: "hxw (x,y,z)".
@@ -35,7 +35,7 @@ def _parse_bricks_text(bricks_text: str) -> list[tuple[int, int, int, int, int]]
     Returns:
         Parsed bricks as ``(h, w, x, y, z)`` tuples.
     """
-    bricks: list[tuple[int, int, int, int, int]] = []
+    bricks: list[Brick] = []
     for line in bricks_text.splitlines():
         line = line.strip()
         if not line:
@@ -68,12 +68,12 @@ def is_bricks_text(text: str) -> bool:
 
 def bricks_text_to_topology_json(
     bricks_text: str,
-    color: tuple[int, int, int] | list[tuple[int, int, int]] | None = (255, 255, 255),
+    color: ColorInput = (255, 255, 255),
     *,
     include_base_plate: bool = False,
     base_plate_size: tuple[int, int] | None = None,
-    base_plate_color: tuple[int, int, int] | None = None,
-) -> dict[str, Any]:
+    base_plate_color: InputColor | None = None,
+) -> JsonTopology:
     """Convert a StableText2Brick brick string into a JsonTopology dict.
 
     The output matches the C++ bricksim.io.json schema.

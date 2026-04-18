@@ -22,8 +22,8 @@ env:
   BRICKSIM_SKIP_NATIVE_BUILD: "1"
 
 jobs:
-  ruff:
-    name: ruff
+  lint:
+    name: ruff + ty
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout repository
@@ -33,8 +33,13 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-suffix: ruff
+          cache-suffix: lint
 
       - name: Run Ruff
-        continue-on-error: true
         run: uv run --group dev ruff check
+
+      - name: Generate type checker config
+        run: uv run --group dev bricksim-type-configs -y
+
+      - name: Run ty
+        run: uv run --group dev ty check

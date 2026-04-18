@@ -19,15 +19,23 @@ The core idea:
         }
 """
 
-from typing import Any
+from .topology import (
+    SCHEMA_STRING,
+    JsonConnection,
+    JsonPart,
+    JsonPoseHint,
+    JsonTopology,
+)
 
 Brick = tuple[int, int, int, int, int]  # (L, W, x, y, z)
+ColorComponent = int | float
+InputColor = tuple[ColorComponent, ColorComponent, ColorComponent]
+Color = tuple[int, int, int]
+ColorInput = InputColor | list[InputColor] | None
 
 BRICK_UNIT_LENGTH = 0.008  # meters per stud
 PLATE_HEIGHT = 0.0032  # meters per plate
 BRICK_HEIGHT = 3 * PLATE_HEIGHT  # 1 brick = 3 plates = 0.0096 m
-
-SCHEMA_STRING = "bricksim/lego_topology@2"
 
 # From BrickPart in C++:
 # static constexpr InterfaceId HoleId = 0;
@@ -36,14 +44,38 @@ HOLE_IFACE_ID = 0
 STUD_IFACE_ID = 1
 
 
+def _normalize_rgb(color: InputColor) -> Color:
+    red, green, blue = color
+    return int(red), int(green), int(blue)
+
+
+def _normalize_colors(
+    color: ColorInput,
+    num_bricks: int,
+) -> tuple[Color | None, list[Color] | None]:
+    if color is None:
+        return (255, 255, 255), None
+
+    if isinstance(color, tuple):
+        return _normalize_rgb(color), None
+
+    per_brick_colors = [_normalize_rgb(item) for item in color]
+    if len(per_brick_colors) != num_bricks:
+        raise ValueError(
+            f"color iterable length ({len(per_brick_colors)}) "
+            f"does not match number of bricks ({num_bricks})."
+        )
+    return None, per_brick_colors
+
+
 def bricks_grid_to_topology_json(
     bricks: list[Brick],
-    color: tuple[int, int, int] | list[tuple[int, int, int]] | None = (255, 255, 255),
+    color: ColorInput = (255, 255, 255),
     *,
     include_base_plate: bool = False,
     base_plate_size: tuple[int, int] | None = None,
-    base_plate_color: tuple[int, int, int] | None = None,
-) -> dict[str, Any]:
+    base_plate_color: InputColor | None = None,
+) -> JsonTopology:
     """Convert a list of discrete-grid bricks into a JsonTopology dict.
 
     The output matches bricksim.io.json.JsonTopology.
@@ -59,7 +91,7 @@ def bricks_grid_to_topology_json(
     color:
         - None: use (255, 255, 255) for all bricks.
         - (r, g, b): single RGB color applied to all bricks.
-        - iterable of (r, g, b): per-brick colors, same length/order as `bricks`.
+        - list of (r, g, b): per-brick colors, same length/order as `bricks`.
 
     include_base_plate:
         If True, a base plate part with id == 0 is added, and connections are
@@ -93,38 +125,7 @@ def bricks_grid_to_topology_json(
     # Normalize colors:
     # - single_color: one color for all bricks
     # - per_brick_colors: list[color_i] per brick
-    single_color: tuple[int, int, int] | None
-    per_brick_colors: list[tuple[int, int, int]] | None
-
-    if color is None:
-        single_color = (255, 255, 255)
-        per_brick_colors = None
-    else:
-        # Try to interpret as a single (r,g,b) tuple.
-        try:
-            c_seq = tuple(color)
-        except TypeError:
-            c_seq = ()
-
-        if len(c_seq) == 3 and all(isinstance(v, (int, float)) for v in c_seq):
-            single_color = (int(c_seq[0]), int(c_seq[1]), int(c_seq[2]))
-            per_brick_colors = None
-        else:
-            # Must be an iterable of per-brick colors.
-            per_brick_colors = []
-            for item in color:
-                t = tuple(item)
-                if len(t) != 3:
-                    raise ValueError(
-                        "Per-brick colors must be iterables of length 3 (r,g,b)."
-                    )
-                per_brick_colors.append((int(t[0]), int(t[1]), int(t[2])))
-            if len(per_brick_colors) != num_bricks:
-                raise ValueError(
-                    f"color iterable length ({len(per_brick_colors)}) "
-                    f"does not match number of bricks ({num_bricks})."
-                )
-            single_color = None
+    single_color, per_brick_colors = _normalize_colors(color, num_bricks)
 
     # Canonicalize brick dimensions so that L >= W for the topology payload.
     # The input bricks specify L/W such that L spans x-axis and W spans y-axis
@@ -204,7 +205,7 @@ def bricks_grid_to_topology_json(
                 grid[ix][iy][iz] = brick_idx
 
     # Build JsonPart list
-    parts: list[dict[str, Any]] = []
+    parts: list[JsonPart] = []
 
     pid_offset = 1 if include_base_plate else 0
 
@@ -224,7 +225,7 @@ def bricks_grid_to_topology_json(
             plate_length, plate_width = base_plate_size
 
         if base_plate_color is not None:
-            plate_color = base_plate_color
+            plate_color = _normalize_rgb(base_plate_color)
         elif single_color is not None:
             plate_color = single_color
         else:
@@ -300,7 +301,7 @@ def bricks_grid_to_topology_json(
     # segment whose (offset, yaw) describe the top brick's (hole) interface
     # relative to the bottom brick's (stud) interface in the stud's interface
     # grid, taking into account each brick's canonical orientation.
-    connections: list[dict[str, Any]] = []
+    connections: list[JsonConnection] = []
     seen_keys: set[tuple[int, int, int, int, int]] = set()
 
     for ix in range(grid_size_x):
@@ -336,6 +337,7 @@ def bricks_grid_to_topology_json(
 
                 connections.append(
                     {
+                        "id": len(connections),
                         "stud_id": int(b_bottom + pid_offset),
                         "stud_iface": STUD_IFACE_ID,
                         "hole_id": int(b_top + pid_offset),
@@ -367,6 +369,7 @@ def bricks_grid_to_topology_json(
 
             connections.append(
                 {
+                    "id": len(connections),
                     "stud_id": int(plate_id),
                     "stud_iface": STUD_IFACE_ID,
                     "hole_id": int(brick_idx + pid_offset),
@@ -376,12 +379,8 @@ def bricks_grid_to_topology_json(
                 }
             )
 
-    # Assign stable connection ids required by schema v2.
-    for cid, conn in enumerate(connections):
-        conn["id"] = int(cid)
-
     # Build pose hints: exactly one per connected component.
-    pose_hints: list[dict[str, Any]] = []
+    pose_hints: list[JsonPoseHint] = []
     num_parts = num_bricks + (1 if include_base_plate else 0)
     if num_parts > 0:
         # Build adjacency list from connections.
@@ -482,7 +481,7 @@ def bricks_grid_to_topology_json(
                 }
             )
 
-    topology = {
+    topology: JsonTopology = {
         "schema": SCHEMA_STRING,
         "parts": parts,
         "connections": connections,

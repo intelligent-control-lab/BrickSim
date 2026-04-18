@@ -30,15 +30,56 @@ but takes the legolization JSON + lego_library.json instead of text lines.
 
 import json
 import os
-from typing import Any
+from collections.abc import Mapping
+from typing import TypeAlias, TypedDict
 
-from .grid_topology import bricks_grid_to_topology_json
+from .grid_topology import (
+    Brick,
+    ColorInput,
+    InputColor,
+    bricks_grid_to_topology_json,
+)
+from .topology import JsonTopology
+
+
+class LegoStructureBrick(TypedDict):
+    """One task_graph brick entry in legolization JSON."""
+
+    brick_id: int
+    x: int
+    y: int
+    z: int
+    ori: int
+
+
+class LegoLibraryBrick(TypedDict):
+    """Brick dimensions required by the topology importer."""
+
+    height: int
+    width: int
+
+
+class DefaultLegoLibraryBrick(LegoLibraryBrick, total=False):
+    """Bundled library entry, including fields used by StableLego."""
+
+    mass: float
+    inventory: int
+
+
+LegoStructure: TypeAlias = Mapping[str, LegoStructureBrick]
+LegoLibrary: TypeAlias = Mapping[str, LegoLibraryBrick]
 
 DEFAULT_LEGO_LIBRARY_PATH = os.path.join(os.path.dirname(__file__), "lego_library.json")
-DEFAULT_LEGO_LIBRARY = None
+DEFAULT_LEGO_LIBRARY: dict[str, DefaultLegoLibraryBrick] | None = None
 
 
-def load_default_lego_library() -> dict[str, dict[str, Any]]:
+def _load_default_lego_library() -> dict[str, DefaultLegoLibraryBrick]:
+    with open(DEFAULT_LEGO_LIBRARY_PATH, "r", encoding="utf-8") as f:
+        library: dict[str, DefaultLegoLibraryBrick] = json.load(f)
+    return library
+
+
+def load_default_lego_library() -> dict[str, DefaultLegoLibraryBrick]:
     """Load and cache the bundled legolization LEGO library.
 
     Returns:
@@ -50,8 +91,7 @@ def load_default_lego_library() -> dict[str, dict[str, Any]]:
             raise FileNotFoundError(
                 f"Default lego library not found at {DEFAULT_LEGO_LIBRARY_PATH}."
             )
-        with open(DEFAULT_LEGO_LIBRARY_PATH, "r", encoding="utf-8") as f:
-            DEFAULT_LEGO_LIBRARY = json.load(f)
+        DEFAULT_LEGO_LIBRARY = _load_default_lego_library()
     return DEFAULT_LEGO_LIBRARY
 
 
@@ -83,9 +123,9 @@ def is_legolization_json(text: str) -> bool:
 
 
 def _extract_bricks_from_lego_json(
-    lego_structure: dict[str, Any],
-    lego_library: dict[str, dict[str, Any]],
-) -> list[tuple[int, int, int, int, int]]:
+    lego_structure: LegoStructure,
+    lego_library: LegoLibrary,
+) -> list[Brick]:
     """Convert a legolization JSON structure into a list of (h, w, x, y, z).
 
     lego_structure:
@@ -98,7 +138,7 @@ def _extract_bricks_from_lego_json(
     Returns:
         List of (h, w, x, y, z) where h and w are footprint dimensions in studs.
     """
-    bricks: list[tuple[int, int, int, int, int]] = []
+    bricks: list[Brick] = []
 
     # Follow LegoStructure.from_json: only use digit keys and sort them.
     items = [(int(k), v) for k, v in lego_structure.items() if k.isdigit()]
@@ -125,14 +165,14 @@ def _extract_bricks_from_lego_json(
 
 
 def legolization_json_to_topology_json(
-    lego_structure: dict[str, Any],
-    lego_library: dict[str, dict[str, Any]] | None = None,
-    color: tuple[int, int, int] | list[tuple[int, int, int]] | None = (255, 255, 255),
+    lego_structure: LegoStructure,
+    lego_library: LegoLibrary | None = None,
+    color: ColorInput = (255, 255, 255),
     *,
     include_base_plate: bool = False,
     base_plate_size: tuple[int, int] | None = None,
-    base_plate_color: tuple[int, int, int] | None = None,
-) -> dict[str, Any]:
+    base_plate_color: InputColor | None = None,
+) -> JsonTopology:
     """Convert legolization LEGO JSON into a JsonTopology dict.
 
     This accepts task_graph-style input and matches bricksim.io.json.JsonTopology.

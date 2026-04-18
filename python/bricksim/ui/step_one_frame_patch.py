@@ -3,18 +3,19 @@
 import asyncio
 from pathlib import Path
 
+from bricksim.utils.sim import wait_for_next_update
+
 
 async def _play_then_pause_immediately():
     """Advance the timeline by one app update.
 
     Issue PLAY, then pause on the next app update.
     """
-    import omni.kit.app
     import omni.timeline
 
     timeline = omni.timeline.get_timeline_interface()
     timeline.play()
-    await omni.kit.app.get_app().next_update_async()
+    await wait_for_next_update()
     timeline.pause()
 
 
@@ -41,7 +42,7 @@ def _patch_play_button_group():
         orig_clean(self)
         self._lego_step_one_frame_button = None
 
-    PlayButtonGroup.clean = _lego_clean
+    setattr(PlayButtonGroup, "clean", _lego_clean)
 
     def _lego_get_style(self):
         style = orig_get_style(self)
@@ -50,7 +51,7 @@ def _patch_play_button_group():
         }
         return style
 
-    PlayButtonGroup.get_style = _lego_get_style
+    setattr(PlayButtonGroup, "get_style", _lego_get_style)
 
     def _lego_create(self, default_size):
         widgets = orig_create(self, default_size)
@@ -72,7 +73,7 @@ def _patch_play_button_group():
         widgets["step_one_frame"] = step_button
         return widgets
 
-    PlayButtonGroup.create = _lego_create
+    setattr(PlayButtonGroup, "create", _lego_create)
 
     def _lego_on_timeline_event(self, e):
         orig_on_timeline_event(self, e)
@@ -83,8 +84,8 @@ def _patch_play_button_group():
             if step_button is not None:
                 step_button.visible = self._visible
 
-    PlayButtonGroup._on_timeline_event = _lego_on_timeline_event
-    PlayButtonGroup._lego_step_one_frame_patched = True
+    setattr(PlayButtonGroup, "_on_timeline_event", _lego_on_timeline_event)
+    setattr(PlayButtonGroup, "_lego_step_one_frame_patched", True)
 
 
 def _rebuild_play_button_group():

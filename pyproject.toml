@@ -12,6 +12,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "ruff",
+    "ty",
 ]
 
 [tool.uv]
@@ -40,8 +41,12 @@ target-version = "py311"
 [tool.ruff.lint]
 # Use pycodestyle, Pyflakes, and pep8-naming, then add import sorting.
 select = ["E", "F", "N"]
-extend-select = ["I", "D", "DOC201"]
+extend-select = ["I", "D", "DOC201", "TID251"]
 preview = true
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"typing.Any".msg = "Do not use Any. Use a concrete type, Protocol, object, or a local stub."
+"typing.cast".msg = "Do not use cast as a blanket escape hatch. Prefer a concrete Protocol or stub."
