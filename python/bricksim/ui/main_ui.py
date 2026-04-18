@@ -10,6 +10,7 @@ import carb
 import carb.settings
 import omni.ui
 import omni.usd
+from isaacsim.core.utils.stage import get_current_stage
 
 from bricksim import kit_runner
 from bricksim.colors import Colors, parse_color
@@ -38,7 +39,7 @@ from bricksim.importers.stabletext2brick import (
     bricks_text_to_topology_json,
     is_bricks_text,
 )
-from bricksim.utils.sim import get_current_stage, wait_for_next_update
+from bricksim.utils.sim import wait_for_next_update
 from bricksim.utils.usd_parse import get_brick_dimensions, get_env_path
 
 from .file_picker import show_file_picker_dialog
@@ -484,8 +485,6 @@ class LegoUI:
         update_part_prototypes()
         # Force full USD stage resync
         stage = get_current_stage()
-        if stage is None:
-            raise RuntimeError("No current USD stage is available.")
         world = stage.GetDefaultPrim()
         world.SetActive(False)
         await wait_for_next_update()
@@ -497,8 +496,6 @@ class LegoUI:
             omni.usd.get_context().get_selection().get_selected_prim_paths()
         )
         stage = get_current_stage()
-        if stage is None:
-            raise RuntimeError("No current USD stage is available.")
         paths_to_resync = []
         for path in selected_paths:
             prim = stage.GetPrimAtPath(path)

@@ -2,9 +2,9 @@
 
 import carb.settings
 import omni.usd
+from isaacsim.core.utils.stage import get_current_stage
 
 from bricksim.core import compute_connected_component
-from bricksim.utils.sim import get_current_stage
 
 
 class AssemblySelectionSync:
