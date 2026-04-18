@@ -31,5 +31,10 @@
     "[python]": {
         "editor.formatOnSave": true,
         "editor.defaultFormatter": "charliermarsh.ruff"
-    }
+    },
+    "ruff.exclude": [
+        "demos/**",
+        "experiments/**",
+        "scripts/**",
+    ],
 }
