@@ -20,6 +20,7 @@ permissions:
 
 env:
   BRICKSIM_SKIP_NATIVE_BUILD: "1"
+  OMNI_KIT_ACCEPT_EULA: "1"
 
 jobs:
   lint:
