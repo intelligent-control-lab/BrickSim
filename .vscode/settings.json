@@ -7,6 +7,8 @@
         "native/_deps": true,
         "native/.build": true,
         "outputs": true,
+        ".ty": true,
+        ".ruff_cache": true,
     },
     "files.watcherExclude": {
         "logs": true,
