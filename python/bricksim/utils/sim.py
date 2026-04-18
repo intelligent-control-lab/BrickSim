@@ -24,11 +24,3 @@ async def wait_for_physics_step(world: World) -> float:
 
     world.add_physics_callback(callback_name, on_step)
     return await fut
-
-
-async def wait_for_duration(world: World, duration: float) -> None:
-    """Wait until physics time advances by at least ``duration`` seconds."""
-    elapsed = 0.0
-    while elapsed < duration:
-        step_size = await wait_for_physics_step(world)
-        elapsed += step_size
