@@ -8,12 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
 
-from bricksim.importers.legolization import (
+from bricksim.topology.legolization import (
     is_legolization_json,
     legolization_json_to_topology_json,
     load_default_lego_library,
 )
-from bricksim.importers.stabletext2brick import (
+from bricksim.topology.stabletext2brick import (
     bricks_text_to_topology_json,
     is_bricks_text,
 )

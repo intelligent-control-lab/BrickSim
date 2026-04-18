@@ -7,13 +7,13 @@ from pathlib import Path
 
 import numpy as np
 
-from bricksim.importers.legolization import (
+from bricksim.topology.legolization import (
     _extract_bricks_from_lego_json,
     is_legolization_json,
     legolization_json_to_topology_json,
     load_default_lego_library,
 )
-from bricksim.importers.stabletext2brick import (
+from bricksim.topology.stabletext2brick import (
     _parse_bricks_text,
     bricks_text_to_topology_json,
     is_bricks_text,

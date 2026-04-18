@@ -14,7 +14,7 @@ import time
 import numpy as np
 from gurobipy import GRB
 
-from bricksim.importers.legolization import load_default_lego_library
+from bricksim.topology.legolization import load_default_lego_library
 
 
 def _construct_world_grid(lego, world_dimension, brick_library):

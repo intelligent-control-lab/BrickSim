@@ -33,13 +33,13 @@ import os
 from collections.abc import Mapping
 from typing import TypeAlias, TypedDict
 
-from .grid_topology import (
+from .schema import JsonTopology
+from .voxel_grid import (
     Brick,
     ColorInput,
     InputColor,
     bricks_grid_to_topology_json,
 )
-from .topology import JsonTopology
 
 
 class LegoStructureBrick(TypedDict):

@@ -15,9 +15,9 @@ from isaacsim.core.utils.nucleus import get_assets_root_path
 from isaacsim.core.utils.numpy.rotations import quats_to_rot_matrices, rot_matrices_to_quats
 from isaacsim.robot_motion.motion_generation import RmpFlow, ArticulationMotionPolicy
 from isaacsim.robot_motion.motion_generation.interface_config_loader import load_supported_motion_policy_config
-from bricksim.utils.topology import bfs_sort_connections
-from bricksim.importers.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
-from bricksim.importers.legolization import legolization_json_to_topology_json, is_legolization_json
+from bricksim.topology.legolization import legolization_json_to_topology_json, is_legolization_json
+from bricksim.topology.ordering import bfs_sort_connections
+from bricksim.topology.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
 from bricksim.assets import DEFAULT_STAGE_PATH
 from bricksim.colors import Colors, parse_color
 from bricksim.core import (

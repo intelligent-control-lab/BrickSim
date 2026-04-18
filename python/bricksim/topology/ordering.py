@@ -2,7 +2,7 @@
 
 from collections import defaultdict, deque
 
-from bricksim.importers.topology import JsonConnection, JsonPoseHint, JsonTopology
+from bricksim.topology.schema import JsonConnection, JsonPoseHint, JsonTopology
 
 
 def bfs_sort_connections(topology: JsonTopology) -> JsonTopology:

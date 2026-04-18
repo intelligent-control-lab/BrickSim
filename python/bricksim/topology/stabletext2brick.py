@@ -17,8 +17,8 @@ Output format (Python dict):
 
 import re
 
-from .grid_topology import Brick, ColorInput, InputColor, bricks_grid_to_topology_json
-from .topology import JsonTopology
+from .schema import JsonTopology
+from .voxel_grid import Brick, ColorInput, InputColor, bricks_grid_to_topology_json
 
 # Regex for lines like: "2x6 (13,12,0)"
 _BRICK_LINE_RE = re.compile(

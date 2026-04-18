@@ -8,7 +8,7 @@ This module factors out the common logic used by:
   - legolization.py
 
 The core idea:
-  - Importers parse some source format into a list of bricks on a 3D integer grid.
+  - Converters parse some source format into a list of bricks on a 3D integer grid.
   - Each brick is represented as (L, W, x, y, z) in stud / layer units.
   - This module turns that list into:
         {
@@ -19,7 +19,7 @@ The core idea:
         }
 """
 
-from .topology import (
+from .schema import (
     SCHEMA_STRING,
     JsonConnection,
     JsonPart,
