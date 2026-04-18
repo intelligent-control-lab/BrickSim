@@ -17,8 +17,8 @@ from isaacsim.robot_motion.motion_generation.interface_config_loader import load
 from bricksim.assets import DEFAULT_STAGE_PATH
 from bricksim.colors import parse_color
 from bricksim.core import allocate_brick_part, AssemblyThresholds, compute_connection_transform, set_assembly_thresholds
-from bricksim.utils.sim import wait_for_physics_step
-from bricksim.utils.usd_parse import get_brick_dimensions
+from bricksim.utils.brick_usd import parse_brick_prim_dimensions
+from bricksim.utils.physics_step import wait_for_physics_step
 # try:
     # from isaacsim.util.debug_draw import _debug_draw
     # DEBUG_DRAW = _debug_draw.acquire_debug_draw_interface()
@@ -255,7 +255,8 @@ async def grasp_lego_part(
     print(f"--- Attempting to grasp brick: {brick_prim_path} ---")
 
     # Get Brick Info
-    dimensions = get_brick_dimensions(brick_prim_path)
+    stage = get_current_stage()
+    dimensions = parse_brick_prim_dimensions(stage.GetPrimAtPath(brick_prim_path))
     if dimensions is None:
         return False
     

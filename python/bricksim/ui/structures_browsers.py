@@ -10,7 +10,7 @@ from bricksim.colors import parse_color
 from bricksim.core import arrange_parts_in_workspace, import_lego
 from bricksim.structures import BricksimDatasetItem, load_bricksim_dataset
 from bricksim.topology.legolization import legolization_json_to_topology_json
-from bricksim.utils.usd_parse import get_env_path
+from bricksim.utils.env_paths import get_env_path
 
 from .main_ui import LegoUI
 

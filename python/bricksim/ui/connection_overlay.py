@@ -15,7 +15,7 @@ from omni.ui_scene import AbstractGesture
 from pxr import Gf, UsdGeom
 
 from bricksim.core import compute_connection_local_transform, get_connection_utilization
-from bricksim.utils.usd_parse import parse_connection_prim
+from bricksim.utils.connection_usd import parse_connection_prim
 
 SETTING_DISPLAY_CONNECTIONS = "/persistent/bricksim/visualizationDisplayConnections"
 
@@ -73,19 +73,18 @@ class _ConnectionOverlayManipulator(omni.ui.scene.Manipulator):
         parsed = parse_connection_prim(stage.GetPrimAtPath(conn_path))
         if parsed is None:
             return None
-        stud_path_str, stud_if, hole_path_str, hole_if, offset, yaw = parsed
         mpu = UsdGeom.GetStageMetersPerUnit(stage)
-        stud_prim = stage.GetPrimAtPath(stud_path_str)
+        stud_prim = stage.GetPrimAtPath(parsed.stud_path)
         if not stud_prim.IsValid():
             return None
         try:
             (_, stud_pos_m), (_, _) = compute_connection_local_transform(
-                stud_path=stud_path_str,
-                stud_if=stud_if,
-                hole_path=hole_path_str,
-                hole_if=hole_if,
-                offset=offset,
-                yaw=yaw,
+                stud_path=parsed.stud_path,
+                stud_if=parsed.stud_interface,
+                hole_path=parsed.hole_path,
+                hole_if=parsed.hole_interface,
+                offset=parsed.offset,
+                yaw=parsed.yaw,
             )
         except Exception:
             traceback.print_exc()

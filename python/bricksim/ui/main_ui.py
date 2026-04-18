@@ -39,7 +39,8 @@ from bricksim.topology.stabletext2brick import (
     bricks_text_to_topology_json,
     is_bricks_text,
 )
-from bricksim.utils.usd_parse import get_brick_dimensions, get_env_path
+from bricksim.utils.brick_usd import parse_brick_prim_dimensions
+from bricksim.utils.env_paths import get_env_path
 
 from .file_picker import show_file_picker_dialog
 
@@ -500,7 +501,7 @@ class LegoUI:
             prim = stage.GetPrimAtPath(path)
             if not prim.IsActive():
                 continue
-            dimensions = get_brick_dimensions(path)
+            dimensions = parse_brick_prim_dimensions(prim)
             if dimensions is None:
                 continue
             allocate_unmanaged_brick_part(dimensions=dimensions, color=color, path=path)
