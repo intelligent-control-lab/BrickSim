@@ -1,13 +1,9 @@
 """USD helpers for BrickSim brick prim metadata."""
 
-from typing import TypeAlias
-
 from pxr import Gf, Usd
 
-BrickDimensions: TypeAlias = tuple[int, int, int]
 
-
-def parse_brick_prim_dimensions(prim: Usd.Prim) -> BrickDimensions | None:
+def parse_brick_prim_dimensions(prim: Usd.Prim) -> tuple[int, int, int] | None:
     """Get the dimensions of a brick part.
 
     Args:

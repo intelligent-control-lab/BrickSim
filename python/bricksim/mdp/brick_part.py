@@ -2,6 +2,8 @@
 
 from typing import Callable
 
+from isaaclab.assets import RigidObject
+from isaaclab.envs import ManagerBasedEnv
 from isaaclab.sim import (
     RigidBodyPropertiesCfg,
     SpawnerCfg,
@@ -192,3 +194,55 @@ class MarkerBrickPartCfg(SpawnerCfg):
     func: Callable = spawn_marker_brick_part
     dimensions: tuple[int, int, int] = MISSING
     color: str | tuple[int, int, int] = MISSING
+
+
+def scene_entity_brick_part_dimensions(
+    env: ManagerBasedEnv,
+    entity_name: str,
+) -> tuple[int, int, int]:
+    """Return BrickSim dimensions for a brick-part scene entity.
+
+    Returns:
+        Brick dimensions as ``(length, width, height)`` in BrickSim units.
+    """
+    entity_cfg = getattr(env.scene.cfg, entity_name)
+    spawn_cfg = getattr(entity_cfg, "spawn")
+    if not isinstance(spawn_cfg, (BrickPartCfg, MarkerBrickPartCfg)):
+        raise TypeError(
+            f"Scene entity '{entity_name}' must be spawned with a BrickSim "
+            f"brick spawn cfg, got {type(spawn_cfg)}"
+        )
+    return spawn_cfg.dimensions
+
+
+def resolve_brick_rigid_object(env: ManagerBasedEnv, entity_name: str) -> RigidObject:
+    """Resolve a BrickSim brick scene entity to its runtime Isaac Lab asset.
+
+    Args:
+        env: The manager-based Isaac Lab environment.
+        entity_name: Name of the scene entity in ``env.scene``.
+
+    Returns:
+        The resolved ``RigidObject`` instance.
+
+    Raises:
+        TypeError: If the named scene entity is not a ``RigidObject`` or was
+            not spawned with ``BrickPartCfg``.
+
+    This helper is intentionally narrow. It only supports connection-capable
+    BrickSim bricks, which in the current design are represented as
+    ``RigidObject`` instances spawned with ``BrickPartCfg``. Marker bricks and
+    other non-physical assets are excluded.
+    """
+    asset = env.scene[entity_name]
+    if not isinstance(asset, RigidObject):
+        raise TypeError(
+            f"Scene entity '{entity_name}' must resolve to RigidObject, got "
+            f"{type(asset)}"
+        )
+    if not isinstance(asset.cfg.spawn, BrickPartCfg):
+        raise TypeError(
+            f"Scene entity '{entity_name}' must be spawned with BrickPartCfg, "
+            f"got {type(asset.cfg.spawn)}"
+        )
+    return asset

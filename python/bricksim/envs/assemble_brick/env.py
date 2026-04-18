@@ -53,6 +53,7 @@ from isaaclab_tasks.manager_based.manipulation.stack.mdp.observations import (
 )
 
 from bricksim.assets import FRANKA_ROBOT_USD_PATH
+from bricksim.mdp.brick_part import BrickPartCfg, MarkerBrickPartCfg
 from bricksim.mdp.connection_thresholds import (
     configure_assembly_thresholds,
     configure_breakage_thresholds,
@@ -62,7 +63,6 @@ from bricksim.mdp.events import (
     reset_scene_to_default_no_kinematic_vel,
     reset_to_connected_pose,
 )
-from bricksim.mdp.spawn import BrickPartCfg, MarkerBrickPartCfg
 
 from .expert import AssembleBrickExpert
 from .mdp.common import assemble_brick_goal_satisfied, wrong_connection_to_target

@@ -13,9 +13,9 @@ from bricksim.core import (
     get_disassembled_connections as _native_get_disassembled_connections,
 )
 
+from .brick_part import resolve_brick_rigid_object
 from .cache_token import ResetAwareCacheToken
 from .connection_state import InterfacePairConnectionQuery
-from .utils import resolve_brick_rigid_object
 
 
 class ConnectionEventStream(Enum):
@@ -35,7 +35,7 @@ class InterfacePairConnectionEvents:
 
     The query endpoints are scene entities that must resolve to BrickSim brick
     rigid objects, i.e. runtime assets accepted by
-    :func:`bricksim.mdp.utils.resolve_brick_rigid_object`. Non-physical marker
+    :func:`bricksim.mdp.brick_part.resolve_brick_rigid_object`. Non-physical marker
     bricks and other asset kinds are not supported by this API.
 
     All tensors are indexed by environment id along dimension 0, so entry
@@ -267,7 +267,7 @@ def interface_pair_assembled_events(
 
     The query is expressed in terms of scene-entity names, not USD prim paths.
     The named scene entities must resolve to runtime brick assets accepted by
-    :func:`bricksim.mdp.utils.resolve_brick_rigid_object`. Per-environment
+    :func:`bricksim.mdp.brick_part.resolve_brick_rigid_object`. Per-environment
     prim paths are resolved internally from those assets when evaluating the
     query.
 
@@ -294,7 +294,7 @@ def interface_pair_disassembled_events(
     This is scoped to the current step. The query is expressed in terms of
     scene-entity names, not USD prim paths. The named scene entities must
     resolve to runtime brick assets accepted by
-    :func:`bricksim.mdp.utils.resolve_brick_rigid_object`. Per-environment prim
+    :func:`bricksim.mdp.brick_part.resolve_brick_rigid_object`. Per-environment prim
     paths are resolved internally from those assets when evaluating the query.
 
     Cache freshness is reset-sensitive. If Isaac Lab resets any sub-environment

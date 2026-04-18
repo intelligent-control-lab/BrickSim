@@ -9,8 +9,8 @@ from isaaclab.managers import SceneEntityCfg
 
 from bricksim.core import lookup_physics_connection
 
+from .brick_part import resolve_brick_rigid_object
 from .cache_token import ResetAwareCacheToken
-from .utils import resolve_brick_rigid_object
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,11 +23,11 @@ class InterfacePairConnectionQuery:
     Attributes:
         stud_name: Name of the stud-side scene entity in ``env.scene``.
             This is the Isaac Lab scene key for a runtime asset accepted by
-            :func:`bricksim.mdp.utils.resolve_brick_rigid_object`, such as
+            :func:`bricksim.mdp.brick_part.resolve_brick_rigid_object`, such as
             ``"lego_baseplate"``, not a USD prim path.
         hole_name: Name of the hole-side scene entity in ``env.scene``.
             This is the Isaac Lab scene key for a runtime asset accepted by
-            :func:`bricksim.mdp.utils.resolve_brick_rigid_object`, such as
+            :func:`bricksim.mdp.brick_part.resolve_brick_rigid_object`, such as
             ``"lego_brick"``, not a USD prim path.
         stud_if: BrickSim stud interface index on the scene entity selected
             by ``stud_name``.
@@ -36,7 +36,7 @@ class InterfacePairConnectionQuery:
 
     At query time, ``stud_name`` and ``hole_name`` are resolved through
     ``env.scene[...]`` and must resolve to runtime brick assets accepted by
-    :func:`bricksim.mdp.utils.resolve_brick_rigid_object`. Those assets are
+    :func:`bricksim.mdp.brick_part.resolve_brick_rigid_object`. Those assets are
     then mapped to per-environment USD prim paths via their PhysX views. The
     resolved prim paths are not stored in this dataclass because they vary
     across environments.
@@ -78,7 +78,7 @@ class InterfacePairConnectionState:
 
     The query endpoints are scene entities that must resolve to BrickSim brick
     rigid objects, i.e. runtime assets accepted by
-    :func:`bricksim.mdp.utils.resolve_brick_rigid_object`. Non-physical marker
+    :func:`bricksim.mdp.brick_part.resolve_brick_rigid_object`. Non-physical marker
     bricks and other asset kinds are not supported by this API.
 
     All tensors are indexed by environment id along dimension 0, so entry

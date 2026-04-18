@@ -11,10 +11,11 @@ from isaaclab.sim.views import XformPrimView
 
 from bricksim.core import compute_connection_transform, deallocate_all_managed
 
-from .utils import (
-    brick_dimensions_from_spawn,
+from .brick_part import (
     resolve_brick_rigid_object,
-    scene_entity_brick_dimensions,
+    scene_entity_brick_part_dimensions,
+)
+from .isaaclab_shims import (
     set_articulation_joint_position_target,
     set_articulation_joint_velocity_target,
     write_articulation_joint_state_to_sim,
@@ -220,7 +221,7 @@ def reset_to_connected_pose(
         reference_brick_cfg: Scene entry for the BrickSim brick that stays
             fixed and defines the target connection frame. It must resolve to a
             runtime brick accepted by
-            :func:`bricksim.mdp.utils.resolve_brick_rigid_object`.
+            :func:`bricksim.mdp.brick_part.resolve_brick_rigid_object`.
         moved_side: Which side of the connection is contributed by
             ``moved_cfg``. Use ``"hole"`` when the moved entity should be
             placed as the hole-side part connected to the reference stud, and
@@ -281,8 +282,10 @@ def reset_to_connected_pose(
             dtype=reference_pos_w.dtype,
         )
     elif isinstance(moved, XformPrimView):
-        moved_dimensions = scene_entity_brick_dimensions(env, moved_cfg.name)
-        reference_dimensions = brick_dimensions_from_spawn(reference_brick.cfg.spawn)
+        moved_dimensions = scene_entity_brick_part_dimensions(env, moved_cfg.name)
+        reference_dimensions = scene_entity_brick_part_dimensions(
+            env, reference_brick_cfg.name
+        )
         stud_dimensions, hole_dimensions = (
             (reference_dimensions, moved_dimensions)
             if moved_side == "hole"
