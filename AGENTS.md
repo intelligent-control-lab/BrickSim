@@ -54,6 +54,10 @@ This project is written in C++26 (with modules) and Python 3.11. The project is 
 8. In Python, do not use `TYPE_CHECKING` blocks.
 9. In Python, unless necessary or by common convention, do not import whole packages; import the specific functions, classes, or symbols you use.
 10. In Python, do not use `... as ...` imports unless truly necessary.
+11. Naming conventions:
+   - Reuse canonical domain terms. Do not invent synonyms.
+   - Optimize names for readability at the call site.
+   - Avoid vague names and unnecessary abbreviations.
 
 ## APIs & Docs
 - Isaac Sim 5.1 is partially open‑sourced.
