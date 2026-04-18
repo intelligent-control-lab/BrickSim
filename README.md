@@ -109,7 +109,7 @@ Other demos include:
 
 ### Generating Type Checker Configuration
 
-Generate the Pyright and ty configuration for type analysis and completion in editors like VSCode:
+Generate the ty configuration for type analysis and completion in editors like VSCode:
 ```bash
 uv run bricksim-type-configs
 ```

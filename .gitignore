@@ -3,12 +3,10 @@ _toolchain/
 .cache/
 .prebuilt-native/
 .thumbs
-.pyright/
 .ty/
 .venv/
 *.egg-info/
 build/
 logs/
 outputs/
-pyrightconfig.deps.json
 ty.toml
