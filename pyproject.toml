@@ -31,10 +31,8 @@ override-dependencies = [
 bricksim = { path = "python", editable = true }
 
 [tool.ruff]
-# Keep the first Ruff rollout scoped to the package so legacy scripts and demos
-# can be cleaned up separately.
 force-exclude = true
-include = ["python/bricksim/**/*.py"]
+include = ["python/**/*.py"]
 src = ["python"]
 target-version = "py311"
 

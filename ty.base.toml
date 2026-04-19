@@ -1,4 +1,4 @@
 [src]
 include = [
-    "python/bricksim/**",
+    "python/**/*.py",
 ]

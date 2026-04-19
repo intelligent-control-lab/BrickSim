@@ -410,7 +410,7 @@ def main() -> None:
         "--solver",
         type=Path,
         default=None,
-        help="Path to static_solve binary. Default: <repo>/native/.build/RelWithDebInfo/static_solve",
+        help="Path to static_solve binary. Default: <repo>/native/.build/release/static_solve",
     )
     parser.add_argument(
         "--format",
@@ -428,7 +428,7 @@ def main() -> None:
 
     repo_root = Path(__file__).resolve().parents[1]
     datarootdir = args.datarootdir if args.datarootdir is not None else _resolve_bricksim_dataset_path()
-    solver_path = args.solver if args.solver is not None else repo_root / "native" / ".build" / "RelWithDebInfo" / "static_solve"
+    solver_path = args.solver if args.solver is not None else repo_root / "native" / ".build" / "release" / "static_solve"
     if not solver_path.is_file():
         raise FileNotFoundError(f"Missing solver binary at {solver_path}")
 

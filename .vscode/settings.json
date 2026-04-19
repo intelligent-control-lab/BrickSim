@@ -1,6 +1,7 @@
 {
     "files.exclude": {
         "_toolchain": true,
+        ".pixi": true,
         "**/.thumbs": true,
         "**/*.egg-info": true,
         "logs": true,
@@ -19,13 +20,13 @@
     },
     "C_Cpp.intelliSenseEngine": "disabled",
     "debug.onTaskErrors": "debugAnyway",
-    "cmake.cmakePath": "${workspaceFolder}/_toolchain/cmake-4.2.3-linux-x86_64/bin/cmake",
+    "cmake.cmakePath": "${workspaceFolder}/.pixi/envs/default/bin/cmake",
     "cmake.sourceDirectory": "${workspaceFolder}/native",
     "cmake.useCMakePresets": "always",
     "cmake.configureOnEdit": true,
-    "clangd.path": "${workspaceFolder}/_toolchain/clangd-wrapper.sh",
+    "clangd.path": "${workspaceFolder}/scripts/clangd-wrapper.sh",
     "clangd.arguments": [
-        "--compile-commands-dir=${workspaceFolder}/native/.build/dev",
+        "--compile-commands-dir=${workspaceFolder}/native/.build/release",
         "--header-insertion=never",
     ],
     "[python]": {

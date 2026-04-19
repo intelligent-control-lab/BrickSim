@@ -32,10 +32,11 @@
 - x86-64 Linux platform. Support for other platforms is coming.
 - Ubuntu 22.04+ or another Linux distribution with `GLIBC >= 2.35`, `GLIBCXX >= 3.4.30`, and `CXXABI >= 1.3.13`
 - [`uv` package manager](https://docs.astral.sh/uv/getting-started/installation/)
+- [`pixi` package manager](https://pixi.prefix.dev/latest/installation/) if you want to build the native extension from source
 - A working NVIDIA driver compatible with [Isaac Sim requirements](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/requirements.html#system-requirements)
 
 ### Install from Source
-We use `uv` for package management. If you don't have it installed, please refer to [Installing uv](https://docs.astral.sh/uv/getting-started/installation/).
+We use `uv` for Python package management. If you don't have it installed, please refer to [Installing uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 ```bash
 # Install required tools (Debian/Ubuntu)
@@ -49,8 +50,7 @@ cd BrickSim
 ./scripts/download_prebuilt_native.sh
 
 # Alternatively, if you want to build the native extension from source, run:
-#  sudo apt install build-essential xz-utils zstd
-#  ./scripts/build.sh
+#  pixi run build-native
 
 # Set up the Python environment and install dependencies
 uv sync --locked
@@ -120,10 +120,11 @@ We recommend installing the [ty extension](https://marketplace.visualstudio.com/
 If you make changes to the C++ code in `native/`, you need to re-compile the native extension for the changes to take effect.
 
 ```bash
-./scripts/build.sh
+pixi run build-native
 
 # To also build & run the tests, use:
-RUN_TESTS=1 ./scripts/build.sh
+pixi run test-native-debug
+pixi run test-native-release
 ```
 
 ## Citation

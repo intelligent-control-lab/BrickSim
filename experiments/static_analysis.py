@@ -317,7 +317,7 @@ def main() -> None:
         include_baseplate = False
 
     repo_root = Path(__file__).resolve().parents[1]
-    solver_path = repo_root / "native/.build/RelWithDebInfo/static_solve"
+    solver_path = repo_root / "native/.build/release/static_solve"
     if not solver_path.exists():
         raise FileNotFoundError(f"Missing solver binary at {solver_path}")
 

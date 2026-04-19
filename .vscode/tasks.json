@@ -4,10 +4,10 @@
         {
             "label": "Build Extension",
             "type": "shell",
-            "command": "bash",
+            "command": "pixi",
             "args": [
-                "-lc",
-                "${workspaceFolder}/scripts/build.sh"
+                "run",
+                "build-native"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"

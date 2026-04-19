@@ -1,0 +1,166 @@
+{
+    "version": 8,
+    "configurePresets": [
+        {
+            "name": "pixi-toolchain",
+            "hidden": true,
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/.build/${presetName}",
+            "warnings": {
+                "deprecated": false
+            },
+            "cacheVariables": {
+                "CMAKE_MAKE_PROGRAM": "${sourceDir}/../.pixi/envs/default/bin/ninja",
+                "CMAKE_C_COMPILER": "${sourceDir}/../.pixi/envs/default/bin/clang",
+                "CMAKE_CXX_COMPILER": "${sourceDir}/../.pixi/envs/default/bin/clang++",
+                "CMAKE_AR": "${sourceDir}/../.pixi/envs/default/bin/llvm-ar",
+                "CMAKE_RANLIB": "${sourceDir}/../.pixi/envs/default/bin/llvm-ranlib",
+                "CMAKE_NM": "${sourceDir}/../.pixi/envs/default/bin/llvm-nm",
+                "CMAKE_STRIP": "${sourceDir}/../.pixi/envs/default/bin/llvm-strip",
+                "CMAKE_OBJCOPY": "${sourceDir}/../.pixi/envs/default/bin/llvm-objcopy",
+                "CMAKE_OBJDUMP": "${sourceDir}/../.pixi/envs/default/bin/llvm-objdump",
+                "CMAKE_READELF": "${sourceDir}/../.pixi/envs/default/bin/llvm-readelf",
+                "CMAKE_ADDR2LINE": "${sourceDir}/../.pixi/envs/default/bin/llvm-addr2line",
+                "CMAKE_LINKER": "${sourceDir}/../.pixi/envs/default/bin/ld.lld",
+                "CMAKE_C_COMPILER_AR": "${sourceDir}/../.pixi/envs/default/bin/llvm-ar",
+                "CMAKE_C_COMPILER_RANLIB": "${sourceDir}/../.pixi/envs/default/bin/llvm-ranlib",
+                "CMAKE_C_COMPILER_CLANG_SCAN_DEPS": "${sourceDir}/../.pixi/envs/default/bin/clang-scan-deps",
+                "CMAKE_CXX_COMPILER_AR": "${sourceDir}/../.pixi/envs/default/bin/llvm-ar",
+                "CMAKE_CXX_COMPILER_RANLIB": "${sourceDir}/../.pixi/envs/default/bin/llvm-ranlib",
+                "CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS": "${sourceDir}/../.pixi/envs/default/bin/clang-scan-deps",
+                "CMAKE_EXE_LINKER_FLAGS": "-fuse-ld=${sourceDir}/../.pixi/envs/default/bin/ld.lld",
+                "CMAKE_SHARED_LINKER_FLAGS": "-fuse-ld=${sourceDir}/../.pixi/envs/default/bin/ld.lld",
+                "CMAKE_MODULE_LINKER_FLAGS": "-fuse-ld=${sourceDir}/../.pixi/envs/default/bin/ld.lld",
+                "CMAKE_COLOR_DIAGNOSTICS": "ON"
+            },
+            "environment": {
+                "PATH": "${sourceDir}/../.pixi/envs/default/bin:$penv{PATH}",
+                "PIXI_PROJECT_ROOT": "${sourceDir}/.."
+            }
+        },
+        {
+            "name": "debug",
+            "inherits": "pixi-toolchain",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "release",
+            "inherits": "pixi-toolchain",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "debug",
+            "configurePreset": "debug"
+        },
+        {
+            "name": "release",
+            "configurePreset": "release"
+        },
+        {
+            "name": "debug-tests",
+            "inherits": "debug",
+            "targets": [
+                "bricksim_tests"
+            ]
+        },
+        {
+            "name": "release-tests",
+            "inherits": "release",
+            "targets": [
+                "bricksim_tests"
+            ]
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "debug-tests",
+            "configurePreset": "debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "release-tests",
+            "configurePreset": "release",
+            "output": {
+                "outputOnFailure": true
+            }
+        }
+    ],
+    "workflowPresets": [
+        {
+            "name": "debug",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "debug"
+                },
+                {
+                    "type": "build",
+                    "name": "debug"
+                }
+            ]
+        },
+        {
+            "name": "release",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "release"
+                },
+                {
+                    "type": "build",
+                    "name": "release"
+                }
+            ]
+        },
+        {
+            "name": "debug-tests",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "debug"
+                },
+                {
+                    "type": "build",
+                    "name": "debug"
+                },
+                {
+                    "type": "build",
+                    "name": "debug-tests"
+                },
+                {
+                    "type": "test",
+                    "name": "debug-tests"
+                }
+            ]
+        },
+        {
+            "name": "release-tests",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "release"
+                },
+                {
+                    "type": "build",
+                    "name": "release"
+                },
+                {
+                    "type": "build",
+                    "name": "release-tests"
+                },
+                {
+                    "type": "test",
+                    "name": "release-tests"
+                }
+            ]
+        }
+    ]
+}

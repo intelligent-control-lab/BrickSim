@@ -41,8 +41,8 @@ use_prebuilt_native_if_configured() {
         return 0
     fi
 
-    if [[ -n "${RUN_TESTS:-}" ]]; then
-        die "RUN_TESTS=1 cannot be used with a prebuilt native cache at $PREBUILT_NATIVE_MANIFEST. Delete the prebuilt cache and rebuild locally to run native tests."
+    if [[ "$BUILD_PRESET" != "release" ]]; then
+        die "$BUILD_PRESET cannot be used with a prebuilt native cache at $PREBUILT_NATIVE_MANIFEST. Delete the prebuilt cache and rebuild locally for non-release builds."
     fi
 
     read_prebuilt_manifest
@@ -72,10 +72,33 @@ use_prebuilt_native_if_configured() {
     exit 0
 }
 
+ensure_pixi_toolchain() {
+    if [[ -z "${PIXI_PROJECT_ROOT:-}" ]]; then
+        local pixi_bin=${PIXI:-pixi}
+        if ! command -v "$pixi_bin" >/dev/null 2>&1; then
+            if [[ -x "$HOME/.pixi/bin/pixi" ]]; then
+                pixi_bin="$HOME/.pixi/bin/pixi"
+            else
+                die "pixi executable not found. Install Pixi or run from an activated Pixi environment."
+            fi
+        fi
+
+        echo "No active Pixi environment detected; re-running native build through: $pixi_bin run scripts/build.sh $BUILD_PRESET"
+        cd "$ROOT_DIR"
+        exec "$pixi_bin" run "$SCRIPT_DIR/build.sh" "$BUILD_PRESET"
+    fi
+
+    local pixi_root
+    pixi_root=$(cd -- "$PIXI_PROJECT_ROOT" && pwd -P)
+    if [[ "$pixi_root" != "$ROOT_DIR" ]]; then
+        die "Pixi project root mismatch: expected $ROOT_DIR, got $pixi_root"
+    fi
+}
+
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd -P)
 
-BUILD_PROFILE=${1:-RelWithDebInfo}  # Debug, Release, RelWithDebInfo, MinSizeRel
+BUILD_PRESET=${1:-release}
 BRICKSIM_NATIVE_OUTPUT=${BRICKSIM_NATIVE_OUTPUT:-}
 PREBUILT_NATIVE_DIR="$ROOT_DIR/.prebuilt-native"
 PREBUILT_NATIVE_MANIFEST="$PREBUILT_NATIVE_DIR/manifest.env"
@@ -83,41 +106,31 @@ PREBUILT_NATIVE_MANIFEST="$PREBUILT_NATIVE_DIR/manifest.env"
 # Respect an explicit prebuilt cache before touching the toolchain or local build dirs.
 use_prebuilt_native_if_configured
 
-# Setup toolchain environment
-"$ROOT_DIR/scripts/setup_toolchain.sh"
-source "$ROOT_DIR/_toolchain/env.sh"
+ensure_pixi_toolchain
 
 SRC="$ROOT_DIR/native"
-BUILD="$SRC/.build/${BUILD_PROFILE}"
-BUILD_TESTS=OFF
-if [ -n "${RUN_TESTS:-}" ]; then
-  BUILD_TESTS=ON
-fi
+CONFIGURE_PRESET="${BUILD_PRESET%-tests}"
+BUILD="$SRC/.build/${CONFIGURE_PRESET}"
 
-mkdir -p "$BUILD"
-cmake -S "$SRC" -B "$BUILD" \
-  -DCMAKE_BUILD_TYPE=${BUILD_PROFILE} \
-  -DBRICKSIM_BUILD_TESTS=${BUILD_TESTS} \
-  -DCMAKE_COLOR_DIAGNOSTICS=ON \
-  -Wno-deprecated \
-  -G Ninja
-cmake --build "$BUILD" --parallel
+cd "$SRC"
+case "$BUILD_PRESET" in
+  debug|release|debug-tests|release-tests)
+    cmake --workflow --preset "$BUILD_PRESET"
+    ;;
+  *)
+    die "Unknown native build preset '$BUILD_PRESET'. Expected debug, release, debug-tests, or release-tests."
+    ;;
+esac
+cd "$ROOT_DIR"
 
 native_outputs=("$BUILD"/core.*.so)
 if [ "${#native_outputs[@]}" -ne 1 ]; then
-  die "Expected exactly one core.*.so shared library in $BUILD" 
+  die "Expected exactly one core.*.so shared library in $BUILD"
 fi
 
 if [ -n "$BRICKSIM_NATIVE_OUTPUT" ]; then
   mkdir -p "$(dirname "$BRICKSIM_NATIVE_OUTPUT")"
   cp -v "${native_outputs[0]}" "$BRICKSIM_NATIVE_OUTPUT"
 else
-  cp -v "${native_outputs[0]}" "python/bricksim/"
-fi
-
-# Run tests only when RUN_TESTS is set
-if [ -n "${RUN_TESTS:-}" ]; then
-  cd "$BUILD"
-  ctest --output-on-failure
-  cd "$ROOT_DIR"
+  cp -v "${native_outputs[0]}" "$ROOT_DIR/python/bricksim/"
 fi
