@@ -1,79 +1,44 @@
 ## FetchIsaacDeps.cmake
 ##
-## Download and extract Isaac Sim SDK archives.
-##
-## Directive:
-##   isaacsim_dep(<url> <sha256> <EXTRACT_PATH>)
-##     - Downloads the dependency to <ISAACSIM_DEPS_ROOT>/<name>
-##     - Extracts it into <build>/_deps/<name>
-##     - Sets <EXTRACT_PATH> to the extracted root path.
-##
-##   isaacsim_fetch_all_deps()
-##     - Fetches all required Isaac Sim dependencies and sets variables.
+## Prepare Isaac Sim SDK archives for native builds.
 
-set(ISAACSIM_DEPS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/_deps" CACHE PATH "IsaacSim vendor folder")
+include(PrepareArtifacts)
 
-function(_isaacsim_ensure_dir DIR)
-  if(NOT IS_DIRECTORY "${DIR}")
-    file(MAKE_DIRECTORY "${DIR}")
-  endif()
-endfunction()
-
-function(_isaacsim_download URL OUT_PATH SHA256)
-  if(NOT EXISTS "${OUT_PATH}")
-    message(STATUS "Downloading ${URL}")
-    file(DOWNLOAD "${URL}" "${OUT_PATH}" SHOW_PROGRESS EXPECTED_HASH "SHA256=${SHA256}")
-  endif()
-endfunction()
-
-function(_isaacsim_extract ARCHIVE OUT_DIR)
-  _isaacsim_ensure_dir("${OUT_DIR}")
-  find_program(SEVENZIP NAMES 7zz REQUIRED)
-  # Use a stamp file to avoid repeated extraction
-  set(stamp "${OUT_DIR}/.extracted")
-  if(EXISTS "${stamp}")
-    return()
-  endif()
-  execute_process(COMMAND "${SEVENZIP}" x -snld20 -y "-o${OUT_DIR}" "${ARCHIVE}" RESULT_VARIABLE rc)
-  if(NOT rc EQUAL 0)
-    message(FATAL_ERROR "7z extraction failed: ${ARCHIVE}")
-  endif()
-  # Write current timestamp to stamp file
-  string(TIMESTAMP now "%Y-%m-%dT%H:%M:%SZ" UTC)
-  file(WRITE "${stamp}" "${now}\n")
-endfunction()
-
-function(isaacsim_dep URL SHA256 VAR_PREFIX)
-  # Keep archives in source tree; extract into build tree so it is cleaned with the build dir
-  set(_archives_dir "${ISAACSIM_DEPS_ROOT}")
-  set(_extract_dir  "${CMAKE_BINARY_DIR}/_deps")
-  _isaacsim_ensure_dir("${_archives_dir}")
-  _isaacsim_ensure_dir("${_extract_dir}")
-
-  get_filename_component(_fname "${URL}" NAME)
-  set(_archive "${_archives_dir}/${_fname}")
-  _isaacsim_download("${URL}" "${_archive}" "${SHA256}")
-
-  set(_base "${_fname}")
-  string(REGEX REPLACE "\\.(zip|7z)$" "" _base "${_base}")
-  set(_dest "${_extract_dir}/${_base}")
-  _isaacsim_extract("${_archive}" "${_dest}")
-
-  # Export root path
-  set(${VAR_PREFIX} "${_dest}" PARENT_SCOPE)
-endfunction()
+set(_ISAACSIM_DEPS_DEFAULT_ROOT "${CMAKE_BINARY_DIR}/_deps/isaacsim")
+set(_ISAACSIM_DEPS_ROOT_UNDER_SOURCE OFF)
+if(DEFINED ISAACSIM_DEPS_ROOT)
+  set(_isaacsim_current_deps_root "${ISAACSIM_DEPS_ROOT}")
+  cmake_path(ABSOLUTE_PATH _isaacsim_current_deps_root BASE_DIRECTORY "${CMAKE_BINARY_DIR}" NORMALIZE OUTPUT_VARIABLE _isaacsim_current_deps_root_abs)
+  cmake_path(IS_PREFIX CMAKE_CURRENT_SOURCE_DIR "${_isaacsim_current_deps_root_abs}" NORMALIZE _ISAACSIM_DEPS_ROOT_UNDER_SOURCE)
+endif()
+if(DEFINED ISAACSIM_DEPS_ROOT AND _ISAACSIM_DEPS_ROOT_UNDER_SOURCE)
+  set(ISAACSIM_DEPS_ROOT "${_ISAACSIM_DEPS_DEFAULT_ROOT}" CACHE PATH "Prepared Isaac Sim SDK dependency root" FORCE)
+else()
+  set(ISAACSIM_DEPS_ROOT "${_ISAACSIM_DEPS_DEFAULT_ROOT}" CACHE PATH "Prepared Isaac Sim SDK dependency root")
+endif()
+set(ISAACSIM_DEPS_CACHE_ROOT "" CACHE PATH "Optional user cache root for Isaac Sim SDK archives and extracted trees")
 
 function(isaacsim_fetch_all_deps)
-  isaacsim_dep("https://d4i3qtqj3r0z5.cloudfront.net/kit-kernel%40107.3.3%2Bisaac.229672.69cbf6ad.gl.manylinux_2_35_x86_64.release.zip" "d25c458933838dee75eabb941f9193865444653265eed5ddd60c6ca7c212d661" ISAACSIM_KIT)
-  isaacsim_dep("https://d4i3qtqj3r0z5.cloudfront.net/carb_sdk%2Bplugins.manylinux_2_35_x86_64%40206.6%2Brelease.9587.07f17b1b.gl.7z" "88399f41325b0569e57d4cf38999a613ea47baf744caeac1039bc82d684270fd" ISAACSIM_CARB)
-  isaacsim_dep("https://d4i3qtqj3r0z5.cloudfront.net/omni_client_library.linux-x86_64%402.67.0.7z" "41967c3e9904ac9f85d56c60a422cabf43425e29e27ac50f37a502f81170096b" ISAACSIM_OMNI_CLIENT)
-  isaacsim_dep("https://d4i3qtqj3r0z5.cloudfront.net/physxsdk%405.6.1.f9c67de2-release-107.3-linux-x86_64.zip" "d5abba06e8c2b09f51776de8697661f340cdf3e78182ec5b0d237ac4a6c23906" ISAACSIM_PHYSX)
-  isaacsim_dep("https://d4i3qtqj3r0z5.cloudfront.net/usd.py311.manylinux_2_35_x86_64.stock.release%400.24.05.kit.7-gl.16400%2B05f48f24.7z" "66723886655415aa634bba6b9dd225d37b295cfc3a522aa4abc6c37de6d53809" ISAACSIM_USD)
-  isaacsim_dep("https://d4i3qtqj3r0z5.cloudfront.net/usd_ext_physics%4024.05%2Brelease.40469.09c54277.gl.manylinux_2_35_x86_64.release.7z" "de5bafc6a132c1a180b12953ee581f062ddf4d4d5364d35459ada4f2aa0b414c" ISAACSIM_USD_EXT_PHYSICS)
-  isaacsim_dep("https://d4i3qtqj3r0z5.cloudfront.net/omni_physics%40107.3.26-36011981-release_107.3-3a61992c-manylinux_2_35_x86_64.7z" "720062a96cf03bcd36cfb439ed9aac2640cb8c37da8de0e7b4e8b28f52972397" ISAACSIM_OMNI_PHYSICS)
-  isaacsim_dep("https://d4i3qtqj3r0z5.cloudfront.net/python%403.11.13%2Bnv1-linux-x86_64.7z" "f8db1b23d8b4bf0c39fa60aec179e25e61582ea96727ca67a044bc9af3074650" ISAACSIM_PYTHON)
-  isaacsim_dep("https://d4i3qtqj3r0z5.cloudfront.net/omni.usd.core-9ce8448d1db810d8.zip" "9606a5faa889114bd7c39677e7b1d25971964767b08b21983bfa673b513e2d42" ISAACSIM_OMNI_USD_CORE)
-  isaacsim_dep("https://d4i3qtqj3r0z5.cloudfront.net/omni.usd.schema.audio-e6f3b0dc8dc66d41.zip" "3f26cb31b604507148a5113427b4b143c9c36eef4a9fa0561d1e1341d1e4f519" ISAACSIM_OMNI_USD_SCHEMA_AUDIO)
+  set(_prepare_artifacts_args
+    CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/isaac_deps.toml"
+    OUTPUT_ROOT "${ISAACSIM_DEPS_ROOT}"
+    OUT_ROOT_VARIABLE ISAACSIM_DEPS_ROOT
+  )
+  if(ISAACSIM_DEPS_CACHE_ROOT)
+    list(APPEND _prepare_artifacts_args CACHE_ROOT "${ISAACSIM_DEPS_CACHE_ROOT}")
+  endif()
+  prepare_artifacts(${_prepare_artifacts_args})
+
+  set(ISAACSIM_KIT                        "${ISAACSIM_DEPS_ROOT}/kit")
+  set(ISAACSIM_CARB                       "${ISAACSIM_DEPS_ROOT}/carb")
+  set(ISAACSIM_OMNI_CLIENT                "${ISAACSIM_DEPS_ROOT}/omni_client")
+  set(ISAACSIM_PHYSX                      "${ISAACSIM_DEPS_ROOT}/physx")
+  set(ISAACSIM_USD                        "${ISAACSIM_DEPS_ROOT}/usd")
+  set(ISAACSIM_USD_EXT_PHYSICS            "${ISAACSIM_DEPS_ROOT}/usd_ext_physics")
+  set(ISAACSIM_OMNI_PHYSICS               "${ISAACSIM_DEPS_ROOT}/omni_physics")
+  set(ISAACSIM_PYTHON                     "${ISAACSIM_DEPS_ROOT}/python")
+  set(ISAACSIM_OMNI_USD_CORE              "${ISAACSIM_DEPS_ROOT}/omni_usd_core")
+  set(ISAACSIM_OMNI_USD_SCHEMA_AUDIO      "${ISAACSIM_DEPS_ROOT}/omni_usd_schema_audio")
 
   set(ISAACSIM_KIT_INCLUDE                  "${ISAACSIM_KIT}/dev/include")
   set(ISAACSIM_CARB_INCLUDE                 "${ISAACSIM_CARB}/include")
@@ -91,6 +56,60 @@ function(isaacsim_fetch_all_deps)
   set(ISAACSIM_OMNI_PHYSICS_INCLUDE         "${ISAACSIM_OMNI_PHYSICS}/include")
   set(ISAACSIM_OMNI_USD_CORE_LIBDIR         "${ISAACSIM_OMNI_USD_CORE}/bin")
   set(ISAACSIM_OMNI_USD_SCHEMA_AUDIO_LIBDIR "${ISAACSIM_OMNI_USD_SCHEMA_AUDIO}/lib")
+
+  if(NOT TARGET isaacsim_sdk)
+    add_library(isaacsim_sdk INTERFACE)
+  endif()
+
+  target_include_directories(isaacsim_sdk SYSTEM INTERFACE
+    "${ISAACSIM_KIT_INCLUDE}"
+    "${ISAACSIM_CARB_INCLUDE}"
+    "${ISAACSIM_OMNI_CLIENT_INCLUDE}"
+    "${ISAACSIM_OMNI_PHYSICS_INCLUDE}"
+    "${ISAACSIM_PHYSX_INCLUDE}"
+    "${ISAACSIM_PYTHON_INCLUDE}"
+    "${ISAACSIM_USD_EXT_PHYSICS_INCLUDE}"
+    "${ISAACSIM_USD_INCLUDE}"
+    "${ISAACSIM_USD_BOOST_INCLUDE}"
+  )
+
+  target_link_directories(isaacsim_sdk INTERFACE
+    "${ISAACSIM_OMNI_USD_CORE_LIBDIR}"
+    "${ISAACSIM_OMNI_USD_SCHEMA_AUDIO_LIBDIR}"
+    "${ISAACSIM_CARB_LIBDIR}"
+    "${ISAACSIM_PHYSX_LIBDIR}"
+    "${ISAACSIM_PYTHON_LIBDIR}"
+    "${ISAACSIM_USD_EXT_PHYSICS_LIBDIR}"
+    "${ISAACSIM_USD_LIBDIR}"
+  )
+
+  target_link_libraries(isaacsim_sdk INTERFACE
+    python3.11
+    boost_python311
+    PhysX_static_64
+    PhysXCommon_static_64
+    PhysXFoundation_static_64
+    PhysXCooking_static_64
+    PhysXPvdSDK_static_64
+    PhysXExtensions_static_64
+    carb # Order matters: carb before usd
+    usd_arch
+    usd_gf
+    usd_hd
+    usd_kind
+    usd_sdf
+    usd_tf
+    usd_usd
+    usd_usdShade
+    usd_usdGeom
+    usd_usdImaging
+    usd_usdPhysics
+    usd_usdUtils
+    usd_vt
+    omni.usd
+    physxSchema
+    omniAudioSchema
+  )
 
   return(PROPAGATE
     ISAACSIM_KIT ISAACSIM_KIT_INCLUDE

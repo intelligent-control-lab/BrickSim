@@ -6,12 +6,14 @@ on:
       - "python/**"
       - "pyproject.toml"
       - "uv.lock"
+      - ".github/actions/**"
       - ".github/workflows/lint.yml"
   pull_request:
     paths:
       - "python/**"
       - "pyproject.toml"
       - "uv.lock"
+      - ".github/actions/**"
       - ".github/workflows/lint.yml"
   workflow_dispatch:
 
@@ -27,27 +29,11 @@ jobs:
     name: ruff + ty
     runs-on: ubuntu-22.04
     steps:
-      - name: Free disk space
-        run: |
-          df -h
-          echo "Removing hostedtoolcache..."
-          sudo rm -rf /opt/hostedtoolcache || true
-          echo "Removing Android SDK..."
-          sudo rm -rf /usr/local/lib/android || true
-          echo "Removing .NET SDKs..."
-          sudo rm -rf /usr/share/dotnet /etc/skel/.dotnet || true
-          echo "Removing Miniconda..."
-          sudo rm -rf /usr/share/miniconda /usr/bin/conda || true
-          echo "Removing Haskell toolchain..."
-          sudo rm -rf /usr/local/.ghcup /etc/skel/.ghcup || true
-          echo "Removing browsers (Chrome/Chromium) and drivers..."
-          sudo rm -rf /usr/local/share/chromium /usr/local/share/chromedriver-linux64 || true
-          sudo rm -rf /opt/google/chrome || true
-          sudo rm -f /usr/bin/google-chrome /usr/bin/google-chrome-stable /usr/bin/chromium /usr/bin/chromium-browser || true
-          df -h
-
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Free disk space
+        uses: ./.github/actions/free-disk-space
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7

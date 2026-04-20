@@ -1,15 +1,13 @@
 {
     "files.exclude": {
-        "_toolchain": true,
         ".pixi": true,
+        ".ruff_cache": true,
+        ".ty": true,
         "**/.thumbs": true,
         "**/*.egg-info": true,
         "logs": true,
-        "native/_deps": true,
         "native/.build": true,
         "outputs": true,
-        ".ty": true,
-        ".ruff_cache": true,
     },
     "files.watcherExclude": {
         "logs": true,
@@ -37,5 +35,6 @@
         "demos/**",
         "experiments/**",
         "scripts/**",
+        "native/**",
     ],
 }

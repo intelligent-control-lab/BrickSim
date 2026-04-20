@@ -1,0 +1,38 @@
+[cache]
+namespace = "bricksim/source-deps"
+
+[[artifacts]]
+name = "pybind11"
+url = "https://github.com/pybind/pybind11/archive/refs/tags/v2.12.0.tar.gz"
+sha256 = "bf8f242abd1abcd375d516a7067490fb71abd79519a282d22b6e4d19282185a7"
+subdir = "pybind11-2.12.0"
+
+[[artifacts]]
+name = "eigen"
+url = "https://gitlab.com/libeigen/eigen/-/archive/5.0.0/eigen-5.0.0.zip"
+sha256 = "795a5412b6ead1b82c43704b640d4642d75b5755a08d8f12b4f13615fea3f36d"
+subdir = "eigen-5.0.0"
+
+[[artifacts.patches]]
+path = "sdk_patches/eigen.patch"
+
+[[artifacts]]
+name = "osqp"
+url = "https://github.com/osqp/osqp/archive/refs/tags/v1.0.0.zip"
+sha256 = "3580d10d4def0bd758a526200981c79995596dd3237edfcf696263249975b714"
+subdir = "osqp-1.0.0"
+
+[[artifacts.patches]]
+path = "sdk_patches/osqp.patch"
+
+[[artifacts]]
+name = "qdldl"
+url = "https://github.com/osqp/qdldl/archive/refs/tags/v0.1.8.zip"
+sha256 = "d751f2b5f2704749a7caacc96df0e82564f090cb3c8bc96dad165df0cf4b3554"
+subdir = "qdldl-0.1.8"
+
+[[artifacts]]
+name = "nlohmann_json"
+url = "https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz"
+sha256 = "42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa"
+subdir = "json"

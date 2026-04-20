@@ -10,6 +10,7 @@ on:
       - "pixi.toml"
       - "pixi.lock"
       - "scripts/build.sh"
+      - ".github/actions/**"
       - ".github/workflows/build-wheel.yml"
   workflow_dispatch:
 
@@ -26,30 +27,14 @@ jobs:
       CLOUDSMITH_NAMESPACE: bricksim
       CLOUDSMITH_REPOSITORY: bricksim
     steps:
-      - name: Free disk space
-        run: |
-          df -h
-          echo "Removing hostedtoolcache..."
-          sudo rm -rf /opt/hostedtoolcache || true
-          echo "Removing Android SDK..."
-          sudo rm -rf /usr/local/lib/android || true
-          echo "Removing .NET SDKs..."
-          sudo rm -rf /usr/share/dotnet /etc/skel/.dotnet || true
-          echo "Removing Miniconda..."
-          sudo rm -rf /usr/share/miniconda /usr/bin/conda || true
-          echo "Removing Haskell toolchain..."
-          sudo rm -rf /usr/local/.ghcup /etc/skel/.ghcup || true
-          echo "Removing browsers (Chrome/Chromium) and drivers..."
-          sudo rm -rf /usr/local/share/chromium /usr/local/share/chromedriver-linux64 || true
-          sudo rm -rf /opt/google/chrome || true
-          sudo rm -f /usr/bin/google-chrome /usr/bin/google-chrome-stable /usr/bin/chromium /usr/bin/chromium-browser || true
-          df -h
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: recursive
+
+      - name: Free disk space
+        uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v6
@@ -67,13 +52,8 @@ jobs:
           frozen: true
           activate-environment: true
 
-      - name: Cache Isaac Sim deps
-        uses: actions/cache@v4
-        with:
-          path: native/_deps
-          key: isaac-deps-${{ runner.os }}-${{ hashFiles('native/cmake/FetchIsaacDeps.cmake') }}
-          restore-keys: |
-            isaac-deps-${{ runner.os }}-
+      - name: Cache BrickSim artifacts
+        uses: ./.github/actions/cache-bricksim-artifacts
 
       - name: Build native extension
         run: pixi run build-native

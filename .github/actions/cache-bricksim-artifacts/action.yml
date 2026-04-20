@@ -1,0 +1,13 @@
+name: Cache BrickSim artifacts
+description: Cache BrickSim dependency archives and extracted trees
+
+runs:
+  using: composite
+  steps:
+    - name: Cache BrickSim artifacts
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/bricksim
+        key: bricksim-artifacts-${{ runner.os }}-${{ hashFiles('native/isaac_deps.toml', 'native/source_deps.toml', 'native/cmake/prepare_artifacts.py', 'native/cmake/PrepareArtifacts.cmake', 'native/cmake/FetchIsaacDeps.cmake', 'native/sdk_patches/*.patch') }}
+        restore-keys: |
+          bricksim-artifacts-${{ runner.os }}-

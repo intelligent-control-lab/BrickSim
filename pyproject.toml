@@ -5,7 +5,7 @@ description = "BrickSim development environment"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "bricksim[all,stablelego]",
-    "skrl>=1.4.3",
+    "skrl>=1.4.3<2",
     "lerobot==0.4.4",
 ]
 
@@ -31,7 +31,6 @@ override-dependencies = [
 bricksim = { path = "python", editable = true }
 
 [tool.ruff]
-force-exclude = true
 include = ["python/**/*.py"]
 src = ["python"]
 target-version = "py311"
