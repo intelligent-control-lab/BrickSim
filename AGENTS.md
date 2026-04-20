@@ -4,44 +4,19 @@ Isaac Sim 5.1 extension for simulating LEGO bricks and their assembly. This repo
 
 This project is written in C++26 (with modules) and Python 3.11. The project is mostly C++.
 
-## Codebase Structure
-```
-.
-├─ native/                # C++ part of the extension
-│  ├─ modules/            # C++ Modules (Core)
-│  ├─ py/                 # C++ Modules (pybind11 bindings)
-│  ├─ tests/              # C++ unit tests
-│  └─ ...
-├─ python/                # Omniverse extension (Python)
-├─ demos/                 # Demos for conducting research experiments
-├─ experiments/           # Research and evaluation scripts
-├─ resources/             # USD files and other assets
-├─ scripts/               # Development and build scripts
-│  ├─ build.sh            # Build & test C++ code
-│  ├─ setup_toolchain.sh  # Toolchain setup helper for native builds
-│  ├─ find_bricksim_pid.py# Helper for locating a running BrickSim process
-│  └─ ...
-├─ .vscode/               # VS Code workspace settings
-├─ .venv/                 # Project virtualenv
-└─ ...
-../IsaacSim/              # IsaacSim source checkout (optional; for dev purpose)
-../PhysX/                 # PhysX source checkout (optional; for dev purpose)
-../OpenUSD/               # OpenUSD source checkout (optional; for dev purpose)
-```
-
 ## Build & Test
-1. Only if you modified the C++ code, run `scripts/build.sh` to build and sanity‑check. Testing is needed only if you're ready to commit, do not run them in regular development because it's time-consuming.
+1. Only if you modified the C++ code, run `pixi run build-native` to build and sanity‑check. Testing is needed only if you're ready to commit, do not run them in regular development because it's time-consuming.
 
 ## Linting & Type Checking
 1. Use Ruff and ty for Python linting and type checking.
 2. Do not use `typing.Any` or `typing.cast` to bypass type checking. Add precise types, protocols, or local stubs instead.
 
 ## Coding Style
-1. Fail fast: if something might error and we can’t recover, let it error. Don’t add catch‑and‑rethrow or cosmetic error handling—keep code concise.
+1. Fail fast: if something might error and we can’t recover, let it error. Don’t add catch‑and‑rethrow or cosmetic error handling -- keep code concise.
 2. No preemptive engineering: implement only what’s needed now.
-   - If a header is required, include it. Don’t add existence checks—let the build fail if it’s missing.
+   - If a header is required, include it. Don’t add existence checks -- let the build fail if it’s missing.
    - Assume Linux unless otherwise requested; don’t add Windows/macOS branches preemptively.
-   - In CMake, specify the header/library paths you need; don’t add detection logic—let it error if absent.
+   - In CMake, specify the header/library paths you need; don’t add detection logic -- let it error if absent.
 3. Math formulation first: always be explicit about
    - Units: SI vs stage units
    - Storage: row‑major vs column‑major
@@ -61,34 +36,29 @@ This project is written in C++26 (with modules) and Python 3.11. The project is 
 
 ## APIs & Docs
 - Isaac Sim 5.1 is partially open‑sourced.
-  - Python is open‑sourced.
   - Some C++ is open; other parts are closed or header‑only.
 - Treat online docs as potentially stale; verify against local Isaac Sim code.
 - When blocked, consult local sources.
-- Isaac Sim source code lives at `../IsaacSim` (relative to this project directory).
-- PhysX source checkout lives at `../PhysX` (relative to this project directory).
-- OpenUSD source checkout lives at `../OpenUSD` (relative to this project directory).
+   - Isaac Sim source code lives at `../IsaacSim-5.1` (relative to this project directory).
+   - PhysX source checkout lives at `../PhysX-107.3-omni-and-physx-5.6.1` (relative to this project directory).
+   - OpenUSD source checkout lives at `../OpenUSD-v24.05` (relative to this project directory).
 
 ### Where to Look / How to Inspect
-1. If you need to know something about Isaac Sim or PhysX or OpenUSD, consult `../IsaacSim` and `../PhysX` and `../OpenUSD`.
-2. Use `rg` (ripgrep) or similar to search symbols in headers or even binary files.
+1. If you need to know something about Isaac Sim or PhysX or OpenUSD, consult their source code.
+2. The source code of Omni PhysX, the extension that bridges Omniverse and PhysX, is located in `omni/` inside PhysX source.
 3. Decompile/disassemble/reverse‑engineer binaries when source is unavailable.
 4. Many dirs are symlinks created by repoman; they may point outside the tree. Follow them, and enable following links in searches.
-5. If you are looking for Isaac Sim's source, search in `../IsaacSim/`, which contains its source checkout.
-6. If you are looking for PhysX's source, search in `../PhysX/`, which contains its full source. `../IsaacSim/` doesn't contain PhysX's source.
-7. If you are looking for OpenUSD's source, search in `../OpenUSD/`, which contains its full source. `../IsaacSim/` doesn't contain OpenUSD's source.
-8. The source code of Omni PhysX, the extension that bridges Omniverse and PhysX, is located at `../PhysX/omni/`.
 
 ## Safety
 You may operate in:
 1) This project directory
-2) `../IsaacSim` directory and `../PhysX` directory and `../OpenUSD` directory
+2) Source directories of Isaac Sim, PhysX, and OpenUSD (relative paths as above)
 3) Common system locations (e.g., system headers)
 4) Any other directories/files that are explicitly referenced
-5) NEVER change files not belonging to this repository (including `../OpenUSD`, `../PhysX`, `../IsaacSim`), UNLESS you ask the user for this an get an explicit approval 
+5) NEVER change files not belonging to this repository, UNLESS you ask the user for this an get an explicit approval 
 
 You must NOT:
-- Run global searches from filesystem root, or from the home directory, or other directories not listed above—they are too large—unless you first ask the user for approval.
+- Run global searches from filesystem root, or from the home directory, or other directories not listed above -- they are too large -- unless you first ask the user for approval.
 
 If you start Isaac Sim or other processes, you must ensure it's terminated after you are done. These processes can consume significant resources, and might not respond to SIGINT. Use `pgrep` to find their PIDs and `kill` to terminate them if needed.
 
@@ -101,13 +71,9 @@ If you start Isaac Sim or other processes, you must ensure it's terminated after
 - Update this file only on request: edit AGENTS.md if and only if the user explicitly says “update agents.md”.
 
 ## Debugging
-- If `gdb` tool is available, you can use gdb to do interactive debugging.
+- You can use gdb to do interactive debugging.
 - You can use `scripts/find_bricksim_pid.py` to find the PID of running BrickSim process. If the process is not running, ask the user to start it. Don't start it yourself.
 - The executable to use is `.venv/bin/python`.
 - When you need the user to trigger error, ask the user to do so before proceeding.
 - Be cautious not producing large amount of output, otherwise your context window would be full.
-- Use `zenity` command! ****IMPORTANT****
-  - You can ask the user to assist with debugging, such as perform an operation, notify you when something happens (tool call will block until user proceed), ask user's opinion or preference, let user describe what happened.
-  - You should ALWAYS use `zenity` in an interactive scenario, and AVOID STOPPING response.
-  - Don't worry about being blocked, it's intended to be blocked. If it times out, you can always retry.
-  - Always use text input, don't use buttons so the user can provide feedback.
+- ****IMPORTANT**** Use `functions.request_user_input` command to do interactive debugging with the user. You can ask the user to perform an operation, notify you when something happens (tool call will block until user proceed), ask user's opinion or preference, let user describe what happened.
