@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>breakage_cuda benchmark report</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --border: #2a313c;
+    --fg: #e6edf3;
+    --fg-dim: #9da7b3;
+    --accent: #4ea1ff;
+    --accent-dim: rgba(78, 161, 255, 0.18);
+    --warn: #ff6961;
+    --warn-dim: rgba(255, 105, 97, 0.18);
+    --success: #2ea043;
+    --grid: #232a35;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #ffffff;
+      --panel: #f6f8fa;
+      --border: #d0d7de;
+      --fg: #1f2328;
+      --fg-dim: #57606a;
+      --accent: #0969da;
+      --accent-dim: rgba(9, 105, 218, 0.12);
+      --warn: #d1242f;
+      --warn-dim: rgba(209, 36, 47, 0.12);
+      --success: #1a7f37;
+      --grid: #eaeef2;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
+  }
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px 28px 80px;
+  }
+  h1 { font-size: 28px; line-height: 1.25; margin: 0 0 6px; }
+  h2 { font-size: 19px; margin: 36px 0 10px; }
+  h3 { font-size: 15px; margin: 20px 0 6px; }
+  p, li { color: var(--fg); }
+  .sub {
+    color: var(--fg-dim);
+    margin: 0 0 22px;
+  }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin: 22px 0 8px;
+  }
+  @media (max-width: 720px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+  }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .stat .v {
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .stat.success .v { color: var(--success); }
+  .stat.warn    .v { color: var(--warn); }
+  .stat .l { color: var(--fg-dim); font-size: 12px; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 18px 12px;
+    margin: 14px 0;
+  }
+  .panel-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .panel-sub {
+    color: var(--fg-dim);
+    font-size: 12px;
+    margin-bottom: 10px;
+  }
+  svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--fg-dim);
+  }
+  .legend .swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    margin-right: 6px;
+    vertical-align: -2px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0 18px;
+    font-variant-numeric: tabular-nums;
+  }
+  th, td {
+    text-align: right;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  th { color: var(--fg-dim); font-weight: 500; }
+  tr.faster td { background: var(--accent-dim); }
+  td.note { color: var(--warn); font-style: italic; }
+
+  code, pre {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+  }
+  pre {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    overflow-x: auto;
+  }
+  .footnote {
+    color: var(--fg-dim);
+    font-size: 12px;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>breakage_cuda: GPU vs CPU pipeline benchmark</h1>
+  <p class="sub">
+    <code>cuda_qp::Pipeline::solve</code> vs
+    <code>ref_cpu::solve_full</code> (Eigen + OSQP v1.0.0) on a synthetic
+    linear-chain <code>HostSystem</code> of <b>N</b> parts. Hardware:
+    NVIDIA RTX 4090, WSL2, CUDA Toolkit 12.0. Per-step wall clock with
+    <code>cudaDeviceSynchronize()</code> before reading the GPU timer.
+  </p>
+
+  <div class="stats">
+    <div class="stat success">
+      <div class="v">~ 7,000</div>
+      <div class="l">Cross-over N (GPU starts winning)</div>
+    </div>
+    <div class="stat success">
+      <div class="v">~ 40,000</div>
+      <div class="l">N where GPU >= 100x faster</div>
+    </div>
+    <div class="stat success">
+      <div class="v">>= 583x</div>
+      <div class="l">GPU faster @ N = 65,536 (CPU lower bound)</div>
+    </div>
+    <div class="stat warn">
+      <div class="v">3,225x</div>
+      <div class="l">GPU slower @ N = 4 (small-problem regime)</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Wall-clock time per solve (log scale)</div>
+    <div class="panel-sub">
+      Each axis is logarithmic. The GPU curve is roughly flat at small N
+      (dominated by fixed startup), then ramps with N. The CPU curve grows
+      faster than the GPU and crosses it between N = 4,096 and N = 8,192.
+    </div>
+    <svg id="chart-time" viewBox="0 0 800 420"></svg>
+    <div class="legend">
+      <span><span class="swatch" style="background: var(--accent)"></span>
+        CUDA Pipeline::solve</span>
+      <span><span class="swatch" style="background: var(--warn)"></span>
+        CPU ref_cpu::solve_full (OSQP)</span>
+      <span><span class="swatch"
+            style="background: repeating-linear-gradient(
+              to right, var(--warn) 0 6px, transparent 6px 12px)"></span>
+        CPU lower bound (did not converge)</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Speedup ratio (CPU time / GPU time)</div>
+    <div class="panel-sub">
+      Above the dashed line means the GPU is faster. The horizontal lines
+      mark 1x, 10x, 100x speedup thresholds.
+    </div>
+    <svg id="chart-ratio" viewBox="0 0 800 360"></svg>
+    <div class="legend">
+      <span><span class="swatch" style="background: var(--accent)"></span>
+        log10(CPU / GPU)</span>
+      <span><span class="swatch"
+            style="background: repeating-linear-gradient(
+              to right, var(--fg-dim) 0 4px, transparent 4px 8px)"></span>
+        crossover at 1x</span>
+    </div>
+  </div>
+
+  <h2>Raw measurements</h2>
+  <table id="data-table">
+    <thead>
+      <tr>
+        <th>N</th><th>nx</th><th>GPU mean</th><th>CPU mean</th>
+        <th>speedup (CPU/GPU)</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <p class="footnote">
+    Rows highlighted in blue: GPU is faster. Rows annotated with <code>*</code>
+    indicate the CPU OSQP solve hit <code>max_iter = 2,000,000</code>
+    without reaching <code>eps_abs / eps_rel</code>; CPU wall time is a
+    <b>lower bound</b> and the speedup is therefore also a lower bound.
+  </p>
+
+  <h2>Why the GPU is so slow at small N</h2>
+  <p>
+    The GPU pipeline pays three large fixed costs that the CPU pipeline
+    does not:
+  </p>
+  <ul>
+    <li>Three <code>cusolverSpDcsrlsvchol</code> Cholesky factorizations
+        per <code>solve</code> (one per OSQP-style stage).</li>
+    <li>Per-iteration kernel launches in the ADMM loop (~100 small
+        launches per stage).</li>
+    <li>No batching of dense per-part kernels (one
+        <code>&lt;&lt;&lt;&gt;&gt;&gt;</code> per kernel per part).</li>
+  </ul>
+  <p>
+    Together these dominate the runtime when N is small. As N grows, the
+    per-iteration arithmetic crosses the fixed-startup floor and the GPU
+    pulls away from the CPU.
+  </p>
+
+  <h2>Cross-over analysis</h2>
+  <table id="growth-table">
+    <thead>
+      <tr>
+        <th>pair</th>
+        <th>GPU growth</th>
+        <th>CPU growth</th>
+        <th>speedup growth</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <h2>Reproducing</h2>
+  <pre>cmake -S native/cuda/breakage_cuda -B ~/breakage_cuda_build -DCMAKE_BUILD_TYPE=Release
+cmake --build ~/breakage_cuda_build -j
+
+cd ~/breakage_cuda_build
+
+# Single point (e.g., the cross-over):
+BENCH_QUICK=1 LD_LIBRARY_PATH=/usr/lib/wsl/lib \
+  ./breakage_cuda_bench 8192
+
+# Large-N point, CPU side as a lower bound:
+BENCH_QUICK=1 BENCH_GPU_ITER=2 BENCH_CPU_ITER=1 \
+  BENCH_TOLERATE_NONCONVERGED=1 OSQP_MAX_ITER=2000000 \
+  LD_LIBRARY_PATH=/usr/lib/wsl/lib \
+  ./breakage_cuda_bench 65536</pre>
+
+  <p class="footnote">
+    See <a href="BENCHMARK.md">BENCHMARK.md</a> for the same data without
+    any HTML/JS, and <a href="README.md">README.md</a> for the project
+    overview.
+  </p>
+</main>
+
+<script>
+"use strict";
+
+// --- Data --------------------------------------------------------------------
+// us = microseconds. cpu_lb = true means the CPU OSQP solve did not
+// converge within max_iter; the wall time is a lower bound.
+const data = [
+  { N: 4,      nx: 27,      gpu_us: 77_718,        cpu_us: 24.1,            cpu_lb: false },
+  { N: 16,     nx: 135,     gpu_us: 124_321,       cpu_us: 107.9,           cpu_lb: false },
+  { N: 64,     nx: 567,     gpu_us: 167_595,       cpu_us: 435.9,           cpu_lb: false },
+  { N: 256,    nx: 2_295,   gpu_us: 388_190,       cpu_us: 1_730.0,         cpu_lb: false },
+  { N: 512,    nx: 4_599,   gpu_us: 339_170,       cpu_us: 3_430.0,         cpu_lb: false },
+  { N: 1_024,  nx: 9_207,   gpu_us: 3_530_380,     cpu_us: 16_630.0,        cpu_lb: false },
+  { N: 2_048,  nx: 18_423,  gpu_us: 6_242_040,     cpu_us: 62_000.0,        cpu_lb: false },
+  { N: 4_096,  nx: 36_855,  gpu_us: 9_387_990,     cpu_us: 480_640.0,       cpu_lb: false },
+  { N: 8_192,  nx: 73_719,  gpu_us: 3_789_420,     cpu_us: 5_002_100.0,     cpu_lb: false },
+  { N: 16_384, nx: 147_447, gpu_us: 3_454_480,     cpu_us: 68_356_310.0,    cpu_lb: false },
+  { N: 32_768, nx: 294_903, gpu_us: 3_929_924.7,   cpu_us: 254_701_743.6,   cpu_lb: true  },
+  { N: 65_536, nx: 589_815, gpu_us: 4_456_169.4,   cpu_us: 2_596_746_650.8, cpu_lb: true  },
+];
+
+// --- Formatting --------------------------------------------------------------
+function fmtTime(us) {
+  if (us >= 1_000_000) return (us / 1_000_000).toFixed(2) + " s";
+  if (us >= 1_000)     return (us / 1_000).toFixed(2)     + " ms";
+  return us.toFixed(1) + " us";
+}
+function fmtN(n) { return n.toLocaleString("en-US"); }
+function fmtSpeedup(r, lb) {
+  if (r >= 1) {
+    const s = r >= 100 ? r.toFixed(0)
+            : r >= 10  ? r.toFixed(1)
+            :            r.toFixed(2);
+    return (lb ? "&ge; " : "") + s + "x";
+  }
+  return r.toExponential(2) + "x (CPU faster)";
+}
+
+// --- Style helpers (read CSS variables so dark/light works) ------------------
+const css = getComputedStyle(document.documentElement);
+const C = (name) => css.getPropertyValue(name).trim();
+
+// --- Table -------------------------------------------------------------------
+{
+  const tbody = document.querySelector("#data-table tbody");
+  for (const d of data) {
+    const r = d.cpu_us / d.gpu_us;
+    const tr = document.createElement("tr");
+    if (r >= 1) tr.classList.add("faster");
+    tr.innerHTML = [
+      "<td>" + fmtN(d.N) + "</td>",
+      "<td>" + fmtN(d.nx) + "</td>",
+      "<td>" + fmtTime(d.gpu_us) + "</td>",
+      "<td>" + fmtTime(d.cpu_us) + (d.cpu_lb ? " *" : "") + "</td>",
+      "<td>" + fmtSpeedup(r, d.cpu_lb) + "</td>",
+    ].join("");
+    tbody.appendChild(tr);
+  }
+}
+
+// --- Growth table ------------------------------------------------------------
+{
+  const tbody = document.querySelector("#growth-table tbody");
+  const pairs = [
+    [data[8],  data[9]],
+    [data[9],  data[10]],
+    [data[10], data[11]],
+  ];
+  for (const [a, b] of pairs) {
+    const gpuG  = b.gpu_us / a.gpu_us;
+    const cpuG  = b.cpu_us / a.cpu_us;
+    const ratA  = a.cpu_us / a.gpu_us;
+    const ratB  = b.cpu_us / b.gpu_us;
+    const ratG  = ratB / ratA;
+    const lb    = b.cpu_lb;
+    const tr = document.createElement("tr");
+    tr.innerHTML = [
+      "<td>" + fmtN(a.N) + " &rarr; " + fmtN(b.N) + "</td>",
+      "<td>" + gpuG.toFixed(2) + "x</td>",
+      "<td>" + (lb ? "&ge; " : "") + cpuG.toFixed(2) + "x</td>",
+      "<td>" + (lb ? "&ge; " : "") + ratG.toFixed(2) + "x</td>",
+    ].join("");
+    tbody.appendChild(tr);
+  }
+}
+
+// --- SVG helpers -------------------------------------------------------------
+const SVG_NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, children) {
+  const e = document.createElementNS(SVG_NS, tag);
+  if (attrs) for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (children) for (const c of children) e.appendChild(c);
+  return e;
+}
+
+// --- Time chart --------------------------------------------------------------
+function drawTimeChart() {
+  const svg = document.getElementById("chart-time");
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  const W = 800, H = 420;
+  const M = { top: 16, right: 24, bottom: 56, left: 64 };
+  const innerW = W - M.left - M.right;
+  const innerH = H - M.top - M.bottom;
+
+  // X axis: log2(N), domain log2(4)=2 .. log2(65536)=16
+  const xMin = 2, xMax = 16;
+  const xPx = (lx) => M.left + (lx - xMin) / (xMax - xMin) * innerW;
+  // Y axis: log10(us), domain 1 (10us) .. 10 (10^10 us = 10000s)
+  const yMin = 1, yMax = 10;
+  const yPx = (ly) => M.top + (1 - (ly - yMin) / (yMax - yMin)) * innerH;
+
+  const grid = el("g", { stroke: C("--grid"), "stroke-width": 1 });
+  for (let y = yMin; y <= yMax; y++) {
+    grid.appendChild(el("line", {
+      x1: M.left, x2: M.left + innerW,
+      y1: yPx(y), y2: yPx(y),
+    }));
+  }
+  for (let lx = xMin; lx <= xMax; lx++) {
+    grid.appendChild(el("line", {
+      x1: xPx(lx), x2: xPx(lx),
+      y1: M.top, y2: M.top + innerH,
+    }));
+  }
+  svg.appendChild(grid);
+
+  // Y axis labels (log10 us -> human label)
+  const yLabels = {
+    1: "10 us", 2: "100 us", 3: "1 ms", 4: "10 ms",
+    5: "100 ms", 6: "1 s", 7: "10 s", 8: "100 s",
+    9: "1000 s", 10: "10000 s",
+  };
+  const yAxis = el("g", { fill: C("--fg-dim"),
+    "font-size": 11, "font-family": "ui-monospace, monospace",
+    "text-anchor": "end" });
+  for (let y = yMin; y <= yMax; y++) {
+    const t = el("text", { x: M.left - 8, y: yPx(y) + 4 });
+    t.textContent = yLabels[y];
+    yAxis.appendChild(t);
+  }
+  svg.appendChild(yAxis);
+
+  // X axis labels (N at each power of 2)
+  const xAxis = el("g", { fill: C("--fg-dim"),
+    "font-size": 11, "font-family": "ui-monospace, monospace",
+    "text-anchor": "middle" });
+  for (const d of data) {
+    const lx = Math.log2(d.N);
+    const t = el("text", { x: xPx(lx), y: M.top + innerH + 16 });
+    t.textContent = d.N >= 1024 ? (d.N / 1024) + "k" : "" + d.N;
+    xAxis.appendChild(t);
+  }
+  const xTitle = el("text", {
+    x: M.left + innerW / 2, y: M.top + innerH + 42,
+    fill: C("--fg-dim"), "font-size": 12, "text-anchor": "middle",
+  });
+  xTitle.textContent = "N (number of parts, log2 spacing)";
+  xAxis.appendChild(xTitle);
+  svg.appendChild(xAxis);
+
+  // GPU + CPU lines
+  function makePath(getY, color, dash) {
+    const pts = data.map((d) => [xPx(Math.log2(d.N)),
+                                 yPx(Math.log10(getY(d)))]);
+    const dStr = pts.map(([x, y], i) => (i === 0 ? "M" : "L") +
+      x.toFixed(1) + " " + y.toFixed(1)).join(" ");
+    const attrs = {
+      d: dStr, fill: "none", stroke: color, "stroke-width": 2.4,
+      "stroke-linecap": "round", "stroke-linejoin": "round",
+    };
+    if (dash) attrs["stroke-dasharray"] = dash;
+    return el("path", attrs);
+  }
+
+  // CPU has solid + dashed segments depending on cpu_lb
+  // Find first lb index; draw solid up to then, then dashed to end.
+  const firstLb = data.findIndex((d) => d.cpu_lb);
+  if (firstLb >= 0 && firstLb > 0) {
+    const solidData = data.slice(0, firstLb + 1);
+    const lbData    = data.slice(firstLb);
+    const solid = solidData.map((d) =>
+      [xPx(Math.log2(d.N)), yPx(Math.log10(d.cpu_us))]);
+    const dashed = lbData.map((d) =>
+      [xPx(Math.log2(d.N)), yPx(Math.log10(d.cpu_us))]);
+    svg.appendChild(el("path", {
+      d: solid.map(([x,y],i)=>(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)).join(" "),
+      fill: "none", stroke: C("--warn"), "stroke-width": 2.4,
+      "stroke-linecap": "round", "stroke-linejoin": "round",
+    }));
+    svg.appendChild(el("path", {
+      d: dashed.map(([x,y],i)=>(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)).join(" "),
+      fill: "none", stroke: C("--warn"), "stroke-width": 2.4,
+      "stroke-dasharray": "6 5",
+      "stroke-linecap": "round", "stroke-linejoin": "round",
+    }));
+  } else {
+    svg.appendChild(makePath((d)=>d.cpu_us, C("--warn")));
+  }
+  svg.appendChild(makePath((d)=>d.gpu_us, C("--accent")));
+
+  // Points + value labels on hover area
+  const pts = el("g");
+  for (const d of data) {
+    const lx = xPx(Math.log2(d.N));
+    pts.appendChild(el("circle", {
+      cx: lx, cy: yPx(Math.log10(d.gpu_us)),
+      r: 3.5, fill: C("--accent"),
+    }));
+    pts.appendChild(el("circle", {
+      cx: lx, cy: yPx(Math.log10(d.cpu_us)),
+      r: 3.5, fill: C("--warn"),
+      stroke: d.cpu_lb ? C("--bg") : "none",
+      "stroke-width": d.cpu_lb ? 1.5 : 0,
+    }));
+  }
+  svg.appendChild(pts);
+
+  // Mark the cross-over band
+  const xc1 = xPx(Math.log2(4096));
+  const xc2 = xPx(Math.log2(8192));
+  svg.appendChild(el("rect", {
+    x: xc1, y: M.top, width: xc2 - xc1, height: innerH,
+    fill: C("--accent"), opacity: 0.07,
+  }));
+  const xt = el("text", {
+    x: (xc1 + xc2) / 2, y: M.top + 12,
+    fill: C("--accent"), "font-size": 11,
+    "text-anchor": "middle", "font-weight": 600,
+  });
+  xt.textContent = "cross-over";
+  svg.appendChild(xt);
+}
+
+// --- Ratio chart -------------------------------------------------------------
+function drawRatioChart() {
+  const svg = document.getElementById("chart-ratio");
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  const W = 800, H = 360;
+  const M = { top: 16, right: 24, bottom: 56, left: 64 };
+  const innerW = W - M.left - M.right;
+  const innerH = H - M.top - M.bottom;
+
+  const xMin = 2, xMax = 16;
+  const xPx = (lx) => M.left + (lx - xMin) / (xMax - xMin) * innerW;
+  // y = log10(CPU / GPU). Domain: -3.5 .. +3
+  const yMin = -3.5, yMax = 3;
+  const yPx = (ly) => M.top + (1 - (ly - yMin) / (yMax - yMin)) * innerH;
+
+  const grid = el("g", { stroke: C("--grid"), "stroke-width": 1 });
+  for (let y = -3; y <= 3; y++) {
+    grid.appendChild(el("line", {
+      x1: M.left, x2: M.left + innerW,
+      y1: yPx(y), y2: yPx(y),
+    }));
+  }
+  for (let lx = xMin; lx <= xMax; lx++) {
+    grid.appendChild(el("line", {
+      x1: xPx(lx), x2: xPx(lx),
+      y1: M.top, y2: M.top + innerH,
+    }));
+  }
+  svg.appendChild(grid);
+
+  // y axis labels
+  const yLabels = {
+    [-3]: "1/1000x", [-2]: "1/100x", [-1]: "1/10x", [0]: "1x (cross)",
+    [1]: "10x", [2]: "100x", [3]: "1000x",
+  };
+  const yAxis = el("g", { fill: C("--fg-dim"),
+    "font-size": 11, "font-family": "ui-monospace, monospace",
+    "text-anchor": "end" });
+  for (let y = -3; y <= 3; y++) {
+    const t = el("text", { x: M.left - 8, y: yPx(y) + 4 });
+    t.textContent = yLabels[y];
+    yAxis.appendChild(t);
+  }
+  svg.appendChild(yAxis);
+
+  // x axis labels
+  const xAxis = el("g", { fill: C("--fg-dim"),
+    "font-size": 11, "font-family": "ui-monospace, monospace",
+    "text-anchor": "middle" });
+  for (const d of data) {
+    const lx = Math.log2(d.N);
+    const t = el("text", { x: xPx(lx), y: M.top + innerH + 16 });
+    t.textContent = d.N >= 1024 ? (d.N / 1024) + "k" : "" + d.N;
+    xAxis.appendChild(t);
+  }
+  const xTitle = el("text", {
+    x: M.left + innerW / 2, y: M.top + innerH + 42,
+    fill: C("--fg-dim"), "font-size": 12, "text-anchor": "middle",
+  });
+  xTitle.textContent = "N (number of parts, log2 spacing)";
+  xAxis.appendChild(xTitle);
+  svg.appendChild(xAxis);
+
+  // Highlight bands: y > 0 = GPU faster
+  svg.appendChild(el("rect", {
+    x: M.left, y: M.top, width: innerW, height: yPx(0) - M.top,
+    fill: C("--accent"), opacity: 0.07,
+  }));
+  // Threshold lines at 10x, 100x
+  for (const ty of [1, 2]) {
+    svg.appendChild(el("line", {
+      x1: M.left, x2: M.left + innerW,
+      y1: yPx(ty), y2: yPx(ty),
+      stroke: C("--accent"), "stroke-width": 1,
+      "stroke-dasharray": "3 3", opacity: 0.7,
+    }));
+    const t = el("text", {
+      x: M.left + innerW - 4, y: yPx(ty) - 4,
+      fill: C("--accent"), "font-size": 10, "text-anchor": "end",
+    });
+    t.textContent = (ty === 1 ? "10x" : "100x") + " faster";
+    svg.appendChild(t);
+  }
+  // Cross-over line at 0
+  svg.appendChild(el("line", {
+    x1: M.left, x2: M.left + innerW,
+    y1: yPx(0), y2: yPx(0),
+    stroke: C("--fg-dim"), "stroke-width": 1.4,
+    "stroke-dasharray": "6 4",
+  }));
+
+  // Solid for converged, dashed for cpu_lb
+  const firstLb = data.findIndex((d) => d.cpu_lb);
+  function ratioY(d) { return Math.log10(d.cpu_us / d.gpu_us); }
+  if (firstLb >= 0 && firstLb > 0) {
+    const solid = data.slice(0, firstLb + 1).map((d) =>
+      [xPx(Math.log2(d.N)), yPx(ratioY(d))]);
+    const dashed = data.slice(firstLb).map((d) =>
+      [xPx(Math.log2(d.N)), yPx(ratioY(d))]);
+    svg.appendChild(el("path", {
+      d: solid.map(([x,y],i)=>(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)).join(" "),
+      fill: "none", stroke: C("--accent"), "stroke-width": 2.4,
+      "stroke-linecap": "round", "stroke-linejoin": "round",
+    }));
+    svg.appendChild(el("path", {
+      d: dashed.map(([x,y],i)=>(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)).join(" "),
+      fill: "none", stroke: C("--accent"), "stroke-width": 2.4,
+      "stroke-dasharray": "6 5",
+      "stroke-linecap": "round", "stroke-linejoin": "round",
+    }));
+  }
+
+  // Points
+  const pts = el("g");
+  for (const d of data) {
+    pts.appendChild(el("circle", {
+      cx: xPx(Math.log2(d.N)), cy: yPx(ratioY(d)),
+      r: 3.5, fill: C("--accent"),
+      stroke: d.cpu_lb ? C("--bg") : "none",
+      "stroke-width": d.cpu_lb ? 1.5 : 0,
+    }));
+  }
+  svg.appendChild(pts);
+}
+
+drawTimeChart();
+drawRatioChart();
+
+// Re-draw on color-scheme switch (for browsers that flip live)
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.(
+  "change", () => { drawTimeChart(); drawRatioChart(); });
+</script>
+</body>
+</html>
