@@ -33,6 +33,7 @@ This project is written in C++26 (with modules) and Python 3.11. The project is 
    - Reuse canonical domain terms. Do not invent synonyms.
    - Optimize names for readability at the call site.
    - Avoid vague names and unnecessary abbreviations.
+12. In C++ modules, use `bricksim.vendor` for external header dependencies. Add all third-party dependencies there instead of including third-party headers ad hoc across other module units or translation units. For details, refer to `docs/CPP26_MODULES_CHEATSHEET.md`.
 
 ## APIs & Docs
 - Isaac Sim 5.1 is partially open‑sourced.
