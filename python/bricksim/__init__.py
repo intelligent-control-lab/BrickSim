@@ -57,10 +57,12 @@ def _ensure_bricksim_extension_enabled():
         # Extension is already loaded or being loaded
         return
 
-    def _resolve_isaaclab_exts_dir() -> Path:
+    def _resolve_isaaclab_exts_dir() -> Path | None:
         spec = importlib.util.find_spec("isaaclab")
-        if spec is None or spec.origin is None:
-            raise RuntimeError("Required Python package not found: isaaclab")
+        if spec is None:
+            return None
+        if spec.origin is None:
+            raise RuntimeError("Unable to resolve Isaac Lab module origin")
         module_dir = Path(spec.origin).resolve().parent
         exts_dir = module_dir / "source"
         if (exts_dir / "isaaclab" / "config" / "extension.toml").is_file():
@@ -90,7 +92,15 @@ def _ensure_bricksim_extension_enabled():
             str(resolved_path), omni.ext.ExtensionPathType.EXT_1_FOLDER
         )
 
-    _add_extension_path(_resolve_isaaclab_exts_dir())
+    isaaclab_exts_dir = _resolve_isaaclab_exts_dir()
+    if isaaclab_exts_dir is None:
+        assert _carb is not None
+        _carb.log_warn(
+            "Isaac Lab package not found, "
+            "skipping Isaac Lab extension path registration"
+        )
+    else:
+        _add_extension_path(isaaclab_exts_dir)
     _add_extension_path(_resolve_bricksim_exts_dir())
     if not ext_manager.set_extension_enabled_immediate("bricksim", True):
         raise RuntimeError("Failed to enable BrickSim extension")

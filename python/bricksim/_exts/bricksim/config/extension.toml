@@ -7,9 +7,9 @@ category = "isaaclab"
 keywords = ["lego", "isaaclab"]
 
 [dependencies]
-"isaaclab" = {}
-"isaaclab_assets" = {}
-"isaaclab_tasks" = {}
+"isaaclab" = { optional = true }
+"isaaclab_assets" = { optional = true }
+"isaaclab_tasks" = { optional = true }
 
 [core]
 reloadable = true

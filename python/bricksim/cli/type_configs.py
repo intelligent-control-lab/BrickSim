@@ -45,10 +45,12 @@ def _iter_subdirs(base: Path) -> Iterable[Path]:
             yield entry
 
 
-def _resolve_isaaclab_source_root() -> Path:
+def _resolve_isaaclab_source_root() -> Path | None:
     spec = importlib.util.find_spec("isaaclab")
-    if spec is None or spec.origin is None:
-        raise RuntimeError("Required Python package not found: isaaclab")
+    if spec is None:
+        return None
+    if spec.origin is None:
+        raise RuntimeError("Unable to resolve Isaac Lab module origin")
 
     module_dir = Path(os.path.realpath(spec.origin)).parent
 
@@ -70,6 +72,8 @@ def collect_isaaclab_source_roots() -> list[Path]:
         Isaac Lab package roots that should be import search paths.
     """
     isaaclab_source_root = _resolve_isaaclab_source_root()
+    if isaaclab_source_root is None:
+        return []
     return [
         (isaaclab_source_root / package_name).resolve()
         for package_name in ISAACLAB_SOURCE_PACKAGES
@@ -340,6 +344,8 @@ def generate(
 ) -> None:
     """Generate ty overlay and config."""
     isaaclab_source_roots = collect_isaaclab_source_roots()
+    if not isaaclab_source_roots:
+        print("IsaacLab not found; skipping IsaacLab type paths.")
     isaacsim_extension_paths = collect_isaacsim_extension_paths()
 
     ty_overlay_path = write_ty_overlay(root, isaacsim_extension_paths, overlay_dir)
