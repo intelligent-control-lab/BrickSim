@@ -28,6 +28,15 @@ def acquire_debug_draw() -> DebugDraw:
     Returns:
         Isaac Sim debug-draw interface.
     """
+    import omni.kit.app
+
+    ext_manager = omni.kit.app.get_app().get_extension_manager()
+    if not ext_manager.get_enabled_extension_id("isaacsim.util.debug_draw"):
+        if not ext_manager.set_extension_enabled_immediate(
+            "isaacsim.util.debug_draw",
+            True,
+        ):
+            raise RuntimeError("Failed to enable isaacsim.util.debug_draw")
     from isaacsim.util.debug_draw import _debug_draw  # ty: ignore[unresolved-import]
 
     return _debug_draw.acquire_debug_draw_interface()
