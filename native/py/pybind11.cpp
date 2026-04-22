@@ -1,4 +1,3 @@
-import bricksim.physx.physx_maprange_patch_v107;
 import bricksim.api;
 
 #include <unistd.h>

@@ -2,11 +2,11 @@
 name = "bricksim-dev"
 version = "0.0.0"
 description = "BrickSim development environment"
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
-    "bricksim[all,stablelego]",
-    "skrl>=1.4.3<2",
-    "lerobot==0.4.4",
+    "bricksim[isaacsim,stablelego]", # TODO: Use bricksim[isaacsim,stablelego] after IsaacLab release
+    "skrl>=2",
+    "lerobot>=0.5.1",
 ]
 
 [dependency-groups]
@@ -19,12 +19,9 @@ dev = [
 package = false
 environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
 override-dependencies = [
-    # Work around Isaac Sim's unconditional pywin32 dependency on non-Windows platforms.
-    "pywin32==306 ; sys_platform == 'win32'",
-    # LeRobot requires packaging>=24.2 while Isaac Lab pins packaging<24.
-    "packaging==24.2",
-    # Isaac Sim requires numpy 1.x.
-    "numpy==1.26.4",
+    # IsaacSim vs Lerobot
+    "packaging==26.0",
+    "numpy==2.3.1",
 ]
 
 [tool.uv.sources]
@@ -33,7 +30,7 @@ bricksim = { path = "python", editable = true }
 [tool.ruff]
 include = ["python/**/*.py"]
 src = ["python"]
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 # Use pycodestyle, Pyflakes, and pep8-naming, then add import sorting.

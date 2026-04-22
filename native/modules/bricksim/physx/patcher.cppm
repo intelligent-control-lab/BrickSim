@@ -7,29 +7,13 @@ import bricksim.vendor;
 namespace bricksim {
 
 // ========== PhysX Internals ===========
-// PhysX 107.3-physx-5.6.1, Linux x86_64, gcc-11, with GPU, PUBLIC_RELEASE=0
-//
-// physx/source/physx/src/NpScene.h:747
-// field mScene
-// Type: Sc::Scene
-// Offset: 1440 bytes
-// Size: 5440 bytes, alignment 16 byte
-//
-// physx/source/simulationcontroller/include/ScScene.h:783
-// field mFilterShader
-// Type: PxSimulationFilterShader (aka PxFlags<physx::PxFilterFlag::Enum, unsigned short> (*)(unsigned int, physx::PxFilterData, unsigned int, physx::PxFilterData, PxFlags<physx::PxPairFlag::Enum, unsigned short> &, const void *, unsigned int))
-// Offset: 1008 bytes
-// Size: 8 bytes, alignment 8 bytes
-//
-// physx/source/physx/src/NpScene.h:653
-// field mElapsedTime
-// Type: PxReal (aka float)
-// Offset: 968 bytes
-// Size: 4 bytes, alignment 4 bytes
-constexpr std::size_t offset_NpScene_mScene = 1440;
+// Identified offsets from Isaac Sim v6.0.0-dev2 binaries
+// PhysX 110.0 / PhysX SDK 5.8.0, Linux x86_64
+
+constexpr std::size_t offset_NpScene_mScene = 1424;
 constexpr std::size_t offset_NpScene_mScene_mFilterCallback =
     offset_NpScene_mScene + 1016;
-constexpr std::size_t offset_NpScene_mElapsedTime = 968;
+constexpr std::size_t offset_NpScene_mElapsedTime = 952;
 physx::PxSimulationFilterCallback **
 locate_mFilterCallback(physx::PxScene *scene) {
 	return reinterpret_cast<physx::PxSimulationFilterCallback **>(

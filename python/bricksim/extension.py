@@ -59,7 +59,8 @@ class BrickSimExtension(omni.ext.IExt):
         from bricksim.ui.toolbar_patch import install_toolbar_patches
 
         install_toolbar_patches()
-        install_step_one_frame_patch()
+        # install_step_one_frame_patch()  # FIXME: not working on Isaac Sim 6.0
+        del install_step_one_frame_patch
         self._assembly_selection = AssemblySelectionSync()
 
         from bricksim.ui.connection_overlay import ConnectionOverlayController

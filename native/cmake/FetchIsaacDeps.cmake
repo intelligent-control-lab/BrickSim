@@ -41,12 +41,14 @@ function(isaacsim_fetch_all_deps)
   set(ISAACSIM_OMNI_USD_SCHEMA_AUDIO      "${ISAACSIM_DEPS_ROOT}/omni_usd_schema_audio")
 
   set(ISAACSIM_KIT_INCLUDE                  "${ISAACSIM_KIT}/dev/include")
+  set(ISAACSIM_KIT_FABRIC_INCLUDE           "${ISAACSIM_KIT}/dev/fabric/include")
+  set(ISAACSIM_KIT_GSL_INCLUDE              "${ISAACSIM_KIT}/dev/gsl/include")
   set(ISAACSIM_CARB_INCLUDE                 "${ISAACSIM_CARB}/include")
   set(ISAACSIM_CARB_LIBDIR                  "${ISAACSIM_CARB}/_build/linux-x86_64/release")
   set(ISAACSIM_OMNI_CLIENT_INCLUDE          "${ISAACSIM_OMNI_CLIENT}/include")
   set(ISAACSIM_PHYSX_INCLUDE                "${ISAACSIM_PHYSX}/include")
   set(ISAACSIM_PHYSX_LIBDIR                 "${ISAACSIM_PHYSX}/bin/linux.x86_64/checked")
-  set(ISAACSIM_PYTHON_INCLUDE               "${ISAACSIM_PYTHON}/include/python3.11")
+  set(ISAACSIM_PYTHON_INCLUDE               "${ISAACSIM_PYTHON}/include/python3.12")
   set(ISAACSIM_PYTHON_LIBDIR                "${ISAACSIM_PYTHON}/lib")
   set(ISAACSIM_USD_INCLUDE                  "${ISAACSIM_USD}/include")
   set(ISAACSIM_USD_BOOST_INCLUDE            "${ISAACSIM_USD}/include/boost")
@@ -63,6 +65,8 @@ function(isaacsim_fetch_all_deps)
 
   target_include_directories(isaacsim_sdk SYSTEM INTERFACE
     "${ISAACSIM_KIT_INCLUDE}"
+    "${ISAACSIM_KIT_FABRIC_INCLUDE}"
+    "${ISAACSIM_KIT_GSL_INCLUDE}"
     "${ISAACSIM_CARB_INCLUDE}"
     "${ISAACSIM_OMNI_CLIENT_INCLUDE}"
     "${ISAACSIM_OMNI_PHYSICS_INCLUDE}"
@@ -84,8 +88,7 @@ function(isaacsim_fetch_all_deps)
   )
 
   target_link_libraries(isaacsim_sdk INTERFACE
-    python3.11
-    boost_python311
+    Python3::Python
     PhysX_static_64
     PhysXCommon_static_64
     PhysXFoundation_static_64
@@ -94,6 +97,7 @@ function(isaacsim_fetch_all_deps)
     PhysXExtensions_static_64
     carb # Order matters: carb before usd
     usd_arch
+    usd_boost
     usd_gf
     usd_hd
     usd_kind
@@ -104,6 +108,7 @@ function(isaacsim_fetch_all_deps)
     usd_usdGeom
     usd_usdImaging
     usd_usdPhysics
+    usd_python
     usd_usdUtils
     usd_vt
     omni.usd
@@ -112,7 +117,7 @@ function(isaacsim_fetch_all_deps)
   )
 
   return(PROPAGATE
-    ISAACSIM_KIT ISAACSIM_KIT_INCLUDE
+    ISAACSIM_KIT ISAACSIM_KIT_INCLUDE ISAACSIM_KIT_FABRIC_INCLUDE ISAACSIM_KIT_GSL_INCLUDE
     ISAACSIM_CARB ISAACSIM_CARB_INCLUDE ISAACSIM_CARB_LIBDIR
     ISAACSIM_OMNI_CLIENT ISAACSIM_OMNI_CLIENT_INCLUDE
     ISAACSIM_PHYSX ISAACSIM_PHYSX_INCLUDE ISAACSIM_PHYSX_LIBDIR

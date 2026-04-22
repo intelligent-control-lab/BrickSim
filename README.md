@@ -6,8 +6,8 @@
 <p>
   <a href="https://broadcasts.cloudsmith.com/bricksim/bricksim"><img src="https://api.cloudsmith.com/v1/badges/version/bricksim/bricksim/python/bricksim/latest/xn=bricksim/?render=true&style=flat&label=latest" alt="BrickSim latest version"></a>
   <a href="https://arxiv.org/abs/2603.16853"><img src="https://img.shields.io/badge/arXiv-2603.16853-b31b1b.svg?logo=arxiv" alt="arXiv 2603.16853"></a>
-  <a href="https://docs.isaacsim.omniverse.nvidia.com/5.1.0/index.html"><img src="https://img.shields.io/badge/Isaac%20Sim-5.1-76B900?logo=nvidia&amp;logoColor=white" alt="Isaac Sim 5.1"></a>
-  <a href="https://docs.python.org/3.11/"><img src="https://img.shields.io/badge/python-3.11-3776AB?logo=python&amp;logoColor=white" alt="Python 3.11"></a>
+  <a href="https://docs.isaacsim.omniverse.nvidia.com/6.0.0/index.html"><img src="https://img.shields.io/badge/Isaac%20Sim-6.0-76B900?logo=nvidia&amp;logoColor=white" alt="Isaac Sim 6.0"></a>
+  <a href="https://docs.python.org/3.12/"><img src="https://img.shields.io/badge/python-3.12-3776AB?logo=python&amp;logoColor=white" alt="Python 3.12"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="MIT License"></a>
 </p>
 
@@ -26,6 +26,8 @@
   </a>
 </p>
 
+> **Disclaimer**: Support for Isaac Sim 6.0 is currently in early stages. Isaac Lab is not supported yet.
+
 ## Quickstart
 
 ### Prerequisites
@@ -33,7 +35,7 @@
 - Ubuntu 22.04+ or another Linux distribution with `GLIBC >= 2.35`, `GLIBCXX >= 3.4.30`, and `CXXABI >= 1.3.13`
 - [`uv` package manager](https://docs.astral.sh/uv/getting-started/installation/)
 - [`pixi` package manager](https://pixi.prefix.dev/latest/installation/) if you want to build the native extension from source
-- A working NVIDIA driver compatible with [Isaac Sim requirements](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/requirements.html#system-requirements)
+- A working NVIDIA driver compatible with [Isaac Sim requirements](https://docs.isaacsim.omniverse.nvidia.com/6.0.0/installation/requirements.html#system-requirements)
 
 ### Install from Source
 We use `uv` for Python package management. If you don't have it installed, please refer to [Installing uv](https://docs.astral.sh/uv/getting-started/installation/).

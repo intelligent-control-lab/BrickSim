@@ -35,8 +35,8 @@ include(FetchSourceDeps)
 isaacsim_fetch_all_deps()
 
 # Link against Isaac Sim's bundled Python
-set(Python3_EXECUTABLE "${ISAACSIM_PYTHON}/bin/python3.11" CACHE FILEPATH "Python interpreter for pybind11" FORCE)
-find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
+set(Python3_EXECUTABLE "${ISAACSIM_PYTHON}/bin/python3.12" CACHE FILEPATH "Python interpreter for pybind11" FORCE)
+find_package(Python3 COMPONENTS Interpreter Development.Module Development.Embed REQUIRED)
 bricksim_fetch_source_deps()
 
 function(bricksim_use_shims TARGET_NAME)

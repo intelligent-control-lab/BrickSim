@@ -281,7 +281,7 @@ static void test_filter_callback_pairFound() {
 	PhysicsGraphFixture fx{false};
 	// Mirror the offsets used by bricksim.physx.patcher to locate
 	// the internal Sc::Scene::mFilterCallback pointer.
-	constexpr std::size_t offset_NpScene_mScene = 1440;
+	constexpr std::size_t offset_NpScene_mScene = 1424;
 	constexpr std::size_t offset_NpScene_mScene_mFilterCallback =
 	    offset_NpScene_mScene + 1016;
 	auto locate_mFilterCallback = [](physx::PxScene *scene) {

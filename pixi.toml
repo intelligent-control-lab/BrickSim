@@ -5,7 +5,9 @@ platforms = ["linux-64"]
 version = "0.1.0"
 
 [system-requirements]
-libc = { family = "glibc", version = "2.35" }
+# Use the glibc 2.39 Conda sysroot for Isaac Sim 6.0 because it doesn't have 2.35.
+# ABI checks guard our runtime surface.
+libc = { family = "glibc", version = "2.39" }
 
 [tasks]
 build-native = "scripts/build.sh release"
@@ -15,7 +17,7 @@ test-native-debug = "scripts/build.sh debug-tests"
 test-native-release = "scripts/build.sh release-tests"
 
 [dependencies]
-python = "==3.11.15"
+python = "==3.12.13"
 cmake = "==4.3.1"
 ninja = "==1.13.2"
 clangxx = "==22.1.3"

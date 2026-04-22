@@ -1,7 +1,7 @@
 """Command-line launcher for running BrickSim inside Isaac Sim."""
 
 import argparse
-import shlex
+import os
 import sys
 from pathlib import Path
 
@@ -18,6 +18,28 @@ def _uncache_bricksim_package():
     if package_dir != Path(__file__).resolve().parent:
         return
     sys.modules.pop(package_name, None)
+
+
+def _resolve_experience(experience: str | None) -> str:
+    experience_name = experience or "isaacsim.exp.full"
+    candidate = (
+        experience_name
+        if experience_name.endswith(".kit")
+        else f"{experience_name}.kit"
+    )
+    candidate_path = Path(candidate)
+    if candidate_path.is_file():
+        return str(candidate_path)
+    if "EXP_PATH" not in os.environ or "CARB_APP_PATH" not in os.environ:
+        import isaacsim  # noqa: F401
+
+    exp_path = Path(os.environ["EXP_PATH"])
+    carb_app_path = Path(os.environ["CARB_APP_PATH"]) / "apps"
+    for base_dir in (exp_path, carb_app_path):
+        resolved_path = base_dir / candidate
+        if resolved_path.is_file():
+            return str(resolved_path)
+    return experience_name
 
 
 def main():
@@ -86,8 +108,8 @@ def main():
         exec_args.append(args.script)
         exec_args.extend(args.args)
 
+    experience = _resolve_experience(args.exp)
     kit_args = []
-    kit_args.append(args.exp or "isaacsim.exp.full")
     if args.info:
         kit_args.append("--info")
     if args.verbose:
@@ -109,14 +131,27 @@ def main():
         ]
     )
     kit_args.extend(forwarded)
-    kit_args.append("--exec")
-    kit_args.append(" ".join(shlex.quote(arg) for arg in exec_args))
-
-    sys.argv = [sys.argv[0], *kit_args]
     _uncache_bricksim_package()
-    import isaacsim
+    from isaacsim import SimulationApp
 
-    isaacsim.main()
+    app = SimulationApp(
+        {
+            "headless": False,
+            "fast_shutdown": True,
+            "extra_args": kit_args,
+        },
+        experience=experience,
+    )
+    old_argv = sys.argv.copy()
+    try:
+        from bricksim import _entry
+
+        sys.argv = exec_args
+        _entry.main()
+        while app.is_running():
+            app.update()
+    finally:
+        sys.argv = old_argv
 
 
 if __name__ == "__main__":

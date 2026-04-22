@@ -21,7 +21,7 @@ void log_impl(std::format_string<Args...> fmt, const std::source_location &loc,
 	using namespace bricksim::vendor::carb;
 	if (!(g_carbLogFn() && g_carbLogLevel() <= level))
 		return;
-	g_carbLogFn()(g_carbClientName(), level, loc.file_name(),
+	g_carbLogFn()(g_carbClientName().c_str(), level, loc.file_name(),
 	              loc.function_name(), static_cast<int>(loc.line()), "%s",
 	              std::format(fmt, std::forward<Args>(args)...).c_str());
 }

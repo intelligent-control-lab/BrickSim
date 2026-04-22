@@ -1,8 +1,8 @@
 # AGENTS.md
 
-Isaac Sim 5.1 extension for simulating LEGO bricks and their assembly. This repository supports a research project.
+Isaac Sim 6.0 extension for simulating LEGO bricks and their assembly. This repository supports a research project.
 
-This project is written in C++26 (with modules) and Python 3.11. The project is mostly C++.
+This project is written in C++26 (with modules) and Python 3.12. The project is mostly C++.
 
 ## Build & Test
 - Only if you modified the C++ code, run `pixi run build-native` to build and sanity‑check. Testing is needed only if you're ready to commit, do not run them in regular development because it's time-consuming.
@@ -41,13 +41,13 @@ This project is written in C++26 (with modules) and Python 3.11. The project is 
 - Export public definitions. If a type, function, constant, or other definition is part of the public module API, mark it `export`.
 
 ## APIs & Docs
-- Isaac Sim 5.1 is partially open‑sourced.
+- Isaac Sim 6.0 is partially open‑sourced.
   - Some C++ is open; other parts are closed or header‑only.
 - Treat online docs as potentially stale; verify against local Isaac Sim code.
 - When blocked, consult local sources.
-   - Isaac Sim source code lives at `../IsaacSim-5.1` (relative to this project directory).
-   - PhysX source checkout lives at `../PhysX-107.3-omni-and-physx-5.6.1` (relative to this project directory).
-   - OpenUSD source checkout lives at `../OpenUSD-v24.05` (relative to this project directory).
+   - Isaac Sim source code lives at `../IsaacSim` (relative to this project directory).
+   - PhysX source checkout lives at `../PhysX` (relative to this project directory).
+   - OpenUSD source checkout lives at `../OpenUSD` (relative to this project directory).
 
 ### Where to Look / How to Inspect
 - If you need to know something about Isaac Sim or PhysX or OpenUSD, consult their source code.
