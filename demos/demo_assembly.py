@@ -674,14 +674,21 @@ async def main():
         for part in topology['parts']
         if part['id'] in PRE_PLACED_PARTS
     ]
-    pre_placed, not_pre_placed = import_lego(
+    pre_placed_topology['connections'] = [
+        conn
+        for conn in topology['connections']
+        if conn['stud_id'] in PRE_PLACED_PARTS and conn['hole_id'] in PRE_PLACED_PARTS
+    ]
+    pre_placed_parts, pre_placed_conns = import_lego(
         json=pre_placed_topology,
         env_id=-1,
         ref_pos=PLACE_POSE[0],
         ref_rot=PLACE_POSE[1],
     )
-    if len(not_pre_placed) > 0:
-        raise RuntimeError(f"Failed to place pre-placed parts; not placed: {not_pre_placed}")
+    parts_not_placed = set(part['id'] for part in pre_placed_topology['parts']) - set(pre_placed_parts.keys())
+    conns_not_placed = set(conn['id'] for conn in pre_placed_topology['connections']) - set(pre_placed_conns.keys())
+    if len(parts_not_placed) > 0 or len(conns_not_placed) > 0:
+        raise RuntimeError(f"Failed to place pre-placed parts/connections; not placed parts: {parts_not_placed}, not placed connections: {conns_not_placed}")
 
     # Spawn unplaced parts on table for assembly
     to_place_topology = deepcopy(topology)
@@ -692,12 +699,13 @@ async def main():
     ]
     to_place_topology['connections'] = []
     to_place_topology['pose_hints'] = []
-    to_place_placed, to_place_not_placed = import_lego(
+    to_place_placed, _ = import_lego(
         json=to_place_topology,
         env_id=-1
     )
+    to_place_not_placed = set(part['id'] for part in to_place_topology['parts']) - set(to_place_placed.keys())
     if len(to_place_not_placed) > 0:
-        raise RuntimeError(f"Failed to place to-place parts; not placed: {to_place_not_placed}")
+        raise RuntimeError(f"Failed to place parts for assembly; not placed: {to_place_not_placed}")
     arranged, not_arranged = arrange_parts_in_workspace(
         workspace_path="/World/LegoWorkspace",
         parts_to_arrange=[path for id, path in to_place_placed.items()],
@@ -708,14 +716,14 @@ async def main():
     # Generate a naive assembly plan
     sorted_topology = bfs_sort_connections(topology)
     def part_id_to_path(id):
-        if id in pre_placed:
-            return pre_placed[id]
+        if id in pre_placed_parts:
+            return pre_placed_parts[id]
         else:
             return to_place_placed[id]
     print("Assembly Order:")
     def format_part(id):
-        if id in pre_placed:
-            return f"{pre_placed[id]} (pre-placed)"
+        if id in pre_placed_parts:
+            return f"{pre_placed_parts[id]} (pre-placed)"
         else:
             return f"{to_place_placed[id]}"
     plan = []
