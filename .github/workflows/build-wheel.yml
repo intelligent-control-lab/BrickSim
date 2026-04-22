@@ -22,7 +22,7 @@ jobs:
   build-wheel:
     if: github.repository == 'intelligent-control-lab/BrickSim'
     name: cp311_amd64_linux
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     env:
       CLOUDSMITH_NAMESPACE: bricksim
       CLOUDSMITH_REPOSITORY: bricksim
