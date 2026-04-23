@@ -10,7 +10,7 @@ This project is written in C++26 (with modules) and Python 3.11. The project is 
 - Store task ExecPlans under `.agents/private-plans/`.
 
 ## Subagents
-- If you are Codex, use gpt-4.5 (not mini) xhigh when spawning subagents.
+- If you are Codex, use gpt-5.5 xhigh when spawning subagents.
 
 ## Build & Test
 `uv` is used to manage the Python part. `pixi` is used to manage the C++ native extension part.
