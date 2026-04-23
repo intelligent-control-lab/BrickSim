@@ -55,9 +55,10 @@ using QpSolver = OsqpSolver;
 using QpSolverState = OsqpState;
 using QpSolverInfo = OsqpInfo;
 
-Transformd fit_se3(const MatrixX4d &q0, const MatrixX3d &t0,
-                   const MatrixX4d &qx, const MatrixX3d &tx,
-                   const VectorXd &mass, double total_mass, double lambda_R) {
+export Transformd fit_se3(const MatrixX4d &q0, const MatrixX3d &t0,
+                          const MatrixX4d &qx, const MatrixX3d &tx,
+                          const VectorXd &mass, double total_mass,
+                          double lambda_R) {
 	Index N = mass.size();
 	Vector3d t0_bar = t0.transpose() * mass / total_mass;
 	Vector3d tx_bar = tx.transpose() * mass / total_mass;
@@ -87,16 +88,17 @@ Transformd fit_se3(const MatrixX4d &q0, const MatrixX3d &t0,
 	return {q, t};
 }
 
-struct TwistFitResult {
+export struct TwistFitResult {
 	Vector3d w0;
 	Vector3d v0;
 	MatrixX3d v_W;
 };
 
-TwistFitResult fit_twist(const MatrixX3d &w, const MatrixX3d &v,
-                         const MatrixX3d &c_CC, const Transformd &T_W_CC,
-                         const VectorXd &mass, double total_mass,
-                         double lambda_w) {
+export TwistFitResult fit_twist(const MatrixX3d &w, const MatrixX3d &v,
+                                const MatrixX3d &c_CC,
+                                const Transformd &T_W_CC,
+                                const VectorXd &mass, double total_mass,
+                                double lambda_w) {
 	const auto &[q_W_CC, t_W_CC] = T_W_CC;
 	MatrixX3d c_W = (c_CC * q_W_CC.toRotationMatrix().transpose()).rowwise() +
 	                t_W_CC.transpose();
@@ -120,7 +122,7 @@ TwistFitResult fit_twist(const MatrixX3d &w, const MatrixX3d &v,
 	return result;
 }
 
-Vector3d so3_log_from_unit_quat(Quaterniond q) {
+export Vector3d so3_log_from_unit_quat(Quaterniond q) {
 	// log-map branch threshold on s = ||q.vec|| = sin(theta/2)
 	constexpr double kSmallS = 5e-5;
 	q.normalize();
@@ -143,7 +145,7 @@ Vector3d so3_log_from_unit_quat(Quaterniond q) {
 
 // Inverse of the Jacobian corresponding to your report's convention:
 // J(φ) = I + (1-cosθ)/θ^2 [φ]x + (θ-sinθ)/θ^3 [φ]x^2   (this is the "right Jacobian" in many texts)
-Matrix3d so3_jacobian_inv(const Vector3d &phi) {
+export Matrix3d so3_jacobian_inv(const Vector3d &phi) {
 	// J^{-1} branch threshold on theta = ||phi||
 	constexpr double kSmallTheta = 1e-4;
 	Matrix3d Phi = phi.asSkewSymmetric();
@@ -163,13 +165,13 @@ Matrix3d so3_jacobian_inv(const Vector3d &phi) {
 	return Matrix3d::Identity() - 0.5 * Phi + c * (Phi * Phi);
 }
 
-Matrix3d compute_Pi(const Quaterniond &qm, const Quaterniond &qp) {
+export Matrix3d compute_Pi(const Quaterniond &qm, const Quaterniond &qp) {
 	// Relative rotation: R_rel = Rm^T Rp
 	return so3_jacobian_inv(so3_log_from_unit_quat(qm.conjugate() * qp)) *
 	       qm.toRotationMatrix().transpose();
 }
 
-template <class Derived>
+export template <class Derived>
 MatrixX3d compute_L(const MatrixBase<Derived> &Iflat, const Quaterniond &q_W_CC,
                     const Vector3d &w0) {
 	Vector3d w_CC = q_W_CC.conjugate() * w0;
@@ -205,7 +207,7 @@ void add_block_triplets(std::vector<Triplet<double>> &out, int row0, int col0,
 	}
 }
 
-Matrix2d inv_sqrt_spd(const Matrix2d &C) {
+export Matrix2d inv_sqrt_spd(const Matrix2d &C) {
 	SelfAdjointEigenSolver<Matrix2d> eig{C};
 	if (eig.info() != Eigen::Success) {
 		throw std::invalid_argument("inv_sqrt_spd: eigen decomposition failed");
