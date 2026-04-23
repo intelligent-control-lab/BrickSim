@@ -5,6 +5,8 @@ on:
     paths:
       - "python/**"
       - "pyproject.toml"
+      - "ruff.toml"
+      - "ty.base.toml"
       - "uv.lock"
       - ".github/actions/**"
       - ".github/workflows/lint.yml"
@@ -12,6 +14,8 @@ on:
     paths:
       - "python/**"
       - "pyproject.toml"
+      - "ruff.toml"
+      - "ty.base.toml"
       - "uv.lock"
       - ".github/actions/**"
       - ".github/workflows/lint.yml"
