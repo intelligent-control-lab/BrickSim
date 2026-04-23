@@ -4,6 +4,14 @@ Isaac Sim 5.1 extension for simulating LEGO bricks and their assembly. This repo
 
 This project is written in C++26 (with modules) and Python 3.11. The project is mostly C++.
 
+## ExecPlans
+- When writing complex features or significant refactors, use an ExecPlan (as described in .agents/PLANS.md) from design to implementation.
+- When a task is updated/finished, add/update the relevant docs and update the relevant ExecPlan.
+- Store task ExecPlans under `.agents/private-plans/`.
+
+## Subagents
+- If you are Codex, use gpt-4.5 (not mini) xhigh when spawning subagents.
+
 ## Build & Test
 `uv` is used to manage the Python part. `pixi` is used to manage the C++ native extension part.
 
