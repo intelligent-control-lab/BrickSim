@@ -1,11 +1,20 @@
-include = ["python/**/*.py"]
+include = ["*.py"]
+extend-exclude = [
+    "demos/demo_assembly.py",
+    "demos/demo_inhand.py",
+    "demos/demo_keyboard_teleop.py",
+    "demos/demo_teleop.py",
+    "experiments/assemble_brick/run_expert.py",
+    "experiments/assemble_brick/run_random.py",
+    "experiments/evaluate_stability.py",
+    "experiments/static_analysis.py",
+    "scripts/find_bricksim_pid.py",
+    "scripts/generate_color_json.py",
+]
 src = ["python"]
-target-version = "py311"
 
 [lint]
-# Use pycodestyle, Pyflakes, and pep8-naming, then add import sorting.
-select = ["E", "F", "N"]
-extend-select = ["I", "D", "DOC201", "TID251"]
+select = ["E", "F", "N", "I", "D", "DOC201", "TID251"]
 preview = true
 
 [lint.pydocstyle]
