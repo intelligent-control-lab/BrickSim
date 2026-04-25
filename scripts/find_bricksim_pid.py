@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
+"""Find the PID of the running BrickSim process."""
 
 import os
 import sys
 import time
 from pathlib import Path
 
-
 ROOT_DIR = Path(__file__).resolve().parent.parent
 BRICKSIM_SCRIPT = str(ROOT_DIR / ".venv" / "bin" / "bricksim")
 MAX_ATTEMPTS = int(os.environ.get("BRICKSIM_PID_MAX_ATTEMPTS", "300"))
-POLL_INTERVAL_SECONDS = float(os.environ.get("BRICKSIM_PID_POLL_INTERVAL_SECONDS", "0.1"))
+POLL_INTERVAL_SECONDS = float(
+    os.environ.get("BRICKSIM_PID_POLL_INTERVAL_SECONDS", "0.1")
+)
 
 
 def _read_cmdline(pid: int) -> list[str] | None:
@@ -19,7 +21,9 @@ def _read_cmdline(pid: int) -> list[str] | None:
         return None
     if not data:
         return None
-    return [arg for arg in data.rstrip(b"\0").decode(errors="replace").split("\0") if arg]
+    return [
+        arg for arg in data.rstrip(b"\0").decode(errors="replace").split("\0") if arg
+    ]
 
 
 def _is_bricksim_cmd(argv: list[str]) -> bool:
@@ -32,10 +36,14 @@ def _is_bricksim_cmd(argv: list[str]) -> bool:
 
 
 def _is_debugpy_wrapper(argv: list[str]) -> bool:
-    return any(arg.endswith("/debugpy/launcher") or arg.endswith("/debugpy/adapter") for arg in argv)
+    return any(
+        arg.endswith("/debugpy/launcher") or arg.endswith("/debugpy/adapter")
+        for arg in argv
+    )
 
 
 def find_matches() -> list[tuple[int, str]]:
+    """Return BrickSim process matches as PID and command line pairs."""
     matches: list[tuple[int, str]] = []
     for proc_dir in Path("/proc").iterdir():
         if not proc_dir.name.isdigit():
@@ -53,13 +61,21 @@ def find_matches() -> list[tuple[int, str]]:
 
 
 def main() -> int:
+    """Print the BrickSim PID once exactly one matching process is found.
+
+    Returns:
+        Exit status code.
+    """
     for _ in range(MAX_ATTEMPTS):
         matches = find_matches()
         if len(matches) == 1:
             print(matches[0][0])
             return 0
         if len(matches) > 1:
-            print(f"Expected exactly one BrickSim process, found {len(matches)}:", file=sys.stderr)
+            print(
+                f"Expected exactly one BrickSim process, found {len(matches)}:",
+                file=sys.stderr,
+            )
             for pid, cmdline in matches:
                 print(f"{pid} {cmdline}", file=sys.stderr)
             return 1

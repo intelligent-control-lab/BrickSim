@@ -8,8 +8,6 @@ extend-exclude = [
     "experiments/assemble_brick/run_random.py",
     "experiments/evaluate_stability.py",
     "experiments/static_analysis.py",
-    "scripts/find_bricksim_pid.py",
-    "scripts/generate_color_json.py",
 ]
 src = ["python"]
 
