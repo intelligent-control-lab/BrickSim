@@ -8,6 +8,7 @@ This project is written in C++26 (with modules) and Python 3.11. The project is 
 - When writing complex features or significant refactors, use an ExecPlan (as described in .agents/PLANS.md) from design to implementation.
 - When a task is updated/finished, add/update the relevant docs and update the relevant ExecPlan.
 - Store task ExecPlans under `.agents/private-plans/`.
+- ExecPlans should be updated constantly with progress while working on the task. Do NOT delay changes till the end.
 
 ## Subagents
 - If you are Codex, use gpt-5.5 xhigh when spawning subagents.
