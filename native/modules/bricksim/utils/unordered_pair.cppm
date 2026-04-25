@@ -78,8 +78,7 @@ struct hash<bricksim::UnorderedPair<V, Less, Eq>> {
 } // namespace std
 
 namespace nlohmann {
-export template <class V>
-struct adl_serializer<bricksim::UnorderedPair<V>> {
+export template <class V> struct adl_serializer<bricksim::UnorderedPair<V>> {
 	using UnorderedPair = bricksim::UnorderedPair<V>;
 	static UnorderedPair from_json(const nlohmann::ordered_json &j) {
 		if (!j.is_array() || j.size() != 2) {

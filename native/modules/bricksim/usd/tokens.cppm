@@ -35,7 +35,7 @@ using pxr::TfToken;
     ((LegoWorkspaceObstacles, "lego:workspace_obstacles"))                     \
     ((LegoWorkspaceClearance, "lego:workspace_clearance"))                     \
     ((LegoWorkspaceGridResolution, "lego:workspace_grid_resolution"))          \
-    ((LegoWorkspaceAllowRotation, "lego:workspace_allow_rotation"))            \
+    ((LegoWorkspaceAllowRotation, "lego:workspace_allow_rotation"))
 // clang-format on
 
 export {

@@ -368,12 +368,13 @@ struct ContactPayload {
 	physx::PxContactPairHeader header{};
 };
 
-static ContactPayload
-make_contact_payload(PhysicsGraphFixture &fx, physx::PxShape *shape0,
-                     physx::PxShape *shape1, const physx::PxTransform &pose0,
-                     const physx::PxTransform &pose1, bool set_impulse,
-                     const physx::PxVec3 &normal) {
-	ContactPayload p{};
+static void make_contact_payload(ContactPayload &p, PhysicsGraphFixture &fx,
+                                 physx::PxShape *shape0, physx::PxShape *shape1,
+                                 const physx::PxTransform &pose0,
+                                 const physx::PxTransform &pose1,
+                                 bool set_impulse,
+                                 const physx::PxVec3 &normal) {
+	p = ContactPayload{};
 
 	// Extra data: [Index(0), Pose]
 	auto *idx = reinterpret_cast<physx::PxContactPairIndex *>(p.extra.data());
@@ -413,7 +414,6 @@ make_contact_payload(PhysicsGraphFixture &fx, physx::PxShape *shape0,
 	if (set_impulse) {
 		p.pair.flags |= physx::PxContactPairFlag::eINTERNAL_HAS_IMPULSES;
 	}
-	return p;
 }
 
 // Exercise PhysxBinding::onContact branches, including both the early-exit
@@ -434,11 +434,11 @@ static void test_event_callback_onContact() {
 		auto *proxy = dynamic_cast<PxSimulationEventPatch *>(cb_base);
 		assert(proxy != nullptr);
 
-		ContactPayload payload =
-		    make_contact_payload(fx, fx.studShapeA, fx.holeShapeB,
-		                         physx::PxTransform(physx::PxVec3(0, 0, 0)),
-		                         physx::PxTransform(physx::PxVec3(0, 0, 0)),
-		                         /*set_impulse=*/true, physx::PxVec3(0, 0, -1));
+		ContactPayload payload{};
+		make_contact_payload(payload, fx, fx.studShapeA, fx.holeShapeB,
+		                     physx::PxTransform(physx::PxVec3(0, 0, 0)),
+		                     physx::PxTransform(physx::PxVec3(0, 0, 0)),
+		                     /*set_impulse=*/true, physx::PxVec3(0, 0, -1));
 		payload.header.flags = physx::PxContactPairHeaderFlag::eREMOVED_ACTOR_0;
 		proxy->onContact(payload.header, &payload.pair, 1);
 
@@ -472,11 +472,11 @@ static void test_event_callback_onContact() {
 		fx.actorA->attachShape(*unmappedA);
 		fx.actorB->attachShape(*unmappedB);
 
-		ContactPayload payload =
-		    make_contact_payload(fx, unmappedA, unmappedB,
-		                         physx::PxTransform(physx::PxVec3(0, 0, 0)),
-		                         physx::PxTransform(physx::PxVec3(0, 0, 0)),
-		                         /*set_impulse=*/true, physx::PxVec3(0, 0, -1));
+		ContactPayload payload{};
+		make_contact_payload(payload, fx, unmappedA, unmappedB,
+		                     physx::PxTransform(physx::PxVec3(0, 0, 0)),
+		                     physx::PxTransform(physx::PxVec3(0, 0, 0)),
+		                     /*set_impulse=*/true, physx::PxVec3(0, 0, -1));
 		proxy->onContact(payload.header, &payload.pair, 1);
 
 		fx.graph.do_post_step();
@@ -503,11 +503,11 @@ static void test_event_callback_onContact() {
 		auto *proxy = dynamic_cast<PxSimulationEventPatch *>(cb_base);
 		assert(proxy != nullptr);
 
-		ContactPayload payload =
-		    make_contact_payload(fx, fx.holeShapeA, fx.holeShapeB,
-		                         physx::PxTransform(physx::PxVec3(0, 0, 0)),
-		                         physx::PxTransform(physx::PxVec3(0, 0, 0)),
-		                         /*set_impulse=*/true, physx::PxVec3(0, 0, -1));
+		ContactPayload payload{};
+		make_contact_payload(payload, fx, fx.holeShapeA, fx.holeShapeB,
+		                     physx::PxTransform(physx::PxVec3(0, 0, 0)),
+		                     physx::PxTransform(physx::PxVec3(0, 0, 0)),
+		                     /*set_impulse=*/true, physx::PxVec3(0, 0, -1));
 		proxy->onContact(payload.header, &payload.pair, 1);
 
 		fx.graph.do_post_step();
@@ -535,11 +535,11 @@ static void test_event_callback_onContact() {
 		    0.0f, 0.0f,
 		    static_cast<float>(BrickHeightPerPlate * PlateUnitHeight)));
 
-		ContactPayload payload = make_contact_payload(
-		    fx, fx.studShapeA, fx.holeShapeB, poseStud, poseHole,
-		    /*set_impulse=*/true,
-		    // Force along -Z in stud frame.
-		    physx::PxVec3(0, 0, -1));
+		ContactPayload payload{};
+		make_contact_payload(payload, fx, fx.studShapeA, fx.holeShapeB,
+		                     poseStud, poseHole, /*set_impulse=*/true,
+		                     // Force along -Z in stud frame.
+		                     physx::PxVec3(0, 0, -1));
 		proxy->onContact(payload.header, &payload.pair, 1);
 
 		fx.graph.do_post_step();

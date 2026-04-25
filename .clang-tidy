@@ -1,0 +1,18 @@
+Checks: >
+  clang-analyzer-*,
+  bugprone-branch-clone,
+  bugprone-use-after-move,
+  bugprone-unused-return-value,
+  performance-no-automatic-move,
+  misc-unused-using-decls
+WarningsAsErrors: ''
+HeaderFilterRegex: '^$'
+ExcludeHeaderFilterRegex: ''
+FormatStyle: file
+ImplementationFileExtensions:
+  - c
+  - cc
+  - cpp
+  - cxx
+  - cppm
+SystemHeaders: false

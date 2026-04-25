@@ -29,6 +29,7 @@ bool approx_mat(const A &a, const B &b, double eps = EPS) {
 	              mat_cols_v<A> == mat_cols_v<B>);
 	constexpr std::size_t R = mat_rows_v<A>, C = mat_cols_v<A>;
 	auto aa = to_arr(a);
+	// NOLINTNEXTLINE(clang-analyzer-security.ArrayBound)
 	auto bb = to_arr(b);
 	if constexpr (C == 1) {
 		for (std::size_t r = 0; r < R; ++r)
@@ -164,6 +165,7 @@ void test_vectors_all() {
 void test_matrices_all() {
 	// PhysX 3x3 -> Gf 3x3 -> Eigen 3x3 -> std::array
 	physx::PxMat33 m33(physx::PxIdentity);
+	// NOLINTNEXTLINE(clang-analyzer-security.ArrayBound)
 	auto g3d = as_mat<gf_tag, double, 3, 3>(m33);
 	auto e3f = as<Eigen::Matrix<float, 3, 3>>(g3d);
 	auto a33 = as_array<double, 3, 3>(e3f);
@@ -195,11 +197,14 @@ void test_quaternions_all() {
 	assert(approx_quat(q_p, q_g));
 
 	// quat -> PhysX 3x4 (translation zero)
+	// NOLINTNEXTLINE(clang-analyzer-security.ArrayBound)
 	auto M34 = as<physx::PxMat34>(q_e);
-	auto R_from_M34 = std::array<std::array<double, 3>, 3>{
-	    {{M34(0, 0), M34(0, 1), M34(0, 2)},
-	     {M34(1, 0), M34(1, 1), M34(1, 2)},
-	     {M34(2, 0), M34(2, 1), M34(2, 2)}}};
+	auto R_from_M34 = std::array<std::array<double, 3>, 3>{{
+	    // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound)
+	    {M34(0, 0), M34(0, 1), M34(0, 2)},
+	    {M34(1, 0), M34(1, 1), M34(1, 2)},
+	    {M34(2, 0), M34(2, 1), M34(2, 2)},
+	}};
 	assert(approx_mat(R, R_from_M34));
 	assert(approx_equal(M34(0, 3), 0.0) && approx_equal(M34(1, 3), 0.0) &&
 	       approx_equal(M34(2, 3), 0.0));
@@ -247,6 +252,7 @@ void test_transforms_gf() {
 	// Create GfTransform via our API (R,t)
 	pxr::GfTransform Xg = as<pxr::GfTransform>(R, t);
 	// Extract pose in other libs
+	// NOLINTNEXTLINE(clang-analyzer-security.ArrayBound)
 	auto [Rp, tp] = as_pose_rt<physx_tag, float>(Xg);
 	assert(approx_mat(R, Rp));
 	assert(approx_mat(t, tp));
@@ -346,6 +352,7 @@ void test_gf_matrix4f_transform_traits() {
 
 int main() {
 	// initializer_list -> vector
+	// NOLINTNEXTLINE(clang-analyzer-core.uninitialized.Assign)
 	test_initializer_list_to_vector();
 
 	// vectors & matrices

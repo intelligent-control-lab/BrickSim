@@ -19,10 +19,10 @@ using G = LegoGraph<PartList<CustomPart>>;
 
 struct ConstraintEvents {
 	struct EdgeRecord {
-		PartId a{};
-		PartId b{};
 		Transformd T_a_b{};
 		std::size_t handle{};
+		PartId a{};
+		PartId b{};
 	};
 
 	std::vector<EdgeRecord> created;
@@ -35,7 +35,7 @@ struct ConstraintEvents {
 		UnorderedPair<PartId> ek{a, b};
 		assert(!live_by_edge.contains(ek));
 		std::size_t h = next_handle++;
-		EdgeRecord rec{a, b, T_a_b, h};
+		EdgeRecord rec{T_a_b, h, a, b};
 		created.push_back(rec);
 		live_by_handle.emplace(h, rec);
 		live_by_edge.emplace(ek, h);

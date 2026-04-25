@@ -194,13 +194,13 @@ struct ContactPayload {
 	physx::PxContactPairHeader header{};
 };
 
-ContactPayload make_contact_payload(
-    physx::PxRigidDynamic *actor0, physx::PxShape *shape0,
+void make_contact_payload(
+    ContactPayload &p, physx::PxRigidDynamic *actor0, physx::PxShape *shape0,
     const physx::PxTransform &pose0, physx::PxRigidDynamic *actor1,
     physx::PxShape *shape1, const physx::PxTransform &pose1,
     bool set_impulse = true,
     const physx::PxVec3 &normal = physx::PxVec3(0.0f, 0.0f, -1.0f)) {
-	ContactPayload p{};
+	p = ContactPayload{};
 
 	auto *idx = reinterpret_cast<physx::PxContactPairIndex *>(p.extra.data());
 	idx->type = physx::PxContactPairExtraDataType::eCONTACT_PAIR_INDEX;
@@ -237,8 +237,6 @@ ContactPayload make_contact_payload(
 	if (set_impulse) {
 		p.pair.flags |= physx::PxContactPairFlag::eINTERNAL_HAS_IMPULSES;
 	}
-
-	return p;
 }
 
 struct PhysicsGraphScenarioFixture {
@@ -327,8 +325,9 @@ void inject_contact_for_connection(PhysicsGraphScenarioFixture &fx,
 	Transformd stud_pose = SE3d{}.identity();
 	Transformd hole_pose = conn_seg.compute_transform(
 	    stud.spec().stud_interface(), hole.spec().hole_interface());
-	ContactPayload payload = make_contact_payload(
-	    stud.actor, stud.stud_shape, as<physx::PxTransform>(stud_pose),
+	ContactPayload payload{};
+	make_contact_payload(
+	    payload, stud.actor, stud.stud_shape, as<physx::PxTransform>(stud_pose),
 	    hole.actor, hole.hole_shape, as<physx::PxTransform>(hole_pose),
 	    /*set_impulse=*/true, physx::PxVec3(0.0f, 0.0f, -1.0f));
 	fx.event_proxy()->onContact(payload.header, &payload.pair, 1);

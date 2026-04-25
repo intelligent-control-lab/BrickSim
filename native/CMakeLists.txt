@@ -32,6 +32,7 @@ set(SAN_ENV "LSAN_OPTIONS=suppressions=${LSAN_SUPPRESSIONS_FILE};ASAN_OPTIONS=fa
 include(PrepareArtifacts)
 include(FetchIsaacDeps)
 include(FetchSourceDeps)
+include(BrickSimChecks)
 isaacsim_fetch_all_deps()
 
 # Link against Isaac Sim's bundled Python
@@ -114,3 +115,5 @@ bricksim_add_test(TestConstraintScheduler tests/TestConstraintScheduler.cpp)
 bricksim_add_test(TestRandomRegularGraphSchedulingPolicy tests/TestRandomRegularGraphSchedulingPolicy.cpp)
 bricksim_add_test(TestPack2dMaxrect tests/TestPack2dMaxrect.cpp)
 bricksim_add_test(TestPhysicsGraphAssemblyClosure tests/TestPhysicsGraphAssemblyClosure.cpp)
+
+bricksim_add_checks(DIRS modules py tools tests)

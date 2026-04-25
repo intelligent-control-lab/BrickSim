@@ -4,7 +4,7 @@ import std;
 import bricksim.vendor;
 
 namespace bricksim {
-    
+
 export double cross2(const Eigen::Vector2d &a, const Eigen::Vector2d &b) {
 	return a.x() * b.y() - a.y() * b.x();
 }

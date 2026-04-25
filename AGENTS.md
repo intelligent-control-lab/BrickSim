@@ -24,7 +24,8 @@ This project is written in C++26 (with modules) and Python 3.11. The project is 
 ### C++ workflow
 You need this only when you modify the C++ code.
 - `pixi run build-native` to build the native extension.
-- `pixi run test-native-release` and `pixi run test-native-debug` to run native tests in both release and debug modes. This is time-consuming, so run them only when you're ready to commit.
+- `pixi run test-native-release` and `pixi run test-native-debug` to run native tests in both release and debug modes. `pixi run lint-native` to do clang-tidy check. These checks are time-consuming, so run them only when you're ready to commit.
+- `pixi run format-native` to format the C++ code using clang-format. This is fast.
 
 ## Coding Style
 These rules are non-negotiable. Enforce them strictly and always check for violations after writing code.

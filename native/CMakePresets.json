@@ -75,6 +75,24 @@
             "targets": [
                 "bricksim_tests"
             ]
+        },
+        {
+            "name": "format",
+            "configurePreset": "release",
+            "targets": [
+                "format"
+            ]
+        },
+        {
+            "name": "lint",
+            "configurePreset": "release",
+            "targets": [
+                "lint"
+            ],
+            "nativeToolOptions": [
+                "-k",
+                "0"
+            ]
         }
     ],
     "testPresets": [
@@ -94,6 +112,40 @@
         }
     ],
     "workflowPresets": [
+        {
+            "name": "format",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "release"
+                },
+                {
+                    "type": "build",
+                    "name": "format"
+                }
+            ]
+        },
+        {
+            "name": "lint",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "release"
+                },
+                {
+                    "type": "build",
+                    "name": "release"
+                },
+                {
+                    "type": "build",
+                    "name": "release-tests"
+                },
+                {
+                    "type": "build",
+                    "name": "lint"
+                }
+            ]
+        },
         {
             "name": "debug",
             "steps": [

@@ -28,8 +28,7 @@ static_assert(std::totally_ordered<TypedId<struct A, int>>);
 export namespace std {
 template <class Tag, std::unsigned_integral Rep>
 struct hash<bricksim::TypedId<Tag, Rep>> {
-	size_t
-	operator()(const bricksim::TypedId<Tag, Rep> &x) const noexcept {
+	size_t operator()(const bricksim::TypedId<Tag, Rep> &x) const noexcept {
 		return std::hash<Rep>{}(x.value());
 	}
 };

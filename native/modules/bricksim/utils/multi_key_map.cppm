@@ -336,8 +336,7 @@ struct tuple_element<I, bricksim::MultiKeyMapEntry<KeysList, Mapped>> {
 };
 
 export template <std::size_t I, class KeysList, class Mapped>
-struct tuple_element<I,
-                     const bricksim::MultiKeyMapEntry<KeysList, Mapped>> {
+struct tuple_element<I, const bricksim::MultiKeyMapEntry<KeysList, Mapped>> {
 	using EntryType = bricksim::MultiKeyMapEntry<KeysList, Mapped>;
 	using type = std::conditional_t<I == 0, const typename EntryType::keys_type,
 	                                const Mapped>;

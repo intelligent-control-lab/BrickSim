@@ -1025,10 +1025,11 @@ export template <class To, transform_like From>
 
 // pair<Quat, Vec3> -> Transform
 export template <transform_like To, class From>
-	requires pair_like<From> && quat_like<typename pair_traits<From>::first_type> &&
-			 mat_like<typename pair_traits<From>::second_type> &&
-			 (mat_rows_v<typename pair_traits<From>::second_type> == 3) &&
-			 (mat_cols_v<typename pair_traits<From>::second_type> == 1)
+    requires pair_like<From> &&
+             quat_like<typename pair_traits<From>::first_type> &&
+             mat_like<typename pair_traits<From>::second_type> &&
+             (mat_rows_v<typename pair_traits<From>::second_type> == 3) &&
+             (mat_cols_v<typename pair_traits<From>::second_type> == 1)
 [[nodiscard]] constexpr To as(const From &p) {
 	using QFrom = typename pair_traits<From>::first_type;
 	using VFrom = typename pair_traits<From>::second_type;

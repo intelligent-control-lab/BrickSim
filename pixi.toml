@@ -8,6 +8,8 @@ version = "0.1.0"
 libc = { family = "glibc", version = "2.35" }
 
 [tasks]
+format-native = { cmd = "cmake --workflow --preset format", cwd = "native" }
+lint-native = { cmd = "cmake --workflow --preset lint", cwd = "native" }
 build-native = "scripts/build.sh release"
 build-native-release = "scripts/build.sh release"
 build-native-debug = "scripts/build.sh debug"
