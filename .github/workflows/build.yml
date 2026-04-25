@@ -1,7 +1,7 @@
 name: Build and Test 
 on:
   push:
-    paths:
+    paths: &build_paths
       - "native/**"
       - "python/**"
       - "pixi.toml"
@@ -10,14 +10,7 @@ on:
       - ".github/actions/**"
       - ".github/workflows/build.yml"
   pull_request:
-    paths:
-      - "native/**"
-      - "python/**"
-      - "pixi.toml"
-      - "pixi.lock"
-      - "scripts/build.sh"
-      - ".github/actions/**"
-      - ".github/workflows/build.yml"
+    paths: *build_paths
 jobs:
   build:
     name: ${{ matrix.build_type }}_amd64_linux
