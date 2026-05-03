@@ -5,7 +5,7 @@ description = "BrickSim development environment"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "bricksim[all,stablelego]",
-    "skrl>=1.4.3<2",
+    "skrl>=2",
     "lerobot==0.4.4",
 ]
 
