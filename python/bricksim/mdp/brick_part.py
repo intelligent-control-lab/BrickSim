@@ -22,36 +22,49 @@ from bricksim.units import BRICK_STUD_HEIGHT, BRICK_UNIT_LENGTH, PLATE_UNIT_HEIG
 from .utils import MISSING
 
 
-def _reset_brick_xform_ops(
+def set_brick_part_xform(
     prim: Usd.Prim,
-    translation: tuple[float, float, float] | None = None,
-    orientation: tuple[float, float, float, float] | None = None,
+    translation: tuple[float, float, float],
+    orientation: tuple[float, float, float, float],
 ) -> None:
+    """Set a brick prim's authored local pose.
+
+    Args:
+        prim: USD prim whose local transform should be updated.
+        translation: Local position ``(x, y, z)`` in SI meters.
+        orientation: Local quaternion ``(w, x, y, z)``.
+
+    Existing translate and orient ops are edited in place. If either op is
+    missing, the xform stack is rewritten while preserving current local scale.
+    Quaternions use WXYZ storage.
+    """
     xformable = UsdGeom.Xformable(prim)
-    local_transform = Gf.Transform(xformable.GetLocalTransformation())
-    resolved_translation = (
-        Gf.Vec3d(local_transform.GetTranslation())
-        if translation is None
-        else Gf.Vec3d(*translation)
-    )
-    resolved_orientation = (
-        # BrickSim spawn inputs use WXYZ quaternions here.
-        Gf.Quatd(local_transform.GetRotation().GetQuat())
-        if orientation is None
-        else Gf.Quatd(*orientation)
-    )
-    resolved_scale = Gf.Vec3d(local_transform.GetScale())
-    reset_and_set_xform_ops(
-        prim, resolved_translation, resolved_orientation, resolved_scale
-    )
+    translate_op = None
+    orient_op = None
+    for op in xformable.GetOrderedXformOps():
+        op_type = op.GetOpType()
+        if op_type == UsdGeom.XformOp.TypeTranslate:
+            translate_op = op
+        elif op_type == UsdGeom.XformOp.TypeOrient:
+            orient_op = op
+    if translate_op is None or orient_op is None:
+        reset_and_set_xform_ops(
+            prim,
+            Gf.Vec3d(*translation),
+            Gf.Quatd(*orientation),
+            Gf.Vec3d(Gf.Transform(xformable.GetLocalTransformation()).GetScale()),
+        )
+        return
+    translate_op.Set(Gf.Vec3d(*translation))
+    orient_op.Set(Gf.Quatd(*orientation))
 
 
 @clone
 def spawn_brick_part(
     prim_path: str,
     cfg: "BrickPartCfg",
-    translation: tuple[float, float, float] | None = None,
-    orientation: tuple[float, float, float, float] | None = None,
+    translation: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    orientation: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0),
     **kwargs,
 ) -> Usd.Prim:
     """Spawn or update a native BrickSim rigid brick part.
@@ -70,7 +83,7 @@ def spawn_brick_part(
         prim = stage.GetPrimAtPath(prim_path)
         if not prim.IsValid():
             raise RuntimeError(f"Failed to spawn BrickPart at '{prim_path}'.")
-    _reset_brick_xform_ops(prim, translation=translation, orientation=orientation)
+    set_brick_part_xform(prim, translation=translation, orientation=orientation)
     if cfg.rigid_props is not None:
         modify_rigid_body_properties(prim_path, cfg.rigid_props)
     return prim
@@ -164,8 +177,8 @@ def _configure_marker_curves(
 def spawn_marker_brick_part(
     prim_path: str,
     cfg: "MarkerBrickPartCfg",
-    translation: tuple[float, float, float] | None = None,
-    orientation: tuple[float, float, float, float] | None = None,
+    translation: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    orientation: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0),
     **kwargs,
 ) -> Usd.Prim:
     """Spawn or update a visual marker brick wireframe.
@@ -183,7 +196,7 @@ def spawn_marker_brick_part(
         prim = UsdGeom.Xform.Define(stage, prim_path).GetPrim()
         if not prim.IsValid():
             raise RuntimeError(f"Failed to spawn marker wireframe at '{prim_path}'.")
-    _reset_brick_xform_ops(prim, translation=translation, orientation=orientation)
+    set_brick_part_xform(prim, translation=translation, orientation=orientation)
     _configure_marker_curves(stage, prim, cfg.dimensions, color)
     return prim
 
