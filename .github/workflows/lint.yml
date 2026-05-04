@@ -34,15 +34,12 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-suffix: lint
-
-      - name: Run Ruff
-        run: uv run --group dev ruff check
 
       - name: Generate type checker config
-        run: uv run --group dev bricksim-type-configs -y
+        run: uv run bricksim-type-configs -y
+
+      - name: Run Ruff
+        run: uv run ruff check
 
       - name: Run ty
-        run: uv run --group dev ty check
+        run: uv run ty check
