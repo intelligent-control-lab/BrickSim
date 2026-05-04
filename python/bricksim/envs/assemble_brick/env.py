@@ -65,6 +65,7 @@ from bricksim.mdp.events import (
 )
 
 from .expert import AssembleBrickExpert
+from .mdp.commands import AssembleBrickCommandCfg
 from .mdp.common import assemble_brick_goal_satisfied, wrong_connection_to_target
 from .mdp.goal import AssembleBrickGoal
 from .mdp.observations import (
@@ -213,6 +214,20 @@ class ActionsCfg:
         joint_names=["panda_finger.*"],
         open_command_expr={"panda_finger_.*": 0.04},
         close_command_expr={"panda_finger_.*": 0.0},
+    )
+
+
+@configclass
+class CommandsCfg:
+    """Command terms for sampled assembly goals."""
+
+    assembly_goal: AssembleBrickCommandCfg = AssembleBrickCommandCfg(
+        stud_brick="lego_baseplate",
+        stud_brick_iface=GOAL.stud_if,
+        hole_brick="lego_brick",
+        hole_brick_iface=GOAL.hole_if,
+        moving_brick_type="hole",
+        goals=((GOAL.offset[0], GOAL.offset[1], GOAL.yaw),),
     )
 
 
@@ -592,7 +607,7 @@ class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
     scene = SceneCfg(num_envs=16, env_spacing=2.5)
     observations = ObservationsCfg()
     actions = ActionsCfg()
-    commands = None
+    commands = CommandsCfg()
     rewards = RewardsCfg()
     terminations = TerminationsCfg()
     events = EventCfg()
