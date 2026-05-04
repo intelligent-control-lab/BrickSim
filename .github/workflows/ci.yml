@@ -1,0 +1,107 @@
+name: Build & Test
+
+on:
+  push:
+    paths: &ci_paths
+      - ".clang-format"
+      - ".clang-tidy"
+      - ".github/actions/**"
+      - ".github/workflows/ci.yml"
+      - "**.py"
+      - "native/**"
+      - "pixi.lock"
+      - "pixi.toml"
+      - "pyproject.toml"
+      - "pytest.toml"
+      - "python/**"
+      - "ruff.toml"
+      - "scripts/build.sh"
+      - "ty.base.toml"
+      - "uv.lock"
+  pull_request:
+    paths: *ci_paths
+
+permissions:
+  contents: read
+
+env:
+  OMNI_KIT_ACCEPT_EULA: "1"
+
+jobs:
+  native:
+    name: ${{ matrix.build_type }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [debug, release]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install pixi
+        uses: prefix-dev/setup-pixi@v0.9.3
+        with:
+          pixi-version: v0.67.0
+          cache: true
+          frozen: true
+          activate-environment: true
+
+      - name: Cache BrickSim artifacts
+        uses: ./.github/actions/cache-bricksim-artifacts
+
+      - name: "[Native] Build"
+        run: pixi run build-native-${{ matrix.build_type }}
+
+      - name: "[Native] Lint"
+        id: native_lint
+        # Skip for test build because lint CMake workflow is based on release configuration
+        if: ${{ matrix.build_type == 'release' }}
+        continue-on-error: true
+        run: pixi run lint-native
+
+      - name: "[Native] Test"
+        id: native_test
+        continue-on-error: true
+        run: pixi run test-native-${{ matrix.build_type }}
+
+      - name: "[Python] Install dependencies"
+        run: uv sync --frozen
+
+      - name: "[Python] Generate type checker config"
+        run: uv run bricksim-type-configs -y
+
+      - name: "[Python] Lint - ruff"
+        id: python_ruff
+        continue-on-error: true
+        run: uv run ruff check
+
+      - name: "[Python] Lint - ty"
+        id: python_ty
+        continue-on-error: true
+        run: uv run ty check
+
+      - name: "[Python] Test"
+        id: python_test
+        continue-on-error: true
+        run: uv run pytest
+
+      - name: Fail if any check failed
+        if: >-
+          ${{
+            !(
+              (steps.native_lint.outcome == 'skipped' || steps.native_lint.outcome == 'success') &&
+              steps.native_test.outcome == 'success' &&
+              steps.python_ruff.outcome == 'success' &&
+              steps.python_ty.outcome == 'success' &&
+              steps.python_test.outcome == 'success'
+            )
+          }}
+        run: exit 1
