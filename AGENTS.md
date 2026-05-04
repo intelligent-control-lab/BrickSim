@@ -102,6 +102,7 @@ Non modular 3rd-party dependencies are wrapped in a single `bricksim.vendor` (`v
 - Isaac Sim 5.1 is partially open‑sourced.
    - Some C++ is open; other parts are closed or header‑only.
    - Source code lives at `../IsaacSim-5.1` (relative to this project directory).
+- Isaac Lab code is in the virtual environment. This is the ground truth. Isaac Lab changes a lot between versions.
 - PhysX source checkout lives at `../PhysX-107.3-omni-and-physx-5.6.1` (relative to this project directory).
    - The source code of Omni PhysX, the extension that bridges Omniverse and PhysX, is located in `omni/` inside PhysX source.
 - OpenUSD source checkout lives at `../OpenUSD-v24.05` (relative to this project directory).
