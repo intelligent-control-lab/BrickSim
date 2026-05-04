@@ -48,6 +48,11 @@ These rules are non-negotiable. Enforce them strictly and always check for viola
    - Optimize names for readability at the call site.
    - Avoid vague names and unnecessary abbreviations.
 - Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) style when making Git commits.
+- You are prohibited to write separate helper functions unless such function is needed at least 3 times. If you write any kind of helper function, the following checklist MUST be followed exactly:
+   - Define clear scope and abstraction for the helper function.
+   - Write clear documentation for it.
+   - Put it in existing utils module (preferred) or a new utils module (you MUST provide convincing justification), unless it is absolutely limited to current file.
+- Do not mention word `BrickSim` in any documentation unless absolutely needed. Documentations must be kept concise and should NOT contain ANY redundant wording.
 
 ### Python Specific Rules
 - Do not use `typing.Any` or `typing.cast` to bypass type checking. Add precise types, protocols, or local stubs instead. However, do not over-engineer types in sacrifice of performance.
