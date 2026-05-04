@@ -47,6 +47,7 @@ These rules are non-negotiable. Enforce them strictly and always check for viola
    - Reuse canonical domain terms. Do not invent synonyms.
    - Optimize names for readability at the call site.
    - Avoid vague names and unnecessary abbreviations.
+- Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) style when making Git commits.
 
 ### Python Specific Rules
 - Do not use `typing.Any` or `typing.cast` to bypass type checking. Add precise types, protocols, or local stubs instead. However, do not over-engineer types in sacrifice of performance.
