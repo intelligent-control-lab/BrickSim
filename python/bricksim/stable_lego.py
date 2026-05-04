@@ -14,10 +14,18 @@ import time
 import numpy as np
 from gurobipy import GRB
 
-from bricksim.topology.legolization import load_default_lego_library
+from bricksim.topology.legolization import (
+    LegoLibrary,
+    LegoStructure,
+    load_default_lego_library,
+)
 
 
-def _construct_world_grid(lego, world_dimension, brick_library):
+def _construct_world_grid(
+    lego: LegoStructure,
+    world_dimension: tuple[int, int, int],
+    brick_library: LegoLibrary,
+):
     world_grid = np.zeros(world_dimension)
     for key in lego.keys():
         try:
@@ -42,11 +50,11 @@ def _construct_world_grid(lego, world_dimension, brick_library):
     return world_grid
 
 
-def _gen_key(x, y, z):
+def _gen_key(x: int, y: int, z: int):
     return "X: " + str(x) + ", Y: " + str(y) + ", Z: " + str(z)
 
 
-def _out_boundary(pt, brick_x, brick_y, h, w):
+def _out_boundary(pt: list[int], brick_x: int, brick_y: int, h: int, w: int):
     x = pt[0]
     y = pt[1]
     if x < brick_x or x >= brick_x + h or y < brick_y or y >= brick_y + w:

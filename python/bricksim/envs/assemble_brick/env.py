@@ -623,6 +623,7 @@ class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
             -0.05919967178876398,
         )
 
+        # Used by saaclab_tasks/manager_based/manipulation/stack/mdp/observations.py:282
         self.gripper_joint_names = ["panda_finger_.*"]
         self.gripper_open_val = 0.04
         self.gripper_threshold = 0.005

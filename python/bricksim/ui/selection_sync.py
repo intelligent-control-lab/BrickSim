@@ -1,5 +1,6 @@
 """Selection synchronization for BrickSim connected-component picking."""
 
+import carb.events
 import carb.settings
 import omni.usd
 from isaacsim.core.utils.stage import get_current_stage
@@ -46,7 +47,7 @@ class AssemblySelectionSync:
             and lego_mode == self.LEGO_CC_VALUE
         )
 
-    def _on_selection_changed(self, _event):
+    def _on_selection_changed(self, _event: carb.events.IEvent):
         if self._updating_selection or not (
             self._is_assembly_mode() or self._is_connected_component_mode()
         ):

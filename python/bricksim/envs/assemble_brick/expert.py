@@ -4,11 +4,14 @@ from collections.abc import Coroutine, Sequence
 
 import isaaclab.utils.math as math_utils
 import torch
+from isaaclab.envs import ManagerBasedRLEnv
+from isaaclab.envs.mdp.actions.binary_joint_actions import BinaryJointPositionAction
 from isaaclab.envs.mdp.actions.task_space_actions import (
     DifferentialInverseKinematicsAction,
 )
 
 from bricksim.core import compute_connection_transform
+from bricksim.mdp.brick_part import scene_entity_brick_part_dimensions
 from bricksim.units import BRICK_UNIT_LENGTH, PLATE_UNIT_HEIGHT
 from bricksim.utils.debug_draw import DebugDraw, acquire_debug_draw
 
@@ -66,7 +69,7 @@ class AssembleBrickExpert:
 
     def __init__(
         self,
-        env,
+        env: ManagerBasedRLEnv,
         *,
         stud_if: int,
         hole_if: int,
@@ -87,14 +90,14 @@ class AssembleBrickExpert:
         arm_action_term = self.env.action_manager.get_term("arm_action")
         assert isinstance(arm_action_term, DifferentialInverseKinematicsAction)
         self._arm_action_term = arm_action_term
-        self._action_scale = float(self.env.cfg.actions.arm_action.scale)
+        self._action_scale = arm_action_term._scale[0]
+        gripper_action_term = self.env.action_manager.get_term("gripper_action")
+        assert isinstance(gripper_action_term, BinaryJointPositionAction)
         self._step_dt = float(self.env.step_dt)
         self._dtype = self.env.scene.env_origins.dtype
         self._num_envs = self.env.num_envs
         self._action_dim = self.env.action_manager.total_action_dim
-        self._gripper_joint_ids, _ = self._robot.find_joints(
-            self.env.cfg.gripper_joint_names
-        )
+        self._gripper_joint_ids = gripper_action_term._joint_ids
         self._brick_paths = self._brick.root_physx_view.prim_paths
         self._baseplate_paths = self._baseplate.root_physx_view.prim_paths
 
@@ -141,7 +144,9 @@ class AssembleBrickExpert:
         return self._step_actions
 
     def _configure_grasp_geometry(self) -> None:
-        length, width, height = self.env.cfg.scene.lego_brick.spawn.dimensions
+        length, width, height = scene_entity_brick_part_dimensions(
+            self.env, "lego_brick"
+        )
         grasp_depth = 0.002 if length == 1 or width == 1 else 0.001
 
         self._grasp_width = float(min(length, width) * BRICK_UNIT_LENGTH)

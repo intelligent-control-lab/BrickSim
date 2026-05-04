@@ -3,6 +3,7 @@
 from typing import Literal
 
 import torch
+from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import (
     quat_apply_inverse,
@@ -22,7 +23,7 @@ from .common import (
 
 
 def object_grasped_obs(
-    env,
+    env: ManagerBasedRLEnv,
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
@@ -47,7 +48,7 @@ def object_grasped_obs(
 
 
 def marker_pose_in_robot_root_frame(
-    env,
+    env: ManagerBasedRLEnv,
     marker_cfg: SceneEntityCfg,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     return_key: Literal["pos", "quat", None] = None,
@@ -74,7 +75,7 @@ def marker_pose_in_robot_root_frame(
 
 
 def rigid_object_velocity_in_robot_root_frame(
-    env,
+    env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     return_key: Literal["lin", "ang", None] = None,
@@ -101,7 +102,7 @@ def rigid_object_velocity_in_robot_root_frame(
 
 
 def object_marker_pose_error(
-    env,
+    env: ManagerBasedRLEnv,
     object_cfg: SceneEntityCfg,
     marker_cfg: SceneEntityCfg,
     return_key: Literal["pos", "quat", None] = None,
@@ -126,7 +127,7 @@ def object_marker_pose_error(
 
 
 def goal_target_match_obs(
-    env,
+    env: ManagerBasedRLEnv,
     stud_if: int,
     hole_if: int,
     target_offset: tuple[int, int],
@@ -155,7 +156,7 @@ def goal_target_match_obs(
 
 
 def wrong_connection_obs(
-    env,
+    env: ManagerBasedRLEnv,
     stud_if: int,
     hole_if: int,
     target_offset: tuple[int, int],
@@ -184,19 +185,34 @@ def wrong_connection_obs(
 
 
 def gripper_is_open_obs(
-    env,
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    env: ManagerBasedRLEnv,
+    action_term_name: str = "gripper_action",
+    open_position_threshold: float = 0.005,
 ) -> torch.Tensor:
     """Return the gripper-open indicator as a float observation.
+
+    Args:
+        env: Manager-based RL environment.
+        action_term_name: Name of the binary gripper action term.
+        open_position_threshold: Joint-position tolerance around the action
+            term's open command.
 
     Returns:
         Float tensor with shape ``(num_envs, 1)``.
     """
-    return gripper_is_open(env, robot_cfg).to(torch.float32).unsqueeze(-1)
+    return (
+        gripper_is_open(
+            env,
+            action_term_name=action_term_name,
+            open_position_threshold=open_position_threshold,
+        )
+        .to(torch.float32)
+        .unsqueeze(-1)
+    )
 
 
 def captured_hole_to_eef_obs(
-    env,
+    env: ManagerBasedRLEnv,
     return_key: Literal["pos", "quat", None] = None,
 ) -> torch.Tensor:
     """Return the expert-captured hole-to-end-effector transform.

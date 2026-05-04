@@ -3,6 +3,7 @@
 import asyncio
 from pathlib import Path
 
+import carb.events
 from isaacsim.core.utils.stage import update_stage_async
 
 
@@ -38,13 +39,13 @@ def _patch_play_button_group():
     orig_create = PlayButtonGroup.create
     orig_on_timeline_event = PlayButtonGroup._on_timeline_event
 
-    def _lego_clean(self):
+    def _lego_clean(self: PlayButtonGroup):
         orig_clean(self)
-        self._lego_step_one_frame_button = None
+        setattr(self, "_lego_step_one_frame_button", None)
 
     setattr(PlayButtonGroup, "clean", _lego_clean)
 
-    def _lego_get_style(self):
+    def _lego_get_style(self: PlayButtonGroup):
         style = orig_get_style(self)
         style["Button.Image::step_one_frame"] = {
             "image_url": str(Path(__file__).parent / "step_forward.svg")
@@ -53,7 +54,7 @@ def _patch_play_button_group():
 
     setattr(PlayButtonGroup, "get_style", _lego_get_style)
 
-    def _lego_create(self, default_size):
+    def _lego_create(self: PlayButtonGroup, default_size: int):
         widgets = orig_create(self, default_size)
         if widgets is None:
             widgets = {}
@@ -69,13 +70,13 @@ def _patch_play_button_group():
             clicked_fn=on_step_one_frame_clicked,
         )
         step_button.visible = self._visible
-        self._lego_step_one_frame_button = step_button
+        setattr(self, "_lego_step_one_frame_button", step_button)
         widgets["step_one_frame"] = step_button
         return widgets
 
     setattr(PlayButtonGroup, "create", _lego_create)
 
-    def _lego_on_timeline_event(self, e):
+    def _lego_on_timeline_event(self: PlayButtonGroup, e: carb.events.IEvent):
         orig_on_timeline_event(self, e)
         if hasattr(
             omni.timeline.TimelineEventType, "DIRECTOR_CHANGED"

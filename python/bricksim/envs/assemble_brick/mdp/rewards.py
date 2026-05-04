@@ -1,6 +1,7 @@
 """Reward terms for the assemble-brick MDP."""
 
 import torch
+from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.managers import SceneEntityCfg
 from isaaclab_tasks.manager_based.manipulation.place.mdp.observations import (
     object_grasped,
@@ -14,7 +15,7 @@ from .common import (
 
 
 def grasp_bonus_from_object_grasped(
-    env,
+    env: ManagerBasedRLEnv,
     object_cfg: SceneEntityCfg,
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
@@ -35,7 +36,7 @@ def grasp_bonus_from_object_grasped(
 
 
 def lift_bonus_relative_to_target(
-    env,
+    env: ManagerBasedRLEnv,
     object_cfg: SceneEntityCfg,
     target_cfg: SceneEntityCfg,
     lift_height: float = 0.03,
@@ -53,7 +54,7 @@ def lift_bonus_relative_to_target(
 
 
 def object_transport_xy(
-    env,
+    env: ManagerBasedRLEnv,
     std: float,
     object_cfg: SceneEntityCfg,
     target_cfg: SceneEntityCfg,
@@ -78,7 +79,7 @@ def object_transport_xy(
 
 
 def object_yaw_align(
-    env,
+    env: ManagerBasedRLEnv,
     std: float,
     object_cfg: SceneEntityCfg,
     target_cfg: SceneEntityCfg,
@@ -103,7 +104,7 @@ def object_yaw_align(
 
 
 def object_pre_insert_height(
-    env,
+    env: ManagerBasedRLEnv,
     std: float,
     object_cfg: SceneEntityCfg,
     target_cfg: SceneEntityCfg,
@@ -141,7 +142,7 @@ def object_pre_insert_height(
 
 
 def object_insert_z(
-    env,
+    env: ManagerBasedRLEnv,
     std: float,
     object_cfg: SceneEntityCfg,
     target_cfg: SceneEntityCfg,
@@ -177,7 +178,7 @@ def object_insert_z(
 
 
 def assemble_brick_success_bonus(
-    env,
+    env: ManagerBasedRLEnv,
     stud_if: int,
     hole_if: int,
     target_offset: tuple[int, int],
@@ -185,7 +186,8 @@ def assemble_brick_success_bonus(
     object_cfg: SceneEntityCfg,
     target_cfg: SceneEntityCfg,
     stud_cfg: SceneEntityCfg = SceneEntityCfg("lego_baseplate"),
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    action_term_name: str = "gripper_action",
+    open_position_threshold: float = 0.005,
     pos_tol: float = 0.002,
     rot_tol: float = 0.08726646259971647,
 ) -> torch.Tensor:
@@ -203,7 +205,8 @@ def assemble_brick_success_bonus(
         object_cfg=object_cfg,
         target_cfg=target_cfg,
         stud_cfg=stud_cfg,
-        robot_cfg=robot_cfg,
+        action_term_name=action_term_name,
+        open_position_threshold=open_position_threshold,
         pos_tol=pos_tol,
         rot_tol=rot_tol,
     ).to(torch.float32)

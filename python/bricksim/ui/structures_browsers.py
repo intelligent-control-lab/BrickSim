@@ -188,13 +188,25 @@ class LegoStructuresBrowser:
                         )
                         ui.Label(item.caption, height=0, ellipsize=True)
 
-                def _on_single_click(x, y, button, modifiers, idx=idx):
+                def _on_single_click(
+                    x: float,
+                    y: float,
+                    button: int,
+                    modifiers: int,
+                    idx: int = idx,
+                ):
                     if button != 0:
                         return
                     self._selected_index = idx
                     self._rebuild_list()
 
-                def _on_double_click(x, y, button, modifiers, idx=idx):
+                def _on_double_click(
+                    x: float,
+                    y: float,
+                    button: int,
+                    modifiers: int,
+                    idx: int = idx,
+                ):
                     if button != 0:
                         return
                     self._selected_index = idx

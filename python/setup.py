@@ -13,7 +13,7 @@ from setuptools.command.sdist import sdist
 class BrickSimBuildExt(build_ext):
     """Build the native extension through the repository build script."""
 
-    def build_extension(self, ext):
+    def build_extension(self, ext: Extension):
         """Build one native extension module."""
         py_project_root = Path(__file__).resolve().parent
         repo_root = py_project_root.parent

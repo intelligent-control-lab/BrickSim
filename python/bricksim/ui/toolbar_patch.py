@@ -141,6 +141,7 @@ def _patch_select_button_group():
         OptionSeparator,
         OptionsModel,
     )
+    from omni.kit.widget.options_menu.option_item import AbstractOptionItem
     from omni.kit.widget.toolbar.builtin_tools.models.select_mode_model import (
         SelectModeModel,
     )
@@ -152,7 +153,7 @@ def _patch_select_button_group():
     if getattr(SelectButtonGroup, "_lego_cc_patched", False):
         return
 
-    def _build_select_menu_model(self):
+    def _build_select_menu_model(self: SelectButtonGroup):
         radios = [
             ("Select by Type", None),
             ("All Prim Types", "type:ALL"),
@@ -187,25 +188,24 @@ def _patch_select_button_group():
             "Include Prims with no Kind",
             default=True,
             hide_on_click=True,
-            model=self._select_no_kinds_model,
+            model=self._select_no_kinds_model,  # type: ignore
             enabled=self._enable_no_kinds_option(None),
         )
         self._include_references_item = OptionItem(
             "Include References and Payloads",
             default=True,
             hide_on_click=True,
-            model=self._select_include_ref_model,
+            model=self._select_include_ref_model,  # type: ignore
             enabled=self._enable_no_kinds_option(None),
         )
 
-        option_radios = type.__call__(
-            OptionRadios,
-            radios,
-            model=self._select_mode_model,
+        option_radios = OptionRadios(
+            radios,  # type: ignore
+            model=self._select_mode_model,  # type: ignore
             default=SelectModeModel.PICKING_MODE_DEFAULT,
         )
 
-        items = [
+        items: list[AbstractOptionItem] = [
             option_radios,
             OptionSeparator(),
             self._include_prims_with_no_kind_item,
@@ -222,7 +222,7 @@ def _patch_select_button_group():
     # Connected Component mode while reusing the component glyph.
     orig_get_style = SelectButtonGroup.get_style
 
-    def _lego_get_style(self):
+    def _lego_get_style(self: SelectButtonGroup):
         style = orig_get_style(self)
         comp_icon = style.get("Button.Image::component")
         if comp_icon is not None:
@@ -241,7 +241,8 @@ def _patch_select_button_group():
     # engine picking mode via the bridges above).
     orig_get_name = SelectButtonGroup._get_select_mode_button_name
 
-    def _lego_get_select_mode_button_name(self):
+    def _lego_get_select_mode_button_name(self: SelectButtonGroup):
+        assert self._select_mode_model is not None
         mode = self._select_mode_model.get_value_as_string()
         # When the UI-mode is our LEGO placeholder, use the dedicated
         # component_cc icon entry; otherwise, fall back to the stock behavior.
@@ -257,12 +258,16 @@ def _patch_select_button_group():
 
     orig_get_tooltip = SelectButtonGroup._get_select_mode_tooltip
 
-    def _lego_get_select_mode_tooltip(self):
+    def _lego_get_select_mode_tooltip(self: SelectButtonGroup):
+        assert self._select_mode_model is not None
         mode = self._select_mode_model.get_value_as_string()
         # When the UI-mode is our LEGO placeholder, show a dedicated tooltip
         # while preserving the T hotkey display.
         if mode == _LEGO_PLACEHOLDER_VALUE:
-            return f"Connected Component ({self._mode_hotkey.get_as_string('T')})"
+            tooltip = "Connected Component"
+            if self._mode_hotkey is not None:
+                tooltip += f" ({self._mode_hotkey.get_as_string('T')})"
+            return tooltip
         return orig_get_tooltip(self)
 
     setattr(

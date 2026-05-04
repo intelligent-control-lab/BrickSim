@@ -16,6 +16,7 @@ from pxr import Gf, UsdGeom
 
 from bricksim.core import compute_connection_local_transform, get_connection_utilization
 from bricksim.utils.connection_usd import parse_connection_prim
+from bricksim.utils.typing import get_usd_context_stage
 
 SETTING_DISPLAY_CONNECTIONS = "/persistent/bricksim/visualizationDisplayConnections"
 
@@ -56,7 +57,7 @@ class _VisualizedConnection:
 
 
 class _ConnectionOverlayManipulator(omni.ui.scene.Manipulator):
-    def __init__(self, usd_context):
+    def __init__(self, usd_context: omni.usd.UsdContext):
         super().__init__()
         self._usd_context = usd_context
         self._settings = carb.settings.get_settings()
@@ -67,7 +68,7 @@ class _ConnectionOverlayManipulator(omni.ui.scene.Manipulator):
         self._panel: omni.ui.scene.Transform | None = None
 
     def _get_conn_world_pos(self, conn_path: str) -> tuple[float, float, float] | None:
-        stage = self._usd_context.get_stage()
+        stage = get_usd_context_stage(self._usd_context)
         if stage is None:
             return None
         parsed = parse_connection_prim(stage.GetPrimAtPath(conn_path))
@@ -163,7 +164,7 @@ class _ConnectionOverlayManipulator(omni.ui.scene.Manipulator):
             self.invalidate()
             return
         self._panel.visible = True
-        stage = self._usd_context.get_stage()
+        stage = get_usd_context_stage(self._usd_context)
         if stage is None:
             self.invalidate()
             return
@@ -202,7 +203,7 @@ class _ConnectionOverlayManipulator(omni.ui.scene.Manipulator):
         self._panel = omni.ui.scene.Transform()
         self._items.clear()
         self._xform_cache.Clear()
-        stage = self._usd_context.get_stage()
+        stage = get_usd_context_stage(self._usd_context)
         if stage is None:
             self._stage_id = None
             return

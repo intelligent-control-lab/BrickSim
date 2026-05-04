@@ -22,7 +22,7 @@ class BrickSimExtension(omni.ext.IExt):
     _ui: _SupportsDestroy | None = None
     _structures_browser: _SupportsDestroy | None = None
 
-    def on_startup(self, ext_id):
+    def on_startup(self, ext_id: str):
         """Initialize BrickSim extension UI at startup."""
         self._init_ui()
 

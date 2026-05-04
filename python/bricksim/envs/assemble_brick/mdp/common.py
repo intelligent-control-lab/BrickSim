@@ -1,6 +1,8 @@
 """Shared MDP helpers for assemble-brick observations, rewards, and terms."""
 
 import torch
+from isaaclab.envs import ManagerBasedRLEnv
+from isaaclab.envs.mdp.actions.binary_joint_actions import BinaryJointPositionAction
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import quat_error_magnitude
 
@@ -11,7 +13,7 @@ from bricksim.mdp.connection_state import (
 
 
 def marker_pose_w(
-    env,
+    env: ManagerBasedRLEnv,
     marker_cfg: SceneEntityCfg = SceneEntityCfg("marker_brick"),
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Return marker world poses as tensors.
@@ -30,26 +32,32 @@ def marker_pose_w(
 
 
 def gripper_is_open(
-    env, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env: ManagerBasedRLEnv,
+    action_term_name: str = "gripper_action",
+    open_position_threshold: float = 0.005,
 ) -> torch.Tensor:
     """Return a mask indicating whether the gripper is open.
+
+    Args:
+        env: Manager-based RL environment.
+        action_term_name: Name of the binary gripper action term.
+        open_position_threshold: Joint-position tolerance around the action
+            term's open command.
 
     Returns:
         Boolean tensor with shape ``(num_envs,)``.
     """
-    robot = env.scene[robot_cfg.name]
-    joint_ids, _ = robot.find_joints(env.cfg.gripper_joint_names)
-    joint_pos = robot.data.joint_pos[:, joint_ids]
-    open_val = torch.tensor(
-        env.cfg.gripper_open_val, device=env.device, dtype=joint_pos.dtype
-    )
+    action_term = env.action_manager.get_term(action_term_name)
+    assert isinstance(action_term, BinaryJointPositionAction)
+    joint_pos = action_term._asset.data.joint_pos[:, action_term._joint_ids]
+    open_command = action_term._open_command.to(dtype=joint_pos.dtype)
     return torch.all(
-        torch.abs(joint_pos - open_val) <= env.cfg.gripper_threshold, dim=1
+        torch.abs(joint_pos - open_command) <= open_position_threshold, dim=1
     )
 
 
 def object_marker_pose_alignment(
-    env,
+    env: ManagerBasedRLEnv,
     object_cfg: SceneEntityCfg,
     target_cfg: SceneEntityCfg,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -67,7 +75,7 @@ def object_marker_pose_alignment(
 
 
 def connection_target_match(
-    env,
+    env: ManagerBasedRLEnv,
     stud_if: int,
     hole_if: int,
     target_offset: tuple[int, int],
@@ -98,7 +106,7 @@ def connection_target_match(
 
 
 def wrong_connection_to_target(
-    env,
+    env: ManagerBasedRLEnv,
     stud_if: int,
     hole_if: int,
     target_offset: tuple[int, int],
@@ -129,7 +137,7 @@ def wrong_connection_to_target(
 
 
 def assemble_brick_goal_satisfied(
-    env,
+    env: ManagerBasedRLEnv,
     stud_if: int,
     hole_if: int,
     target_offset: tuple[int, int],
@@ -137,7 +145,8 @@ def assemble_brick_goal_satisfied(
     object_cfg: SceneEntityCfg,
     target_cfg: SceneEntityCfg,
     stud_cfg: SceneEntityCfg = SceneEntityCfg("lego_baseplate"),
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    action_term_name: str = "gripper_action",
+    open_position_threshold: float = 0.005,
     pos_tol: float = 0.002,
     rot_tol: float = 0.08726646259971647,
 ) -> torch.Tensor:
@@ -158,4 +167,9 @@ def assemble_brick_goal_satisfied(
     pos_delta, _, rot_error = object_marker_pose_alignment(env, object_cfg, target_cfg)
     pose_close = torch.linalg.vector_norm(pos_delta, dim=1) < pos_tol
     rot_close = rot_error < rot_tol
-    return target_match & pose_close & rot_close & gripper_is_open(env, robot_cfg)
+    gripper_open = gripper_is_open(
+        env,
+        action_term_name=action_term_name,
+        open_position_threshold=open_position_threshold,
+    )
+    return target_match & pose_close & rot_close & gripper_open
