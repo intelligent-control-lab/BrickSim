@@ -55,6 +55,7 @@ These rules are non-negotiable. Enforce them strictly and always check for viola
    - `TYPE_CHECKING` blocks
    - `... as ...` imports unless truly necessary
 - Unless necessary or by common convention, do not import whole packages; import the specific functions, classes, or symbols you use.
+- Do not call `SimulationApp.close()` in finally. It will cause the application to exit and swallow the exception.
 
 ### C++ Specific Rules
 This is a modular C++26 project using modules. Modular C++ is different from ordinary C++.
