@@ -17,6 +17,7 @@ from pxr import Gf, Usd, UsdGeom
 
 from bricksim.colors import parse_color
 from bricksim.core import allocate_unmanaged_brick_part
+from bricksim.units import BRICK_STUD_HEIGHT, BRICK_UNIT_LENGTH, PLATE_UNIT_HEIGHT
 
 from .utils import MISSING
 
@@ -86,9 +87,9 @@ class BrickPartCfg(SpawnerCfg):
 
 
 def _build_marker_wireframe_points(dimensions: tuple[int, int, int]) -> list[Gf.Vec3f]:
-    length = float(dimensions[0]) * 0.008
-    width = float(dimensions[1]) * 0.008
-    top_z = float(dimensions[2]) * 0.0032 + 0.0017
+    length = float(dimensions[0]) * BRICK_UNIT_LENGTH
+    width = float(dimensions[1]) * BRICK_UNIT_LENGTH
+    top_z = float(dimensions[2]) * PLATE_UNIT_HEIGHT + BRICK_STUD_HEIGHT
     x0 = -length / 2.0
     y0 = -width / 2.0
     z0 = 0.0

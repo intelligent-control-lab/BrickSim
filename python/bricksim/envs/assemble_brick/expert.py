@@ -9,10 +9,9 @@ from isaaclab.envs.mdp.actions.task_space_actions import (
 )
 
 from bricksim.core import compute_connection_transform
+from bricksim.units import BRICK_UNIT_LENGTH, PLATE_UNIT_HEIGHT
 from bricksim.utils.debug_draw import DebugDraw, acquire_debug_draw
 
-BRICK_UNIT_LENGTH = 0.0080
-PLATE_UNIT_HEIGHT = 0.0032
 TCP_TO_FINGER_TIP = 0.0090
 
 PRE_GRASP_OFFSET = 0.10

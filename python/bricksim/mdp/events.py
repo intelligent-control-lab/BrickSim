@@ -10,6 +10,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.sim.views import XformPrimView
 
 from bricksim.core import compute_connection_transform, deallocate_all_managed
+from bricksim.units import BRICK_UNIT_LENGTH, PLATE_UNIT_HEIGHT
 
 from .brick_part import (
     resolve_brick_rigid_object,
@@ -33,9 +34,9 @@ def _interface_pose(
     device: torch.device,
     dtype: torch.dtype,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    length = float(dimensions[0]) * 0.008
-    width = float(dimensions[1]) * 0.008
-    height = float(dimensions[2]) * 0.0032
+    length = float(dimensions[0]) * BRICK_UNIT_LENGTH
+    width = float(dimensions[1]) * BRICK_UNIT_LENGTH
+    height = float(dimensions[2]) * PLATE_UNIT_HEIGHT
     z = height if side == "stud" else 0.0
     pos = torch.tensor([[-length / 2.0, -width / 2.0, z]], device=device, dtype=dtype)
     quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
@@ -64,7 +65,13 @@ def _compute_visual_connection_transform(
     zero = torch.zeros_like(yaw_angle)
     si_hi_quat = math_utils.quat_from_euler_xyz(zero, zero, yaw_angle)
     si_hi_pos = torch.tensor(
-        [[float(offset[0]) * 0.008, float(offset[1]) * 0.008, 0.0]],
+        [
+            [
+                float(offset[0]) * BRICK_UNIT_LENGTH,
+                float(offset[1]) * BRICK_UNIT_LENGTH,
+                0.0,
+            ]
+        ],
         device=device,
         dtype=dtype,
     )

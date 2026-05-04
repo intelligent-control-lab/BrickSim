@@ -19,6 +19,8 @@ The core idea:
         }
 """
 
+from bricksim.units import BRICK_UNIT_HEIGHT, BRICK_UNIT_LENGTH, PLATE_UNIT_HEIGHT
+
 from .schema import (
     SCHEMA_STRING,
     JsonConnection,
@@ -33,9 +35,8 @@ InputColor = tuple[ColorComponent, ColorComponent, ColorComponent]
 Color = tuple[int, int, int]
 ColorInput = InputColor | list[InputColor] | None
 
-BRICK_UNIT_LENGTH = 0.008  # meters per stud
-PLATE_HEIGHT = 0.0032  # meters per plate
-BRICK_HEIGHT = 3 * PLATE_HEIGHT  # 1 brick = 3 plates = 0.0096 m
+PLATE_HEIGHT = PLATE_UNIT_HEIGHT
+BRICK_HEIGHT = BRICK_UNIT_HEIGHT
 
 # From BrickPart in C++:
 # static constexpr InterfaceId HoleId = 0;
