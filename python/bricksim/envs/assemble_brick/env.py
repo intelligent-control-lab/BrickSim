@@ -492,7 +492,7 @@ class RewardsCfg:
 class TerminationsCfg:
     """Termination terms for success, timeout, and failure states."""
 
-    time_out = TerminationTermCfg(func=time_out, time_out=True)
+    timeout = TerminationTermCfg(func=time_out, time_out=True)
 
     success = TerminationTermCfg(
         func=target_connection_formed_and_gripper_open,
