@@ -66,7 +66,7 @@ def main():
     if args_cli.seed is not None:
         env_cfg.seed = args_cli.seed
     env = gym.make(args_cli.task, cfg=env_cfg)
-    gripper_obs_slice = get_concatenated_term_slice(env, group_name="policy", term_name="gripper_pos")
+    gripper_obs_slice = get_concatenated_term_slice(env, group_name="policy", term_name="gripper_width")
 
     try:
         print(f"[INFO]: task: {args_cli.task}")
@@ -102,7 +102,7 @@ def main():
                 if args_cli.mode == "gripper_test" and step_count % args_cli.print_every == 0:
                     gripper_obs = observations["policy"][0, gripper_obs_slice].detach().cpu().tolist()
                     gripper_cmd = "open" if actions[0, 6].item() > 0.0 else "close"
-                    print(f"[INFO]: step={step_count} gripper_cmd={gripper_cmd} gripper_pos={gripper_obs}")
+                    print(f"[INFO]: step={step_count} gripper_cmd={gripper_cmd} gripper_width={gripper_obs}")
 
                 step_count += 1
     finally:

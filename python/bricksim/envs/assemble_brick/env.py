@@ -1,7 +1,6 @@
 """Isaac Lab manager-based environment for the assemble-brick task."""
 
 import math
-from collections.abc import Sequence
 
 import torch
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
@@ -9,10 +8,7 @@ from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from isaaclab.envs.mdp import (
     action_rate_l2,
-    joint_pos_rel,
     joint_vel_l2,
-    joint_vel_rel,
-    last_action,
     reset_root_state_uniform,
     time_out,
 )
@@ -39,13 +35,9 @@ from isaaclab.sim import (
 from isaaclab.utils import configclass
 from isaaclab_assets import ISAAC_NUCLEUS_DIR
 from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG
-from isaaclab_tasks.manager_based.manipulation.place.mdp.observations import (
-    object_poses_in_base_frame,
-)
 from isaaclab_tasks.manager_based.manipulation.stack.mdp import franka_stack_events
 from isaaclab_tasks.manager_based.manipulation.stack.mdp.observations import (
     ee_frame_pose_in_base_frame,
-    gripper_pos,
 )
 
 from bricksim.assets import FRANKA_ROBOT_USD_PATH
@@ -60,18 +52,16 @@ from bricksim.mdp.events import (
     reset_to_connected_pose,
 )
 
-from .expert import AssembleBrickExpert
 from .mdp.commands import AssembleBrickCommandCfg
 from .mdp.goal import AssembleBrickGoal
 from .mdp.observations import (
-    captured_hole_to_eef_obs,
-    goal_target_match_obs,
-    gripper_is_open_obs,
-    marker_pose_in_robot_root_frame,
-    object_grasped_obs,
-    object_marker_pose_error,
-    rigid_object_velocity_in_robot_root_frame,
-    wrong_connection_obs,
+    franka_gripper_speed,
+    franka_gripper_width,
+    obs_command_connection_created,
+    obs_command_target_pose,
+    obs_moving_brick_dimensions,
+    obs_moving_brick_grasped,
+    obs_moving_brick_pose,
 )
 from .mdp.rewards import (
     reward_grasp_bonus,
@@ -243,165 +233,30 @@ class CommandsCfg:
 
 @configclass
 class ObservationsCfg:
-    """Policy and critic observation groups for assemble-brick training."""
+    """Policy and privileged observation groups for assemble-brick training."""
 
     @configclass
     class PolicyCfg(ObservationGroupCfg):
         """Observation terms exposed to the policy."""
 
-        joint_pos = ObservationTermCfg(func=joint_pos_rel)
-        joint_vel = ObservationTermCfg(func=joint_vel_rel)
-        eef_pos = ObservationTermCfg(
-            func=ee_frame_pose_in_base_frame, params={"return_key": "pos"}
-        )
-        eef_quat = ObservationTermCfg(
-            func=ee_frame_pose_in_base_frame, params={"return_key": "quat"}
-        )
-        gripper_pos = ObservationTermCfg(func=gripper_pos)
-        brick_pos = ObservationTermCfg(
-            func=object_poses_in_base_frame,
-            params={"object_cfg": SceneEntityCfg("lego_brick"), "return_key": "pos"},
-        )
-        brick_quat = ObservationTermCfg(
-            func=object_poses_in_base_frame,
-            params={"object_cfg": SceneEntityCfg("lego_brick"), "return_key": "quat"},
-        )
-        brick_lin_vel = ObservationTermCfg(
-            func=rigid_object_velocity_in_robot_root_frame,
-            params={"asset_cfg": SceneEntityCfg("lego_brick"), "return_key": "lin"},
-        )
-        brick_ang_vel = ObservationTermCfg(
-            func=rigid_object_velocity_in_robot_root_frame,
-            params={"asset_cfg": SceneEntityCfg("lego_brick"), "return_key": "ang"},
-        )
-        target_pos = ObservationTermCfg(
-            func=marker_pose_in_robot_root_frame,
-            params={"marker_cfg": SceneEntityCfg("marker_brick"), "return_key": "pos"},
-        )
-        target_quat = ObservationTermCfg(
-            func=marker_pose_in_robot_root_frame,
-            params={"marker_cfg": SceneEntityCfg("marker_brick"), "return_key": "quat"},
-        )
-        brick_to_target_pos = ObservationTermCfg(
-            func=object_marker_pose_error,
-            params={
-                "object_cfg": SceneEntityCfg("lego_brick"),
-                "marker_cfg": SceneEntityCfg("marker_brick"),
-                "return_key": "pos",
-            },
-        )
-        brick_to_target_quat = ObservationTermCfg(
-            func=object_marker_pose_error,
-            params={
-                "object_cfg": SceneEntityCfg("lego_brick"),
-                "marker_cfg": SceneEntityCfg("marker_brick"),
-                "return_key": "quat",
-            },
-        )
-        brick_grasped = ObservationTermCfg(
-            func=object_grasped_obs,
-            params={"object_cfg": SceneEntityCfg("lego_brick"), "diff_threshold": 0.04},
-        )
-        last_actions = ObservationTermCfg(func=last_action)
-
-        def __post_init__(self):
-            """Finalize policy observation-group settings."""
-            self.enable_corruption = False
-            self.concatenate_terms = True
+        ee_frame_pose = ObservationTermCfg(func=ee_frame_pose_in_base_frame)
+        gripper_width = ObservationTermCfg(func=franka_gripper_width)
+        gripper_speed = ObservationTermCfg(func=franka_gripper_speed)
+        brick_pose = ObservationTermCfg(func=obs_moving_brick_pose)
+        target_pose = ObservationTermCfg(func=obs_command_target_pose)
 
     @configclass
-    class CriticCfg(ObservationGroupCfg):
-        """Observation terms exposed to the critic."""
+    class PrivilegedCfg(PolicyCfg):
+        """Privileged observation terms exposed to training."""
 
-        joint_pos = ObservationTermCfg(func=joint_pos_rel)
-        joint_vel = ObservationTermCfg(func=joint_vel_rel)
-        eef_pos = ObservationTermCfg(
-            func=ee_frame_pose_in_base_frame, params={"return_key": "pos"}
-        )
-        eef_quat = ObservationTermCfg(
-            func=ee_frame_pose_in_base_frame, params={"return_key": "quat"}
-        )
-        gripper_pos = ObservationTermCfg(func=gripper_pos)
-        brick_pos = ObservationTermCfg(
-            func=object_poses_in_base_frame,
-            params={"object_cfg": SceneEntityCfg("lego_brick"), "return_key": "pos"},
-        )
-        brick_quat = ObservationTermCfg(
-            func=object_poses_in_base_frame,
-            params={"object_cfg": SceneEntityCfg("lego_brick"), "return_key": "quat"},
-        )
-        brick_lin_vel = ObservationTermCfg(
-            func=rigid_object_velocity_in_robot_root_frame,
-            params={"asset_cfg": SceneEntityCfg("lego_brick"), "return_key": "lin"},
-        )
-        brick_ang_vel = ObservationTermCfg(
-            func=rigid_object_velocity_in_robot_root_frame,
-            params={"asset_cfg": SceneEntityCfg("lego_brick"), "return_key": "ang"},
-        )
-        target_pos = ObservationTermCfg(
-            func=marker_pose_in_robot_root_frame,
-            params={"marker_cfg": SceneEntityCfg("marker_brick"), "return_key": "pos"},
-        )
-        target_quat = ObservationTermCfg(
-            func=marker_pose_in_robot_root_frame,
-            params={"marker_cfg": SceneEntityCfg("marker_brick"), "return_key": "quat"},
-        )
-        brick_to_target_pos = ObservationTermCfg(
-            func=object_marker_pose_error,
-            params={
-                "object_cfg": SceneEntityCfg("lego_brick"),
-                "marker_cfg": SceneEntityCfg("marker_brick"),
-                "return_key": "pos",
-            },
-        )
-        brick_to_target_quat = ObservationTermCfg(
-            func=object_marker_pose_error,
-            params={
-                "object_cfg": SceneEntityCfg("lego_brick"),
-                "marker_cfg": SceneEntityCfg("marker_brick"),
-                "return_key": "quat",
-            },
-        )
-        brick_grasped = ObservationTermCfg(
-            func=object_grasped_obs,
-            params={"object_cfg": SceneEntityCfg("lego_brick"), "diff_threshold": 0.04},
-        )
-        last_actions = ObservationTermCfg(func=last_action)
-        goal_target_match = ObservationTermCfg(
-            func=goal_target_match_obs,
-            params={
-                "stud_if": GOAL.stud_if,
-                "hole_if": GOAL.hole_if,
-                "target_offset": GOAL.offset,
-                "target_yaw": GOAL.yaw,
-                "object_cfg": SceneEntityCfg("lego_brick"),
-            },
-        )
-        wrong_connection = ObservationTermCfg(
-            func=wrong_connection_obs,
-            params={
-                "stud_if": GOAL.stud_if,
-                "hole_if": GOAL.hole_if,
-                "target_offset": GOAL.offset,
-                "target_yaw": GOAL.yaw,
-                "object_cfg": SceneEntityCfg("lego_brick"),
-            },
-        )
-        gripper_open = ObservationTermCfg(func=gripper_is_open_obs)
-        captured_hole_to_eef_pos = ObservationTermCfg(
-            func=captured_hole_to_eef_obs, params={"return_key": "pos"}
-        )
-        captured_hole_to_eef_quat = ObservationTermCfg(
-            func=captured_hole_to_eef_obs, params={"return_key": "quat"}
-        )
+        concatenate_terms = False
 
-        def __post_init__(self):
-            """Finalize critic observation-group settings."""
-            self.enable_corruption = False
-            self.concatenate_terms = True
+        brick_grasped = ObservationTermCfg(func=obs_moving_brick_grasped)
+        connection_created = ObservationTermCfg(func=obs_command_connection_created)
+        brick_dimensions = ObservationTermCfg(func=obs_moving_brick_dimensions)
 
     policy: PolicyCfg = PolicyCfg()
-    critic: CriticCfg = CriticCfg()
+    privileged: PrivilegedCfg = PrivilegedCfg()
 
 
 @configclass
@@ -546,31 +401,18 @@ class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
 
 
 class AssembleBrickEnv(ManagerBasedRLEnv):
-    """Manager-based RL environment with an attached scripted expert."""
+    """Manager-based RL environment for the assemble-brick task."""
 
     cfg: AssembleBrickEnvCfg
 
-    def __init__(
-        self, cfg: AssembleBrickEnvCfg, render_mode: str | None = None, **kwargs
-    ):
-        """Initialize the environment and attach the assemble-brick expert."""
-        super().__init__(cfg=cfg, render_mode=render_mode, **kwargs)
-        self._expert = AssembleBrickExpert(
-            self,
-            stud_if=GOAL.stud_if,
-            hole_if=GOAL.hole_if,
-            target_offset=GOAL.offset,
-            target_yaw=GOAL.yaw,
-        )
-
-    def _reset_idx(self, env_ids: Sequence[int]):
-        super()._reset_idx(env_ids)
-        self._expert.reset(env_ids)
-
     def compute_expert_actions(self) -> torch.Tensor:
-        """Compute one batched action tensor from the scripted expert.
+        """Raise until the command-aware expert is implemented.
 
-        Returns:
-            Expert actions with shape ``(num_envs, action_dim)``.
+        Raises:
+            NotImplementedError: Always, because the fixed-goal expert was
+                removed and the command-aware expert has not been added yet.
         """
-        return self._expert.compute_actions()
+        raise NotImplementedError(
+            "Assemble-brick expert was removed; command-aware expert actions "
+            "will be added back later."
+        )
