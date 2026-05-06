@@ -97,6 +97,11 @@ GOAL = AssembleBrickGoal(
     rot_tol=math.radians(5.0),
 )
 
+# Franka TCP / pad-center offset relative to panda_hand.
+# Units: meters. Quaternion storage: wxyz.
+FRANKA_HAND_TCP_OFFSET_POS = (0.0, 0.0, 0.1034)
+FRANKA_HAND_TCP_OFFSET_ROT = (1.0, 0.0, 0.0, 0.0)
+
 
 @configclass
 class SceneCfg(InteractiveSceneCfg):
@@ -122,7 +127,10 @@ class SceneCfg(InteractiveSceneCfg):
             FrameTransformerCfg.FrameCfg(
                 prim_path="{ENV_REGEX_NS}/Robot/panda_hand",
                 name="end_effector",
-                offset=OffsetCfg(pos=(0.0, 0.0, 0.1034)),
+                offset=OffsetCfg(
+                    pos=FRANKA_HAND_TCP_OFFSET_POS,
+                    rot=FRANKA_HAND_TCP_OFFSET_ROT,
+                ),
             ),
             FrameTransformerCfg.FrameCfg(
                 prim_path="{ENV_REGEX_NS}/Robot/panda_rightfinger",
@@ -205,7 +213,8 @@ class ActionsCfg:
         ),
         scale=1.0,
         body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(
-            pos=(0.0, 0.0, 0.100)
+            pos=FRANKA_HAND_TCP_OFFSET_POS,
+            rot=FRANKA_HAND_TCP_OFFSET_ROT,
         ),
     )
 
