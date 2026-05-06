@@ -256,8 +256,8 @@ async def grasp_lego_part(
     """
     BRICK_UNIT_LENGTH = 0.0080 # 8.0 mm per stud
     PLATE_UNIT_HEIGHT = 0.0032 # 3.2 mm per plate
-    TCP_TO_FINGER_TIP = 0.0090 # 9.0 mm from Franka TCP to finger tips
-    GRASP_DEPTH       = 0.001  # 1.0 mm into the brick
+    TCP_TO_FINGER_TIP = 0.0124 # 9.0 mm from pad center to fingertip, 3.4 mm from TCP to pad center
+    GRASP_DEPTH       = 0.0050  # 5.0 mm into the brick
 
     print(f"--- Attempting to grasp brick: {brick_prim_path} ---")
 
@@ -269,7 +269,7 @@ async def grasp_lego_part(
     
     L, W, H = dimensions
     if L == 1 or W == 1:
-        GRASP_DEPTH = 0.002 # 2.0 mm for very small bricks
+        GRASP_DEPTH += 0.001 # additional 1mm for very small bricks
 
     # Use SingleXFormPrim to track the brick's pose
     view_name = f"grasp_target_view_{os.path.basename(brick_prim_path)}"
