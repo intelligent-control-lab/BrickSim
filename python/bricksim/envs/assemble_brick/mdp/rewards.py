@@ -10,9 +10,9 @@ from isaaclab_tasks.manager_based.manipulation.place.mdp.observations import (
 )
 
 from .commands import (
+    assembly_check_connection_formed,
     assembly_goal_target_pose,
     assembly_moving_brick_name,
-    target_connection_formed,
 )
 from .common import gripper_is_open
 
@@ -289,7 +289,7 @@ def reward_success_bonus(
     Returns:
         Float tensor with shape ``(num_envs,)``.
     """
-    target_match = target_connection_formed(env, command_name)
+    target_match = assembly_check_connection_formed(env, command_name)
     pos_delta, _, rot_error = _object_command_pose_alignment(env, command_name)
     pose_close = torch.linalg.vector_norm(pos_delta, dim=1) < pos_tol
     rot_close = rot_error < rot_tol

@@ -14,7 +14,6 @@ from isaaclab.envs.mdp import (
     joint_vel_rel,
     last_action,
     reset_root_state_uniform,
-    root_height_below_minimum,
     time_out,
 )
 from isaaclab.envs.mdp.actions.actions_cfg import (
@@ -62,8 +61,7 @@ from bricksim.mdp.events import (
 )
 
 from .expert import AssembleBrickExpert
-from .mdp.commands import AssembleBrickCommandCfg, non_target_connection_formed
-from .mdp.common import target_connection_formed_and_gripper_open
+from .mdp.commands import AssembleBrickCommandCfg
 from .mdp.goal import AssembleBrickGoal
 from .mdp.observations import (
     captured_hole_to_eef_obs,
@@ -84,6 +82,11 @@ from .mdp.rewards import (
     reward_success_bonus,
     reward_transport_xy,
     reward_yaw_align,
+)
+from .mdp.terminations import (
+    brick_height_below_threshold,
+    non_target_connection_formed,
+    target_connection_formed_and_gripper_open,
 )
 
 GOAL = AssembleBrickGoal(
@@ -493,21 +496,9 @@ class TerminationsCfg:
     """Termination terms for success, timeout, and failure states."""
 
     timeout = TerminationTermCfg(func=time_out, time_out=True)
-
-    success = TerminationTermCfg(
-        func=target_connection_formed_and_gripper_open,
-        params={"command_name": "assembly_goal"},
-    )
-
-    wrong_connection = TerminationTermCfg(
-        func=non_target_connection_formed,
-        params={"command_name": "assembly_goal"},
-    )
-
-    brick_dropped = TerminationTermCfg(
-        func=root_height_below_minimum,
-        params={"minimum_height": -0.02, "asset_cfg": SceneEntityCfg("lego_brick")},
-    )
+    success = TerminationTermCfg(func=target_connection_formed_and_gripper_open)
+    wrong_connection = TerminationTermCfg(func=non_target_connection_formed)
+    brick_dropped = TerminationTermCfg(func=brick_height_below_threshold)
 
 
 @configclass

@@ -350,38 +350,3 @@ def assembly_check_connection_formed(
     if invert:
         target_match = ~target_match
     return connection_state.connected & target_match
-
-
-def target_connection_formed(
-    env: ManagerBasedRLEnv,
-    command_name: str,
-) -> torch.Tensor:
-    """Check if the command connection is formed at the target placement.
-
-    Args:
-        env: Environment with a command manager.
-        command_name: Name of the AssembleBrickCommand command term.
-
-    Returns:
-        Boolean tensor with shape ``(num_envs,)``.
-    """
-    return assembly_check_connection_formed(env, command_name)
-
-
-def non_target_connection_formed(
-    env: ManagerBasedRLEnv,
-    command_name: str,
-) -> torch.Tensor:
-    """Check if the command connection is formed at a non-target placement.
-
-    This refers to connections that match the command's interface pair but
-    does not match the target placement.
-
-    Args:
-        env: Environment with a command manager.
-        command_name: Name of the AssembleBrickCommand command term.
-
-    Returns:
-        Boolean tensor with shape ``(num_envs,)``.
-    """
-    return assembly_check_connection_formed(env, command_name, invert=True)
