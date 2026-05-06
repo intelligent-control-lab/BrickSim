@@ -5,7 +5,6 @@ from typing import Protocol, TypeGuard
 
 import torch
 from isaaclab.envs import ManagerBasedRLEnv
-from isaaclab.managers import SceneEntityCfg
 
 from bricksim.core import lookup_physics_connection
 
@@ -46,26 +45,6 @@ class InterfacePairConnectionQuery:
     hole_name: str
     stud_if: int
     hole_if: int
-
-    @classmethod
-    def make(
-        cls,
-        stud_cfg: SceneEntityCfg,
-        hole_cfg: SceneEntityCfg,
-        stud_if: int,
-        hole_if: int,
-    ) -> "InterfacePairConnectionQuery":
-        """Construct a query from Isaac Lab scene-entity configs.
-
-        Returns:
-            Query keyed by scene entity names and interface ids.
-        """
-        return cls(
-            stud_name=stud_cfg.name,
-            hole_name=hole_cfg.name,
-            stud_if=stud_if,
-            hole_if=hole_if,
-        )
 
 
 @dataclass(slots=True)

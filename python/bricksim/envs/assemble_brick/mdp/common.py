@@ -11,6 +11,8 @@ from bricksim.mdp.connection_state import (
     interface_pair_connection_state,
 )
 
+from .commands import target_connection_formed
+
 
 def marker_pose_w(
     env: ManagerBasedRLEnv,
@@ -90,9 +92,9 @@ def connection_target_match(
     """
     connection_state = interface_pair_connection_state(
         env,
-        InterfacePairConnectionQuery.make(
-            stud_cfg=stud_cfg,
-            hole_cfg=object_cfg,
+        InterfacePairConnectionQuery(
+            stud_name=stud_cfg.name,
+            hole_name=object_cfg.name,
             stud_if=stud_if,
             hole_if=hole_if,
         ),
@@ -121,9 +123,9 @@ def wrong_connection_to_target(
     """
     connection_state = interface_pair_connection_state(
         env,
-        InterfacePairConnectionQuery.make(
-            stud_cfg=stud_cfg,
-            hole_cfg=object_cfg,
+        InterfacePairConnectionQuery(
+            stud_name=stud_cfg.name,
+            hole_name=object_cfg.name,
             stud_if=stud_if,
             hole_if=hole_if,
         ),
@@ -173,3 +175,28 @@ def assemble_brick_goal_satisfied(
         open_position_threshold=open_position_threshold,
     )
     return target_match & pose_close & rot_close & gripper_open
+
+
+def target_connection_formed_and_gripper_open(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    action_term_name: str = "gripper_action",
+    open_position_threshold: float = 0.005,
+) -> torch.Tensor:
+    """Return whether the target connection is formed and gripper is open.
+
+    Args:
+        env: Environment with a command manager.
+        command_name: Name of the assemble-brick command term.
+        action_term_name: Name of the binary gripper action term.
+        open_position_threshold: Joint-position tolerance around the action
+            term's open command.
+
+    Returns:
+        Boolean tensor with shape ``(num_envs,)``.
+    """
+    return target_connection_formed(env, command_name) & gripper_is_open(
+        env,
+        action_term_name=action_term_name,
+        open_position_threshold=open_position_threshold,
+    )

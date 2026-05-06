@@ -14,6 +14,11 @@ from isaaclab.utils.math import (
 )
 
 from bricksim.mdp.brick_part import scene_entity_brick_part_dimensions
+from bricksim.mdp.connection_state import (
+    InterfacePairConnectionQuery,
+    InterfacePairConnectionState,
+    interface_pair_connection_state,
+)
 from bricksim.mdp.utils import MISSING, enumerate_env_ids
 from bricksim.utils.connection_geometry import (
     connection_brick_transforms,
@@ -96,6 +101,20 @@ class AssembleBrickCommand(CommandTerm):
             ``(offset_x, offset_y, yaw)`` in grid units and C4 yaw.
         """
         return self._goal_table
+
+    @property
+    def query(self) -> InterfacePairConnectionQuery:
+        """Return the configured stud/hole interface-pair query.
+
+        Returns:
+            Query describing the command's configured stud/hole interface pair.
+        """
+        return InterfacePairConnectionQuery(
+            stud_name=self.cfg.stud_brick,
+            hole_name=self.cfg.hole_brick,
+            stud_if=self.cfg.stud_brick_iface,
+            hole_if=self.cfg.hole_brick_iface,
+        )
 
     def compute(self, dt: float) -> None:
         """Refresh target poses without timer-based resampling.
@@ -258,3 +277,87 @@ def assembly_goal_target_pose(
         command[:, _GoalLayout.TARGET_POS],
         command[:, _GoalLayout.TARGET_QUAT],
     )
+
+
+def assembly_query_connection_state(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+) -> InterfacePairConnectionState:
+    """Return the current connection state for the interface pair in the command.
+
+    Args:
+        env: Environment with a command manager.
+        command_name: Name of the AssembleBrickCommand command term.
+
+    Returns:
+        Batched current connection state for the command's configured
+        stud/hole interface pair.
+    """
+    command_term = env.command_manager.get_term(command_name)
+    if not isinstance(command_term, AssembleBrickCommand):
+        raise TypeError(f"command term {command_name} is not an AssembleBrickCommand")
+    return interface_pair_connection_state(env, command_term.query)
+
+
+def assembly_check_connection_formed(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    invert: bool = False,
+) -> torch.Tensor:
+    """Check if the connections between the command's interface pair match the goal.
+
+    Args:
+        env: Environment with a command manager.
+        command_name: Name of the AssembleBrickCommand command term.
+        invert: If ``True``, check for connections that are formed but do not match the
+            goal.
+
+    Returns:
+        Boolean tensor with shape ``(num_envs,)``.
+    """
+    connection_state = assembly_query_connection_state(env, command_name)
+    target_offsets = assembly_goal_offsets(env, command_name)
+    target_yaws = assembly_goal_yaws(env, command_name)
+    target_match = (
+        (connection_state.offsets[:, 0] == target_offsets[:, 0])
+        & (connection_state.offsets[:, 1] == target_offsets[:, 1])
+        & (connection_state.yaws == target_yaws)
+    )
+    if invert:
+        target_match = ~target_match
+    return connection_state.connected & target_match
+
+
+def target_connection_formed(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+) -> torch.Tensor:
+    """Check if the command connection is formed at the target placement.
+
+    Args:
+        env: Environment with a command manager.
+        command_name: Name of the AssembleBrickCommand command term.
+
+    Returns:
+        Boolean tensor with shape ``(num_envs,)``.
+    """
+    return assembly_check_connection_formed(env, command_name)
+
+
+def non_target_connection_formed(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+) -> torch.Tensor:
+    """Check if the command connection is formed at a non-target placement.
+
+    This refers to connections that match the command's interface pair but
+    does not match the target placement.
+
+    Args:
+        env: Environment with a command manager.
+        command_name: Name of the AssembleBrickCommand command term.
+
+    Returns:
+        Boolean tensor with shape ``(num_envs,)``.
+    """
+    return assembly_check_connection_formed(env, command_name, invert=True)

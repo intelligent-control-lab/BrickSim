@@ -65,8 +65,8 @@ from bricksim.mdp.events import (
 )
 
 from .expert import AssembleBrickExpert
-from .mdp.commands import AssembleBrickCommandCfg
-from .mdp.common import assemble_brick_goal_satisfied, wrong_connection_to_target
+from .mdp.commands import AssembleBrickCommandCfg, non_target_connection_formed
+from .mdp.common import target_connection_formed_and_gripper_open
 from .mdp.goal import AssembleBrickGoal
 from .mdp.observations import (
     captured_hole_to_eef_obs,
@@ -570,28 +570,13 @@ class TerminationsCfg:
     time_out = TerminationTermCfg(func=time_out, time_out=True)
 
     success = TerminationTermCfg(
-        func=assemble_brick_goal_satisfied,
-        params={
-            "stud_if": GOAL.stud_if,
-            "hole_if": GOAL.hole_if,
-            "target_offset": GOAL.offset,
-            "target_yaw": GOAL.yaw,
-            "object_cfg": SceneEntityCfg("lego_brick"),
-            "target_cfg": SceneEntityCfg("marker_brick"),
-            "pos_tol": GOAL.pos_tol,
-            "rot_tol": GOAL.rot_tol,
-        },
+        func=target_connection_formed_and_gripper_open,
+        params={"command_name": "assembly_goal"},
     )
 
     wrong_connection = TerminationTermCfg(
-        func=wrong_connection_to_target,
-        params={
-            "stud_if": GOAL.stud_if,
-            "hole_if": GOAL.hole_if,
-            "target_offset": GOAL.offset,
-            "target_yaw": GOAL.yaw,
-            "object_cfg": SceneEntityCfg("lego_brick"),
-        },
+        func=non_target_connection_formed,
+        params={"command_name": "assembly_goal"},
     )
 
     brick_dropped = TerminationTermCfg(
