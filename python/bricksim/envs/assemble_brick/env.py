@@ -41,7 +41,7 @@ from isaaclab_tasks.manager_based.manipulation.stack.mdp.observations import (
 )
 
 from bricksim.assets import FRANKA_ROBOT_USD_PATH
-from bricksim.mdp.brick_part import BrickPartCfg, MarkerBrickPartCfg
+from bricksim.mdp.brick_part import BrickPartCfg
 from bricksim.mdp.connection_thresholds import (
     configure_assembly_thresholds,
     configure_breakage_thresholds,
@@ -49,11 +49,9 @@ from bricksim.mdp.connection_thresholds import (
 from bricksim.mdp.events import (
     reset_bricksim_managed,
     reset_scene_to_default_no_kinematic_vel,
-    reset_to_connected_pose,
 )
 
 from .mdp.commands import AssembleBrickCommandCfg
-from .mdp.goal import AssembleBrickGoal
 from .mdp.observations import (
     franka_gripper_speed,
     franka_gripper_width,
@@ -77,15 +75,6 @@ from .mdp.terminations import (
     brick_height_below_threshold,
     non_target_connection_formed,
     target_connection_formed_and_gripper_open,
-)
-
-GOAL = AssembleBrickGoal(
-    stud_if=1,
-    hole_if=0,
-    offset=(5, 5),
-    yaw=1,
-    pos_tol=0.002,
-    rot_tol=math.radians(5.0),
 )
 
 # Franka TCP / pad-center offset relative to panda_hand.
@@ -182,14 +171,6 @@ class SceneCfg(InteractiveSceneCfg):
         ),
     )
 
-    marker_brick: AssetBaseCfg = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/MarkerBrick",
-        spawn=MarkerBrickPartCfg(
-            dimensions=(2, 4, 3),
-            color="Red",
-        ),
-    )
-
 
 @configclass
 class ActionsCfg:
@@ -223,11 +204,14 @@ class CommandsCfg:
 
     assembly_goal: AssembleBrickCommandCfg = AssembleBrickCommandCfg(
         stud_brick="lego_baseplate",
-        stud_brick_iface=GOAL.stud_if,
+        stud_brick_iface=1,
         hole_brick="lego_brick",
-        hole_brick_iface=GOAL.hole_if,
+        hole_brick_iface=0,
         moving_brick_type="hole",
-        goals=((GOAL.offset[0], GOAL.offset[1], GOAL.yaw),),
+        goals=((5, 5, 1),),
+        goal_marker_visualizer_prim_path="/Visuals/Command/assembly_goal",
+        goal_marker_color="Red",
+        debug_vis=True,
     )
 
 
@@ -312,20 +296,6 @@ class EventCfg:
                 "yaw": (0.0, math.tau),
             },
             "velocity_range": {},
-        },
-    )
-
-    reset_marker_brick_pose = EventTermCfg(
-        func=reset_to_connected_pose,
-        mode="reset",
-        params={
-            "moved_cfg": SceneEntityCfg("marker_brick"),
-            "reference_brick_cfg": SceneEntityCfg("lego_baseplate"),
-            "moved_side": "hole",
-            "stud_if": GOAL.stud_if,
-            "hole_if": GOAL.hole_if,
-            "offset": GOAL.offset,
-            "yaw": GOAL.yaw,
         },
     )
 

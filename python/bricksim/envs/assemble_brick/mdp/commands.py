@@ -7,13 +7,20 @@ import torch
 from isaaclab.assets import RigidObject
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.managers import CommandTerm, CommandTermCfg
+from isaaclab.sim import get_current_stage
 from isaaclab.utils import configclass
 from isaaclab.utils.math import (
     combine_frame_transforms,
     subtract_frame_transforms,
 )
+from pxr import Usd, UsdGeom
 
-from bricksim.mdp.brick_part import scene_entity_brick_part_dimensions
+from bricksim.mdp.brick_part import (
+    MarkerBrickPartCfg,
+    scene_entity_brick_part_dimensions,
+    set_brick_part_xform,
+    spawn_marker_brick_part,
+)
 from bricksim.mdp.connection_state import (
     InterfacePairConnectionQuery,
     InterfacePairConnectionState,
@@ -52,8 +59,12 @@ class AssembleBrickCommand(CommandTerm):
             cfg: Command configuration with reference and placed brick names.
             env: Manager-based RL environment that provides scene tensors.
         """
-        super().__init__(cfg, env)
         self._command = torch.zeros((env.num_envs, _GoalLayout.DIM), device=env.device)
+        self._command[:, _GoalLayout.TARGET_QUAT] = torch.tensor(
+            (1.0, 0.0, 0.0, 0.0), device=env.device
+        )
+        self._goal_marker_root_prim: Usd.Prim | None = None
+        self._goal_marker_prims: list[Usd.Prim] = []
         self.stud_dims = scene_entity_brick_part_dimensions(env, cfg.stud_brick)
         self.hole_dims = scene_entity_brick_part_dimensions(env, cfg.hole_brick)
         goal_table = torch.as_tensor(cfg.goals, device=env.device, dtype=torch.long)
@@ -67,6 +78,9 @@ class AssembleBrickCommand(CommandTerm):
                 hole_dimensions=self.hole_dims[:2],
                 device=env.device,
             )
+        # CommandTerm.__init__ calls set_debug_vis(), which reaches this class's
+        # marker methods. Keep command and marker state initialized before that.
+        super().__init__(cfg, env)
 
     def __str__(self) -> str:
         """Return a short command-term summary.
@@ -80,6 +94,15 @@ class AssembleBrickCommand(CommandTerm):
         msg += f"\tMoving: {self.cfg.moving_brick_type}\n"
         msg += f"\tGoal count: {self._goal_table.shape[0]}\n"
         return msg
+
+    @property
+    def has_debug_vis_implementation(self) -> bool:
+        """Return whether this command provides debug visualization.
+
+        Returns:
+            Always ``True`` because command-owned target markers are implemented.
+        """
+        return True
 
     @property
     def command(self) -> torch.Tensor:
@@ -196,6 +219,81 @@ class AssembleBrickCommand(CommandTerm):
             self._command.dtype
         )
 
+    def _set_debug_vis_impl(self, debug_vis: bool) -> None:
+        """Create and toggle command-owned target marker visualization.
+
+        Args:
+            debug_vis: Whether target marker prims should be visible.
+        """
+        if debug_vis and not self._goal_marker_prims:
+            stage = get_current_stage()
+            root_path = self.cfg.goal_marker_visualizer_prim_path
+            root_prim = stage.GetPrimAtPath(root_path)
+            if not root_prim.IsValid():
+                root_prim = UsdGeom.Xform.Define(stage, root_path).GetPrim()
+            elif root_prim.GetTypeName() != "Xform":
+                raise RuntimeError(
+                    f"Command marker root '{root_path}' must be an Xform, "
+                    f"got '{root_prim.GetTypeName()}'."
+                )
+            if not root_prim.IsValid():
+                raise RuntimeError(
+                    f"Failed to create command marker root at '{root_path}'."
+                )
+
+            if self.cfg.moving_brick_type == "hole":
+                moving_dimensions = self.hole_dims
+            elif self.cfg.moving_brick_type == "stud":
+                moving_dimensions = self.stud_dims
+            else:
+                raise ValueError(
+                    f"invalid moving_brick_type: {self.cfg.moving_brick_type}"
+                )
+
+            marker_cfg = MarkerBrickPartCfg(
+                dimensions=moving_dimensions,
+                color=self.cfg.goal_marker_color,
+            )
+            self._goal_marker_root_prim = root_prim
+            self._goal_marker_prims = [
+                spawn_marker_brick_part(f"{root_path}/env_{env_id}", marker_cfg)
+                for env_id in range(self.num_envs)
+            ]
+
+        if self._goal_marker_root_prim is None:
+            return
+
+        imageable = UsdGeom.Imageable(self._goal_marker_root_prim)
+        if debug_vis:
+            imageable.MakeVisible()
+            self._write_goal_marker_poses()
+        else:
+            imageable.MakeInvisible()
+
+    def _debug_vis_callback(self, event: object) -> None:
+        """Refresh command-owned target marker poses after app updates.
+
+        Args:
+            event: Isaac app post-update event. The event payload is unused.
+        """
+        del event
+        self._write_goal_marker_poses()
+
+    def _write_goal_marker_poses(self) -> None:
+        """Write current command target poses to marker prims."""
+        if not self._goal_marker_prims:
+            return
+
+        poses = self._command[
+            :, _GoalLayout.TARGET_POS.start : _GoalLayout.TARGET_QUAT.stop
+        ]
+        for env_id, pose in enumerate(poses.detach().cpu().tolist()):
+            set_brick_part_xform(
+                self._goal_marker_prims[env_id],
+                translation=(pose[0], pose[1], pose[2]),
+                orientation=(pose[3], pose[4], pose[5], pose[6]),
+            )
+
 
 @configclass
 class AssembleBrickCommandCfg(CommandTermCfg):
@@ -211,6 +309,9 @@ class AssembleBrickCommandCfg(CommandTermCfg):
             the stud brick?
         goals: Goal candidates (offset_x, offset_y, yaw_index) in shape (num_goals, 3).
             empty enumerates all possible connections.
+        goal_marker_visualizer_prim_path: Root prim path for command-owned target
+            marker visualization.
+        goal_marker_color: Color for the command-owned target marker.
         resampling_time_range: Unused.
     """
 
@@ -221,6 +322,8 @@ class AssembleBrickCommandCfg(CommandTermCfg):
     hole_brick_iface: int = 0
     moving_brick_type: Literal["hole", "stud"] = "hole"
     goals: torch.Tensor | Sequence[tuple[int, int, int]] = ()
+    goal_marker_visualizer_prim_path: str = MISSING
+    goal_marker_color: str | tuple[int, int, int] = MISSING
     resampling_time_range: tuple[float, float] = (0.0, 0.0)
 
 
