@@ -3,25 +3,83 @@
 import torch
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.sensors import FrameTransformer
+from isaaclab.utils.math import quat_error_magnitude
 from isaaclab_tasks.manager_based.manipulation.place.mdp.observations import (
     object_grasped,
 )
 
-from .common import (
-    assemble_brick_goal_satisfied,
-    marker_pose_w,
-    object_marker_pose_alignment,
+from .commands import (
+    assembly_goal_target_pose,
+    assembly_moving_brick_name,
+    target_connection_formed,
 )
+from .common import gripper_is_open
 
 
-def grasp_bonus_from_object_grasped(
+def _object_command_pose_alignment(
     env: ManagerBasedRLEnv,
-    object_cfg: SceneEntityCfg,
+    command_name: str,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Compute moving-brick pose error relative to a command target.
+
+    Args:
+        env: Environment with a command manager and scene assets.
+        command_name: Name of the assemble-brick command term.
+
+    Returns:
+        Tuple of position delta with shape ``(num_envs, 3)`` in meters,
+        XY distance with shape ``(num_envs,)`` in meters, and quaternion
+        angular error with shape ``(num_envs,)`` in radians. Position delta
+        is moving-brick world position minus command target world position.
+    """
+    moving_brick = env.scene[assembly_moving_brick_name(env, command_name)]
+    target_pos_w, target_quat_w = assembly_goal_target_pose(env, command_name)
+    pos_delta = moving_brick.data.root_pos_w - target_pos_w
+    xy_dist = torch.linalg.vector_norm(pos_delta[:, :2], dim=1)
+    rot_error = quat_error_magnitude(moving_brick.data.root_quat_w, target_quat_w)
+    return pos_delta, xy_dist, rot_error
+
+
+def reward_reach_brick(
+    env: ManagerBasedRLEnv,
+    command_name: str = "assembly_goal",
+    std: float = 0.08,
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+) -> torch.Tensor:
+    """Reward reaching the command moving brick with the end effector.
+
+    Args:
+        env: Environment with a command manager and scene assets.
+        command_name: Name of the assemble-brick command term.
+        std: Distance scale for the tanh reward kernel, in meters.
+        ee_frame_cfg: Scene entity for the end-effector frame.
+
+    Returns:
+        Float tensor with shape ``(num_envs,)``.
+    """
+    moving_brick = env.scene[assembly_moving_brick_name(env, command_name)]
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+    ee_pos_w = ee_frame.data.target_pos_w[..., 0, :]
+    distance = torch.linalg.vector_norm(moving_brick.data.root_pos_w - ee_pos_w, dim=1)
+    return 1.0 - torch.tanh(distance / std)
+
+
+def reward_grasp_bonus(
+    env: ManagerBasedRLEnv,
+    command_name: str = "assembly_goal",
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     diff_threshold: float = 0.04,
 ) -> torch.Tensor:
     """Return a bonus when the object is grasped.
+
+    Args:
+        env: Environment with scene assets.
+        command_name: Name of the assemble-brick command term.
+        ee_frame_cfg: Scene entity for the end-effector frame.
+        robot_cfg: Scene entity for the robot articulation.
+        diff_threshold: Object-to-end-effector grasp distance threshold in meters.
 
     Returns:
         Float tensor with shape ``(num_envs,)``.
@@ -30,84 +88,101 @@ def grasp_bonus_from_object_grasped(
         env,
         robot_cfg=robot_cfg,
         ee_frame_cfg=ee_frame_cfg,
-        object_cfg=object_cfg,
+        object_cfg=SceneEntityCfg(assembly_moving_brick_name(env, command_name)),
         diff_threshold=diff_threshold,
     ).to(torch.float32)
 
 
-def lift_bonus_relative_to_target(
+def reward_lift_bonus(
     env: ManagerBasedRLEnv,
-    object_cfg: SceneEntityCfg,
-    target_cfg: SceneEntityCfg,
+    command_name: str = "assembly_goal",
     lift_height: float = 0.03,
 ) -> torch.Tensor:
     """Return a bonus when the object is lifted above the target.
 
+    Args:
+        env: Environment with a command manager and scene assets.
+        command_name: Name of the assemble-brick command term.
+        lift_height: Required height above the command target in meters.
+
     Returns:
         Float tensor with shape ``(num_envs,)``.
     """
-    object = env.scene[object_cfg.name]
-    target_pos_w, _ = marker_pose_w(env, target_cfg)
-    return (object.data.root_pos_w[:, 2] > (target_pos_w[:, 2] + lift_height)).to(
+    moving_brick = env.scene[assembly_moving_brick_name(env, command_name)]
+    target_pos_w, _ = assembly_goal_target_pose(env, command_name)
+    return (moving_brick.data.root_pos_w[:, 2] > (target_pos_w[:, 2] + lift_height)).to(
         torch.float32
     )
 
 
-def object_transport_xy(
+def reward_transport_xy(
     env: ManagerBasedRLEnv,
-    std: float,
-    object_cfg: SceneEntityCfg,
-    target_cfg: SceneEntityCfg,
+    command_name: str = "assembly_goal",
+    std: float = 0.04,
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     diff_threshold: float = 0.04,
 ) -> torch.Tensor:
     """Return a grasp-gated XY transport reward.
 
+    Args:
+        env: Environment with a command manager and scene assets.
+        command_name: Name of the assemble-brick command term.
+        std: Distance scale for the tanh reward kernel, in meters.
+        ee_frame_cfg: Scene entity for the end-effector frame.
+        robot_cfg: Scene entity for the robot articulation.
+        diff_threshold: Object-to-end-effector grasp distance threshold in meters.
+
     Returns:
         Float tensor with shape ``(num_envs,)``.
     """
-    _, xy_dist, _ = object_marker_pose_alignment(env, object_cfg, target_cfg)
+    _, xy_dist, _ = _object_command_pose_alignment(env, command_name)
     grasped = object_grasped(
         env,
         robot_cfg=robot_cfg,
         ee_frame_cfg=ee_frame_cfg,
-        object_cfg=object_cfg,
+        object_cfg=SceneEntityCfg(assembly_moving_brick_name(env, command_name)),
         diff_threshold=diff_threshold,
     )
     return grasped.to(torch.float32) * (1.0 - torch.tanh(xy_dist / std))
 
 
-def object_yaw_align(
+def reward_yaw_align(
     env: ManagerBasedRLEnv,
-    std: float,
-    object_cfg: SceneEntityCfg,
-    target_cfg: SceneEntityCfg,
+    command_name: str = "assembly_goal",
+    std: float = 0.20,
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     diff_threshold: float = 0.04,
 ) -> torch.Tensor:
     """Return a grasp-gated yaw-alignment reward.
 
+    Args:
+        env: Environment with a command manager and scene assets.
+        command_name: Name of the assemble-brick command term.
+        std: Angular scale for the tanh reward kernel, in radians.
+        ee_frame_cfg: Scene entity for the end-effector frame.
+        robot_cfg: Scene entity for the robot articulation.
+        diff_threshold: Object-to-end-effector grasp distance threshold in meters.
+
     Returns:
         Float tensor with shape ``(num_envs,)``.
     """
-    _, _, rot_error = object_marker_pose_alignment(env, object_cfg, target_cfg)
+    _, _, rot_error = _object_command_pose_alignment(env, command_name)
     grasped = object_grasped(
         env,
         robot_cfg=robot_cfg,
         ee_frame_cfg=ee_frame_cfg,
-        object_cfg=object_cfg,
+        object_cfg=SceneEntityCfg(assembly_moving_brick_name(env, command_name)),
         diff_threshold=diff_threshold,
     )
     return grasped.to(torch.float32) * (1.0 - torch.tanh(rot_error / std))
 
 
-def object_pre_insert_height(
+def reward_pre_insert_height(
     env: ManagerBasedRLEnv,
-    std: float,
-    object_cfg: SceneEntityCfg,
-    target_cfg: SceneEntityCfg,
+    command_name: str = "assembly_goal",
+    std: float = 0.01,
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     diff_threshold: float = 0.04,
@@ -117,14 +192,22 @@ def object_pre_insert_height(
 ) -> torch.Tensor:
     """Return a reward for reaching pre-insertion height near the target.
 
+    Args:
+        env: Environment with a command manager and scene assets.
+        command_name: Name of the assemble-brick command term.
+        std: Height-error scale for the tanh reward kernel, in meters.
+        ee_frame_cfg: Scene entity for the end-effector frame.
+        robot_cfg: Scene entity for the robot articulation.
+        diff_threshold: Object-to-end-effector grasp distance threshold in meters.
+        target_height_offset: Pre-insertion height above the command target in meters.
+        loose_xy_threshold: Maximum XY error for enabling this reward, in meters.
+        loose_rot_threshold: Maximum angular error for enabling this reward, in radians.
+
     Returns:
         Float tensor with shape ``(num_envs,)``.
     """
-    object = env.scene[object_cfg.name]
-    target_pos_w, _ = marker_pose_w(env, target_cfg)
-    _, xy_dist, rot_error = object_marker_pose_alignment(env, object_cfg, target_cfg)
-    desired_z = target_pos_w[:, 2] + target_height_offset
-    z_err = torch.abs(object.data.root_pos_w[:, 2] - desired_z)
+    pos_delta, xy_dist, rot_error = _object_command_pose_alignment(env, command_name)
+    z_err = torch.abs(pos_delta[:, 2] - target_height_offset)
     gate = torch.logical_and(
         xy_dist < loose_xy_threshold, rot_error < loose_rot_threshold
     )
@@ -134,18 +217,17 @@ def object_pre_insert_height(
             env,
             robot_cfg=robot_cfg,
             ee_frame_cfg=ee_frame_cfg,
-            object_cfg=object_cfg,
+            object_cfg=SceneEntityCfg(assembly_moving_brick_name(env, command_name)),
             diff_threshold=diff_threshold,
         ),
     )
     return gate.to(torch.float32) * (1.0 - torch.tanh(z_err / std))
 
 
-def object_insert_z(
+def reward_insert_z(
     env: ManagerBasedRLEnv,
-    std: float,
-    object_cfg: SceneEntityCfg,
-    target_cfg: SceneEntityCfg,
+    command_name: str = "assembly_goal",
+    std: float = 0.006,
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     diff_threshold: float = 0.04,
@@ -154,13 +236,21 @@ def object_insert_z(
 ) -> torch.Tensor:
     """Return a reward for vertical insertion alignment.
 
+    Args:
+        env: Environment with a command manager and scene assets.
+        command_name: Name of the assemble-brick command term.
+        std: Height-error scale for the tanh reward kernel, in meters.
+        ee_frame_cfg: Scene entity for the end-effector frame.
+        robot_cfg: Scene entity for the robot articulation.
+        diff_threshold: Object-to-end-effector grasp distance threshold in meters.
+        tight_xy_threshold: Maximum XY error for enabling this reward, in meters.
+        tight_rot_threshold: Maximum angular error for enabling this reward, in radians.
+
     Returns:
         Float tensor with shape ``(num_envs,)``.
     """
-    object = env.scene[object_cfg.name]
-    target_pos_w, _ = marker_pose_w(env, target_cfg)
-    _, xy_dist, rot_error = object_marker_pose_alignment(env, object_cfg, target_cfg)
-    z_err = torch.abs(object.data.root_pos_w[:, 2] - target_pos_w[:, 2])
+    pos_delta, xy_dist, rot_error = _object_command_pose_alignment(env, command_name)
+    z_err = torch.abs(pos_delta[:, 2])
     gate = torch.logical_and(
         xy_dist < tight_xy_threshold, rot_error < tight_rot_threshold
     )
@@ -170,22 +260,16 @@ def object_insert_z(
             env,
             robot_cfg=robot_cfg,
             ee_frame_cfg=ee_frame_cfg,
-            object_cfg=object_cfg,
+            object_cfg=SceneEntityCfg(assembly_moving_brick_name(env, command_name)),
             diff_threshold=diff_threshold,
         ),
     )
     return gate.to(torch.float32) * (1.0 - torch.tanh(z_err / std))
 
 
-def assemble_brick_success_bonus(
+def reward_success_bonus(
     env: ManagerBasedRLEnv,
-    stud_if: int,
-    hole_if: int,
-    target_offset: tuple[int, int],
-    target_yaw: int,
-    object_cfg: SceneEntityCfg,
-    target_cfg: SceneEntityCfg,
-    stud_cfg: SceneEntityCfg = SceneEntityCfg("lego_baseplate"),
+    command_name: str = "assembly_goal",
     action_term_name: str = "gripper_action",
     open_position_threshold: float = 0.005,
     pos_tol: float = 0.002,
@@ -193,20 +277,25 @@ def assemble_brick_success_bonus(
 ) -> torch.Tensor:
     """Return a sparse success bonus for the target assembly.
 
+    Args:
+        env: Environment with a command manager and scene assets.
+        command_name: Name of the assemble-brick command term.
+        action_term_name: Name of the binary gripper action term.
+        open_position_threshold: Joint-position tolerance around the action
+            term's open command.
+        pos_tol: Maximum object-to-command target position error in meters.
+        rot_tol: Maximum object-to-command target angular error in radians.
+
     Returns:
         Float tensor with shape ``(num_envs,)``.
     """
-    return assemble_brick_goal_satisfied(
+    target_match = target_connection_formed(env, command_name)
+    pos_delta, _, rot_error = _object_command_pose_alignment(env, command_name)
+    pose_close = torch.linalg.vector_norm(pos_delta, dim=1) < pos_tol
+    rot_close = rot_error < rot_tol
+    gripper_open = gripper_is_open(
         env,
-        stud_if=stud_if,
-        hole_if=hole_if,
-        target_offset=target_offset,
-        target_yaw=target_yaw,
-        object_cfg=object_cfg,
-        target_cfg=target_cfg,
-        stud_cfg=stud_cfg,
         action_term_name=action_term_name,
         open_position_threshold=open_position_threshold,
-        pos_tol=pos_tol,
-        rot_tol=rot_tol,
-    ).to(torch.float32)
+    )
+    return (target_match & pose_close & rot_close & gripper_open).to(torch.float32)

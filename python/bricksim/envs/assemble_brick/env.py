@@ -40,9 +40,6 @@ from isaaclab.sim import (
 from isaaclab.utils import configclass
 from isaaclab_assets import ISAAC_NUCLEUS_DIR
 from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG
-from isaaclab_tasks.manager_based.manipulation.lift.mdp.rewards import (
-    object_ee_distance,
-)
 from isaaclab_tasks.manager_based.manipulation.place.mdp.observations import (
     object_poses_in_base_frame,
 )
@@ -79,13 +76,14 @@ from .mdp.observations import (
     wrong_connection_obs,
 )
 from .mdp.rewards import (
-    assemble_brick_success_bonus,
-    grasp_bonus_from_object_grasped,
-    lift_bonus_relative_to_target,
-    object_insert_z,
-    object_pre_insert_height,
-    object_transport_xy,
-    object_yaw_align,
+    reward_grasp_bonus,
+    reward_insert_z,
+    reward_lift_bonus,
+    reward_pre_insert_height,
+    reward_reach_brick,
+    reward_success_bonus,
+    reward_transport_xy,
+    reward_yaw_align,
 )
 
 GOAL = AssembleBrickGoal(
@@ -478,98 +476,16 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the assemble-brick task."""
 
-    reach_brick = RewardTermCfg(
-        func=object_ee_distance,
-        params={"std": 0.08, "object_cfg": SceneEntityCfg("lego_brick")},
-        weight=1.0,
-    )
-
-    grasp_bonus = RewardTermCfg(
-        func=grasp_bonus_from_object_grasped,
-        params={"object_cfg": SceneEntityCfg("lego_brick"), "diff_threshold": 0.04},
-        weight=2.0,
-    )
-
-    lift_bonus = RewardTermCfg(
-        func=lift_bonus_relative_to_target,
-        params={
-            "object_cfg": SceneEntityCfg("lego_brick"),
-            "target_cfg": SceneEntityCfg("marker_brick"),
-            "lift_height": 0.03,
-        },
-        weight=2.0,
-    )
-
-    transport_xy = RewardTermCfg(
-        func=object_transport_xy,
-        params={
-            "std": 0.04,
-            "object_cfg": SceneEntityCfg("lego_brick"),
-            "target_cfg": SceneEntityCfg("marker_brick"),
-        },
-        weight=4.0,
-    )
-
-    yaw_align = RewardTermCfg(
-        func=object_yaw_align,
-        params={
-            "std": 0.20,
-            "object_cfg": SceneEntityCfg("lego_brick"),
-            "target_cfg": SceneEntityCfg("marker_brick"),
-        },
-        weight=2.0,
-    )
-
-    pre_insert_height = RewardTermCfg(
-        func=object_pre_insert_height,
-        params={
-            "std": 0.01,
-            "object_cfg": SceneEntityCfg("lego_brick"),
-            "target_cfg": SceneEntityCfg("marker_brick"),
-            "target_height_offset": 0.02,
-            "loose_xy_threshold": 0.03,
-            "loose_rot_threshold": 0.25,
-        },
-        weight=3.0,
-    )
-
-    insert_z = RewardTermCfg(
-        func=object_insert_z,
-        params={
-            "std": 0.006,
-            "object_cfg": SceneEntityCfg("lego_brick"),
-            "target_cfg": SceneEntityCfg("marker_brick"),
-            "tight_xy_threshold": 0.012,
-            "tight_rot_threshold": 0.12,
-        },
-        weight=4.0,
-    )
-
-    success_bonus = RewardTermCfg(
-        func=assemble_brick_success_bonus,
-        params={
-            "stud_if": GOAL.stud_if,
-            "hole_if": GOAL.hole_if,
-            "target_offset": GOAL.offset,
-            "target_yaw": GOAL.yaw,
-            "object_cfg": SceneEntityCfg("lego_brick"),
-            "target_cfg": SceneEntityCfg("marker_brick"),
-            "pos_tol": GOAL.pos_tol,
-            "rot_tol": GOAL.rot_tol,
-        },
-        weight=1000.0,
-    )
-
-    action_rate = RewardTermCfg(
-        func=action_rate_l2,
-        weight=-1e-4,
-    )
-
-    joint_vel = RewardTermCfg(
-        func=joint_vel_l2,
-        weight=-1e-4,
-        params={"asset_cfg": SceneEntityCfg("robot")},
-    )
+    reach_brick = RewardTermCfg(func=reward_reach_brick, weight=1.0)
+    grasp_bonus = RewardTermCfg(func=reward_grasp_bonus, weight=2.0)
+    lift_bonus = RewardTermCfg(func=reward_lift_bonus, weight=2.0)
+    transport_xy = RewardTermCfg(func=reward_transport_xy, weight=4.0)
+    yaw_align = RewardTermCfg(func=reward_yaw_align, weight=2.0)
+    pre_insert_height = RewardTermCfg(func=reward_pre_insert_height, weight=3.0)
+    insert_z = RewardTermCfg(func=reward_insert_z, weight=4.0)
+    success_bonus = RewardTermCfg(func=reward_success_bonus, weight=1000.0)
+    action_rate = RewardTermCfg(func=action_rate_l2, weight=-1e-4)
+    joint_vel = RewardTermCfg(func=joint_vel_l2, weight=-1e-4)
 
 
 @configclass
