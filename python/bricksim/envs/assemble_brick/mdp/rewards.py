@@ -44,7 +44,7 @@ def _object_command_pose_alignment(
 def reward_reach_brick(
     env: ManagerBasedRLEnv,
     command_name: str = "assembly_goal",
-    std: float = 0.08,
+    std: float = 0.25,
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
 ) -> torch.Tensor:
     """Reward reaching the command moving brick with the end effector.

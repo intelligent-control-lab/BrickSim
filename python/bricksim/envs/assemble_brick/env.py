@@ -307,7 +307,7 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the assemble-brick task."""
 
-    reach_brick = RewardTermCfg(func=reward_reach_brick, weight=1.0)
+    reach_brick = RewardTermCfg(func=reward_reach_brick, weight=5.0)
     grasp_bonus = RewardTermCfg(func=reward_grasp_bonus, weight=2.0)
     lift_bonus = RewardTermCfg(func=reward_lift_bonus, weight=2.0)
     transport_xy = RewardTermCfg(func=reward_transport_xy, weight=4.0)
@@ -315,8 +315,8 @@ class RewardsCfg:
     pre_insert_height = RewardTermCfg(func=reward_pre_insert_height, weight=3.0)
     insert_z = RewardTermCfg(func=reward_insert_z, weight=4.0)
     success_bonus = RewardTermCfg(func=reward_success_bonus, weight=1000.0)
-    action_rate = RewardTermCfg(func=action_rate_l2, weight=-1e-4)
-    joint_vel = RewardTermCfg(func=joint_vel_l2, weight=-1e-4)
+    action_rate = RewardTermCfg(func=action_rate_l2, weight=-1e-5)
+    joint_vel = RewardTermCfg(func=joint_vel_l2, weight=-1e-5)
 
 
 @configclass
