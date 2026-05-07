@@ -14,10 +14,7 @@ from isaaclab.envs.mdp import (
     reset_root_state_uniform,
     time_out,
 )
-from isaaclab.envs.mdp.actions.actions_cfg import (
-    BinaryJointPositionActionCfg,
-    DifferentialInverseKinematicsActionCfg,
-)
+from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from isaaclab.managers import (
     EventTermCfg,
     ObservationGroupCfg,
@@ -52,6 +49,7 @@ from bricksim.mdp.events import (
     reset_bricksim_managed,
     reset_scene_to_default_no_kinematic_vel,
 )
+from bricksim.mdp.hysteresis_binary_joint_action import HysteresisBinaryJointActionCfg
 
 from .mdp.commands import AssembleBrickCommandCfg
 from .mdp.observations import (
@@ -192,11 +190,14 @@ class ActionsCfg:
         ),
     )
 
-    gripper_action = BinaryJointPositionActionCfg(
+    gripper_action = HysteresisBinaryJointActionCfg(
         asset_name="robot",
         joint_names=["panda_finger.*"],
         open_command_expr={"panda_finger_.*": 0.04},
         close_command_expr={"panda_finger_.*": 0.0},
+        open_thresholds=0.2,
+        close_thresholds=-0.2,
+        initial_closed=False,
     )
 
 
