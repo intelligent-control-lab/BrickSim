@@ -183,7 +183,7 @@ class ActionsCfg:
         controller=DifferentialIKControllerCfg(
             command_type="pose", use_relative_mode=True, ik_method="dls"
         ),
-        scale=1.0,
+        scale=(0.2, 0.2, 0.2, 1.0, 1.0, 1.0),
         body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(
             pos=FRANKA_HAND_TCP_OFFSET_POS,
             rot=FRANKA_HAND_TCP_OFFSET_ROT,
