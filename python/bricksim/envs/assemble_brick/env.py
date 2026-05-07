@@ -352,25 +352,12 @@ class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
         self.episode_length_s = 12.0
         self.sim.dt = 1 / 60
         self.sim.render_interval = self.decimation
-        self.sim.physx.bounce_threshold_velocity = 0.01
-        self.sim.physx.gpu_found_lost_aggregate_pairs_capacity = 1024 * 1024 * 4
-        self.sim.physx.gpu_total_aggregate_pairs_capacity = 16 * 1024
-        self.sim.physx.friction_correlation_distance = 0.00625
-
-        # IsaacLab viewer defaults for the assemble-brick task.
-        # Units: meters in world frame. The look-at point is inferred from the
-        # saved viewport pose.
         self.viewer.eye = (0.86535, 0.47963, 0.24637)
         self.viewer.lookat = (
             0.21471784579495856,
             -0.2155713921141228,
             -0.05919967178876398,
         )
-
-        # Used by saaclab_tasks/manager_based/manipulation/stack/mdp/observations.py:282
-        self.gripper_joint_names = ["panda_finger_.*"]
-        self.gripper_open_val = 0.04
-        self.gripper_threshold = 0.005
 
 
 class AssembleBrickEnv(ManagerBasedRLEnv):
@@ -432,15 +419,3 @@ class AssembleBrickEnv(ManagerBasedRLEnv):
         )
         clamped_action = torch.clamp(action, min=action_low, max=action_high)
         return super().step(clamped_action)
-
-    def compute_expert_actions(self) -> torch.Tensor:
-        """Raise until the command-aware expert is implemented.
-
-        Raises:
-            NotImplementedError: Always, because the fixed-goal expert was
-                removed and the command-aware expert has not been added yet.
-        """
-        raise NotImplementedError(
-            "Assemble-brick expert was removed; command-aware expert actions "
-            "will be added back later."
-        )

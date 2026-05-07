@@ -40,7 +40,7 @@ def main():
 
         while simulation_app.is_running():
             with torch.inference_mode():
-                actions = env.unwrapped.compute_expert_actions()
+                actions = ...
                 observations, rewards, terminated, truncated, info = env.step(actions)
 
                 if bool((terminated | truncated).any()):
