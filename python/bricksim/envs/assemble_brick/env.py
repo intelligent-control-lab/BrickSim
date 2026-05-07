@@ -348,9 +348,9 @@ class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
         configure_breakage_thresholds(enabled=False)
         self.sim.device = "cpu"
         self.sim.use_fabric = False
-        self.decimation = 1
+        self.decimation = 6
         self.episode_length_s = 12.0
-        self.sim.dt = 0.01
+        self.sim.dt = 1 / 60
         self.sim.render_interval = self.decimation
         self.sim.physx.bounce_threshold_velocity = 0.01
         self.sim.physx.gpu_found_lost_aggregate_pairs_capacity = 1024 * 1024 * 4
