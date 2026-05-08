@@ -8,7 +8,7 @@ if "Lego-AssembleBrick-v0" in _gym.envs.registry:
     del _gym.envs.registry["Lego-AssembleBrick-v0"]
 _gym.register(
     id="Lego-AssembleBrick-v0",
-    entry_point=f"{__name__}.env:AssembleBrickEnv",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
     kwargs={
         "env_cfg_entry_point": f"{__name__}.env:AssembleBrickEnvCfg",
     },

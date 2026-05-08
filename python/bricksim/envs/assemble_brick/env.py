@@ -2,12 +2,9 @@
 
 import math
 
-import torch
-from gymnasium.spaces import Box
-from gymnasium.vector.utils import batch_space
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
-from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg, VecEnvStepReturn
+from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.envs.mdp import (
     action_rate_l2,
     joint_vel_l2,
@@ -191,7 +188,11 @@ class SceneCfg(InteractiveSceneCfg):
 
 @configclass
 class ActionsCfg:
-    """Action terms for controlling the Franka arm and gripper."""
+    """Action terms for normalized Franka arm and gripper commands.
+
+    Callers should send finite actions in ``[-1, 1]`` and are responsible for
+    clipping policy outputs before calling ``env.step()``.
+    """
 
     arm_action = DifferentialInverseKinematicsActionCfg(
         asset_name="robot",
@@ -368,64 +369,3 @@ class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
             -0.2155713921141228,
             -0.05919967178876398,
         )
-
-
-class AssembleBrickEnv(ManagerBasedRLEnv):
-    """Manager-based RL environment for the assemble-brick task."""
-
-    cfg: AssembleBrickEnvCfg
-
-    def __init__(
-        self,
-        cfg: AssembleBrickEnvCfg,
-        render_mode: str | None = None,
-        **kwargs: object,
-    ) -> None:
-        """Initialize the environment and expose normalized action bounds.
-
-        Args:
-            cfg: Environment configuration.
-            render_mode: Render mode forwarded to Isaac Lab.
-            **kwargs: Additional Isaac Lab environment constructor arguments.
-        """
-        super().__init__(cfg=cfg, render_mode=render_mode, **kwargs)
-        assert self.single_action_space.dtype is not None
-        self.single_action_space = Box(
-            low=-1.0,
-            high=1.0,
-            shape=self.single_action_space.shape,
-            dtype=self.single_action_space.dtype.type,
-        )
-        self.action_space = batch_space(self.single_action_space, self.num_envs)
-
-    def step(self, action: torch.Tensor) -> VecEnvStepReturn:
-        """Clamp finite actions before stepping the Isaac Lab environment.
-
-        Args:
-            action: Batched action tensor with shape ``(num_envs, action_dim)``.
-
-        Returns:
-            Observations, rewards, terminated flags, truncated flags, and extras.
-
-        Raises:
-            ValueError: If any action element is NaN or infinite.
-        """
-        finite_mask = torch.isfinite(action)
-        if not finite_mask.all():
-            invalid_count = int((~finite_mask).sum().item())
-            raise ValueError(
-                f"Non-finite values detected in actions: "
-                f"{invalid_count} / {action.numel()} elements are invalid."
-            )
-        action_low = torch.as_tensor(
-            self.single_action_space.low,
-            device=action.device,
-            dtype=action.dtype,
-        )
-        action_high = torch.as_tensor(
-            self.single_action_space.high,
-            device=action.device,
-            dtype=action.dtype,
-        )
-        clamped_action = torch.clamp(action, min=action_low, max=action_high)
-        return super().step(clamped_action)

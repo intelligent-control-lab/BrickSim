@@ -74,9 +74,9 @@ def main() -> int:
     simulation_app = app_launcher.app
 
     import torch
+    from isaaclab.envs import ManagerBasedRLEnv
 
     from bricksim.envs.assemble_brick.env import (
-        AssembleBrickEnv,
         AssembleBrickEnvCfg,
         CommandsCfg,
     )
@@ -90,7 +90,7 @@ def main() -> int:
         commands_cfg = env_cfg.commands
         assert isinstance(commands_cfg, CommandsCfg)
         commands_cfg.assembly_goal.goals = args_cli.goals
-    env = AssembleBrickEnv(cfg=env_cfg)
+    env = ManagerBasedRLEnv(cfg=env_cfg)
     expert = AssembleBrickExpert()
 
     if args_cli.seed is not None:
