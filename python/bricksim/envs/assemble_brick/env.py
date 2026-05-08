@@ -34,7 +34,10 @@ from isaaclab.sim import (
 from isaaclab.utils import configclass
 from isaaclab_assets import ISAAC_NUCLEUS_DIR
 from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG
-from isaaclab_tasks.manager_based.manipulation.stack.mdp import franka_stack_events
+from isaaclab_tasks.manager_based.manipulation.stack.mdp.franka_stack_events import (
+    randomize_joint_by_gaussian_offset,
+    set_default_joint_pose,
+)
 from isaaclab_tasks.manager_based.manipulation.stack.mdp.observations import (
     ee_frame_pose_in_base_frame,
 )
@@ -81,6 +84,18 @@ from .mdp.terminations import (
 # Units: meters. Quaternion storage: wxyz.
 FRANKA_HAND_TCP_OFFSET_POS = (0.0, 0.0, 0.1034)
 FRANKA_HAND_TCP_OFFSET_ROT = (1.0, 0.0, 0.0, 0.0)
+
+FRANKA_DEFAULT_JOINT_POS = [
+    0.0444,
+    -0.1894,
+    -0.1107,
+    -2.5148,
+    0.0044,
+    2.3775,
+    0.6952,
+    0.0400,
+    0.0400,
+]
 
 ARM_ACTION_SCALE = (0.2, 0.2, 0.2, 1.0, 1.0, 1.0)
 
@@ -257,21 +272,9 @@ class EventCfg:
     )
 
     init_franka_arm_pose = EventTermCfg(
-        func=franka_stack_events.set_default_joint_pose,
+        func=set_default_joint_pose,
         mode="startup",
-        params={
-            "default_pose": [
-                0.0444,
-                -0.1894,
-                -0.1107,
-                -2.5148,
-                0.0044,
-                2.3775,
-                0.6952,
-                0.0400,
-                0.0400,
-            ],
-        },
+        params={"default_pose": FRANKA_DEFAULT_JOINT_POS},
     )
 
     reset_bricksim_managed = EventTermCfg(
@@ -280,7 +283,7 @@ class EventCfg:
     )
 
     randomize_franka_joint_state = EventTermCfg(
-        func=franka_stack_events.randomize_joint_by_gaussian_offset,
+        func=randomize_joint_by_gaussian_offset,
         mode="reset",
         params={
             "mean": 0.0,
