@@ -6,8 +6,6 @@ exclude = [
     "demos/demo_inhand.py",
     "demos/demo_keyboard_teleop.py",
     "demos/demo_teleop.py",
-    "experiments/assemble_brick/run_expert.py",
-    "experiments/assemble_brick/run_random.py",
     "experiments/evaluate_stability.py",
     "experiments/static_analysis.py",
 ]

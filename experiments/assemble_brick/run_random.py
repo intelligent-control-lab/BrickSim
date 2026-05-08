@@ -1,20 +1,31 @@
 #!/usr/bin/env python3
+"""Run a random or gripper-test policy on the assemble-brick task."""
+
+# ruff: noqa: E402
 
 import argparse
 
 from isaaclab.app import AppLauncher
 
-
-parser = argparse.ArgumentParser(description="Random-policy rollout for the BrickSim assemble-brick task.")
-parser.add_argument("--task", type=str, default="Lego-AssembleBrick-v0", help="Gym task id.")
-parser.add_argument("--num_envs", type=int, default=1, help="Number of parallel environments.")
+parser = argparse.ArgumentParser(
+    description="Random-policy rollout for the assemble-brick task."
+)
+parser.add_argument(
+    "--task", type=str, default="Lego-AssembleBrick-v0", help="Gym task id."
+)
+parser.add_argument(
+    "--num_envs", type=int, default=1, help="Number of parallel environments."
+)
 parser.add_argument("--seed", type=int, default=None, help="Optional environment seed.")
 parser.add_argument(
     "--mode",
     type=str,
     choices=("random", "gripper_test"),
     default="random",
-    help="Rollout mode. 'gripper_test' holds the arm fixed and alternates the gripper open/close command.",
+    help=(
+        "Rollout mode. 'gripper_test' holds the arm fixed and alternates the "
+        "gripper open/close command."
+    ),
 )
 parser.add_argument(
     "--arm_action_range",
@@ -42,14 +53,30 @@ simulation_app = app_launcher.app
 
 import gymnasium as gym
 import torch
-
-import bricksim
+from isaaclab.envs.manager_based_rl_env import ManagerBasedRLEnv
 from isaaclab_tasks.utils import parse_env_cfg
 
+import bricksim  # noqa: F401
 
-def get_concatenated_term_slice(env, group_name: str, term_name: str) -> slice:
-    group_terms = env.unwrapped.observation_manager.active_terms[group_name]
-    group_term_dims = env.unwrapped.observation_manager.group_obs_term_dim[group_name]
+
+def get_obs_term_slice(
+    env: ManagerBasedRLEnv, group_name: str, term_name: str
+) -> slice:
+    """Return the flattened slice for one concatenated observation term.
+
+    Args:
+        env: Manager-based RL environment with the requested observation group and term.
+        group_name: Observation group name.
+        term_name: Observation term name inside the group.
+
+    Returns:
+        Slice into the concatenated observation tensor for the requested term.
+
+    Raises:
+        KeyError: If the requested term is not active in the group.
+    """
+    group_terms = env.observation_manager.active_terms[group_name]
+    group_term_dims = env.observation_manager.group_obs_term_dim[group_name]
 
     start = 0
     for active_term_name, term_dim in zip(group_terms, group_term_dims, strict=True):
@@ -61,54 +88,75 @@ def get_concatenated_term_slice(env, group_name: str, term_name: str) -> slice:
     raise KeyError(f"Observation term '{term_name}' not found in group '{group_name}'.")
 
 
-def main():
-    env_cfg = parse_env_cfg(args_cli.task, num_envs=args_cli.num_envs, use_fabric=False, device="cpu")
+def main() -> None:
+    """Run random actions until the simulation app exits.
+
+    Returns:
+        None.
+    """
+    env_cfg = parse_env_cfg(
+        args_cli.task,
+        num_envs=args_cli.num_envs,
+        use_fabric=False,
+        device="cpu",
+    )
     if args_cli.seed is not None:
         env_cfg.seed = args_cli.seed
-    env = gym.make(args_cli.task, cfg=env_cfg)
-    gripper_obs_slice = get_concatenated_term_slice(env, group_name="policy", term_name="gripper_width")
+    env = gym.make(args_cli.task, cfg=env_cfg).unwrapped
+    assert isinstance(env, ManagerBasedRLEnv)
+    gripper_obs_slice = get_obs_term_slice(
+        env, group_name="policy", term_name="gripper_width"
+    )
 
-    try:
-        print(f"[INFO]: task: {args_cli.task}")
-        print(f"[INFO]: observation space: {env.observation_space}")
-        print(f"[INFO]: action space: {env.action_space}")
-        print(f"[INFO]: mode: {args_cli.mode}")
-        if args_cli.seed is not None:
-            print(f"[INFO]: Using seed: {args_cli.seed}")
+    print(f"[INFO]: task: {args_cli.task}")
+    print(f"[INFO]: observation space: {env.observation_space}")
+    print(f"[INFO]: action space: {env.action_space}")
+    print(f"[INFO]: mode: {args_cli.mode}")
+    if args_cli.seed is not None:
+        print(f"[INFO]: Using seed: {args_cli.seed}")
 
-        env.reset()
-        step_count = 0
+    obs, _ = env.reset()
+    step_count = 0
 
-        while simulation_app.is_running():
-            with torch.inference_mode():
-                num_envs = env.unwrapped.num_envs
-                device = env.unwrapped.device
-                action_dim = env.unwrapped.action_manager.total_action_dim
+    while simulation_app.is_running():
+        with torch.inference_mode():
+            num_envs = env.num_envs
+            device = env.device
+            action_dim = env.action_manager.total_action_dim
 
-                actions = torch.zeros((num_envs, action_dim), device=device)
-                if args_cli.mode == "random":
-                    actions[:, :6] = args_cli.arm_action_range * (2.0 * torch.rand((num_envs, 6), device=device) - 1.0)
-                    actions[:, 6] = torch.where(
-                        torch.rand((num_envs,), device=device) < 0.5,
-                        torch.full((num_envs,), -1.0, device=device),
-                        torch.full((num_envs,), 1.0, device=device),
-                    )
-                else:
-                    is_open_phase = (step_count // args_cli.gripper_hold_steps) % 2 == 0
-                    actions[:, 6] = 1.0 if is_open_phase else -1.0
+            actions = torch.zeros((num_envs, action_dim), device=device)
+            if args_cli.mode == "random":
+                random_arm_actions = (
+                    2.0 * torch.rand((num_envs, 6), device=device) - 1.0
+                )
+                actions[:, :6] = args_cli.arm_action_range * random_arm_actions
+                actions[:, 6] = torch.where(
+                    torch.rand((num_envs,), device=device) < 0.5,
+                    torch.full((num_envs,), -1.0, device=device),
+                    torch.full((num_envs,), 1.0, device=device),
+                )
+            else:
+                is_open_phase = (step_count // args_cli.gripper_hold_steps) % 2 == 0
+                actions[:, 6] = 1.0 if is_open_phase else -1.0
 
-                observations, *_ = env.step(actions)
+            obs, *_ = env.step(actions)
 
-                if args_cli.mode == "gripper_test" and step_count % args_cli.print_every == 0:
-                    gripper_obs = observations["policy"][0, gripper_obs_slice].detach().cpu().tolist()
-                    gripper_cmd = "open" if actions[0, 6].item() > 0.0 else "close"
-                    print(f"[INFO]: step={step_count} gripper_cmd={gripper_cmd} gripper_width={gripper_obs}")
+            if (
+                args_cli.mode == "gripper_test"
+                and step_count % args_cli.print_every == 0
+            ):
+                policy_obs = obs["policy"]
+                assert isinstance(policy_obs, torch.Tensor)
+                gripper_obs = policy_obs[0, gripper_obs_slice].detach().cpu().tolist()
+                gripper_cmd = "open" if actions[0, 6].item() > 0.0 else "close"
+                print(
+                    f"[INFO]: step={step_count} "
+                    f"gripper_cmd={gripper_cmd} "
+                    f"gripper_width={gripper_obs}"
+                )
 
-                step_count += 1
-    finally:
-        env.close()
+            step_count += 1
 
 
 if __name__ == "__main__":
     main()
-    simulation_app.close()

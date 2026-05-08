@@ -82,6 +82,8 @@ from .mdp.terminations import (
 FRANKA_HAND_TCP_OFFSET_POS = (0.0, 0.0, 0.1034)
 FRANKA_HAND_TCP_OFFSET_ROT = (1.0, 0.0, 0.0, 0.0)
 
+ARM_ACTION_SCALE = (0.2, 0.2, 0.2, 1.0, 1.0, 1.0)
+
 
 @configclass
 class SceneCfg(InteractiveSceneCfg):
@@ -183,7 +185,7 @@ class ActionsCfg:
         controller=DifferentialIKControllerCfg(
             command_type="pose", use_relative_mode=True, ik_method="dls"
         ),
-        scale=(0.2, 0.2, 0.2, 1.0, 1.0, 1.0),
+        scale=ARM_ACTION_SCALE,
         body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(
             pos=FRANKA_HAND_TCP_OFFSET_POS,
             rot=FRANKA_HAND_TCP_OFFSET_ROT,
@@ -341,6 +343,12 @@ class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
     terminations = TerminationsCfg()
     events = EventCfg()
     curriculum = None
+
+    # The following gripper parameters are used by
+    # isaaclab_tasks.manager_based.manipulation.place.mdp.observations.object_grasped
+    gripper_joint_names = ["panda_finger_.*"]
+    gripper_open_val = 0.04
+    gripper_threshold = 0.005
 
     def __post_init__(self):
         """Finalize simulation, viewer, and gripper task settings."""
