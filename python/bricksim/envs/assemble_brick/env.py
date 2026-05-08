@@ -334,7 +334,7 @@ class TerminationsCfg:
 class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
     """Full Isaac Lab environment config for the assemble-brick task."""
 
-    scene = SceneCfg(num_envs=16, env_spacing=2.5)
+    scene = SceneCfg(num_envs=1, env_spacing=2.5)
     observations = ObservationsCfg()
     actions = ActionsCfg()
     commands = CommandsCfg()

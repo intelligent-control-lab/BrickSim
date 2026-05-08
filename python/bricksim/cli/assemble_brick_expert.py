@@ -1,11 +1,6 @@
-#!/usr/bin/env python3
-"""Run the assemble-brick expert policy."""
-
-# ruff: noqa: E402
+"""CLI for running the assemble-brick expert policy."""
 
 import argparse
-
-from isaaclab.app import AppLauncher
 
 
 def parse_goal_rows(goals: str) -> tuple[tuple[int, int, int], ...]:
@@ -39,58 +34,63 @@ def parse_goal_rows(goals: str) -> tuple[tuple[int, int, int], ...]:
     return tuple(parsed_goal_rows)
 
 
-parser = argparse.ArgumentParser(
-    description="Expert-policy rollout for the assemble-brick task."
-)
-parser.add_argument("--task", type=str, default="Lego-AssembleBrick-v0")
-parser.add_argument("--num_envs", type=int, default=1)
-parser.add_argument("--seed", type=int, default=None, help="Optional environment seed.")
-parser.add_argument(
-    "--goals",
-    type=parse_goal_rows,
-    default=None,
-    help=(
-        "Semicolon-separated command goal rows 'x,y,yaw;...'. "
-        "If omitted, sample all valid goals."
-    ),
-)
-AppLauncher.add_app_launcher_args(parser)
-args_cli = parser.parse_args()
-
-app_launcher = AppLauncher(args_cli)
-simulation_app = app_launcher.app
-
-import gymnasium as gym
-import torch
-from isaaclab.envs.manager_based_rl_env import ManagerBasedRLEnv
-from isaaclab_tasks.utils import parse_env_cfg
-
-import bricksim  # noqa: F401
-from bricksim.envs.assemble_brick.env import AssembleBrickEnvCfg, CommandsCfg
-from bricksim.envs.assemble_brick.expert import AssembleBrickExpert
-
-
-def main() -> None:
-    """Run the expert rollout until the simulation app exits.
+def build_argument_parser() -> argparse.ArgumentParser:
+    """Build the argument parser for the assemble-brick expert CLI.
 
     Returns:
-        None.
+        Configured argument parser.
     """
-    env_cfg = parse_env_cfg(
-        args_cli.task,
-        num_envs=args_cli.num_envs,
-        use_fabric=False,
-        device="cpu",
+    parser = argparse.ArgumentParser(
+        description="Expert-policy rollout for the assemble-brick task."
     )
-    assert isinstance(env_cfg, AssembleBrickEnvCfg)
+    parser.add_argument("--num_envs", type=int, default=1)
+    parser.add_argument(
+        "--seed", type=int, default=None, help="Optional environment seed."
+    )
+    parser.add_argument(
+        "--goals",
+        type=parse_goal_rows,
+        default=None,
+        help=(
+            "Semicolon-separated command goal rows 'x,y,yaw;...'. "
+            "If omitted, sample all valid goals."
+        ),
+    )
+    return parser
+
+
+def main() -> int:
+    """Run the assemble-brick expert policy.
+
+    Returns:
+        Process exit code.
+    """
+    from isaaclab.app import AppLauncher
+
+    parser = build_argument_parser()
+    AppLauncher.add_app_launcher_args(parser)
+    args_cli = parser.parse_args()
+    app_launcher = AppLauncher(args_cli)
+    simulation_app = app_launcher.app
+
+    import torch
+
+    from bricksim.envs.assemble_brick.env import (
+        AssembleBrickEnv,
+        AssembleBrickEnvCfg,
+        CommandsCfg,
+    )
+    from bricksim.envs.assemble_brick.expert import AssembleBrickExpert
+
+    env_cfg = AssembleBrickEnvCfg()
+    env_cfg.scene.num_envs = args_cli.num_envs
     if args_cli.seed is not None:
         env_cfg.seed = args_cli.seed
     if args_cli.goals is not None:
         commands_cfg = env_cfg.commands
         assert isinstance(commands_cfg, CommandsCfg)
         commands_cfg.assembly_goal.goals = args_cli.goals
-    env = gym.make(args_cli.task, cfg=env_cfg).unwrapped
-    assert isinstance(env, ManagerBasedRLEnv)
+    env = AssembleBrickEnv(cfg=env_cfg)
     expert = AssembleBrickExpert()
 
     if args_cli.seed is not None:
@@ -115,6 +115,8 @@ def main() -> None:
 
             step += 1
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
