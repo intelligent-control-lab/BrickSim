@@ -213,7 +213,6 @@ class CommandsCfg:
         hole_brick="lego_brick",
         hole_brick_iface=0,
         moving_brick_type="hole",
-        goals=((5, 5, 1),),
         goal_marker_visualizer_prim_path="/Visuals/Command/assembly_goal",
         goal_marker_color="Red",
         debug_vis=True,
