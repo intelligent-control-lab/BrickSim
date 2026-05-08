@@ -272,10 +272,8 @@ def reward_success_bonus(
     command_name: str = "assembly_goal",
     action_term_name: str = "gripper_action",
     open_position_threshold: float = 0.005,
-    pos_tol: float = 0.002,
-    rot_tol: float = 0.08726646259971647,
 ) -> torch.Tensor:
-    """Return a sparse success bonus for the target assembly.
+    """Return a sparse bonus when the target connection is formed and gripper is open.
 
     Args:
         env: Environment with a command manager and scene assets.
@@ -283,19 +281,12 @@ def reward_success_bonus(
         action_term_name: Name of the binary gripper action term.
         open_position_threshold: Joint-position tolerance around the action
             term's open command.
-        pos_tol: Maximum object-to-command target position error in meters.
-        rot_tol: Maximum object-to-command target angular error in radians.
 
     Returns:
         Float tensor with shape ``(num_envs,)``.
     """
-    target_match = assembly_check_connection_formed(env, command_name)
-    pos_delta, _, rot_error = _object_command_pose_alignment(env, command_name)
-    pose_close = torch.linalg.vector_norm(pos_delta, dim=1) < pos_tol
-    rot_close = rot_error < rot_tol
-    gripper_open = gripper_is_open(
+    return assembly_check_connection_formed(env, command_name) & gripper_is_open(
         env,
         action_term_name=action_term_name,
         open_position_threshold=open_position_threshold,
     )
-    return (target_match & pose_close & rot_close & gripper_open).to(torch.float32)
