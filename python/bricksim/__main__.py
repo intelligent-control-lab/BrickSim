@@ -113,6 +113,8 @@ def main():
     kit_args.append(" ".join(shlex.quote(arg) for arg in exec_args))
 
     sys.argv = [sys.argv[0], *kit_args]
+    import isaacsim_rtx_compat  # noqa: F401
+
     _uncache_bricksim_package()
     import isaacsim
 

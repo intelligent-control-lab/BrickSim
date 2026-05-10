@@ -51,6 +51,7 @@ class BrickSimSdist(sdist):
 
 setup(
     packages=find_namespace_packages(where=".", include=["bricksim*"]),
+    py_modules=["isaacsim_rtx_compat"],
     ext_modules=(
         []
         if os.environ.get("BRICKSIM_SKIP_NATIVE_BUILD") == "1"
