@@ -15,7 +15,8 @@
   <a href="https://intelligent-control-lab.github.io/BrickSim/">Website</a> •
   <a href="https://arxiv.org/abs/2603.16853">Paper</a> •
   <a href="#quickstart">Quickstart</a> •
-  <a href="https://www.youtube.com/watch?v=VGuHfz4yxLU">Video</a>
+  <a href="https://www.youtube.com/watch?v=VGuHfz4yxLU">Video</a> •
+  <a href="https://intelligent-control-lab.github.io/BrickSim/slides/">Slides</a> <i>(new)</i>
 </p>
 
 </div>
