@@ -20,9 +20,9 @@ from .commands import (
 def franka_gripper_width(
     env: ManagerBasedRLEnv,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-    joint_names: tuple[str, ...] = ("panda_finger_.*",),
+    joint_names: tuple[str, ...] = ("fr3_finger_joint.*",),
 ) -> torch.Tensor:
-    """Return the Franka gripper opening width.
+    """Return the gripper opening width.
 
     Args:
         env: Manager-based RL environment.
@@ -41,9 +41,9 @@ def franka_gripper_width(
 def franka_gripper_speed(
     env: ManagerBasedRLEnv,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-    joint_names: tuple[str, ...] = ("panda_finger_.*",),
+    joint_names: tuple[str, ...] = ("fr3_finger_joint.*",),
 ) -> torch.Tensor:
-    """Return the maximum absolute Franka finger joint velocity.
+    """Return the maximum absolute finger joint velocity.
 
     Args:
         env: Manager-based RL environment.

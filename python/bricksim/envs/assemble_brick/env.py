@@ -2,6 +2,7 @@
 
 import math
 
+from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -30,16 +31,14 @@ from isaaclab.sim import (
 )
 from isaaclab.utils import configclass
 from isaaclab_assets import ISAAC_NUCLEUS_DIR
-from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG
 from isaaclab_tasks.manager_based.manipulation.stack.mdp.franka_stack_events import (
     randomize_joint_by_gaussian_offset,
-    set_default_joint_pose,
 )
 from isaaclab_tasks.manager_based.manipulation.stack.mdp.observations import (
     ee_frame_pose_in_base_frame,
 )
 
-from bricksim.assets import FRANKA_ROBOT_USD_PATH
+from bricksim.assets import FR3_ROBOT_USD_PATH
 from bricksim.mdp.brick_part import BrickPartCfg
 from bricksim.mdp.connection_thresholds import (
     configure_assembly_thresholds,
@@ -77,22 +76,10 @@ from .mdp.terminations import (
     target_connection_formed_and_gripper_open,
 )
 
-# Franka TCP / pad-center offset relative to panda_hand.
+# FR3 TCP / pad-center offset relative to fr3_hand.
 # Units: meters. Quaternion storage: wxyz.
-FRANKA_HAND_TCP_OFFSET_POS = (0.0, 0.0, 0.1034)
-FRANKA_HAND_TCP_OFFSET_ROT = (1.0, 0.0, 0.0, 0.0)
-
-FRANKA_DEFAULT_JOINT_POS = [
-    0.0444,
-    -0.1894,
-    -0.1107,
-    -2.5148,
-    0.0044,
-    2.3775,
-    0.6952,
-    0.0400,
-    0.0400,
-]
+FR3_HAND_TCP_OFFSET_POS = (0.0, 0.0, 0.1034)
+FR3_HAND_TCP_OFFSET_ROT = (1.0, 0.0, 0.0, 0.0)
 
 ARM_ACTION_SCALE = (0.2, 0.2, 0.2, 1.0, 1.0, 1.0)
 
@@ -103,36 +90,55 @@ class SceneCfg(InteractiveSceneCfg):
 
     replicate_physics = False
 
-    robot: ArticulationCfg = FRANKA_PANDA_HIGH_PD_CFG.replace(
-        prim_path="{ENV_REGEX_NS}/Robot"
+    robot: ArticulationCfg = ArticulationCfg(
+        prim_path="{ENV_REGEX_NS}/Robot",
+        spawn=UsdFileCfg(usd_path=str(FR3_ROBOT_USD_PATH)),
+        init_state=ArticulationCfg.InitialStateCfg(
+            joint_pos={
+                "fr3_joint1": 0.0444,
+                "fr3_joint2": -0.1894,
+                "fr3_joint3": -0.1107,
+                "fr3_joint4": -2.5148,
+                "fr3_joint5": 0.0044,
+                "fr3_joint6": 2.3775,
+                "fr3_joint7": 0.6952,
+                "fr3_finger_joint.*": 0.04,
+            },
+        ),
+        actuators={
+            "fr3_arm": ImplicitActuatorCfg(
+                joint_names_expr=["fr3_joint[1-7]"],
+                stiffness=None,
+                damping=None,
+            ),
+            "fr3_hand": ImplicitActuatorCfg(
+                joint_names_expr=["fr3_finger_joint.*"],
+                effort_limit_sim=15.0,
+                stiffness=None,
+                damping=None,
+            ),
+        },
     )
-    robot.spawn.usd_path = str(FRANKA_ROBOT_USD_PATH)
-    robot.spawn.variants = {"Physics": "Assemble"}
-    robot.spawn.articulation_props.solver_position_iteration_count = 64
-    robot.spawn.articulation_props.solver_velocity_iteration_count = 1
-    robot.actuators["panda_hand"].effort_limit_sim = 15.0
-    robot.actuators["panda_hand"].stiffness = 400.0
-    robot.actuators["panda_hand"].damping = 80.0
 
     ee_frame = FrameTransformerCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/panda_link0",
+        prim_path="{ENV_REGEX_NS}/Robot/fr3_link0",
         debug_vis=False,
         target_frames=[
             FrameTransformerCfg.FrameCfg(
-                prim_path="{ENV_REGEX_NS}/Robot/panda_hand",
+                prim_path="{ENV_REGEX_NS}/Robot/fr3_hand",
                 name="end_effector",
                 offset=OffsetCfg(
-                    pos=FRANKA_HAND_TCP_OFFSET_POS,
-                    rot=FRANKA_HAND_TCP_OFFSET_ROT,
+                    pos=FR3_HAND_TCP_OFFSET_POS,
+                    rot=FR3_HAND_TCP_OFFSET_ROT,
                 ),
             ),
             FrameTransformerCfg.FrameCfg(
-                prim_path="{ENV_REGEX_NS}/Robot/panda_rightfinger",
+                prim_path="{ENV_REGEX_NS}/Robot/fr3_rightfinger",
                 name="tool_rightfinger",
                 offset=OffsetCfg(pos=(0.0, 0.0, 0.046)),
             ),
             FrameTransformerCfg.FrameCfg(
-                prim_path="{ENV_REGEX_NS}/Robot/panda_leftfinger",
+                prim_path="{ENV_REGEX_NS}/Robot/fr3_leftfinger",
                 name="tool_leftfinger",
                 offset=OffsetCfg(pos=(0.0, 0.0, 0.046)),
             ),
@@ -188,7 +194,7 @@ class SceneCfg(InteractiveSceneCfg):
 
 @configclass
 class ActionsCfg:
-    """Action terms for normalized Franka arm and gripper commands.
+    """Action terms for normalized FR3 arm and gripper commands.
 
     Callers should send finite actions in ``[-1, 1]`` and are responsible for
     clipping policy outputs before calling ``env.step()``.
@@ -196,23 +202,23 @@ class ActionsCfg:
 
     arm_action = DifferentialInverseKinematicsActionCfg(
         asset_name="robot",
-        joint_names=["panda_joint.*"],
-        body_name="panda_hand",
+        joint_names=["fr3_joint[1-7]"],
+        body_name="fr3_hand",
         controller=DifferentialIKControllerCfg(
             command_type="pose", use_relative_mode=True, ik_method="dls"
         ),
         scale=ARM_ACTION_SCALE,
         body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(
-            pos=FRANKA_HAND_TCP_OFFSET_POS,
-            rot=FRANKA_HAND_TCP_OFFSET_ROT,
+            pos=FR3_HAND_TCP_OFFSET_POS,
+            rot=FR3_HAND_TCP_OFFSET_ROT,
         ),
     )
 
     gripper_action = HysteresisBinaryJointActionCfg(
         asset_name="robot",
-        joint_names=["panda_finger.*"],
-        open_command_expr={"panda_finger_.*": 0.04},
-        close_command_expr={"panda_finger_.*": 0.0},
+        joint_names=["fr3_finger_joint.*"],
+        open_command_expr={"fr3_finger_joint.*": 0.04},
+        close_command_expr={"fr3_finger_joint.*": 0.0},
         open_thresholds=0.2,
         close_thresholds=-0.2,
         initial_closed=False,
@@ -272,18 +278,12 @@ class EventCfg:
         mode="reset",
     )
 
-    init_franka_arm_pose = EventTermCfg(
-        func=set_default_joint_pose,
-        mode="startup",
-        params={"default_pose": FRANKA_DEFAULT_JOINT_POS},
-    )
-
     reset_bricksim_managed = EventTermCfg(
         func=reset_bricksim_managed,
         mode="reset",
     )
 
-    randomize_franka_joint_state = EventTermCfg(
+    randomize_fr3_joint_state = EventTermCfg(
         func=randomize_joint_by_gaussian_offset,
         mode="reset",
         params={
@@ -349,7 +349,7 @@ class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
 
     # The following gripper parameters are used by
     # isaaclab_tasks.manager_based.manipulation.place.mdp.observations.object_grasped
-    gripper_joint_names = ["panda_finger_.*"]
+    gripper_joint_names = ["fr3_finger_joint.*"]
     gripper_open_val = 0.04
     gripper_threshold = 0.005
 

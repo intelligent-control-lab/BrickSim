@@ -31,10 +31,11 @@ LIFT_POS_TOL = 0.03
 PRE_ASSEMBLY_ROT_TOL = 0.25
 
 GRIPPER_POS_TOL = 0.003
-GRIPPER_SECURED_SPEED_TOL = 0.003
+GRIPPER_SECURED_SPEED_TOL = 0.02
 TRANSPORT_GRIPPER_COMPRESSION = 0.00012
 OPEN_GRIPPER_EXTRA_WIDTH = 0.015
 MAX_FRANKA_GRIPPER_WIDTH = 0.08
+RELEASE_LIFT_ACTION = 0.25
 
 
 class AssembleBrickExpert:
@@ -245,6 +246,7 @@ class AssembleBrickExpert:
         idle_mask = connection_created & gripper_open
         actions[idle_mask] = 0.0
         actions[release_mask, :6] = 0.0
+        actions[release_mask, 2] = RELEASE_LIFT_ACTION
         return actions
 
     def _compute_grasp_targets(

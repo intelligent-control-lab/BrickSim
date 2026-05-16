@@ -86,6 +86,7 @@ def main() -> int:
 
     env_cfg = AssembleBrickEnvCfg()
     env_cfg.scene.num_envs = args_cli.num_envs
+    env_cfg.sim.render_interval = 1
     if args_cli.seed is not None:
         env_cfg.seed = args_cli.seed
     if args_cli.goals is not None:

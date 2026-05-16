@@ -1,12 +1,12 @@
 #usda 1.0
 (
-    defaultPrim = "panda"
+    defaultPrim = "fr3"
     subLayers = [
-        @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd@
+        @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Robots/FrankaRobotics/FrankaFR3/fr3.usd@
     ]
 )
 
-over "panda"
+over "fr3"
 {
     int physxArticulation:solverPositionIterationCount = 64
 
@@ -22,32 +22,28 @@ over "panda"
         }
     }
 
-    over "panda_leftfinger"
+    over "fr3_leftfinger"
     {
-        over "geometry" (
-            instanceable = false
-        )
+        over "collisions"
         {
-            over "panda_leftfinger" (
+            over "mesh_3" (
                 prepend apiSchemas = ["MaterialBindingAPI"]
             )
             {
-                rel material:binding:physics = </panda/PhysicsMaterials/FingerPad>
+                rel material:binding:physics = </fr3/PhysicsMaterials/FingerPad>
             }
         }
     }
 
-    over "panda_rightfinger"
+    over "fr3_rightfinger"
     {
-        over "geometry" (
-            instanceable = false
-        )
+        over "collisions"
         {
-            over "panda_rightfinger" (
+            over "mesh_3" (
                 prepend apiSchemas = ["MaterialBindingAPI"]
             )
             {
-                rel material:binding:physics = </panda/PhysicsMaterials/FingerPad>
+                rel material:binding:physics = </fr3/PhysicsMaterials/FingerPad>
             }
         }
     }
