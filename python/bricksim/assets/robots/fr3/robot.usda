@@ -47,4 +47,49 @@ over "fr3"
             }
         }
     }
+
+    def Xform "D435" (
+        prepend references = @../../sensors/realsense/d435/d435.usd@
+    )
+    {
+        quatd xformOp:orient = (0.2705980652088784, 0.6532814761687428, 0.2705980652088784, -0.6532814761687428)
+        double3 xformOp:translate = (0.0614835, -0.02651651, 0.8734)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+    }
+
+    def Xform "D435_mount" (
+        prepend references = @camera_mount/realsense_d435_camera_mount.usd@
+    )
+    {
+        quatd xformOp:orient = (0, 0.92387953, 0.38268345, 0)
+        double3 xformOp:translate = (0.088, 0, 0.916)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+    }
+
+    over "fr3_hand"
+    {
+        def PhysicsFixedJoint "fr3_hand_D435_joint"
+        {
+            rel physics:body0 = </fr3/fr3_hand>
+            rel physics:body1 = </fr3/D435>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (-0.0375, 0, 0.0526)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.70710678, 0, -0.70710678, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+        }
+
+        def PhysicsFixedJoint "fr3_hand_D435_mount_joint"
+        {
+            rel physics:body0 = </fr3/fr3_hand>
+            rel physics:body1 = </fr3/D435_mount>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (0, 0, 0.01)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+        }
+    }
 }

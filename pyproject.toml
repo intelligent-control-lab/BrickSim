@@ -13,6 +13,7 @@ dev = [
     "pytest",
     "ruff",
     "ty",
+    "xacro>=2.1.1",
 ]
 
 [tool.uv]
