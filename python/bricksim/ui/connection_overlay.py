@@ -238,11 +238,9 @@ class ConnectionOverlayScene:
             .create_subscription_to_pop(self._on_update)
         )
         stage_event_stream = self._usd_context.get_stage_event_stream()
-        self._selection_sub = (
-            stage_event_stream.create_subscription_to_pop_by_type(
-                int(omni.usd.StageEventType.SELECTION_CHANGED),
-                self._on_selection_changed,
-            )
+        self._selection_sub = stage_event_stream.create_subscription_to_pop_by_type(
+            int(omni.usd.StageEventType.SELECTION_CHANGED),
+            self._on_selection_changed,
         )
 
     def destroy(self) -> None:

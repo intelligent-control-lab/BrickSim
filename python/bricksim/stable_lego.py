@@ -874,8 +874,7 @@ def run_stable_lego(
 
         if len(brick_f_down_list) > 0:
             model.addConstr(
-                brick_max_f_down[int(key) - 1]
-                == gp.max_(*brick_f_down_list)
+                brick_max_f_down[int(key) - 1] == gp.max_(*brick_f_down_list)
             )
 
     eq_obj = model.addVar(vtype=gp.GRB.CONTINUOUS, name="eq_obj")

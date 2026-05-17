@@ -133,9 +133,9 @@ def _show_camera_images(images_obs: dict[str, torch.Tensor]) -> None:
             if bool(valid_depth.any()):
                 min_depth = depth[valid_depth].min()
                 max_depth = depth[valid_depth].quantile(0.95)
-                depth_vis = (depth - min_depth) / (
-                    max_depth - min_depth
-                ).clamp_min(1e-6)
+                depth_vis = (depth - min_depth) / (max_depth - min_depth).clamp_min(
+                    1e-6
+                )
                 depth_vis = depth_vis.clamp(0.0, 1.0)
             else:
                 depth_vis = torch.zeros_like(depth)

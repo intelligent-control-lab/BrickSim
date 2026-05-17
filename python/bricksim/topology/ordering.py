@@ -109,11 +109,7 @@ def bfs_sort_connections(topology: JsonTopology) -> JsonTopology:
             for neighbor in sorted(adjacency[node]):
                 if neighbor not in comp:
                     continue
-                key = (
-                    (node, neighbor)
-                    if node <= neighbor
-                    else (neighbor, node)
-                )
+                key = (node, neighbor) if node <= neighbor else (neighbor, node)
                 indices = conn_indices_by_pair.get(key, [])
                 if not indices:
                     continue
