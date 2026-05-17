@@ -118,6 +118,7 @@ Non modular 3rd-party dependencies are wrapped in a single `bricksim.vendor` (`v
 - Treat online docs as potentially stale; verify against local Isaac Sim code.
 - Decompile/disassemble/reverse‑engineer binaries when source is unavailable.
    - Many dirs are symlinks created by repoman; they may point outside the tree. Follow them, and enable following links in searches.
+- IsaacSim/IsaacLab/Omniverse/OpenUSD dependencies are ONLY available in Omniverse's python execution environment. They are NOT available in a plain Python environment.
 
 ## Safety
 You may operate in:
@@ -132,6 +133,8 @@ You must NOT:
 
 If you start Isaac Sim or other processes, you must ensure it's terminated after you are done. These processes can consume significant resources, and might not respond to SIGINT. Use `pgrep` to find their PIDs and `kill` to terminate them if needed.
 - Long running code must show progress. If something isn't right during running, do not hope it will be okay. Do not waste time. Kill immediately and debug.
+
+IsaacSim / IsaacLab must be run outside the sandbox. Request privilege escalation if you run them.
 
 ## Collaboration Rules
 - NEVER modify code unless the user explicitly asks (e.g., says "modify", "implement", "refactor", "add", or similar). Observations and diagnostics are fine; changes require explicit instruction.
