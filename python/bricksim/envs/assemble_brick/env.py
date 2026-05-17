@@ -264,7 +264,7 @@ class CommandsCfg:
         moving_brick_type="hole",
         goal_marker_visualizer_prim_path="/Visuals/Command/assembly_goal",
         goal_marker_color="Red",
-        debug_vis=True,
+        debug_vis=False,
     )
 
 

@@ -84,6 +84,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Display captured camera images with OpenCV.",
     )
+    parser.add_argument(
+        "--show-goals",
+        action="store_true",
+        help="Show assembly goal marker visualizer.",
+    )
     return parser
 
 
@@ -171,7 +176,6 @@ def main() -> int:
         AssembleBrickEnvCfg,
         AssembleBrickRGBDEnvCfg,
         AssembleBrickRGBEnvCfg,
-        CommandsCfg,
     )
     from bricksim.envs.assemble_brick.expert import AssembleBrickExpert
 
@@ -187,9 +191,9 @@ def main() -> int:
     if args_cli.seed is not None:
         env_cfg.seed = args_cli.seed
     if args_cli.goals is not None:
-        commands_cfg = env_cfg.commands
-        assert isinstance(commands_cfg, CommandsCfg)
-        commands_cfg.assembly_goal.goals = args_cli.goals
+        env_cfg.commands.assembly_goal.goals = args_cli.goals
+    if args_cli.show_goals:
+        env_cfg.commands.assembly_goal.debug_vis = True
     env = ManagerBasedRLEnv(cfg=env_cfg)
     expert = AssembleBrickExpert()
 
