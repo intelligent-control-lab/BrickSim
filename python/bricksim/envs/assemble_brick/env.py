@@ -8,6 +8,7 @@ from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.envs.mdp import (
     action_rate_l2,
+    image,
     joint_vel_l2,
     reset_root_state_uniform,
     time_out,
@@ -22,10 +23,11 @@ from isaaclab.managers import (
     TerminationTermCfg,
 )
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sensors import FrameTransformerCfg, OffsetCfg
+from isaaclab.sensors import FrameTransformerCfg, OffsetCfg, TiledCameraCfg
 from isaaclab.sim import (
     DomeLightCfg,
     GroundPlaneCfg,
+    PinholeCameraCfg,
     RigidBodyPropertiesCfg,
     UsdFileCfg,
 )
@@ -143,6 +145,31 @@ class SceneCfg(InteractiveSceneCfg):
                 offset=OffsetCfg(pos=(0.0, 0.0, 0.046)),
             ),
         ],
+    )
+
+    hand_camera: TiledCameraCfg | None = TiledCameraCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/D435/camera_color_optical_frame/color_camera",
+        height=720,
+        width=1280,
+        data_types=["rgb", "distance_to_image_plane"],
+        spawn=PinholeCameraCfg.from_intrinsic_matrix(
+            # Nominal D435 color intrinsics at 1280x720.
+            # Storage: row-major 3x3 pinhole matrix.
+            intrinsic_matrix=[
+                924.277380,
+                0.0,
+                640.0,
+                0.0,
+                925.738464,
+                360.0,
+                0.0,
+                0.0,
+                1.0,
+            ],
+            width=1280,
+            height=720,
+            clipping_range=(0.001, 3.0),
+        ),
     )
 
     table = AssetBaseCfg(
@@ -265,8 +292,32 @@ class ObservationsCfg:
         connection_created = ObservationTermCfg(func=obs_command_connection_created)
         brick_dimensions = ObservationTermCfg(func=obs_moving_brick_dimensions)
 
+    @configclass
+    class ImagesCfg(ObservationGroupCfg):
+        """Rendered D435 camera observation terms."""
+
+        concatenate_terms = False
+
+        hand_color: ObservationTermCfg = ObservationTermCfg(
+            func=image,
+            params={
+                "sensor_cfg": SceneEntityCfg("hand_camera"),
+                "data_type": "rgb",
+                "normalize": False,
+            },
+        )
+        hand_depth: ObservationTermCfg | None = ObservationTermCfg(
+            func=image,
+            params={
+                "sensor_cfg": SceneEntityCfg("hand_camera"),
+                "data_type": "distance_to_image_plane",
+                "normalize": False,
+            },
+        )
+
     policy: PolicyCfg = PolicyCfg()
     privileged: PrivilegedCfg = PrivilegedCfg()
+    images: ImagesCfg | None = ImagesCfg()
 
 
 @configclass
@@ -335,17 +386,16 @@ class TerminationsCfg:
 
 
 @configclass
-class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
-    """Full Isaac Lab environment config for the assemble-brick task."""
+class AssembleBrickBaseEnvCfg(ManagerBasedRLEnvCfg):
+    """Base environment config for the assemble-brick task. Do not use this directly."""
 
-    scene = SceneCfg(num_envs=1, env_spacing=2.5)
-    observations = ObservationsCfg()
-    actions = ActionsCfg()
-    commands = CommandsCfg()
-    rewards = RewardsCfg()
-    terminations = TerminationsCfg()
-    events = EventCfg()
-    curriculum = None
+    scene: SceneCfg = SceneCfg(num_envs=1, env_spacing=5.0)
+    observations: ObservationsCfg = ObservationsCfg()
+    actions: ActionsCfg = ActionsCfg()
+    commands: CommandsCfg = CommandsCfg()
+    rewards: RewardsCfg = RewardsCfg()
+    terminations: TerminationsCfg = TerminationsCfg()
+    events: EventCfg = EventCfg()
 
     # The following gripper parameters are used by
     # isaaclab_tasks.manager_based.manipulation.place.mdp.observations.object_grasped
@@ -363,9 +413,46 @@ class AssembleBrickEnvCfg(ManagerBasedRLEnvCfg):
         self.episode_length_s = 12.0
         self.sim.dt = 1 / 60
         self.sim.render_interval = self.decimation
+        self.num_rerenders_on_reset = 3
         self.viewer.eye = (0.86535, 0.47963, 0.24637)
         self.viewer.lookat = (
             0.21471784579495856,
             -0.2155713921141228,
             -0.05919967178876398,
         )
+
+
+@configclass
+class AssembleBrickEnvCfg(AssembleBrickBaseEnvCfg):
+    """State-based environment config for the assemble-brick task."""
+
+    def __post_init__(self):
+        """Remove image observations."""
+        super().__post_init__()
+        self.scene.hand_camera = None
+        self.observations.images = None
+        self.num_rerenders_on_reset = 0
+
+
+@configclass
+class AssembleBrickRGBDEnvCfg(AssembleBrickBaseEnvCfg):
+    """Environment config for the assemble-brick task with RGB-D observation."""
+
+    pass
+
+
+@configclass
+class AssembleBrickRGBEnvCfg(AssembleBrickBaseEnvCfg):
+    """Environment config for the assemble-brick task with RGB observation."""
+
+    def __post_init__(self):
+        """Remove depth observations."""
+        super().__post_init__()
+
+        hand_camera = self.scene.hand_camera
+        assert hand_camera is not None
+        hand_camera.data_types = ["rgb"]
+
+        images = self.observations.images
+        assert images is not None
+        images.hand_depth = None

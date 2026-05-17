@@ -1,6 +1,11 @@
 """CLI for running the assemble-brick expert policy."""
 
 import argparse
+from pathlib import Path
+
+import cv2
+import torch
+from PIL import Image
 
 
 def parse_goal_rows(goals: str) -> tuple[tuple[int, int, int], ...]:
@@ -56,7 +61,87 @@ def build_argument_parser() -> argparse.ArgumentParser:
             "If omitted, sample all valid goals."
         ),
     )
+    parser.add_argument(
+        "--obs-mode",
+        choices=("state", "rgb", "rgbd"),
+        default="state",
+        help="Observation mode to run.",
+    )
+    parser.add_argument(
+        "--save-camera-dir",
+        type=Path,
+        default=None,
+        help="Directory for saving captured camera images.",
+    )
+    parser.add_argument(
+        "--save-camera-every",
+        type=int,
+        default=30,
+        help="Save one camera frame every N environment steps.",
+    )
+    parser.add_argument(
+        "--show-camera",
+        action="store_true",
+        help="Display captured camera images with OpenCV.",
+    )
     return parser
+
+
+def _save_camera_images(
+    images_obs: dict[str, torch.Tensor],
+    save_camera_dir: Path,
+    step: int,
+) -> None:
+    """Save camera observation images for one rollout step.
+
+    Args:
+        images_obs: Non-concatenated image observation group keyed by term name.
+        save_camera_dir: Directory where PNG images are written.
+        step: Rollout step index used in output filenames.
+
+    Returns:
+        None.
+    """
+    for obs_name, image_tensor in images_obs.items():
+        image = image_tensor[0].detach().cpu()
+        output_path = save_camera_dir / f"step_{step:06d}_{obs_name}.png"
+        output_image = image.contiguous().numpy()
+        Image.fromarray(output_image).save(output_path)
+
+
+def _show_camera_images(images_obs: dict[str, torch.Tensor]) -> None:
+    """Display camera observation images for one rollout step.
+
+    Args:
+        images_obs: Non-concatenated image observation group keyed by term name.
+
+    Returns:
+        None.
+    """
+    for obs_name, image_tensor in images_obs.items():
+        image = image_tensor[0].detach().cpu()
+        if image.shape[-1] == 3:
+            display_image = cv2.cvtColor(image.contiguous().numpy(), cv2.COLOR_RGB2BGR)
+        else:
+            depth = torch.nan_to_num(image, nan=0.0, posinf=0.0, neginf=0.0)
+            valid_depth = depth > 0
+            if bool(valid_depth.any()):
+                min_depth = depth[valid_depth].min()
+                max_depth = depth[valid_depth].quantile(0.95)
+                depth_vis = (depth - min_depth) / (
+                    max_depth - min_depth
+                ).clamp_min(1e-6)
+                depth_vis = depth_vis.clamp(0.0, 1.0)
+            else:
+                depth_vis = torch.zeros_like(depth)
+
+            display_image = cv2.applyColorMap(
+                (depth_vis * 255).to(torch.uint8).contiguous().numpy(),
+                cv2.COLORMAP_TURBO,
+            )
+
+        cv2.imshow(obs_name, display_image)
+    cv2.waitKey(1)
 
 
 def main() -> int:
@@ -72,19 +157,31 @@ def main() -> int:
     parser = build_argument_parser()
     AppLauncher.add_app_launcher_args(parser)
     args_cli = parser.parse_args()
+    if args_cli.save_camera_every <= 0:
+        parser.error("--save-camera-every must be positive")
+    if args_cli.obs_mode != "state":
+        args_cli.enable_cameras = True
     app_launcher = AppLauncher(args_cli)
     simulation_app = app_launcher.app
 
-    import torch
     from isaaclab.envs import ManagerBasedRLEnv
 
     from bricksim.envs.assemble_brick.env import (
+        AssembleBrickBaseEnvCfg,
         AssembleBrickEnvCfg,
+        AssembleBrickRGBDEnvCfg,
+        AssembleBrickRGBEnvCfg,
         CommandsCfg,
     )
     from bricksim.envs.assemble_brick.expert import AssembleBrickExpert
 
-    env_cfg = AssembleBrickEnvCfg()
+    env_cfg: AssembleBrickBaseEnvCfg
+    if args_cli.obs_mode == "state":
+        env_cfg = AssembleBrickEnvCfg()
+    elif args_cli.obs_mode == "rgb":
+        env_cfg = AssembleBrickRGBEnvCfg()
+    else:
+        env_cfg = AssembleBrickRGBDEnvCfg()
     env_cfg.scene.num_envs = args_cli.num_envs
     env_cfg.sim.render_interval = 1
     if args_cli.seed is not None:
@@ -99,6 +196,17 @@ def main() -> int:
     if args_cli.seed is not None:
         print(f"[INFO]: Using seed: {args_cli.seed}")
     obs, _ = env.reset()
+    if args_cli.obs_mode != "state":
+        images_obs = obs["images"]
+        assert not isinstance(images_obs, torch.Tensor)
+
+        for obs_name, image_obs in images_obs.items():
+            print(
+                f"[INFO]: image obs '{obs_name}': shape={tuple(image_obs.shape)} "
+                f"dtype={image_obs.dtype} device={image_obs.device}"
+            )
+    if args_cli.save_camera_dir is not None:
+        args_cli.save_camera_dir.mkdir(parents=True, exist_ok=True)
     step = 0
 
     while simulation_app.is_running():
@@ -108,6 +216,18 @@ def main() -> int:
             assert not isinstance(privileged_obs, torch.Tensor)
             actions = expert.compute_actions(privileged_obs)
             obs, rewards, terminated, truncated, _ = env.step(actions)
+            if (
+                args_cli.save_camera_dir is not None
+                and args_cli.obs_mode != "state"
+                and step % args_cli.save_camera_every == 0
+            ):
+                images_obs = obs["images"]
+                assert not isinstance(images_obs, torch.Tensor)
+                _save_camera_images(images_obs, args_cli.save_camera_dir, step)
+            if args_cli.show_camera and args_cli.obs_mode != "state":
+                images_obs = obs["images"]
+                assert not isinstance(images_obs, torch.Tensor)
+                _show_camera_images(images_obs)
             if bool((terminated | truncated).any()):
                 print(
                     f"step={step} "

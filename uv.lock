@@ -14,6 +14,7 @@ overrides = [
     { name = "packaging", specifier = "==24.2" },
     { name = "pywin32", marker = "sys_platform == 'win32'", specifier = "==306" },
 ]
+excludes = ["opencv-python-headless"]
 
 [[package]]
 name = "absl-py"
@@ -306,6 +307,7 @@ dependencies = [
     { name = "accelerate", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "gymnasium", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "numpy", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "opencv-python", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "requests", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "scipy", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "torch", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -331,6 +333,7 @@ requires-dist = [
     { name = "isaacsim", extras = ["all", "extscache"], marker = "extra == 'all'", specifier = "==5.1.0" },
     { name = "isaacsim", extras = ["all", "extscache"], marker = "extra == 'isaacsim'", specifier = "==5.1.0" },
     { name = "numpy", specifier = "<2" },
+    { name = "opencv-python", specifier = ">=4.11" },
     { name = "requests" },
     { name = "scipy" },
     { name = "torch", specifier = ">=2.7" },
@@ -1100,7 +1103,6 @@ dependencies = [
     { name = "networkx", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "numba", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "oauthlib", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "opencv-python-headless", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "osqp", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "packaging", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "pint", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -1409,7 +1411,6 @@ dependencies = [
     { name = "huggingface-hub", extra = ["cli", "hf-transfer"], marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "imageio", extra = ["ffmpeg"], marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "jsonlines", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "opencv-python-headless", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "packaging", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "pynput", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "pyserial", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -1798,15 +1799,15 @@ wheels = [
 ]
 
 [[package]]
-name = "opencv-python-headless"
-version = "4.11.0.86"
+name = "opencv-python"
+version = "4.13.0.92"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/36/2f/5b2b3ba52c864848885ba988f24b7f105052f68da9ab0e693cc7c25b0b30/opencv-python-headless-4.11.0.86.tar.gz", hash = "sha256:996eb282ca4b43ec6a3972414de0e2331f5d9cda2b41091a49739c19fb843798", size = 95177929, upload-time = "2025-01-16T13:53:40.22Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/dd/5c/c139a7876099916879609372bfa513b7f1257f7f1a908b0bdc1c2328241b/opencv_python_headless-4.11.0.86-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0e0a27c19dd1f40ddff94976cfe43066fbbe9dfbb2ec1907d66c19caef42a57b", size = 49969856, upload-time = "2025-01-16T13:53:29.654Z" },
+    { url = "https://files.pythonhosted.org/packages/db/07/90b34a8e2cf9c50fe8ed25cac9011cde0676b4d9d9c973751ac7616223a2/opencv_python-4.13.0.92-cp37-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:402033cddf9d294693094de5ef532339f14ce821da3ad7df7c9f6e8316da32cf", size = 70460872, upload-time = "2026-02-05T06:59:19.162Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/55/b3b49a1b97aabcfbbd6c7326df9cb0b6fa0c0aefa8e89d500939e04aa229/opencv_python-4.13.0.92-cp37-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:620d602b8f7d8b8dab5f4b99c6eb353e78d3fb8b0f53db1bd258bb1aa001c1d5", size = 72927042, upload-time = "2026-02-05T06:59:23.389Z" },
 ]
 
 [[package]]

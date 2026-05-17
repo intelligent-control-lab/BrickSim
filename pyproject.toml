@@ -19,6 +19,10 @@ dev = [
 [tool.uv]
 package = false
 environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+exclude-dependencies = [
+    # LeRobot introduces it, but it conflicts with openv-python
+    "opencv-python-headless",
+]
 override-dependencies = [
     # Work around Isaac Sim's unconditional pywin32 dependency on non-Windows platforms.
     "pywin32==306 ; sys_platform == 'win32'",
