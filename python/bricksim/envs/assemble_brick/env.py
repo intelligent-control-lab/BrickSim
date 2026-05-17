@@ -278,7 +278,7 @@ class EventCfg:
         mode="reset",
     )
 
-    reset_bricksim_managed = EventTermCfg(
+    clear_connections = EventTermCfg(
         func=reset_bricksim_managed,
         mode="reset",
     )
