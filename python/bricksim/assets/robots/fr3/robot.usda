@@ -49,7 +49,7 @@ over "fr3"
     }
 
     def Xform "D435" (
-        prepend references = @../../sensors/realsense/d435/d435.usd@
+        prepend references = @../../sensors/realsense_d435/d435.usd@
     )
     {
         quatd xformOp:orient = (0.2705980652088784, 0.6532814761687428, 0.2705980652088784, -0.6532814761687428)

@@ -18,7 +18,7 @@ from isaacsim.robot_motion.motion_generation.interface_config_loader import load
 from bricksim.topology.legolization import legolization_json_to_topology_json, is_legolization_json
 from bricksim.topology.ordering import bfs_sort_connections
 from bricksim.topology.stabletext2brick import bricks_text_to_topology_json, is_bricks_text
-from bricksim.assets import DEFAULT_STAGE_PATH
+from bricksim.assets.stages import DEFAULT_STAGE_PATH
 from bricksim.colors import Colors, parse_color
 from bricksim.core import (
     are_parts_connected,

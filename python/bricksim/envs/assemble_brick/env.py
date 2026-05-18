@@ -40,7 +40,11 @@ from isaaclab_tasks.manager_based.manipulation.stack.mdp.observations import (
     ee_frame_pose_in_base_frame,
 )
 
-from bricksim.assets import FR3_ROBOT_USD_PATH
+from bricksim.assets.robots.fr3 import FR3_ROBOT_USD_PATH
+from bricksim.assets.sensors.realsense_d435 import (
+    D435_DEFAULT_COLOR_INTRINSICS_1280_720,
+    D435_USD_PATH,
+)
 from bricksim.mdp.brick_part import BrickPartCfg
 from bricksim.mdp.connection_thresholds import (
     configure_assembly_thresholds,
@@ -153,19 +157,63 @@ class SceneCfg(InteractiveSceneCfg):
         width=1280,
         data_types=["rgb", "distance_to_image_plane"],
         spawn=PinholeCameraCfg.from_intrinsic_matrix(
-            # Nominal D435 color intrinsics at 1280x720.
-            # Storage: row-major 3x3 pinhole matrix.
-            intrinsic_matrix=[
-                924.277380,
-                0.0,
-                640.0,
-                0.0,
-                925.738464,
-                360.0,
-                0.0,
-                0.0,
-                1.0,
-            ],
+            intrinsic_matrix=D435_DEFAULT_COLOR_INTRINSICS_1280_720,
+            width=1280,
+            height=720,
+            clipping_range=(0.001, 3.0),
+        ),
+    )
+
+    front_camera_model: RigidObjectCfg = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/FrontD435",
+        init_state=RigidObjectCfg.InitialStateCfg(
+            # Units: meters. Quaternion storage: wxyz.
+            pos=(0.5, -0.72, 0.42),
+            rot=(0.6926660505, -0.1421750417, 0.1421750417, 0.6926660505),
+        ),
+        spawn=UsdFileCfg(
+            usd_path=str(D435_USD_PATH),
+            rigid_props=RigidBodyPropertiesCfg(
+                kinematic_enabled=True, disable_gravity=True
+            ),
+        ),
+    )
+
+    side_camera_model: RigidObjectCfg = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/SideD435",
+        init_state=RigidObjectCfg.InitialStateCfg(
+            # Units: meters. Quaternion storage: wxyz.
+            pos=(1.08, 0.16, 0.42),
+            rot=(0.0, 0.2741895638, 0.0, -0.9616756642),
+        ),
+        spawn=UsdFileCfg(
+            usd_path=str(D435_USD_PATH),
+            rigid_props=RigidBodyPropertiesCfg(
+                kinematic_enabled=True, disable_gravity=True
+            ),
+        ),
+    )
+
+    front_camera: TiledCameraCfg | None = TiledCameraCfg(
+        prim_path="{ENV_REGEX_NS}/FrontD435/camera_color_optical_frame/color_camera",
+        height=720,
+        width=1280,
+        data_types=["rgb", "distance_to_image_plane"],
+        spawn=PinholeCameraCfg.from_intrinsic_matrix(
+            intrinsic_matrix=D435_DEFAULT_COLOR_INTRINSICS_1280_720,
+            width=1280,
+            height=720,
+            clipping_range=(0.001, 3.0),
+        ),
+    )
+
+    side_camera: TiledCameraCfg | None = TiledCameraCfg(
+        prim_path="{ENV_REGEX_NS}/SideD435/camera_color_optical_frame/color_camera",
+        height=720,
+        width=1280,
+        data_types=["rgb", "distance_to_image_plane"],
+        spawn=PinholeCameraCfg.from_intrinsic_matrix(
+            intrinsic_matrix=D435_DEFAULT_COLOR_INTRINSICS_1280_720,
             width=1280,
             height=720,
             clipping_range=(0.001, 3.0),
@@ -314,6 +362,38 @@ class ObservationsCfg:
                 "normalize": False,
             },
         )
+        front_color: ObservationTermCfg = ObservationTermCfg(
+            func=image,
+            params={
+                "sensor_cfg": SceneEntityCfg("front_camera"),
+                "data_type": "rgb",
+                "normalize": False,
+            },
+        )
+        front_depth: ObservationTermCfg | None = ObservationTermCfg(
+            func=image,
+            params={
+                "sensor_cfg": SceneEntityCfg("front_camera"),
+                "data_type": "distance_to_image_plane",
+                "normalize": False,
+            },
+        )
+        side_color: ObservationTermCfg = ObservationTermCfg(
+            func=image,
+            params={
+                "sensor_cfg": SceneEntityCfg("side_camera"),
+                "data_type": "rgb",
+                "normalize": False,
+            },
+        )
+        side_depth: ObservationTermCfg | None = ObservationTermCfg(
+            func=image,
+            params={
+                "sensor_cfg": SceneEntityCfg("side_camera"),
+                "data_type": "distance_to_image_plane",
+                "normalize": False,
+            },
+        )
 
     policy: PolicyCfg = PolicyCfg()
     privileged: PrivilegedCfg = PrivilegedCfg()
@@ -430,6 +510,8 @@ class AssembleBrickEnvCfg(AssembleBrickBaseEnvCfg):
         """Remove image observations."""
         super().__post_init__()
         self.scene.hand_camera = None
+        self.scene.front_camera = None
+        self.scene.side_camera = None
         self.observations.images = None
         self.num_rerenders_on_reset = 0
 
@@ -452,7 +534,15 @@ class AssembleBrickRGBEnvCfg(AssembleBrickBaseEnvCfg):
         hand_camera = self.scene.hand_camera
         assert hand_camera is not None
         hand_camera.data_types = ["rgb"]
+        front_camera = self.scene.front_camera
+        assert front_camera is not None
+        front_camera.data_types = ["rgb"]
+        side_camera = self.scene.side_camera
+        assert side_camera is not None
+        side_camera.data_types = ["rgb"]
 
         images = self.observations.images
         assert images is not None
         images.hand_depth = None
+        images.front_depth = None
+        images.side_depth = None

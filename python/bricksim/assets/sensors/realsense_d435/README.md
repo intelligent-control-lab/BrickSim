@@ -40,7 +40,7 @@ async def main():
     package_dir = realsense_ros_dir / "realsense2_description"
     xacro_path = package_dir / "urdf" / "test_d435_camera.urdf.xacro"
     mesh_path = package_dir / "meshes" / "d435.dae"
-    output_path = Path.cwd() / "python" / "bricksim" / "assets" / "sensors" / "realsense" / "d435" / "d435.usd"
+    output_path = Path.cwd() / "python" / "bricksim" / "assets" / "sensors" / "realsense_d435" / "d435.usd"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     original_eval_find = xacro.substitution_args._eval_find

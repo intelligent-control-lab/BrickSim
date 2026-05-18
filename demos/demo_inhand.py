@@ -14,7 +14,7 @@ from isaacsim.core.utils.nucleus import get_assets_root_path
 from isaacsim.core.utils.numpy.rotations import quats_to_rot_matrices, rot_matrices_to_quats
 from isaacsim.robot_motion.motion_generation import RmpFlow, ArticulationMotionPolicy
 from isaacsim.robot_motion.motion_generation.interface_config_loader import load_supported_motion_policy_config
-from bricksim.assets import DEFAULT_STAGE_PATH
+from bricksim.assets.stages import DEFAULT_STAGE_PATH
 from bricksim.colors import parse_color
 from bricksim.core import allocate_brick_part, AssemblyThresholds, compute_connection_transform, set_assembly_thresholds
 from bricksim.utils.brick_usd import parse_brick_prim_dimensions

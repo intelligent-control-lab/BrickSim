@@ -14,7 +14,7 @@ from isaacsim.core.api.materials import PhysicsMaterial
 from isaacsim.core.prims import SingleArticulation, SingleXFormPrim, SingleGeometryPrim
 from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.core.utils.stage import open_stage_async, add_reference_to_stage, get_current_stage
-from bricksim.assets import DEFAULT_STAGE_PATH
+from bricksim.assets.stages import DEFAULT_STAGE_PATH
 from bricksim.colors import parse_color
 from bricksim.core import (
     allocate_brick_part,

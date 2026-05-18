@@ -5,7 +5,7 @@ async def _open_default_stage():
     import carb
     from isaacsim.core.utils.stage import get_current_stage, open_stage_async
 
-    from bricksim.assets import DEFAULT_STAGE_PATH
+    from bricksim.assets.stages import DEFAULT_STAGE_PATH
 
     success, error = await open_stage_async(str(DEFAULT_STAGE_PATH))
     if not success:
