@@ -136,6 +136,8 @@ If you start Isaac Sim or other processes, you must ensure it's terminated after
 
 IsaacSim / IsaacLab must be run outside the sandbox. Request privilege escalation if you run them.
 
+Launching Isaac Sim / Isaac Lab is an expensive and slow operation. Do not run such expensive tests if the current results can already lead to a conclusion.
+
 ## Collaboration Rules
 - NEVER modify code unless the user explicitly asks (e.g., says "modify", "implement", "refactor", "add", or similar). Observations and diagnostics are fine; changes require explicit instruction.
 - Respect explicit decisions: do not change established values or designs (e.g., callback orders, algorithm choices) without strong evidence and prior approval.
